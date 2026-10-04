@@ -73,9 +73,9 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
 
             return CalendarEventItem(
                 id: ekEvent.eventIdentifier ?? UUID().uuidString,
-                title: ekEvent.title ?? "未命名日程",
-                location: ekEvent.location ?? "Apple 日历",
-                calendarTitle: ekEvent.calendar?.title ?? "日历",
+                title: ekEvent.title ?? "Untitled Event",
+                location: ekEvent.location ?? "Apple Calendar",
+                calendarTitle: ekEvent.calendar?.title ?? "Calendar",
                 url: extractedURL,
                 startTime: ekEvent.startDate,
                 endTime: ekEvent.endDate,

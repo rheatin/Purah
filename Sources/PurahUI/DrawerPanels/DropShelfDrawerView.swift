@@ -29,11 +29,11 @@ public struct DropShelfDrawerView: View {
                         .foregroundColor(shelfColor.opacity(0.8))
                         .modifier(OptionalGlow(color: shelfColor, enabled: isTargeted))
 
-                    Text("直接从访达拖拽文件至此暂存")
+                    Text("Drag and drop files from Finder to stash")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("支持任意图片、文档与代码")
+                    Text("Supports images, documents, and code")
                         .font(.system(size: 9))
                         .foregroundColor(.gray)
                     Spacer()
@@ -75,7 +75,7 @@ public struct DropShelfDrawerView: View {
                                             .foregroundColor(.gray)
                                     }
                                     .buttonStyle(.plain)
-                                    .help("在访达中显示")
+                                    .help("Reveal in Finder")
                                 }
 
                                 Button {
@@ -101,11 +101,11 @@ public struct DropShelfDrawerView: View {
                 }
 
                 HStack {
-                    Text("\(store.shelfFiles.count) 个暂存文件")
+                    Text("\(store.shelfFiles.count) item(s)")
                         .font(.system(size: 9))
                         .foregroundColor(.gray)
                     Spacer()
-                    Button("清空") {
+                    Button("Clear All") {
                         store.shelfFiles.removeAll()
                     }
                     .buttonStyle(.plain)

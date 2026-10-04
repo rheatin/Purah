@@ -22,10 +22,10 @@ public struct HardwareVitalsDrawerView: View {
         VStack(alignment: .leading, spacing: 8) {
             // CPU & Memory 双指标卡片
             HStack(spacing: 10) {
-                // CPU 仪表
+                // CPU Meter
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text("CPU 负载")
+                        Text("CPU Load")
                             .font(.system(size: 9))
                             .foregroundColor(.gray)
                         Spacer()
@@ -40,10 +40,10 @@ public struct HardwareVitalsDrawerView: View {
                 .background(palette.solidDrawerBackground)
                 .cornerRadius(6)
 
-                // 内存 仪表
+                // Memory Meter
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text("内存压力")
+                        Text("Memory Pressure")
                             .font(.system(size: 9))
                             .foregroundColor(.gray)
                         Spacer()
@@ -59,10 +59,10 @@ public struct HardwareVitalsDrawerView: View {
                 .cornerRadius(6)
             }
 
-            // Top 3 吃资源进程列表
+            // Top 3 Process List
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("高负载进程 (Top 3)")
+                    Text("Top Processes")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(.gray)
                     Spacer()
@@ -83,15 +83,14 @@ public struct HardwareVitalsDrawerView: View {
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 .lineLimit(1)
-                            Text("PID: \(proc.id) · CPU: \(String(format: "%.1f", proc.cpuPercent))% · 内存: \(String(format: "%.1f", proc.memoryPercent))%")
+                            Text("PID: \(proc.id) · CPU: \(String(format: "%.1f", proc.cpuPercent))% · RAM: \(String(format: "%.1f", proc.memoryPercent))%")
                                 .font(.system(size: 8, design: .monospaced))
                                 .foregroundColor(.gray)
                         }
 
                         Spacer()
 
-                        // 一键强制结束卡死进程
-                        Button("结束") {
+                        Button("Kill") {
                             vitals.killProcess(pid: proc.id)
                         }
                         .buttonStyle(.bordered)

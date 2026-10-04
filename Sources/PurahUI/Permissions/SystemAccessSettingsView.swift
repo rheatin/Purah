@@ -25,10 +25,10 @@ public struct SystemAccessSettingsView: View {
                     .modifier(OptionalGlow(color: palette.primaryAccent, enabled: palette.useGlow))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("系统原生应用访问与权限保障")
+                    Text("Native App Permissions & Access")
                         .font(palette.fontTitle)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text("授权 Purah 实时同步 Apple 原生日历、提醒事项与音乐播放状态")
+                    Text("Grant access for real-time synchronization with Calendar, Reminders, and Music")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -52,8 +52,8 @@ public struct SystemAccessSettingsView: View {
                 // 1. Apple Calendar
                 permissionRow(
                     icon: "calendar",
-                    title: "Apple 日历 (Calendar)",
-                    purpose: "读取今日日程与会议，驱动边缘时间进度条与抽屉日程流",
+                    title: "Apple Calendar",
+                    purpose: "Reads events and meetings to power timeline rails and calendar drawers",
                     status: permissions.calendarStatus,
                     onGrant: {
                         Task {
@@ -71,8 +71,8 @@ public struct SystemAccessSettingsView: View {
                 // 2. Apple Reminders
                 permissionRow(
                     icon: "checklist",
-                    title: "Apple 提醒事项 (Reminders)",
-                    purpose: "读取待办事项生成分段刻度微光条，支持在抽屉中快速打勾与添加",
+                    title: "Apple Reminders",
+                    purpose: "Synchronizes tasks into tactile segments with quick completion support",
                     status: permissions.remindersStatus,
                     onGrant: {
                         Task {
@@ -96,11 +96,11 @@ public struct SystemAccessSettingsView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text("Apple 音乐 (Apple Music)")
+                            Text("Apple Music")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            Text("无需特殊授权")
+                            Text("Always Available")
                                 .font(.system(size: 10, design: .monospaced))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -108,7 +108,7 @@ public struct SystemAccessSettingsView: View {
                                 .foregroundColor(.green)
                                 .cornerRadius(4)
                         }
-                        Text("通过 macOS 分布式通知自动接收曲目、艺术家与播放状态，即开即用")
+                        Text("Automatically observes track and playback state via macOS notifications")
                             .font(.caption2)
                             .foregroundColor(.gray)
                     }
@@ -136,7 +136,7 @@ public struct SystemAccessSettingsView: View {
             // Bottom action: Guarantee Access to All
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("权限保障状态")
+                    Text("Permission Status")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
@@ -160,7 +160,7 @@ public struct SystemAccessSettingsView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.seal.fill")
-                        Text("一键保障所有权限")
+                        Text("Grant All Permissions")
                             .fontWeight(.semibold)
                     }
                     .foregroundColor(palette.style == .native ? Color.white : Color.black)
@@ -181,11 +181,11 @@ public struct SystemAccessSettingsView: View {
         let calOk = permissions.calendarStatus.isGranted
         let remOk = permissions.remindersStatus.isGranted
         if calOk && remOk {
-            return "所有原生应用均已成功授权，数据实时互通"
+            return "All native services authorized with live synchronization."
         } else if calOk || remOk {
-            return "部分权限已获取，点击右侧按钮完成全部保障"
+            return "Partial access granted. Click to complete authorization."
         } else {
-            return "尚未授予日历与提醒事项权限，当前使用本地模拟数据"
+            return "Permissions not granted yet. Using local sample data."
         }
     }
 
@@ -233,11 +233,11 @@ public struct SystemAccessSettingsView: View {
                     .foregroundColor(.green)
                     .font(.title3)
             } else if status == .denied {
-                Button("系统设置", action: onOpenSettings)
+                Button("Settings", action: onOpenSettings)
                     .buttonStyle(.bordered)
                     .font(.caption)
             } else {
-                Button("授权访问", action: onGrant)
+                Button("Grant Access", action: onGrant)
                     .buttonStyle(.borderedProminent)
                     .tint(palette.primaryAccent)
                     .font(.caption)

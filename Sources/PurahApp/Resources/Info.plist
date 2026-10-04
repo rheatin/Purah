@@ -15,14 +15,14 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSCalendarsUsageDescription</key>
-    <string>Purah 需要访问您的日历以在屏幕侧边显示今日日程与时间标尺。</string>
+    <string>Purah needs calendar access to display your daily schedule and timeline on edge rails.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Purah 需要完整访问您的日历以在屏幕侧边显示今日日程与时间标尺。</string>
+    <string>Purah needs full calendar access to display your daily schedule and timeline on edge rails.</string>
     <key>NSRemindersUsageDescription</key>
-    <string>Purah 需要访问您的提醒事项以同步待办列表与分段指示标。</string>
+    <string>Purah needs reminders access to synchronize your tasks with ambient edge gauges.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
-    <string>Purah 需要完整访问您的提醒事项以同步待办列表与分段指示标。</string>
+    <string>Purah needs full reminders access to synchronize your tasks with ambient edge gauges.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Purah 需要控制音乐应用以提供播放与切歌快捷操作。</string>
+    <string>Purah needs Apple Events access to control Music playback and observe current tracks.</string>
 </dict>
 </plist>

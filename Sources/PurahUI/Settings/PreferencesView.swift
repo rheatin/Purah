@@ -10,8 +10,8 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
 
     public var title: String {
         switch self {
-        case .layout: return "轨道布局模拟器"
-        case .permissions: return "系统权限与保障"
+        case .layout: return "Layout Simulator"
+        case .permissions: return "Permissions & Access"
         }
     }
 

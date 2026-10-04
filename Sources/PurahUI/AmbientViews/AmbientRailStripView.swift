@@ -290,7 +290,7 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: "shelf", store: store)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            RailBarAmbientView(type: .shelf, hasContent: !store.shelfFiles.isEmpty, color: color)
+            RailBarAmbientView(type: .shelf, hasContent: !store.shelfFiles.isEmpty, color: color, barWidth: barW)
                 .frame(width: barW, height: totalHeight)
 
             if isActive {
@@ -332,13 +332,13 @@ public struct AmbientRailStripView: View {
                     .foregroundColor(color)
                     .font(.caption)
 
-                Text("临时暂存架")
+                Text("Temporary Shelf")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
 
                 Spacer()
 
-                Button("+ 暂存") {
+                Button("+ Stash") {
                     selectFilesToStash()
                 }
                 .buttonStyle(.bordered)
@@ -348,7 +348,7 @@ public struct AmbientRailStripView: View {
             }
 
             if store.shelfFiles.isEmpty {
-                Text("直接从访达拖拽文件至此暂存")
+                Text("Drag and drop files from Finder to stash")
                     .font(.system(size: 10))
                     .foregroundColor(.gray)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -414,7 +414,7 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: "notes", store: store)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            RailBarAmbientView(type: .notes, hasContent: !store.quickNote.text.isEmpty, color: color)
+            RailBarAmbientView(type: .notes, hasContent: !store.quickNote.text.isEmpty, color: color, barWidth: barW)
                 .frame(width: barW, height: totalHeight)
 
             if isActive {
@@ -453,13 +453,13 @@ public struct AmbientRailStripView: View {
                     .foregroundColor(color)
                     .font(.caption)
 
-                Text("灵感便签")
+                Text("Quick Notes")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
 
                 Spacer()
 
-                Text("\(store.quickNote.text.count) 字")
+                Text("\(store.quickNote.text.count) chars")
                     .font(.system(size: 8))
                     .foregroundColor(.gray)
 
@@ -500,15 +500,16 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: "vitals", store: store)
         let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
 
+        let radius = min(barW / 2, 4)
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 3.5)
+                RoundedRectangle(cornerRadius: radius)
                     .fill(color.opacity(0.25))
-                    .frame(width: max(barW - 2, 3), height: totalHeight)
+                    .frame(width: barW, height: totalHeight)
 
-                RoundedRectangle(cornerRadius: 3.5)
+                RoundedRectangle(cornerRadius: radius)
                     .fill(color)
-                    .frame(width: isPulsing ? barW : max(barW - 2, 3), height: max(totalHeight * CGFloat(cpu), 4.0))
+                    .frame(width: barW, height: max(totalHeight * CGFloat(cpu), 4.0))
                     .modifier(OptionalGlow(color: color, enabled: isPulsing))
             }
             .frame(width: barW, height: totalHeight)
@@ -547,7 +548,7 @@ public struct AmbientRailStripView: View {
                 Image(systemName: "waveform.path.ecg")
                     .foregroundColor(color)
                     .font(.caption)
-                Text("性能热态脉搏")
+                Text("Hardware Vitals")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                 Spacer()
@@ -570,15 +571,16 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "scripts", store: store)
 
+        let radius = min(barW / 2, 4)
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             ZStack(alignment: .top) {
-                RoundedRectangle(cornerRadius: 3.5)
+                RoundedRectangle(cornerRadius: radius)
                     .fill(color.opacity(0.85))
-                    .frame(width: max(barW - 2, 3), height: totalHeight)
+                    .frame(width: barW, height: totalHeight)
 
                 Rectangle()
                     .fill(Color.white.opacity(0.9))
-                    .frame(width: max(barW - 4, 2), height: 2)
+                    .frame(width: max(barW - 2, 2), height: 2)
                     .padding(.top, 4)
             }
             .frame(width: barW, height: totalHeight)
@@ -617,7 +619,7 @@ public struct AmbientRailStripView: View {
                 Image(systemName: "terminal.fill")
                     .foregroundColor(color)
                     .font(.caption)
-                Text("瞬时脚本跑道")
+                Text("Script Runway")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                 Spacer()
@@ -673,7 +675,7 @@ public struct AmbientRailStripView: View {
                 .scaleEffect(isPinned ? 1.2 : 1.0)
         }
         .buttonStyle(.plain)
-        .help(isPinned ? "已固定 (点击取消)" : "固定此小窗常驻")
+        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 
     private func fileIcon(for ext: String) -> String {

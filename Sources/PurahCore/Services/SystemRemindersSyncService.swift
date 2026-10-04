@@ -70,8 +70,8 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
                     let dueDate = rem.dueDateComponents.flatMap { cal.date(from: $0) }
                     return TodoItem(
                         id: rem.calendarItemIdentifier,
-                        title: rem.title ?? "未命名待办",
-                        listTitle: rem.calendar?.title ?? "提醒事项",
+                        title: rem.title ?? "Untitled Reminder",
+                        listTitle: rem.calendar?.title ?? "Reminders",
                         dueDate: dueDate,
                         isCompleted: rem.isCompleted
                     )

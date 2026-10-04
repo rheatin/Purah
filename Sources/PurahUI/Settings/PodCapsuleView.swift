@@ -55,23 +55,23 @@ public struct PodCapsuleView: View {
 
                 Spacer(minLength: 2)
 
-                // 占满轨道高度快捷按钮
+                // Fill rail button
                 Button(action: onFillRail) {
                     Image(systemName: "arrow.up.and.down")
                         .font(.system(size: 9))
                         .foregroundColor(podColor.opacity(0.85))
                 }
                 .buttonStyle(.plain)
-                .help("占满整条轨道高度")
+                .help("Expand to fill available rail")
 
-                // 移至对侧轨道按钮
+                // Transfer edge button
                 Button(action: onTransferEdge) {
                     Image(systemName: pod.edge == .left ? "arrow.right.circle.fill" : "arrow.left.circle.fill")
                         .font(.system(size: 11))
                         .foregroundColor(palette.warningAccent)
                 }
                 .buttonStyle(.plain)
-                .help(pod.edge == .left ? "移至右侧轨道" : "移至左侧轨道")
+                .help(pod.edge == .left ? "Move to Right Rail" : "Move to Left Rail")
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
@@ -79,7 +79,7 @@ public struct PodCapsuleView: View {
 
             Spacer()
 
-            // 底部上下拉伸调节手柄 (Resize Handle)
+            // Resize Handle
             ZStack {
                 Rectangle()
                     .fill(Color.clear)
@@ -102,7 +102,7 @@ public struct PodCapsuleView: View {
                         onResize(targetLength)
                     }
             )
-            .help("拖拽调整上下长短与高度占比")
+            .help("Drag to resize rail height")
         }
         .frame(width: 146, height: capsuleHeight)
         .background(

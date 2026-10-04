@@ -18,7 +18,7 @@ public final class DrawerPanelWindow: NSPanel {
     private let mountEdge: MountEdge
 
     public init(pod: SlotPod, screen: NSScreen, store: PurahWorkspaceStore, onClose: @escaping () -> Void) {
-        // 关键修复 1：严格基于 screen.visibleFrame 进行坐标与高度求解，绝对不超越底部 Dock 栏基线！
+        // Layout calculations anchored to screen.visibleFrame
         let visibleRect = screen.visibleFrame
         let railWidth = CGFloat(store.railBarWidth)
         let drawerWidth: CGFloat = (pod.id == "music" ? 300.0 : 280.0)
@@ -34,7 +34,6 @@ public final class DrawerPanelWindow: NSPanel {
         let originY: CGFloat
 
         if let activeTodo = activeTodo, pod.id == "todo" {
-            // 【关键要求】：弹出的抽屉高度与导轨上的分段 Bar 高度 100% 严格一致
             let count = max(store.todos.count, 1)
             let spacing: CGFloat = 2.5
             let totalSpacing = spacing * CGFloat(count - 1)
@@ -45,7 +44,6 @@ public final class DrawerPanelWindow: NSPanel {
             drawerHeight = itemSlotH
             originY = itemYFromTop - drawerHeight
         } else if let activeEvent = activeEvent, pod.id == "calendar" {
-            // 【关键要求】：日程抽屉高度与导轨分段 Bar 100% 严格一致
             let count = max(store.calendarEvents.count, 1)
             let spacing: CGFloat = 2.5
             let totalSpacing = spacing * CGFloat(count - 1)
@@ -81,7 +79,7 @@ public final class DrawerPanelWindow: NSPanel {
             originY = visibleRect.minY + (visibleRect.height * (1.0 - CGFloat(pod.range.start + pod.range.length)))
         }
 
-        // 关键修复 2：抽屉与边缘 Bar 严格 0 间隙无缝贴合
+        // 0-gap edge alignment
         let originX: CGFloat = (pod.edge == .left)
             ? (visibleRect.minX + railWidth)
             : (visibleRect.maxX - railWidth - drawerWidth)
@@ -95,7 +93,6 @@ public final class DrawerPanelWindow: NSPanel {
         self.targetFrame = initialFrame
         self.mountEdge = pod.edge
 
-        // 初始动画起点：从屏幕物理黑边外部水平藏入 (Y 轴完全不动，仅 X 轴水平弹射)
         let startX: CGFloat = (pod.edge == .left) ? (visibleRect.minX - drawerWidth) : (visibleRect.maxX)
         let offscreenFrame = NSRect(x: startX, y: initialFrame.origin.y, width: initialFrame.width, height: initialFrame.height)
 

@@ -11,9 +11,9 @@ public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
 
     public var displayName: String {
         switch self {
-        case .system: return "跟随系统 (System)"
+        case .system: return "System Default"
         case .english: return "English"
-        case .simplifiedChinese: return "简体中文"
+        case .simplifiedChinese: return "Simplified Chinese"
         }
     }
 }

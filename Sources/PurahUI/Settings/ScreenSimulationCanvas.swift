@@ -17,7 +17,7 @@ public struct ScreenSimulationCanvas: View {
 
     public var body: some View {
         ZStack {
-            // 微缩屏幕底板
+            // Screen Preview Canvas
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
                 .overlay(
@@ -25,7 +25,7 @@ public struct ScreenSimulationCanvas: View {
                         .stroke(palette.borderColor, lineWidth: 1)
                 )
 
-            // 人体工学三大舒适区背景标尺
+            // Ergonomic Zone Indicators
             VStack(spacing: 0) {
                 // Glance Zone (0% ~ 20%)
                 Rectangle()
@@ -68,11 +68,11 @@ public struct ScreenSimulationCanvas: View {
             }
             .frame(width: canvasWidth, height: canvasHeight)
 
-            // 左右两侧磁吸轨道与 Pod 胶囊
+            // Left & Right Magnetic Rails with Pod Capsules
             HStack(spacing: 0) {
-                // 左侧轨道容器
+                // Left Rail Container
                 ZStack(alignment: .topLeading) {
-                    // 左轨背景槽
+                    // Left rail background slot
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.black.opacity(0.15))
                         .frame(width: 154, height: canvasHeight)
@@ -106,9 +106,9 @@ public struct ScreenSimulationCanvas: View {
 
                 Spacer()
 
-                // 右侧轨道容器
+                // Right Rail Container
                 ZStack(alignment: .topTrailing) {
-                    // 右轨背景槽
+                    // Right rail background slot
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.black.opacity(0.15))
                         .frame(width: 154, height: canvasHeight)

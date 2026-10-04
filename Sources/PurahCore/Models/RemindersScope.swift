@@ -11,10 +11,10 @@ public enum RemindersScope: String, CaseIterable, Identifiable, Codable, Sendabl
 
     public var title: String {
         switch self {
-        case .allIncomplete: return "全部未办"
-        case .dueToday: return "今日到期"
-        case .dueThisWeek: return "本周待办"
-        case .completed: return "已完成"
+        case .allIncomplete: return "All Incomplete"
+        case .dueToday: return "Due Today"
+        case .dueThisWeek: return "Due This Week"
+        case .completed: return "Completed"
         }
     }
 }

@@ -45,7 +45,7 @@ public struct ScriptRunwayDrawerView: View {
                                     _ = await runway.executeAction(action)
                                 }
                             } label: {
-                                Text(runway.isRunning && runway.lastExecutedActionId == action.id ? "..." : "执行")
+                                Text(runway.isRunning && runway.lastExecutedActionId == action.id ? "..." : "Run")
                                     .font(.system(size: 8, weight: .bold))
                             }
                             .buttonStyle(.borderedProminent)

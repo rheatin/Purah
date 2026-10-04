@@ -11,10 +11,10 @@ public enum CalendarTimeScope: String, CaseIterable, Identifiable, Codable, Send
 
     public var title: String {
         switch self {
-        case .today: return "今日 (Day)"
-        case .thisWeek: return "本周 (Week)"
-        case .thisMonth: return "本月 (Month)"
-        case .next7Days: return "未来7天 (7 Days)"
+        case .today: return "Today"
+        case .thisWeek: return "This Week"
+        case .thisMonth: return "This Month"
+        case .next7Days: return "Next 7 Days"
         }
     }
 
