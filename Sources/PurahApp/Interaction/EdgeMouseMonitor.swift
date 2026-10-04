@@ -43,8 +43,8 @@ public final class EdgeMouseMonitor {
         velocityTracker.add(point: point, timestamp: now)
 
         let screenRect = screen.frame
-        let isDrawerOpen = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
-        let activeWidth: CGFloat = isDrawerOpen ? 275 : 10
+        let isDrawerOpen = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty)
+        let activeWidth: CGFloat = isDrawerOpen ? 320 : 12
 
         let isNearLeft = point.x <= (screenRect.minX + activeWidth)
         let isNearRight = point.x >= (screenRect.maxX - activeWidth)
@@ -61,11 +61,11 @@ public final class EdgeMouseMonitor {
             return
         }
 
-        // 仅在鼠标靠近边缘 10px 导轨时进行单项槽位命中计算与快速唤起
-        let isAtEdge = point.x <= (screenRect.minX + 12) || point.x >= (screenRect.maxX - 12)
+        // 仅在鼠标靠近边缘 12px 导轨时进行单项槽位命中计算与快速唤起
+        let isAtEdge = point.x <= (screenRect.minX + 14) || point.x >= (screenRect.maxX - 14)
         guard isAtEdge else { return }
 
-        let edge: MountEdge = point.x <= (screenRect.minX + 12) ? .left : .right
+        let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right
         let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
 
         let candidatePod = store.pods.first { pod in

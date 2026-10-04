@@ -25,7 +25,7 @@ public struct TodoItemDrawerView: View {
         edge: MountEdge,
         state: ItemDrawerState,
         isPinned: Bool,
-        height: CGFloat = 38.0,
+        height: CGFloat,
         store: PurahWorkspaceStore,
         onTogglePin: @escaping () -> Void
     ) {
@@ -39,13 +39,13 @@ public struct TodoItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, 36.0)
         let isDone = todo.isCompleted
+        let cardH = max(height, 32.0)
 
         Group {
             switch state {
             case .expandedDrawer:
-                // 单个 item 完全弹出来的实心小窗：从边缘往中间弹射滑出
+                // 【完全展开的单项抽屉】：与侧边 Bar 高度与颜色 100% 严格一致，从边缘完整延伸
                 HStack(spacing: 8) {
                     if edge == .left { pinButton }
 
@@ -55,16 +55,14 @@ public struct TodoItemDrawerView: View {
                         }
                     } label: {
                         Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                            // 已完成仍然保持琥珀金同色，仅降低对比度
                             .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
-                            .font(.system(size: 14))
+                            .font(.system(size: 13))
                     }
                     .buttonStyle(.plain)
 
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(todo.title)
                             .strikethrough(isDone)
-                            // 已完成保持同色系低对比度
                             .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .lineLimit(1)
@@ -90,54 +88,66 @@ public struct TodoItemDrawerView: View {
                     if edge == .right { pinButton }
                 }
                 .padding(.horizontal, 10)
-                .frame(width: 252, height: cardH)
+                .frame(width: 280, height: cardH)
                 .background(palette.solidDrawerBackground)
-                .cornerRadius(6)
+                .clipShape(drawerShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    drawerShape
                         .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
                 )
-                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
-                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
-                ))
+                .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 2)
 
             case .neighborPeek:
-                // 隔壁的 item：略微伸出来一点 (20pt)，不显示文字内容
+                // 【隔壁的 item】：略微伸出来一点 (28pt)，不显示长内容，作为阶梯拉手
                 HStack(spacing: 0) {
                     if edge == .right {
                         Circle()
-                            .fill(podColor.opacity(isDone ? 0.35 : 0.85))
-                            .frame(width: 4, height: 4)
-                            .padding(.leading, 4)
+                            .fill(podColor.opacity(isDone ? 0.35 : 0.9))
+                            .frame(width: 5, height: 5)
+                            .padding(.leading, 6)
                         Spacer()
                     } else {
                         Spacer()
                         Circle()
-                            .fill(podColor.opacity(isDone ? 0.35 : 0.85))
-                            .frame(width: 4, height: 4)
-                            .padding(.trailing, 4)
+                            .fill(podColor.opacity(isDone ? 0.35 : 0.9))
+                            .frame(width: 5, height: 5)
+                            .padding(.trailing, 6)
                     }
                 }
-                .frame(width: 20, height: cardH)
+                .frame(width: 28, height: cardH)
                 .background(palette.solidDrawerBackground)
-                .cornerRadius(4)
+                .clipShape(drawerShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(podColor.opacity(isDone ? 0.3 : 0.7), lineWidth: 1)
+                    drawerShape
+                        .stroke(podColor.opacity(isDone ? 0.3 : 0.75), lineWidth: 1)
                 )
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing),
-                    removal: .move(edge: edge == .left ? .leading : .trailing)
-                ))
 
             case .dockedFlush:
-                // 剩下的保持不动，紧贴导轨
-                RoundedRectangle(cornerRadius: 2)
+                // 【剩下的保持不动】：严格保持 8px，紧贴导轨
+                Rectangle()
                     .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                    .frame(width: 6, height: cardH)
+                    .frame(width: 8, height: cardH)
             }
+        }
+    }
+
+    private var drawerShape: UnevenRoundedRectangle {
+        if edge == .right {
+            // 右轨：左侧圆角 (抽屉舌头)，右侧 0 圆角 (与物理黑边 0 间隙完全贴合)
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 6,
+                bottomLeadingRadius: 6,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 0
+            )
+        } else {
+            // 左轨：右侧圆角，左侧 0 圆角
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 6,
+                topTrailingRadius: 6
+            )
         }
     }
 
@@ -175,7 +185,7 @@ public struct CalendarItemDrawerView: View {
         edge: MountEdge,
         state: ItemDrawerState,
         isPinned: Bool,
-        height: CGFloat = 40.0,
+        height: CGFloat,
         store: PurahWorkspaceStore,
         onTogglePin: @escaping () -> Void
     ) {
@@ -189,7 +199,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, 38.0)
+        let cardH = max(height, 34.0)
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
@@ -198,40 +208,30 @@ public struct CalendarItemDrawerView: View {
         Group {
             switch state {
             case .expandedDrawer:
-                // 单个日程完全弹出的实心小窗：从边缘往中间弹射滑出
+                // 【完全展开的单项日程抽屉】：与 Bar 高度与颜色完全一致，0 间隙延伸
                 HStack(spacing: 8) {
                     if edge == .left { pinButton }
 
                     Rectangle()
                         .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                        .frame(width: 3.5, height: cardH - 12)
+                        .frame(width: 3.5, height: max(cardH - 10, 16))
                         .cornerRadius(1.75)
 
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 4) {
                             Text(event.title)
                                 .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                                // 过期日程保持同色系低对比度
                                 .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
                                 .lineLimit(1)
 
                             Spacer(minLength: 2)
 
-                            // 到点日程同色发光提醒
                             if isOngoing {
                                 Text("LIVE")
                                     .font(.system(size: 8, weight: .heavy, design: .monospaced))
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1)
                                     .background(podColor.opacity(0.25))
-                                    .foregroundColor(podColor)
-                                    .cornerRadius(3)
-                            } else if isImminent {
-                                Text("即到")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(podColor.opacity(0.2))
                                     .foregroundColor(podColor)
                                     .cornerRadius(3)
                             }
@@ -256,9 +256,17 @@ public struct CalendarItemDrawerView: View {
                                 .buttonStyle(.plain)
                                 .help("打开附带链接: \(url.absoluteString)")
                             }
+
+                            Text(event.calendarTitle)
+                                .font(.system(size: 8))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(podColor.opacity(isPast ? 0.10 : 0.15))
+                                .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
+                                .cornerRadius(3)
                         }
 
-                        Text("\(formattedTime(event: event)) · \(event.calendarTitle)")
+                        Text("\(formattedTime(event: event)) · \(event.location)")
                             .font(palette.fontMono)
                             .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
                             .lineLimit(1)
@@ -269,60 +277,69 @@ public struct CalendarItemDrawerView: View {
                     if edge == .right { pinButton }
                 }
                 .padding(.horizontal, 10)
-                .frame(width: 252, height: cardH)
+                .frame(width: 290, height: cardH)
                 .background(palette.solidDrawerBackground)
-                .cornerRadius(6)
+                .clipShape(drawerShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    drawerShape
                         .stroke(
-                            podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.3 : 0.8)),
+                            podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.3 : 0.85)),
                             lineWidth: isAlerting ? 2.0 : 1.5
                         )
                 )
-                // 到点日程边缘同色加发光提醒
                 .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
-                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
-                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
-                ))
+                .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 3)
 
             case .neighborPeek:
-                // 隔壁的日程：略微伸出来一点 (20pt)，不显示文字内容
+                // 【隔壁的日程】：略微伸出 28pt 作为阶梯拉手，不显示文字
                 HStack(spacing: 0) {
                     if edge == .right {
                         Circle()
-                            .fill(podColor.opacity(isPast ? 0.35 : 0.85))
-                            .frame(width: 4, height: 4)
-                            .padding(.leading, 4)
+                            .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
+                            .frame(width: 5, height: 5)
+                            .padding(.leading, 6)
                         Spacer()
                     } else {
                         Spacer()
                         Circle()
-                            .fill(podColor.opacity(isPast ? 0.35 : 0.85))
-                            .frame(width: 4, height: 4)
-                            .padding(.trailing, 4)
+                            .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
+                            .frame(width: 5, height: 5)
+                            .padding(.trailing, 6)
                     }
                 }
-                .frame(width: 20, height: cardH)
+                .frame(width: 28, height: cardH)
                 .background(palette.solidDrawerBackground)
-                .cornerRadius(4)
+                .clipShape(drawerShape)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(podColor.opacity(isPast ? 0.3 : 0.7), lineWidth: 1)
+                    drawerShape
+                        .stroke((isPast ? podColor.opacity(0.3) : podColor).opacity(0.75), lineWidth: 1)
                 )
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing),
-                    removal: .move(edge: edge == .left ? .leading : .trailing)
-                ))
 
             case .dockedFlush:
-                // 导轨贴边条：到点的日程同色加发光！
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8)))
-                    .frame(width: isAlerting ? 8 : 6, height: cardH)
+                // 【贴边导轨】：同色加发光！
+                Rectangle()
+                    .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
+                    .frame(width: 8, height: cardH)
                     .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
             }
+        }
+    }
+
+    private var drawerShape: UnevenRoundedRectangle {
+        if edge == .right {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 6,
+                bottomLeadingRadius: 6,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 0
+            )
+        } else {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 6,
+                topTrailingRadius: 6
+            )
         }
     }
 
