@@ -37,7 +37,7 @@ public final class EdgeMouseMonitor {
     }
 
     private func handleMouse(event: NSEvent) {
-        guard let screen = NSScreen.screens.first ?? NSScreen.main else { return }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let point = NSEvent.mouseLocation
         let now = Date()
         velocityTracker.add(point: point, timestamp: now)
@@ -61,7 +61,7 @@ public final class EdgeMouseMonitor {
             return
         }
 
-        // 仅在鼠标靠近边缘 12px 导轨时进行单项槽位命中计算与快速唤起
+        // 仅在鼠标靠近边缘 14px 导轨时进行单项槽位命中计算与快速唤起
         let isAtEdge = point.x <= (screenRect.minX + 14) || point.x >= (screenRect.maxX - 14)
         guard isAtEdge else { return }
 
@@ -81,9 +81,10 @@ public final class EdgeMouseMonitor {
                 let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
                 let item = store.todos[itemIdx]
                 if store.activeDrawerItemId != item.id {
-                    store.activeDrawerItemId = item.id
-                    store.activeDrawerPodId = candidate.id
-                    coordinator?.syncDrawer(for: edge)
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                        store.activeDrawerItemId = item.id
+                        store.activeDrawerPodId = candidate.id
+                    }
                 }
             } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
                 let count = max(store.calendarEvents.count, 1)
@@ -91,15 +92,17 @@ public final class EdgeMouseMonitor {
                 let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
                 let item = store.calendarEvents[itemIdx]
                 if store.activeDrawerItemId != item.id {
-                    store.activeDrawerItemId = item.id
-                    store.activeDrawerPodId = candidate.id
-                    coordinator?.syncDrawer(for: edge)
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                        store.activeDrawerItemId = item.id
+                        store.activeDrawerPodId = candidate.id
+                    }
                 }
             } else {
                 if store.activeDrawerPodId != candidate.id {
-                    store.activeDrawerPodId = candidate.id
-                    store.activeDrawerItemId = candidate.id
-                    coordinator?.syncDrawer(for: edge)
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                        store.activeDrawerPodId = candidate.id
+                        store.activeDrawerItemId = candidate.id
+                    }
                 }
             }
         }

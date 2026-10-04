@@ -42,93 +42,111 @@ public struct TodoItemDrawerView: View {
         let isDone = todo.isCompleted
         let cardH = max(height, 32.0)
 
-        Group {
-            switch state {
-            case .expandedDrawer:
-                // 【完全展开的单项抽屉】：与侧边 Bar 高度与颜色 100% 严格一致，从边缘完整延伸
-                HStack(spacing: 8) {
-                    if edge == .left { pinButton }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            // 导轨贴边基座色条（始终严丝合缝紧贴物理边缘）
+            Rectangle()
+                .fill(podColor.opacity(isDone ? 0.35 : 0.9))
+                .frame(width: 8, height: cardH)
 
-                    Button {
-                        Task {
-                            await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
-                        }
-                    } label: {
-                        Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.plain)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(todo.title)
-                            .strikethrough(isDone)
-                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .lineLimit(1)
-
-                        if let due = todo.dueDate {
-                            Text(due.formatted(date: .abbreviated, time: .shortened))
-                                .font(.system(size: 9))
-                                .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
-                        }
-                    }
-
-                    Spacer(minLength: 4)
-
-                    // 所属分类标签
-                    Text(todo.listTitle)
-                        .font(.system(size: 8))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(podColor.opacity(isDone ? 0.10 : 0.18))
-                        .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
-                        .cornerRadius(3)
-
-                    if edge == .right { pinButton }
-                }
-                .padding(.horizontal, 10)
-                .frame(width: 280, height: cardH)
-                .background(palette.solidDrawerBackground)
-                .clipShape(drawerShape)
-                .overlay(
-                    drawerShape
-                        .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
-                )
-                .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-
-            case .neighborPeek:
-                // 【隔壁的 item】：略微伸出来一点 (28pt)，不显示长内容，作为阶梯拉手
-                HStack(spacing: 0) {
-                    if edge == .right {
-                        Circle()
-                            .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                            .frame(width: 5, height: 5)
-                            .padding(.leading, 6)
-                        Spacer()
-                    } else {
-                        Spacer()
-                        Circle()
-                            .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                            .frame(width: 5, height: 5)
-                            .padding(.trailing, 6)
-                    }
-                }
-                .frame(width: 28, height: cardH)
-                .background(palette.solidDrawerBackground)
-                .clipShape(drawerShape)
-                .overlay(
-                    drawerShape
-                        .stroke(podColor.opacity(isDone ? 0.3 : 0.75), lineWidth: 1)
-                )
-
-            case .dockedFlush:
-                // 【剩下的保持不动】：严格保持 8px，紧贴导轨
-                Rectangle()
-                    .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                    .frame(width: 8, height: cardH)
+            if state == .expandedDrawer {
+                expandedCard(isDone: isDone, cardH: cardH)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
+                        )
+                    )
+            } else if state == .neighborPeek {
+                neighborPeekCard(isDone: isDone, cardH: cardH)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
+                        )
+                    )
             }
         }
+        .frame(height: cardH)
+    }
+
+    @ViewBuilder
+    private func expandedCard(isDone: Bool, cardH: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            if edge == .left { pinButton }
+
+            Button {
+                Task {
+                    await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
+                }
+            } label: {
+                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(todo.title)
+                    .strikethrough(isDone)
+                    .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .lineLimit(1)
+
+                if let due = todo.dueDate {
+                    Text(due.formatted(date: .abbreviated, time: .shortened))
+                        .font(.system(size: 9))
+                        .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            // 所属分类标签
+            Text(todo.listTitle)
+                .font(.system(size: 8))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(podColor.opacity(isDone ? 0.10 : 0.18))
+                .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
+                .cornerRadius(3)
+
+            if edge == .right { pinButton }
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 280, height: cardH)
+        .background(palette.solidDrawerBackground)
+        .clipShape(drawerShape)
+        .overlay(
+            drawerShape
+                .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
+        )
+        .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+    }
+
+    @ViewBuilder
+    private func neighborPeekCard(isDone: Bool, cardH: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            if edge == .right {
+                Circle()
+                    .fill(podColor.opacity(isDone ? 0.35 : 0.9))
+                    .frame(width: 5, height: 5)
+                    .padding(.leading, 6)
+                Spacer()
+            } else {
+                Spacer()
+                Circle()
+                    .fill(podColor.opacity(isDone ? 0.35 : 0.9))
+                    .frame(width: 5, height: 5)
+                    .padding(.trailing, 6)
+            }
+        }
+        .frame(width: 28, height: cardH)
+        .background(palette.solidDrawerBackground)
+        .clipShape(drawerShape)
+        .overlay(
+            drawerShape
+                .stroke(podColor.opacity(isDone ? 0.3 : 0.75), lineWidth: 1)
+        )
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -205,124 +223,142 @@ public struct CalendarItemDrawerView: View {
         let isImminent = event.isImminent
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
-        Group {
-            switch state {
-            case .expandedDrawer:
-                // 【完全展开的单项日程抽屉】：与 Bar 高度与颜色完全一致，0 间隙延伸
-                HStack(spacing: 8) {
-                    if edge == .left { pinButton }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            // 贴边基座色条（始终严丝合缝紧贴物理边缘，同色发光）
+            Rectangle()
+                .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
+                .frame(width: 8, height: cardH)
+                .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
 
-                    Rectangle()
-                        .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                        .frame(width: 3.5, height: max(cardH - 10, 16))
-                        .cornerRadius(1.75)
+            if state == .expandedDrawer {
+                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isAlerting: isAlerting)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
+                        )
+                    )
+            } else if state == .neighborPeek {
+                neighborPeekCard(cardH: cardH, isPast: isPast)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
+                        )
+                    )
+            }
+        }
+        .frame(height: cardH)
+    }
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text(event.title)
-                                .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                                .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
-                                .lineLimit(1)
+    @ViewBuilder
+    private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isAlerting: Bool) -> some View {
+        HStack(spacing: 8) {
+            if edge == .left { pinButton }
 
-                            Spacer(minLength: 2)
+            Rectangle()
+                .fill(podColor.opacity(isPast ? 0.35 : 1.0))
+                .frame(width: 3.5, height: max(cardH - 10, 16))
+                .cornerRadius(1.75)
 
-                            if isOngoing {
-                                Text("LIVE")
-                                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(podColor.opacity(0.25))
-                                    .foregroundColor(podColor)
-                                    .cornerRadius(3)
-                            }
-
-                            // 附带的 Link 链接按钮 (可直接一键触发参会/打开网页)
-                            if let url = event.url {
-                                Button {
-                                    NSWorkspace.shared.open(url)
-                                } label: {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "video.fill")
-                                            .font(.system(size: 8))
-                                        Text("进入")
-                                            .font(.system(size: 8, weight: .bold))
-                                    }
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1.5)
-                                    .background(podColor.opacity(0.2))
-                                    .foregroundColor(podColor)
-                                    .cornerRadius(3)
-                                }
-                                .buttonStyle(.plain)
-                                .help("打开附带链接: \(url.absoluteString)")
-                            }
-
-                            Text(event.calendarTitle)
-                                .font(.system(size: 8))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(podColor.opacity(isPast ? 0.10 : 0.15))
-                                .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
-                                .cornerRadius(3)
-                        }
-
-                        Text("\(formattedTime(event: event)) · \(event.location)")
-                            .font(palette.fontMono)
-                            .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
-                            .lineLimit(1)
-                    }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(event.title)
+                        .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
+                        .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                        .lineLimit(1)
 
                     Spacer(minLength: 2)
 
-                    if edge == .right { pinButton }
-                }
-                .padding(.horizontal, 10)
-                .frame(width: 290, height: cardH)
-                .background(palette.solidDrawerBackground)
-                .clipShape(drawerShape)
-                .overlay(
-                    drawerShape
-                        .stroke(
-                            podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.3 : 0.85)),
-                            lineWidth: isAlerting ? 2.0 : 1.5
-                        )
-                )
-                .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
-                .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-
-            case .neighborPeek:
-                // 【隔壁的日程】：略微伸出 28pt 作为阶梯拉手，不显示文字
-                HStack(spacing: 0) {
-                    if edge == .right {
-                        Circle()
-                            .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
-                            .frame(width: 5, height: 5)
-                            .padding(.leading, 6)
-                        Spacer()
-                    } else {
-                        Spacer()
-                        Circle()
-                            .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
-                            .frame(width: 5, height: 5)
-                            .padding(.trailing, 6)
+                    if isOngoing {
+                        Text("LIVE")
+                            .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(podColor.opacity(0.25))
+                            .foregroundColor(podColor)
+                            .cornerRadius(3)
                     }
-                }
-                .frame(width: 28, height: cardH)
-                .background(palette.solidDrawerBackground)
-                .clipShape(drawerShape)
-                .overlay(
-                    drawerShape
-                        .stroke((isPast ? podColor.opacity(0.3) : podColor).opacity(0.75), lineWidth: 1)
-                )
 
-            case .dockedFlush:
-                // 【贴边导轨】：同色加发光！
-                Rectangle()
-                    .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
-                    .frame(width: 8, height: cardH)
-                    .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
+                    // 附带的 Link 链接按钮 (可直接一键触发参会/打开网页)
+                    if let url = event.url {
+                        Button {
+                            NSWorkspace.shared.open(url)
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "video.fill")
+                                    .font(.system(size: 8))
+                                Text("进入")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(podColor.opacity(0.2))
+                            .foregroundColor(podColor)
+                            .cornerRadius(3)
+                        }
+                        .buttonStyle(.plain)
+                        .help("打开附带链接: \(url.absoluteString)")
+                    }
+
+                    Text(event.calendarTitle)
+                        .font(.system(size: 8))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(podColor.opacity(isPast ? 0.10 : 0.15))
+                        .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
+                        .cornerRadius(3)
+                }
+
+                Text("\(formattedTime(event: event)) · \(event.location)")
+                    .font(palette.fontMono)
+                    .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 2)
+
+            if edge == .right { pinButton }
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 290, height: cardH)
+        .background(palette.solidDrawerBackground)
+        .clipShape(drawerShape)
+        .overlay(
+            drawerShape
+                .stroke(
+                    podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.3 : 0.85)),
+                    lineWidth: isAlerting ? 2.0 : 1.5
+                )
+        )
+        .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
+        .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+    }
+
+    @ViewBuilder
+    private func neighborPeekCard(cardH: CGFloat, isPast: Bool) -> some View {
+        HStack(spacing: 0) {
+            if edge == .right {
+                Circle()
+                    .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
+                    .frame(width: 5, height: 5)
+                    .padding(.leading, 6)
+                Spacer()
+            } else {
+                Spacer()
+                Circle()
+                    .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
+                    .frame(width: 5, height: 5)
+                    .padding(.trailing, 6)
             }
         }
+        .frame(width: 28, height: cardH)
+        .background(palette.solidDrawerBackground)
+        .clipShape(drawerShape)
+        .overlay(
+            drawerShape
+                .stroke((isPast ? podColor.opacity(0.3) : podColor).opacity(0.75), lineWidth: 1)
+        )
     }
 
     private var drawerShape: UnevenRoundedRectangle {

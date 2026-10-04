@@ -23,10 +23,13 @@ public final class AmbientRailWindow: NSPanel {
         self.targetScreen = screen
         self.store = store
 
-        // 严格使用 screen.visibleFrame，顶部避开菜单栏，底部严格避开 Dock 栏，绝不超出屏幕底线
+        // 关键定位：
+        // 1. 水平 X 坐标严格紧贴物理屏幕边缘 screen.frame.minX / maxX (0 间隙，绝对贴边，彻底消除留白)
+        // 2. 垂直 Y 坐标与高度使用 screen.visibleFrame，顶部避开菜单栏，底部严格避开 Dock 栏，绝不越界
+        let screenRect = screen.frame
         let visibleRect = screen.visibleFrame
         let maxCanvasWidth: CGFloat = 340.0
-        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
+        let x = (edge == .left) ? screenRect.minX : (screenRect.maxX - maxCanvasWidth)
         let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
 
         super.init(
@@ -53,10 +56,11 @@ public final class AmbientRailWindow: NSPanel {
     }
 }
 
-// MARK: - 智能事件穿透托管视图 (空白区域 100% 穿透到其它 App，仅导轨与弹出抽屉响应交互)
+// MARK: - 智能事件穿透托管视图 (空白区域 100% 穿透到其它 App，仅导轨与活跃抽屉真实几何区域响应交互)
 final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
     private let edge: MountEdge
     private let store: PurahWorkspaceStore
+    private var trackingArea: NSTrackingArea?
 
     init(rootView: Content, edge: MountEdge, store: PurahWorkspaceStore) {
         self.edge = edge
@@ -74,11 +78,70 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        let isPinned = store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
+        guard !isPinned else { return }
+
+        let point = convert(event.locationInWindow, from: nil)
+        let barW: CGFloat = CGFloat(store.railBarWidth)
+        let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW - 6) : (point.x <= bounds.minX + barW + 6)
+        if isOnRail { return }
+
+        // 检查是否在活跃抽屉的真实几何纵深区域内
+        if let activePod = store.activePod, activePod.edge == edge {
+            let totalH = bounds.height
+            let appkitTop = totalH * (1.0 - activePod.range.start) + 35
+            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 35
+            let inDrawerX = (edge == .right) ? (point.x >= bounds.maxX - 315) : (point.x <= bounds.minX + 315)
+            let inDrawerY = (point.y >= appkitBottom && point.y <= appkitTop)
+            if inDrawerX && inDrawerY {
+                return
+            }
+        }
+
+        // 鼠标移出抽屉和导轨有效区域，自动收缩抽屉释放屏幕
+        if store.activeDrawerItemId != nil || store.activeDrawerPodId != nil {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                store.activeDrawerItemId = nil
+                store.activeDrawerPodId = nil
+                store.hoveredPodId = nil
+            }
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        let isPinned = store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
+        if !isPinned {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                store.activeDrawerItemId = nil
+                store.activeDrawerPodId = nil
+                store.hoveredPodId = nil
+            }
+        }
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         let bounds = self.bounds
         let barW: CGFloat = CGFloat(store.railBarWidth)
 
-        // 1. 处于导轨基座上时，绝对响应交互
+        // 1. 处于导轨基座上时（紧贴物理边缘），绝对响应交互
         let isOnRail: Bool
         if edge == .right {
             isOnRail = (point.x >= bounds.maxX - barW - 6)
@@ -89,16 +152,21 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             return super.hitTest(point)
         }
 
-        // 2. 如果当前有弹出的抽屉或 Pin 住的小窗
+        // 2. 如果当前有弹出的抽屉或 Pin 住的小窗，仅在其真实几何纵深卡片区域内拦截事件！
         let hasActive = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty)
         if hasActive, let activePod = store.activePod, activePod.edge == edge {
-            let isInDrawerArea: Bool
+            let totalH = bounds.height
+            // 计算该 Pod 在 AppKit 坐标系（原点在左下角）下的垂直范围
+            let appkitTop = totalH * (1.0 - activePod.range.start) + 35
+            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 35
+            let inDrawerX: Bool
             if edge == .right {
-                isInDrawerArea = (point.x >= bounds.maxX - 310)
+                inDrawerX = (point.x >= bounds.maxX - 315)
             } else {
-                isInDrawerArea = (point.x <= bounds.minX + 310)
+                inDrawerX = (point.x <= bounds.minX + 315)
             }
-            if isInDrawerArea {
+            let inDrawerY = (point.y >= appkitBottom && point.y <= appkitTop)
+            if inDrawerX && inDrawerY {
                 return super.hitTest(point)
             }
         }
