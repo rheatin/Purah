@@ -7,6 +7,7 @@ public struct TodoItemDrawerView: View {
     public let edge: MountEdge
     public let state: ItemDrawerState
     public let isPinned: Bool
+    public let height: CGFloat
     public let store: PurahWorkspaceStore
     public let onTogglePin: () -> Void
 
@@ -14,11 +15,16 @@ public struct TodoItemDrawerView: View {
         ThemeManager.shared.palette
     }
 
+    private var podColor: Color {
+        palette.podColor(for: "todo") // 待办专属活力琥珀金
+    }
+
     public init(
         todo: TodoItem,
         edge: MountEdge,
         state: ItemDrawerState,
         isPinned: Bool,
+        height: CGFloat = 38.0,
         store: PurahWorkspaceStore,
         onTogglePin: @escaping () -> Void
     ) {
@@ -26,100 +32,114 @@ public struct TodoItemDrawerView: View {
         self.edge = edge
         self.state = state
         self.isPinned = isPinned
+        self.height = height
         self.store = store
         self.onTogglePin = onTogglePin
     }
 
     public var body: some View {
-        switch state {
-        case .expandedDrawer:
-            // 单个 item 完全弹出来的实心小窗：只有 pin 针和纯粹内容，实心一体化
-            HStack(spacing: 8) {
-                if edge == .left {
-                    pinButton
-                }
+        let cardH = max(height, 36.0)
 
-                // 复选框
-                Button {
-                    Task {
-                        await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
+        Group {
+            switch state {
+            case .expandedDrawer:
+                // 单个 item 完全弹出来的实心小窗：从边缘往中间弹射滑出
+                HStack(spacing: 8) {
+                    if edge == .left { pinButton }
+
+                    Button {
+                        Task {
+                            await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
+                        }
+                    } label: {
+                        Image(systemName: todo.isCompleted ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(todo.isCompleted ? podColor : .gray)
+                            .font(.system(size: 14))
                     }
-                } label: {
-                    Image(systemName: todo.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(todo.isCompleted ? palette.primaryAccent : .gray)
-                        .font(.system(size: 13))
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(todo.title)
+                            .strikethrough(todo.isCompleted)
+                            .foregroundColor(todo.isCompleted ? .gray : (palette.style == .native ? Color.primary : .white))
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .lineLimit(1)
+
+                        if let due = todo.dueDate {
+                            Text(due.formatted(date: .abbreviated, time: .shortened))
+                                .font(.system(size: 9))
+                                .foregroundColor(.gray)
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+
+                    Text(todo.listTitle)
+                        .font(.system(size: 8))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(podColor.opacity(0.18))
+                        .foregroundColor(podColor)
+                        .cornerRadius(3)
+
+                    if edge == .right { pinButton }
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .frame(width: 252, height: cardH)
+                .background(palette.solidDrawerBackground)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(podColor, lineWidth: 1.5)
+                )
+                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+                .transition(.asymmetric(
+                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
+                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
+                ))
 
-                // 事项标题
-                Text(todo.title)
-                    .strikethrough(todo.isCompleted)
-                    .foregroundColor(todo.isCompleted ? .gray : (palette.style == .native ? Color.primary : .white))
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .lineLimit(1)
-
-                Spacer(minLength: 4)
-
-                // 所属分类标签
-                Text(todo.listTitle)
-                    .font(.system(size: 8))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(palette.primaryAccent.opacity(0.15))
-                    .foregroundColor(palette.primaryAccent)
-                    .cornerRadius(3)
-
-                if edge == .right {
-                    pinButton
+            case .neighborPeek:
+                // 隔壁的 item：略微伸出来一点 (20pt)，不显示文字内容
+                HStack(spacing: 0) {
+                    if edge == .right {
+                        Circle()
+                            .fill(podColor.opacity(0.85))
+                            .frame(width: 4, height: 4)
+                            .padding(.leading, 4)
+                        Spacer()
+                    } else {
+                        Spacer()
+                        Circle()
+                            .fill(podColor.opacity(0.85))
+                            .frame(width: 4, height: 4)
+                            .padding(.trailing, 4)
+                    }
                 }
+                .frame(width: 20, height: cardH)
+                .background(palette.solidDrawerBackground)
+                .cornerRadius(4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(podColor.opacity(0.7), lineWidth: 1)
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: edge == .left ? .leading : .trailing),
+                    removal: .move(edge: edge == .left ? .leading : .trailing)
+                ))
+
+            case .dockedFlush:
+                // 剩下的保持不动，紧贴导轨
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(todo.isCompleted ? Color.gray.opacity(0.3) : podColor)
+                    .frame(width: 6, height: cardH)
             }
-            .padding(.horizontal, 10)
-            .frame(width: 248, height: 38)
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(palette.primaryAccent, lineWidth: 1.5)
-            )
-            .shadow(color: Color.black.opacity(0.35), radius: 6, x: edge == .right ? -3 : 3, y: 2)
-
-        case .neighborPeek:
-            // 隔壁的 item：略微伸出来一点 (20pt)，不显示文字内容
-            HStack(spacing: 0) {
-                if edge == .right {
-                    Circle()
-                        .fill(palette.primaryAccent.opacity(0.8))
-                        .frame(width: 4, height: 4)
-                        .padding(.leading, 4)
-                    Spacer()
-                } else {
-                    Spacer()
-                    Circle()
-                        .fill(palette.primaryAccent.opacity(0.8))
-                        .frame(width: 4, height: 4)
-                        .padding(.trailing, 4)
-                }
-            }
-            .frame(width: 20, height: 28)
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(palette.primaryAccent.opacity(0.7), lineWidth: 1)
-            )
-
-        case .dockedFlush:
-            // 剩下的保持不动，贴紧导轨
-            RoundedRectangle(cornerRadius: 2)
-                .fill(todo.isCompleted ? Color.gray.opacity(0.3) : palette.primaryAccent)
-                .frame(width: 6, height: 24)
         }
     }
 
     private var pinButton: some View {
         Button(action: onTogglePin) {
             Image(systemName: isPinned ? "pin.fill" : "pin")
-                .foregroundColor(isPinned ? palette.primaryAccent : .gray)
+                .foregroundColor(isPinned ? podColor : .gray)
                 .font(.system(size: 11))
                 .scaleEffect(isPinned ? 1.2 : 1.0)
         }
@@ -133,6 +153,7 @@ public struct CalendarItemDrawerView: View {
     public let edge: MountEdge
     public let state: ItemDrawerState
     public let isPinned: Bool
+    public let height: CGFloat
     public let store: PurahWorkspaceStore
     public let onTogglePin: () -> Void
 
@@ -140,11 +161,16 @@ public struct CalendarItemDrawerView: View {
         ThemeManager.shared.palette
     }
 
+    private var podColor: Color {
+        palette.podColor(for: "calendar") // 日程专属珊瑚红橙
+    }
+
     public init(
         event: CalendarEventItem,
         edge: MountEdge,
         state: ItemDrawerState,
         isPinned: Bool,
+        height: CGFloat = 40.0,
         store: PurahWorkspaceStore,
         onTogglePin: @escaping () -> Void
     ) {
@@ -152,89 +178,98 @@ public struct CalendarItemDrawerView: View {
         self.edge = edge
         self.state = state
         self.isPinned = isPinned
+        self.height = height
         self.store = store
         self.onTogglePin = onTogglePin
     }
 
     public var body: some View {
-        switch state {
-        case .expandedDrawer:
-            // 单个日程完全弹出的实心小窗
-            HStack(spacing: 8) {
-                if edge == .left {
-                    pinButton
+        let cardH = max(height, 38.0)
+
+        Group {
+            switch state {
+            case .expandedDrawer:
+                // 单个日程完全弹出的实心小窗：从边缘往中间弹射滑出
+                HStack(spacing: 8) {
+                    if edge == .left { pinButton }
+
+                    Rectangle()
+                        .fill(podColor)
+                        .frame(width: 3.5, height: cardH - 12)
+                        .cornerRadius(1.75)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(event.title)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+
+                        Text("\(formattedTime(event: event)) · \(event.calendarTitle)")
+                            .font(palette.fontMono)
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 4)
+
+                    if edge == .right { pinButton }
                 }
+                .padding(.horizontal, 10)
+                .frame(width: 252, height: cardH)
+                .background(palette.solidDrawerBackground)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(podColor, lineWidth: 1.5)
+                )
+                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+                .transition(.asymmetric(
+                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
+                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
+                ))
 
-                Rectangle()
-                    .fill(palette.primaryAccent)
-                    .frame(width: 3, height: 24)
-                    .cornerRadius(1.5)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(event.title)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .lineLimit(1)
-
-                    Text("\(formattedTime(event: event)) · \(event.calendarTitle)")
-                        .font(palette.fontMono)
-                        .foregroundColor(.gray)
-                        .lineLimit(1)
+            case .neighborPeek:
+                // 隔壁的日程：略微伸出来一点 (20pt)，不显示文字内容
+                HStack(spacing: 0) {
+                    if edge == .right {
+                        Circle()
+                            .fill(podColor.opacity(0.85))
+                            .frame(width: 4, height: 4)
+                            .padding(.leading, 4)
+                        Spacer()
+                    } else {
+                        Spacer()
+                        Circle()
+                            .fill(podColor.opacity(0.85))
+                            .frame(width: 4, height: 4)
+                            .padding(.trailing, 4)
+                    }
                 }
+                .frame(width: 20, height: cardH)
+                .background(palette.solidDrawerBackground)
+                .cornerRadius(4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(podColor.opacity(0.7), lineWidth: 1)
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: edge == .left ? .leading : .trailing),
+                    removal: .move(edge: edge == .left ? .leading : .trailing)
+                ))
 
-                Spacer(minLength: 4)
-
-                if edge == .right {
-                    pinButton
-                }
+            case .dockedFlush:
+                // 剩下的保持不动，紧贴导轨
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(podColor.opacity(0.4))
+                    .frame(width: 6, height: cardH)
             }
-            .padding(.horizontal, 10)
-            .frame(width: 248, height: 42)
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(palette.primaryAccent, lineWidth: 1.5)
-            )
-            .shadow(color: Color.black.opacity(0.35), radius: 6, x: edge == .right ? -3 : 3, y: 2)
-
-        case .neighborPeek:
-            // 隔壁的日程：略微伸出来一点 (20pt)，不显示文字内容
-            HStack(spacing: 0) {
-                if edge == .right {
-                    Circle()
-                        .fill(palette.primaryAccent)
-                        .frame(width: 4, height: 4)
-                        .padding(.leading, 4)
-                    Spacer()
-                } else {
-                    Spacer()
-                    Circle()
-                        .fill(palette.primaryAccent)
-                        .frame(width: 4, height: 4)
-                        .padding(.trailing, 4)
-                }
-            }
-            .frame(width: 20, height: 28)
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(palette.primaryAccent.opacity(0.7), lineWidth: 1)
-            )
-
-        case .dockedFlush:
-            // 剩下的保持不动，贴紧导轨
-            RoundedRectangle(cornerRadius: 2)
-                .fill(palette.primaryAccent.opacity(0.4))
-                .frame(width: 6, height: 24)
         }
     }
 
     private var pinButton: some View {
         Button(action: onTogglePin) {
             Image(systemName: isPinned ? "pin.fill" : "pin")
-                .foregroundColor(isPinned ? palette.primaryAccent : .gray)
+                .foregroundColor(isPinned ? podColor : .gray)
                 .font(.system(size: 11))
                 .scaleEffect(isPinned ? 1.2 : 1.0)
         }

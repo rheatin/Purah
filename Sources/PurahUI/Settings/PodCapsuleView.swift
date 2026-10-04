@@ -17,6 +17,10 @@ public struct PodCapsuleView: View {
         ThemeManager.shared.palette
     }
 
+    private var podColor: Color {
+        palette.podColor(for: pod.id)
+    }
+
     public init(
         pod: SlotPod,
         canvasHeight: Double,
@@ -42,7 +46,7 @@ public struct PodCapsuleView: View {
             HStack(spacing: 6) {
                 Image(systemName: pod.systemIcon)
                     .font(.system(size: 11))
-                    .foregroundColor(palette.primaryAccent)
+                    .foregroundColor(podColor)
 
                 Text(pod.name)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -55,7 +59,7 @@ public struct PodCapsuleView: View {
                 Button(action: onFillRail) {
                     Image(systemName: "arrow.up.and.down")
                         .font(.system(size: 9))
-                        .foregroundColor(palette.primaryAccent.opacity(0.8))
+                        .foregroundColor(podColor.opacity(0.85))
                 }
                 .buttonStyle(.plain)
                 .help("占满整条轨道高度")
@@ -82,7 +86,7 @@ public struct PodCapsuleView: View {
                     .frame(height: 12)
 
                 Capsule()
-                    .fill(palette.primaryAccent.opacity(0.6))
+                    .fill(podColor.opacity(0.75))
                     .frame(width: 28, height: 3)
             }
             .contentShape(Rectangle())
@@ -107,10 +111,10 @@ public struct PodCapsuleView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(palette.primaryAccent, lineWidth: 1.5)
+                .stroke(podColor, lineWidth: 1.5)
         )
         .shadow(
-            color: palette.useGlow ? palette.primaryAccent.opacity(0.3) : Color.black.opacity(0.2),
+            color: palette.useGlow ? podColor.opacity(0.3) : Color.black.opacity(0.2),
             radius: 4,
             x: 0,
             y: 2

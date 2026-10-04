@@ -23,6 +23,23 @@ public struct ThemePalette: Sendable {
     public let fontTitle: Font
     public let fontMono: Font
 
+    public func podColor(for podId: String) -> Color {
+        switch podId {
+        case "calendar":
+            return Color(red: 1.0, green: 0.35, blue: 0.38) // 日程珊瑚红橙
+        case "todo":
+            return Color(red: 1.0, green: 0.62, blue: 0.04) // 待办活力琥珀金
+        case "music":
+            return Color(red: 1.0, green: 0.18, blue: 0.45) // 音乐霓虹品红
+        case "shelf":
+            return Color(red: 0.18, green: 0.82, blue: 0.55) // 暂存架极客薄荷绿
+        case "notes":
+            return Color(red: 1.0, green: 0.82, blue: 0.15) // 便签暖阳金黄
+        default:
+            return primaryAccent
+        }
+    }
+
     public static func palette(for style: AppThemeStyle) -> ThemePalette {
         switch style {
         case .native:
