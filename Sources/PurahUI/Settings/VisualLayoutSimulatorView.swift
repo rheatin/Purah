@@ -111,6 +111,47 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
+                // 抽屉展开宽度模式 (固定 vs 智能自适应)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("抽屉展开尺寸:")
+                            .font(palette.fontMono)
+                            .foregroundColor(palette.primaryAccent)
+                        Spacer()
+                        Picker("", selection: Binding(
+                            get: { store.drawerWidthMode },
+                            set: { store.drawerWidthMode = $0 }
+                        )) {
+                            ForEach(DrawerWidthMode.allCases, id: \.self) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 170)
+                    }
+
+                    if store.drawerWidthMode == .fixed {
+                        HStack {
+                            Text("固定展开宽度:")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            Slider(value: Binding(
+                                get: { store.fixedDrawerWidth },
+                                set: { store.fixedDrawerWidth = $0 }
+                            ), in: 220.0...330.0, step: 5.0)
+                            Text("\(Int(store.fixedDrawerWidth)) px")
+                                .font(palette.fontMono)
+                                .foregroundColor(.gray)
+                                .frame(width: 50)
+                        }
+                    } else {
+                        Text("根据日程标题及待办字数智能自适应伸展 (230px ~ 330px)")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                }
+                .padding(.horizontal, 4)
+
                 // 各功能专属色彩自定义
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {

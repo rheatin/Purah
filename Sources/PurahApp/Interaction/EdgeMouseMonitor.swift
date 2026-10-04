@@ -57,12 +57,22 @@ public final class EdgeMouseMonitor {
             // 离开焦点就自动收回（未手动 Pin 住的事项自动缩回并彻底释放屏幕区域）
             if (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil) && !store.isDrawerPinned && store.pinnedDrawerItemIds.isEmpty {
                 coordinator?.dismissDrawer()
+            } else {
+                coordinator?.setInteractive(false, for: .left)
+                coordinator?.setInteractive(false, for: .right)
             }
             return
         }
 
         // 仅在鼠标靠近边缘 14px 导轨时进行单项槽位命中计算与快速唤起
         let isAtEdge = point.x <= (screenRect.minX + 14) || point.x >= (screenRect.maxX - 14)
+        if isAtEdge {
+            let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right
+            coordinator?.setInteractive(true, for: edge)
+        } else if isDrawerOpen {
+            let edge: MountEdge = isNearLeft ? .left : .right
+            coordinator?.setInteractive(true, for: edge)
+        }
         guard isAtEdge else { return }
 
         let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right

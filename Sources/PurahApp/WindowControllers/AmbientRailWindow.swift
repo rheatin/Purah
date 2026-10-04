@@ -44,7 +44,7 @@ public final class AmbientRailWindow: NSPanel {
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = false
-        self.ignoresMouseEvents = false
+        self.ignoresMouseEvents = true // 默认常驻收起状态对 Window Server 完全穿透，0 拦截
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
         let rootView = AmbientRailStripView(edge: edge, store: store)
@@ -81,6 +81,13 @@ public final class AmbientRailWindow: NSPanel {
         }
         let imp = imp_implementationWithBlock(block)
         class_replaceMethod(frameClass, originalSelector, imp, "@@:{CGPoint=dd}")
+    }
+
+    public func setInteractive(_ interactive: Bool) {
+        let shouldIgnore = !interactive
+        if self.ignoresMouseEvents != shouldIgnore {
+            self.ignoresMouseEvents = shouldIgnore
+        }
     }
 
     public func updateWidth() {
@@ -148,13 +155,14 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             }
         }
 
-        // 鼠标真正移出抽屉和导轨有效区域，自动收缩抽屉释放屏幕
+        // 鼠标真正移出抽屉和导轨有效区域，自动收缩抽屉释放屏幕并恢复系统穿透
         if store.activeDrawerItemId != nil || store.activeDrawerPodId != nil {
             withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
                 store.activeDrawerItemId = nil
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
             }
+            (self.window as? AmbientRailWindow)?.setInteractive(false)
         }
     }
 
@@ -167,6 +175,7 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
             }
+            (self.window as? AmbientRailWindow)?.setInteractive(false)
         }
     }
 

@@ -46,14 +46,26 @@ public final class ScreenEdgeCoordinator {
         rightRailWindow?.updateWidth()
     }
 
+    public func setInteractive(_ interactive: Bool, for edge: MountEdge) {
+        if edge == .left {
+            leftRailWindow?.setInteractive(interactive)
+        } else {
+            rightRailWindow?.setInteractive(interactive)
+        }
+    }
+
     /// 同步并展现单项抽屉：完全由 AmbientRailStripView 在同窗口内 0 间隙弹簧滑出，绝不创建多余浮动子窗口
     public func syncDrawer(for edge: MountEdge? = nil) {
-        // 状态由 store 响应式驱动
+        if let edge = edge {
+            setInteractive(true, for: edge)
+        }
     }
 
     public func dismissDrawer() {
         store.activeDrawerItemId = nil
         store.activeDrawerPodId = nil
         store.hoveredPodId = nil
+        setInteractive(false, for: .left)
+        setInteractive(false, for: .right)
     }
 }

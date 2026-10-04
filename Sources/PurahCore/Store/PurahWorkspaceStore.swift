@@ -2,6 +2,18 @@
 import Foundation
 import Observation
 
+public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
+    case fixed = "fixed"          // 固定宽度
+    case adaptive = "adaptive"    // 智能自适应
+    
+    public var displayName: String {
+        switch self {
+        case .fixed: return "固定宽度"
+        case .adaptive: return "智能自适应"
+        }
+    }
+}
+
 @Observable
 public final class PurahWorkspaceStore: @unchecked Sendable {
     public var pods: [SlotPod] = []
@@ -64,9 +76,23 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
     public var isEventGlowAlertEnabled: Bool = true
     public var isMusicWaveformAnimationEnabled: Bool = true
 
-    // 用户自定义导轨宽度 (4px ~ 16px) 与功能区色彩
+    // 用户自定义导轨宽度 (4px ~ 16px) 与抽屉展开长度设置
     public var railBarWidth: Double = 8.0
+    public var drawerWidthMode: DrawerWidthMode = .fixed
+    public var fixedDrawerWidth: Double = 290.0 // 范围 220px ~ 330px
     public var customPodColors: [String: String] = [:]
+
+    public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0) -> CGFloat {
+        switch drawerWidthMode {
+        case .fixed:
+            return CGFloat(min(max(fixedDrawerWidth, 220.0), 330.0))
+        case .adaptive:
+            let charCount = text.count
+            let calculated = Double(charCount) * 7.5 + 130.0
+            let clamped = min(max(calculated, 230.0), 330.0)
+            return CGFloat(clamped)
+        }
+    }
 
     public func defaultColorHex(for podId: String) -> String {
         switch podId {
