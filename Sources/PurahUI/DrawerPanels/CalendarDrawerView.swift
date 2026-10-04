@@ -5,6 +5,7 @@ import PurahCore
 
 public struct CalendarDrawerView: View {
     public let store: PurahWorkspaceStore
+    @State private var activeIndex: Int = 0
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -38,17 +39,11 @@ public struct CalendarDrawerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let activeEvent = store.calendarEvents.first(where: { $0.id == store.activeDrawerItemId }) {
-                // 【核心要求】：单个日程单独弹出来
-                eventCard(event: activeEvent)
+                // 【单个日程弹出模式】：充裕高度与精美排版，绝不糊在一起
+                singleEventCard(event: activeEvent)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 5) {
-                        ForEach(store.calendarEvents) { event in
-                            eventCard(event: event)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
+                // 【阶梯式多项抽屉特效】：当前聚焦项完全弹出，相邻项略微伸出 peek tab，其余贴边
+                steppedEventList()
             }
         }
         .onAppear {
@@ -56,84 +51,189 @@ public struct CalendarDrawerView: View {
         }
     }
 
+    // MARK: - 单个日程弹出视图
     @ViewBuilder
-    private func eventCard(event: CalendarEventItem) -> some View {
+    private func singleEventCard(event: CalendarEventItem) -> some View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
+            // 左侧状态指示色条
             Rectangle()
                 .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                .frame(width: 3.5, height: 26)
-                .cornerRadius(1.75)
+                .frame(width: 4, height: 44)
+                .cornerRadius(2)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
                     Text(event.title)
-                        .font(.system(size: 12, weight: isOngoing ? .bold : .medium, design: .rounded))
-                        // 已过期的日程保持同色系低对比度
+                        .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
                         .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
                         .lineLimit(1)
 
-                    Spacer(minLength: 2)
+                    Spacer(minLength: 4)
 
-                    if isOngoing {
-                        Text("LIVE")
-                            .font(.system(size: 8, weight: .heavy, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(podColor.opacity(0.25))
-                            .foregroundColor(podColor)
-                            .cornerRadius(3)
-                    }
-
-                    // 附带的 Link 链接按钮 (可直接一键触发参会/打开网页)
+                    // 参会链接胶囊按钮
                     if let url = event.url {
                         Button {
                             NSWorkspace.shared.open(url)
                         } label: {
-                            HStack(spacing: 2) {
+                            HStack(spacing: 3) {
                                 Image(systemName: "video.fill")
-                                    .font(.system(size: 8))
-                                Text("进入")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .font(.system(size: 9))
+                                Text("参会")
+                                    .font(.system(size: 9, weight: .bold))
                             }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
                             .background(podColor.opacity(0.2))
                             .foregroundColor(podColor)
-                            .cornerRadius(3)
+                            .cornerRadius(4)
                         }
                         .buttonStyle(.plain)
-                        .help("打开附带链接: \(url.absoluteString)")
+                        .help("打开会议链接: \(url.absoluteString)")
                     }
 
+                    // 专属 Pin 针
+                    pinButton(isPinned: store.isDrawerPinned)
+                }
+
+                HStack(spacing: 6) {
+                    Text(formattedTime(event: event))
+                        .font(palette.fontMono)
+                        .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
+
+                    Text("·")
+                        .foregroundColor(.gray)
+
                     Text(event.calendarTitle)
-                        .font(.system(size: 8))
+                        .font(.system(size: 9))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(podColor.opacity(isPast ? 0.10 : 0.15))
                         .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
                         .cornerRadius(3)
-                }
 
-                Text("\(formattedTime(event: event)) · \(event.location)")
-                    .font(palette.fontMono)
-                    .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
-                    .lineLimit(1)
+                    if !event.location.isEmpty && event.location != "Apple 日历" {
+                        Text(event.location)
+                            .font(.system(size: 9))
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+                }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.solidDrawerBackground)
         .cornerRadius(6)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8)), lineWidth: isAlerting ? 1.5 : 1)
+                .stroke(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8)), lineWidth: isAlerting ? 2.0 : 1.2)
         )
         .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
+    }
+
+    // MARK: - 阶梯式抽屉列表
+    @ViewBuilder
+    private func steppedEventList() -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .trailing, spacing: 6) {
+                ForEach(store.calendarEvents.indices, id: \.self) { i in
+                    let event = store.calendarEvents[i]
+                    let state = ItemSteppedDrawerCalculator.state(
+                        for: i,
+                        activeIndex: activeIndex,
+                        totalCount: store.calendarEvents.count
+                    )
+
+                    steppedEventRow(event: event, index: i, state: state)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func steppedEventRow(event: CalendarEventItem, index: Int, state: ItemDrawerState) -> some View {
+        let isPast = event.isPast
+
+        switch state {
+        case .expandedDrawer:
+            // 完整弹出的日程抽屉小窗
+            singleEventCard(event: event)
+                .frame(width: 252)
+
+        case .neighborPeek:
+            // 隔壁的日程：略微伸出来一点 (50pt peek tab，不显示拥挤文字)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(podColor.opacity(isPast ? 0.35 : 0.85))
+                    .frame(width: 6, height: 6)
+
+                Capsule()
+                    .fill(podColor.opacity(isPast ? 0.25 : 0.6))
+                    .frame(width: 16, height: 3)
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(width: 50, height: 36)
+            .background(palette.solidDrawerBackground)
+            .cornerRadius(4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(podColor.opacity(isPast ? 0.3 : 0.7), lineWidth: 1)
+            )
+            .onHover { isHovered in
+                if isHovered {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                        activeIndex = index
+                    }
+                }
+            }
+            .onTapGesture {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                    activeIndex = index
+                }
+            }
+
+        case .dockedFlush:
+            // 贴边保持不动 (8pt)
+            RoundedRectangle(cornerRadius: 2)
+                .fill(podColor.opacity(isPast ? 0.35 : 0.6))
+                .frame(width: 8, height: 24)
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                            activeIndex = index
+                        }
+                    }
+                }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                        activeIndex = index
+                    }
+                }
+        }
+    }
+
+    private func pinButton(isPinned: Bool) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                store.isDrawerPinned.toggle()
+            }
+        } label: {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .foregroundColor(isPinned ? podColor : .gray)
+                .font(.system(size: 11))
+                .scaleEffect(isPinned ? 1.2 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .help(isPinned ? "已固定常驻 (点击取消)" : "固定此日程小窗")
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {
