@@ -61,7 +61,7 @@ public struct MusicDrawerView: View {
                         .scaleEffect(store.isDrawerPinned ? 1.2 : 1.0)
                 }
                 .buttonStyle(.plain)
-                .help(store.isDrawerPinned ? "已固定常驻" : "固定音乐卡片")
+                .help(store.isDrawerPinned ? "Pinned" : "Pin music card")
             }
 
             // 宽幅进度条

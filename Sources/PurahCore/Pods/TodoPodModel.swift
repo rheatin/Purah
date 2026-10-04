@@ -11,7 +11,7 @@ public struct TodoItem: Identifiable, Codable, Sendable {
     public init(
         id: String = UUID().uuidString,
         title: String,
-        listTitle: String = "提醒事项",
+        listTitle: String = "Reminders",
         dueDate: Date? = nil,
         isCompleted: Bool = false
     ) {

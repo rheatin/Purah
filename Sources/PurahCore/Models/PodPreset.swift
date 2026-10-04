@@ -26,17 +26,17 @@ public enum PodPreset: String, Codable, Sendable, CaseIterable, Identifiable {
 
     public var defaultTitle: String {
         switch self {
-        case .balanced: return "均衡工学模式 (Balanced)"
-        case .sprintProductivity: return "冲刺生产力模式 (Sprint)"
-        case .immersiveMultimedia: return "沉浸多媒体模式 (Media)"
+        case .balanced: return "Balanced Ergonomics"
+        case .sprintProductivity: return "Sprint Productivity"
+        case .immersiveMultimedia: return "Immersive Media"
         }
     }
 
     public var defaultDescription: String {
         switch self {
-        case .balanced: return "双侧平衡分布，日程居右中，待办与暂存架居左，音乐居右下"
-        case .sprintProductivity: return "左侧全部分配给暂存架与便签，右侧集中周日程与待办"
-        case .immersiveMultimedia: return "右侧极简日历，左侧音乐波形律动与快速通讯"
+        case .balanced: return "Balanced distribution. Timeline on right, shelf and notes on left, music on bottom."
+        case .sprintProductivity: return "Dedicated left rail for stash and notes. Right rail focused on timeline and tasks."
+        case .immersiveMultimedia: return "Minimalist calendar on right, dynamic audio wave meter on left."
         }
     }
 }

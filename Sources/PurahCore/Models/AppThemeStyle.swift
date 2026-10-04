@@ -9,8 +9,8 @@ public enum AppThemeStyle: String, Codable, Sendable, CaseIterable, Identifiable
 
     public var displayName: String {
         switch self {
-        case .native: return "macOS 系统原生 (默认)"
-        case .purahPad: return "王国之泪 普尔亚平板 (Purah Pad)"
+        case .native: return "macOS Native"
+        case .purahPad: return "Purah Pad (Zonai)"
         }
     }
 }

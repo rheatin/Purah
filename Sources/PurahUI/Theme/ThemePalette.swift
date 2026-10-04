@@ -29,27 +29,27 @@ public struct ThemePalette: Sendable {
         }
         switch podId {
         case "calendar":
-            return Color(red: 1.0, green: 0.35, blue: 0.38) // 日程珊瑚红橙
+            return Color(red: 1.0, green: 0.35, blue: 0.38) // Coral Red
         case "todo":
-            return Color(red: 1.0, green: 0.62, blue: 0.04) // 待办活力琥珀金
+            return Color(red: 1.0, green: 0.62, blue: 0.04) // Amber Gold
         case "music":
-            return Color(red: 1.0, green: 0.18, blue: 0.45) // 音乐霓虹品红
+            return Color(red: 1.0, green: 0.18, blue: 0.45) // Neon Magenta
         case "shelf":
-            return Color(red: 0.18, green: 0.82, blue: 0.55) // 暂存架极客薄荷绿
+            return Color(red: 0.18, green: 0.82, blue: 0.55) // Mint Green
         case "notes":
-            return Color(red: 1.0, green: 0.82, blue: 0.15) // 便签暖阳金黄
+            return Color(red: 1.0, green: 0.82, blue: 0.15) // Warm Gold
         case "vitals":
-            // 硬件性能热态脉搏：依据负载呈现 绿 -> 橙 -> 红渐变
+            // Hardware Vitals: Dynamic Green -> Orange -> Red based on CPU load
             let cpu = HardwareVitalsService.shared.metrics.cpuUsage
             if cpu > 0.80 {
-                return Color(red: 1.0, green: 0.23, blue: 0.19) // 负载过高红
+                return Color(red: 1.0, green: 0.23, blue: 0.19) // High Load Red
             } else if cpu > 0.50 {
-                return Color(red: 1.0, green: 0.58, blue: 0.0) // 中等负荷橙
+                return Color(red: 1.0, green: 0.58, blue: 0.0) // Medium Load Orange
             } else {
-                return Color(red: 0.20, green: 0.78, blue: 0.35) // 健康稳定绿
+                return Color(red: 0.20, green: 0.78, blue: 0.35) // Healthy Green
             }
         case "scripts":
-            return Color(red: 0.42, green: 0.36, blue: 0.91) // 脚本终端曜石电紫
+            return Color(red: 0.42, green: 0.36, blue: 0.91) // Obsidian Purple
         default:
             return primaryAccent
         }

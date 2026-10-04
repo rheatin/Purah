@@ -27,11 +27,11 @@ public struct TodoDrawerView: View {
                         .font(.system(size: 26))
                         .foregroundColor(palette.borderColor)
 
-                    Text("暂无待办事项")
+                    Text("No pending tasks")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("（可在偏好设置中切换分类）")
+                    Text("Configure filter in Settings")
                         .font(.system(size: 10))
                         .foregroundColor(.gray)
                     Spacer()

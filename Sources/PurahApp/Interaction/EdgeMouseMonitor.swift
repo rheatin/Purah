@@ -49,12 +49,11 @@ public final class EdgeMouseMonitor {
         let isNearLeft = point.x <= (screenRect.minX + activeWidth)
         let isNearRight = point.x >= (screenRect.maxX - activeWidth)
 
-        // 如果用户鼠标已经离开了导轨与弹出抽屉区域
+        // Dismiss drawer and restore full pass-through when mouse exits the active zone
         if !isNearLeft && !isNearRight {
             dwellTracker.reset()
             store.hoveredPodId = nil
 
-            // 离开焦点就自动收回（未手动 Pin 住的事项自动缩回并彻底释放屏幕区域）
             if (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil) && !store.isDrawerPinned && store.pinnedDrawerItemIds.isEmpty {
                 coordinator?.dismissDrawer()
             } else {
@@ -64,7 +63,7 @@ public final class EdgeMouseMonitor {
             return
         }
 
-        // 仅在鼠标靠近边缘 14px 导轨时进行单项槽位命中计算与快速唤起
+        // Activate interactive mode when near edge or inside open drawer
         let isAtEdge = point.x <= (screenRect.minX + 14) || point.x >= (screenRect.maxX - 14)
         if isAtEdge {
             let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right

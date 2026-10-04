@@ -35,8 +35,8 @@ public final class SystemMusicSyncService: @unchecked Sendable {
 
         let playerState = userInfo["Player State"] as? String ?? ""
         let isPlaying = (playerState == "Playing")
-        let title = userInfo["Name"] as? String ?? "未知曲目"
-        let artist = userInfo["Artist"] as? String ?? "Apple 音乐"
+        let title = userInfo["Name"] as? String ?? "Unknown Track"
+        let artist = userInfo["Artist"] as? String ?? "Apple Music"
 
         let totalTimeMs = (userInfo["Total Time"] as? Double) ?? 180000.0
         let currentPosSec = (userInfo["Player Position"] as? Double) ?? 0.0

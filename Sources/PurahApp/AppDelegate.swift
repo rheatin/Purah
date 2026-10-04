@@ -58,7 +58,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(prefItem)
 
         // System Access & Permissions
-        let accessItem = NSMenuItem(title: "系统权限与保障...", action: #selector(openPermissions), keyEquivalent: "p")
+        let accessItem = NSMenuItem(title: "Permissions & Access...", action: #selector(openPermissions), keyEquivalent: "p")
         accessItem.target = self
         menu.addItem(accessItem)
 
@@ -69,7 +69,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Theme submenu (macOS Native by default vs Purah Pad)
+        // Theme submenu
         let themeMenu = NSMenu()
         for style in AppThemeStyle.allCases {
             let item = NSMenuItem(title: style.displayName, action: #selector(selectTheme(_:)), keyEquivalent: "")
@@ -80,7 +80,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             themeMenu.addItem(item)
         }
-        let themeParent = NSMenuItem(title: "界面主题 / Theme", action: nil, keyEquivalent: "")
+        let themeParent = NSMenuItem(title: "Theme Style", action: nil, keyEquivalent: "")
         themeParent.submenu = themeMenu
         menu.addItem(themeParent)
 
@@ -110,7 +110,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             langMenu.addItem(item)
         }
-        let langParent = NSMenuItem(title: "语言 / Language", action: nil, keyEquivalent: "")
+        let langParent = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
         langParent.submenu = langMenu
         menu.addItem(langParent)
 

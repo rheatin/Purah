@@ -9,8 +9,8 @@ public enum AnimationStyle: String, CaseIterable, Identifiable, Codable, Sendabl
 
     public var title: String {
         switch self {
-        case .magneticCascade: return "华丽磁吸体感 (默认 · 抽屉弹射+邻近凸出)"
-        case .minimal: return "极简轻量 (仅抽屉弹出)"
+        case .magneticCascade: return "Magnetic Cascade"
+        case .minimal: return "Minimal Dock"
         }
     }
 }

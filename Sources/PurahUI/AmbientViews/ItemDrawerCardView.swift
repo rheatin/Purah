@@ -43,8 +43,8 @@ public struct TodoItemDrawerView: View {
         let cardH = max(height, 32.0)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 导轨贴边基座色条（始终严丝合缝紧贴物理边缘）
-            Rectangle()
+            // 导轨贴边基座色条（圆角与左侧完全对称统一）
+            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(podColor.opacity(isDone ? 0.35 : 0.9))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
 
@@ -168,7 +168,7 @@ public struct TodoItemDrawerView: View {
                 .scaleEffect(isPinned ? 1.2 : 1.0)
         }
         .buttonStyle(.plain)
-        .help(isPinned ? "已固定常驻 (点击取消)" : "固定此事项小窗")
+        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 }
 
@@ -215,8 +215,8 @@ public struct CalendarItemDrawerView: View {
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条（始终严丝合缝紧贴物理边缘，同色发光）
-            Rectangle()
+            // 贴边基座色条（圆角与左侧完全对称统一，同色发光）
+            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
                 .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
@@ -261,7 +261,7 @@ public struct CalendarItemDrawerView: View {
                             .cornerRadius(3)
                     }
 
-                    // 附带的 Link 链接按钮 (可直接一键触发参会/打开网页)
+                    // Link meeting action button
                     if let url = event.url {
                         Button {
                             NSWorkspace.shared.open(url)
@@ -269,7 +269,7 @@ public struct CalendarItemDrawerView: View {
                             HStack(spacing: 2) {
                                 Image(systemName: "video.fill")
                                     .font(.system(size: 8))
-                                Text("进入")
+                                Text("Join")
                                     .font(.system(size: 8, weight: .bold))
                             }
                             .padding(.horizontal, 4)
@@ -279,7 +279,7 @@ public struct CalendarItemDrawerView: View {
                             .cornerRadius(3)
                         }
                         .buttonStyle(.plain)
-                        .help("打开附带链接: \(url.absoluteString)")
+                        .help("Open link: \(url.absoluteString)")
                     }
 
                     Text(event.calendarTitle)
@@ -372,7 +372,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {
-        if event.isAllDay { return "全天" }
+        if event.isAllDay { return "All Day" }
         return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
     }
 }

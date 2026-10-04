@@ -29,7 +29,7 @@ public final class ScreenEdgeCoordinator {
     }
 
     public func rebuildWindows() {
-        // 优先使用当前用户活跃屏幕 NSScreen.main
+        // Prefer current active screen NSScreen.main
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         leftRailWindow?.close()
         rightRailWindow?.close()
@@ -54,7 +54,7 @@ public final class ScreenEdgeCoordinator {
         }
     }
 
-    /// 同步并展现单项抽屉：完全由 AmbientRailStripView 在同窗口内 0 间隙弹簧滑出，绝不创建多余浮动子窗口
+    /// Synchronizes drawer presentation on the unified rail window canvas
     public func syncDrawer(for edge: MountEdge? = nil) {
         if let edge = edge {
             setInteractive(true, for: edge)

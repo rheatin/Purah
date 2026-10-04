@@ -3,13 +3,13 @@ import Foundation
 import Observation
 
 public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
-    case fixed = "fixed"          // 固定宽度
-    case adaptive = "adaptive"    // 智能自适应
+    case fixed = "fixed"
+    case adaptive = "adaptive"
     
     public var displayName: String {
         switch self {
-        case .fixed: return "固定宽度"
-        case .adaptive: return "智能自适应"
+        case .fixed: return "Fixed"
+        case .adaptive: return "Adaptive"
         }
     }
 }
@@ -68,7 +68,7 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         return nil
     }
 
-    // 真实系统应用同步标志与细粒度时间/分类范围
+    // Real-time synchronization flags and scopes
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false
     public var calendarScope: CalendarTimeScope = .today
@@ -76,10 +76,10 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
     public var isEventGlowAlertEnabled: Bool = true
     public var isMusicWaveformAnimationEnabled: Bool = true
 
-    // 用户自定义导轨宽度 (4px ~ 16px) 与抽屉展开长度设置
+    // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
     public var drawerWidthMode: DrawerWidthMode = .fixed
-    public var fixedDrawerWidth: Double = 290.0 // 范围 220px ~ 330px
+    public var fixedDrawerWidth: Double = 290.0 // Bounds: 220px ~ 330px
     public var customPodColors: [String: String] = [:]
 
     public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0) -> CGFloat {
@@ -96,13 +96,13 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
 
     public func defaultColorHex(for podId: String) -> String {
         switch podId {
-        case "calendar": return "#FF5A60" // 珊瑚红橙
-        case "todo": return "#FF9E0A"     // 活力琥珀金
-        case "music": return "#FF2D55"    // 霓虹品红
-        case "vitals": return "#00E5A3"   // 性能翠绿
-        case "shelf": return "#2ED573"    // 极客薄荷绿
-        case "notes": return "#FFD166"    // 便签金黄
-        case "scripts": return "#6C5CE7"  // 终端曜石电紫
+        case "calendar": return "#FF5A60" // Coral Red
+        case "todo": return "#FF9E0A"     // Amber Gold
+        case "music": return "#FF2D55"    // Neon Magenta
+        case "vitals": return "#00E5A3"   // Emerald Green
+        case "shelf": return "#2ED573"    // Mint Green
+        case "notes": return "#FFD166"    // Warm Gold
+        case "scripts": return "#6C5CE7"  // Obsidian Purple
         default: return "#00F5D4"
         }
     }
@@ -115,7 +115,7 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         customPodColors[podId] = hex
     }
 
-    // 内置 Pod 业务数据
+    // Built-in Pod Business Data
     public var calendarEvents: [CalendarEventItem] = []
     public var todos: [TodoItem] = []
     public var musicTrack: MusicTrackInfo = .init()
@@ -208,13 +208,13 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
 
     public static func defaultPods() -> [SlotPod] {
         [
-            SlotPod(id: "calendar", name: "日程时间标尺", systemIcon: "calendar", edge: .right, range: .init(start: 0.15, length: 0.35), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
-            SlotPod(id: "todo", name: "待办指示标", systemIcon: "checklist", edge: .right, range: .init(start: 0.52, length: 0.25), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.12),
-            SlotPod(id: "music", name: "音乐律动波", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.12), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.08),
-            SlotPod(id: "vitals", name: "性能热态脉搏", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.10, length: 0.16), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 30, minLength: 0.10),
-            SlotPod(id: "shelf", name: "临时暂存架", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.28, length: 0.30), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
-            SlotPod(id: "notes", name: "灵感草稿纸", systemIcon: "note.text", edge: .left, range: .init(start: 0.60, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.10),
-            SlotPod(id: "scripts", name: "瞬时脚本跑道", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.80, length: 0.14), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.08)
+            SlotPod(id: "calendar", name: "Calendar Timeline", systemIcon: "calendar", edge: .right, range: .init(start: 0.15, length: 0.35), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
+            SlotPod(id: "todo", name: "Todo Checklist", systemIcon: "checklist", edge: .right, range: .init(start: 0.52, length: 0.25), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.12),
+            SlotPod(id: "music", name: "Music Waveform", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.12), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.08),
+            SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.10, length: 0.16), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 30, minLength: 0.10),
+            SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.28, length: 0.30), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
+            SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.60, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.10),
+            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.80, length: 0.14), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.08)
         ]
     }
 
@@ -226,17 +226,17 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         let d3 = cal.date(bySettingHour: 14, minute: 0, second: 0, of: today) ?? today
         let d4 = cal.date(bySettingHour: 15, minute: 0, second: 0, of: today) ?? today
         return [
-            CalendarEventItem(title: "Purah Pad 架构评审会议", location: "希卡中央工坊", startTime: d1, endTime: d2),
-            CalendarEventItem(title: "海拉鲁空岛环境监测研讨", location: "初始空岛观测站", startTime: d3, endTime: d4)
+            CalendarEventItem(title: "Architecture Review", location: "Central Workshop", startTime: d1, endTime: d2),
+            CalendarEventItem(title: "Environmental Monitoring", location: "Observation Station", startTime: d3, endTime: d4)
         ]
     }
 
     private static func defaultTodos() -> [TodoItem] {
         [
-            TodoItem(title: "校准左侧边缘触觉传感器", isCompleted: true),
-            TodoItem(title: "更新希卡符文能量波形图", isCompleted: false),
-            TodoItem(title: "测试多显示器自适应流式排布", isCompleted: false),
-            TodoItem(title: "集成 Fitts 定律盲甩阈值过滤", isCompleted: false)
+            TodoItem(title: "Calibrate left tactile edge sensor", isCompleted: true),
+            TodoItem(title: "Update energy waveform telemetry", isCompleted: false),
+            TodoItem(title: "Verify multi-display adaptive layout", isCompleted: false),
+            TodoItem(title: "Tune Fitts Law flick threshold filtering", isCompleted: false)
         ]
     }
 

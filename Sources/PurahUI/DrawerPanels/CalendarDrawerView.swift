@@ -28,11 +28,11 @@ public struct CalendarDrawerView: View {
                         .font(.system(size: 26))
                         .foregroundColor(palette.borderColor)
 
-                    Text("当前范围暂无日程")
+                    Text("No events in current range")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("（可在偏好设置中切换时间跨度）")
+                    Text("Configure scope in Settings")
                         .font(.system(size: 10))
                         .foregroundColor(.gray)
                     Spacer()
@@ -83,7 +83,7 @@ public struct CalendarDrawerView: View {
                             HStack(spacing: 3) {
                                 Image(systemName: "video.fill")
                                     .font(.system(size: 9))
-                                Text("参会")
+                                Text("Join")
                                     .font(.system(size: 9, weight: .bold))
                             }
                             .padding(.horizontal, 5)
@@ -93,7 +93,7 @@ public struct CalendarDrawerView: View {
                             .cornerRadius(4)
                         }
                         .buttonStyle(.plain)
-                        .help("打开会议链接: \(url.absoluteString)")
+                        .help("Open link: \(url.absoluteString)")
                     }
 
                     // 专属 Pin 针
@@ -116,7 +116,7 @@ public struct CalendarDrawerView: View {
                         .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
                         .cornerRadius(3)
 
-                    if !event.location.isEmpty && event.location != "Apple 日历" {
+                    if !event.location.isEmpty && event.location != "Apple Calendar" {
                         Text(event.location)
                             .font(.system(size: 9))
                             .foregroundColor(.gray)
@@ -233,11 +233,11 @@ public struct CalendarDrawerView: View {
                 .scaleEffect(isPinned ? 1.2 : 1.0)
         }
         .buttonStyle(.plain)
-        .help(isPinned ? "已固定常驻 (点击取消)" : "固定此日程小窗")
+        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {
-        if event.isAllDay { return "全天" }
+        if event.isAllDay { return "All Day" }
         return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
     }
 }

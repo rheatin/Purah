@@ -24,7 +24,7 @@ public struct AppUpdateDialogView: View {
                     Text("updater.title".localized)
                         .font(PurahTheme.titleFont)
                         .foregroundColor(.white)
-                    Text("当前版本: v\(updater.currentVersion)")
+                    Text("Current Version: v\(updater.currentVersion)")
                         .font(PurahTheme.monoFont)
                         .foregroundColor(.gray)
                 }
@@ -40,7 +40,7 @@ public struct AppUpdateDialogView: View {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(PurahTheme.cyanGlow)
-                    Text("正在同步海拉鲁古代研究网络，检查更新...")
+                    Text("Checking for updates...")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -62,7 +62,7 @@ public struct AppUpdateDialogView: View {
             case .updateAvailable(let release):
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("发现新版本: v\(release.version)")
+                        Text("New Version Available: v\(release.version)")
                             .font(.headline)
                             .foregroundColor(PurahTheme.cyanGlow)
                         Spacer()
@@ -92,7 +92,7 @@ public struct AppUpdateDialogView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(PurahTheme.sheikahRed)
                         .font(.largeTitle)
-                    Text("检查更新失败: \(error)")
+                    Text("Update check failed: \(error)")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -104,7 +104,7 @@ public struct AppUpdateDialogView: View {
 
             // Bottom Buttons
             HStack {
-                Button("模拟发现新版本") {
+                Button("Simulate Update") {
                     updater.simulateFoundNewVersion()
                 }
                 .buttonStyle(.plain)
@@ -113,7 +113,7 @@ public struct AppUpdateDialogView: View {
 
                 Spacer()
 
-                Button("关闭") {
+                Button("Close") {
                     onClose()
                 }
                 .buttonStyle(.plain)

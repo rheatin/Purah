@@ -15,8 +15,8 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
     public init(
         id: String = UUID().uuidString,
         title: String,
-        location: String = "Apple 日历",
-        calendarTitle: String = "默认日历",
+        location: String = "Apple Calendar",
+        calendarTitle: String = "Calendar",
         colorHex: String? = nil,
         url: URL? = nil,
         startTime: Date,

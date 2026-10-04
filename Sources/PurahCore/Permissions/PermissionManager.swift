@@ -12,10 +12,10 @@ public enum AccessStatus: String, Codable, Sendable, CaseIterable {
 
     public var title: String {
         switch self {
-        case .authorized: return "已授权 (Authorized)"
-        case .notDetermined: return "未决定 (Not Determined)"
-        case .denied: return "已拒绝 (Denied)"
-        case .restricted: return "受系统限制 (Restricted)"
+        case .authorized: return "Authorized"
+        case .notDetermined: return "Not Determined"
+        case .denied: return "Denied"
+        case .restricted: return "Restricted"
         }
     }
 
