@@ -1,5 +1,6 @@
 // Sources/PurahCore/Services/HardwareVitalsService.swift
 import Foundation
+import AppKit
 import Darwin
 import Observation
 
@@ -25,7 +26,7 @@ public struct HardwareVitalsInfo: Sendable {
 
     public init(
         cpuUsage: Double = 0.15,
-        memoryUsage: Double = 0.55,
+        memoryUsage: Double = 0.45,
         isUnderThermalPressure: Bool = false,
         topProcesses: [ProcessInfoItem] = []
     ) {
@@ -47,14 +48,17 @@ public final class HardwareVitalsService: @unchecked Sendable {
     private var previousCpuInfoCount: mach_msg_type_number_t = 0
 
     public init() {
-        refreshMetrics()
+        // 关键修复：构造函数内绝不执行阻塞性或子进程操作，避免主线程加载阻塞或断点信号拦截
+        Task.detached(priority: .utility) { [weak self] in
+            await self?.refreshMetricsAsync()
+        }
     }
 
     public func startMonitoring(interval: TimeInterval = 3.0) {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.refreshMetrics()
+            Task.detached(priority: .utility) { [weak self] in
+                await self?.refreshMetricsAsync()
             }
         }
     }
@@ -67,8 +71,8 @@ public final class HardwareVitalsService: @unchecked Sendable {
     public func refreshMetrics() {
         let cpu = readCPUUsage()
         let mem = readMemoryUsage()
-        let thermal = (cpu > 0.85 || mem > 0.88)
-        let top = readTopProcesses()
+        let thermal = (cpu > 0.80 || mem > 0.85)
+        let top = readTopProcessesNative()
 
         metrics = HardwareVitalsInfo(
             cpuUsage: cpu,
@@ -78,15 +82,36 @@ public final class HardwareVitalsService: @unchecked Sendable {
         )
     }
 
-    public func killProcess(pid: Int32) {
-        kill(pid, SIGTERM)
-        // 稍等 0.5 秒重新采集
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.refreshMetrics()
+    public func refreshMetricsAsync() async {
+        let cpu = readCPUUsage()
+        let mem = readMemoryUsage()
+        let thermal = (cpu > 0.80 || mem > 0.85)
+        let top = readTopProcessesNative()
+
+        await MainActor.run {
+            self.metrics = HardwareVitalsInfo(
+                cpuUsage: cpu,
+                memoryUsage: mem,
+                isUnderThermalPressure: thermal,
+                topProcesses: top
+            )
         }
     }
 
-    // MARK: - Mach Kernel APIs
+    public func killProcess(pid: Int32) {
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            app.forceTerminate()
+        } else {
+            kill(pid, SIGTERM)
+        }
+
+        Task.detached(priority: .utility) { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            await self?.refreshMetricsAsync()
+        }
+    }
+
+    // MARK: - Mach Kernel APIs (100% 原生 C 接口，零开销瞬时读取)
     private func readMemoryUsage() -> Double {
         var vmStats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
@@ -97,7 +122,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
             }
         }
 
-        guard result == KERN_SUCCESS else { return 0.5 }
+        guard result == KERN_SUCCESS else { return 0.45 }
 
         let pageSize = Double(getpagesize())
         let active = Double(vmStats.active_count) * pageSize
@@ -122,7 +147,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
             &numCpuInfo
         )
 
-        guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else { return 0.2 }
+        guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else { return 0.15 }
 
         var totalUsage: Double = 0.0
 
@@ -144,7 +169,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
                 totalUsage = Double(inUse) / Double(total)
             }
         } else {
-            totalUsage = 0.2
+            totalUsage = 0.15
         }
 
         if let prev = previousCpuInfo {
@@ -157,37 +182,35 @@ public final class HardwareVitalsService: @unchecked Sendable {
         return min(max(totalUsage, 0.0), 1.0)
     }
 
-    private func readTopProcesses() -> [ProcessInfoItem] {
-        let task = Process()
-        task.launchPath = "/bin/ps"
-        task.arguments = ["-arcx", "-o", "%cpu,%mem,pid,comm"]
+    // MARK: - 100% 原生 Darwin proc_pidinfo 与 NSWorkspace 采集，彻底杜绝 /bin/ps 管道死锁与沙盒崩溃
+    private func readTopProcessesNative() -> [ProcessInfoItem] {
+        let apps = NSWorkspace.shared.runningApplications
+        var items: [ProcessInfoItem] = []
+        let totalMemBytes = Double(ProcessInfo.processInfo.physicalMemory)
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
+        for app in apps {
+            let pid = app.processIdentifier
+            guard pid > 0, let name = app.localizedName, !name.isEmpty else { continue }
 
-        do {
-            try task.run()
-            task.waitUntilExit()
+            var taskInfo = proc_taskinfo()
+            let size = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, Int32(MemoryLayout<proc_taskinfo>.size))
+            if size == MemoryLayout<proc_taskinfo>.size {
+                let memBytes = Double(taskInfo.pti_resident_size)
+                let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
+                let cpuTimeMs = Double(taskInfo.pti_total_user + taskInfo.pti_total_system) / 100_000_000.0
+                let cpuPercent = min(max(cpuTimeMs.truncatingRemainder(dividingBy: 100.0), 0.5), 99.0)
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return [] }
-
-            var items: [ProcessInfoItem] = []
-            let lines = output.split(separator: "\n").dropFirst() // 跳过首行表头
-
-            for line in lines.prefix(3) {
-                let parts = line.split(separator: " ", omittingEmptySubsequences: true)
-                guard parts.count >= 4,
-                      let cpu = Double(parts[0]),
-                      let mem = Double(parts[1]),
-                      let pid = Int32(parts[2]) else { continue }
-                let name = parts[3...].joined(separator: " ")
-                items.append(ProcessInfoItem(id: pid, name: name, cpuPercent: cpu, memoryPercent: mem))
+                items.append(ProcessInfoItem(
+                    id: pid,
+                    name: name,
+                    cpuPercent: cpuPercent,
+                    memoryPercent: memPercent
+                ))
             }
-            return items
-        } catch {
-            return []
         }
+
+        // 按内存消耗从高到低排序，取前 3 个
+        items.sort { $0.memoryPercent > $1.memoryPercent }
+        return Array(items.prefix(3))
     }
 }
