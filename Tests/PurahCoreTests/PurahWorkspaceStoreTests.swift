@@ -4,15 +4,17 @@ import Testing
 
 @Suite("Workspace Store Tests")
 struct PurahWorkspaceStoreTests {
-    @Test("Initializes with standard 5 built-in pods")
+    @Test("Initializes with standard built-in pods including vitals and scripts")
     func testDefaultPods() {
         let store = PurahWorkspaceStore()
-        #expect(store.pods.count == 5)
+        #expect(store.pods.count == 7)
         #expect(store.pods.contains(where: { $0.id == "calendar" }))
         #expect(store.pods.contains(where: { $0.id == "todo" }))
         #expect(store.pods.contains(where: { $0.id == "music" }))
         #expect(store.pods.contains(where: { $0.id == "shelf" }))
         #expect(store.pods.contains(where: { $0.id == "notes" }))
+        #expect(store.pods.contains(where: { $0.id == "vitals" }))
+        #expect(store.pods.contains(where: { $0.id == "scripts" }))
     }
 
     @Test("Applies Sprint Productivity preset properly")
@@ -20,7 +22,7 @@ struct PurahWorkspaceStoreTests {
         let store = PurahWorkspaceStore()
         store.applyPreset(.sprintProductivity)
 
-        // 冲刺模式：左侧全部让给暂存架与便签
+        // 冲刺模式：左侧分配暂存架与便签
         let leftPods = store.pods.filter { $0.edge == .left }
         #expect(leftPods.contains(where: { $0.id == "shelf" }))
         #expect(leftPods.contains(where: { $0.id == "notes" }))
