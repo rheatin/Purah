@@ -49,6 +49,10 @@ public struct AmbientRailStripView: View {
                             shelfRailBar(pod: pod, totalHeight: podHeight)
                         case "notes":
                             notesRailBar(pod: pod, totalHeight: podHeight)
+                        case "vitals":
+                            vitalsRailBar(pod: pod, totalHeight: podHeight)
+                        case "scripts":
+                            scriptsRailBar(pod: pod, totalHeight: podHeight)
                         default:
                             genericRailBar(pod: pod, totalHeight: podHeight)
                         }
@@ -175,6 +179,47 @@ public struct AmbientRailStripView: View {
                 }
             }
             .padding(.top, 6)
+        }
+        .frame(width: 8, height: totalHeight)
+    }
+
+    // MARK: - Vitals 硬件性能热态脉搏 (绿->橙->红渐变长条，高压轻微呼吸脉动)
+    @ViewBuilder
+    private func vitalsRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let cpu = HardwareVitalsService.shared.metrics.cpuUsage
+        let color = palette.podColor(for: "vitals")
+        let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
+
+        ZStack(alignment: .bottom) {
+            // 背景底槽
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(0.25))
+                .frame(width: 6, height: totalHeight)
+
+            // 动态 CPU 负载填充高度条
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color)
+                .frame(width: isPulsing ? 8 : 6, height: max(totalHeight * CGFloat(cpu), 4.0))
+                .modifier(OptionalGlow(color: color, enabled: isPulsing))
+        }
+        .frame(width: 8, height: totalHeight)
+    }
+
+    // MARK: - Scripts 瞬时终端跑道 (低调深色小方长条 + 终端光标刻线)
+    @ViewBuilder
+    private func scriptsRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let color = palette.podColor(for: "scripts")
+
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(0.8))
+                .frame(width: 6, height: totalHeight)
+
+            // 终端提示符微刻标记 (>)
+            Rectangle()
+                .fill(Color.white.opacity(0.9))
+                .frame(width: 4, height: 2)
+                .padding(.top, 4)
         }
         .frame(width: 8, height: totalHeight)
     }
