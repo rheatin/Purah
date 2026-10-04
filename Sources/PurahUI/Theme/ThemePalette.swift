@@ -23,7 +23,10 @@ public struct ThemePalette: Sendable {
     public let fontTitle: Font
     public let fontMono: Font
 
-    public func podColor(for podId: String) -> Color {
+    public func podColor(for podId: String, store: PurahWorkspaceStore? = nil) -> Color {
+        if let store = store, let customHex = store.customPodColors[podId] {
+            return Color(hex: customHex)
+        }
         switch podId {
         case "calendar":
             return Color(red: 1.0, green: 0.35, blue: 0.38) // 日程珊瑚红橙
@@ -97,5 +100,38 @@ public struct ThemePalette: Sendable {
                 fontMono: PurahTheme.monoFont
             )
         }
+    }
+}
+
+public extension Color {
+    init(hex: String) {
+        let clean = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: clean).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch clean.count {
+        case 6:
+            (r, g, b, a) = (int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF, 255)
+        case 8:
+            (r, g, b, a) = (int >> 24 & 0xFF, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (r, g, b, a) = (0, 245, 212, 255)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255.0,
+            green: Double(g) / 255.0,
+            blue: Double(b) / 255.0,
+            opacity: Double(a) / 255.0
+        )
+    }
+
+    func toHex() -> String? {
+        let nsColor = NSColor(self)
+        guard let rgbColor = nsColor.usingColorSpace(.sRGB) else { return nil }
+        let r = Int(round(rgbColor.redComponent * 255))
+        let g = Int(round(rgbColor.greenComponent * 255))
+        let b = Int(round(rgbColor.blueComponent * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
     }
 }
