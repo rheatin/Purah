@@ -40,6 +40,7 @@ public struct TodoItemDrawerView: View {
 
     public var body: some View {
         let cardH = max(height, 36.0)
+        let isDone = todo.isCompleted
 
         Group {
             switch state {
@@ -53,24 +54,25 @@ public struct TodoItemDrawerView: View {
                             await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
                         }
                     } label: {
-                        Image(systemName: todo.isCompleted ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(todo.isCompleted ? Color.gray : podColor)
+                        Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                            // 已完成仍然保持琥珀金同色，仅降低对比度
+                            .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
                             .font(.system(size: 14))
                     }
                     .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(todo.title)
-                            .strikethrough(todo.isCompleted)
-                            // 已完成的待办灰掉
-                            .foregroundColor(todo.isCompleted ? Color.gray.opacity(0.6) : (palette.style == .native ? Color.primary : .white))
+                            .strikethrough(isDone)
+                            // 已完成保持同色系低对比度
+                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .lineLimit(1)
 
                         if let due = todo.dueDate {
                             Text(due.formatted(date: .abbreviated, time: .shortened))
                                 .font(.system(size: 9))
-                                .foregroundColor(todo.isCompleted ? Color.gray.opacity(0.4) : .gray)
+                                .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
                         }
                     }
 
@@ -81,8 +83,8 @@ public struct TodoItemDrawerView: View {
                         .font(.system(size: 8))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(todo.isCompleted ? Color.gray.opacity(0.12) : podColor.opacity(0.18))
-                        .foregroundColor(todo.isCompleted ? Color.gray : podColor)
+                        .background(podColor.opacity(isDone ? 0.10 : 0.18))
+                        .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
                         .cornerRadius(3)
 
                     if edge == .right { pinButton }
@@ -93,9 +95,8 @@ public struct TodoItemDrawerView: View {
                 .cornerRadius(6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(todo.isCompleted ? Color.gray.opacity(0.35) : podColor, lineWidth: 1.5)
+                        .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
                 )
-                .opacity(todo.isCompleted ? 0.6 : 1.0)
                 .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
@@ -107,14 +108,14 @@ public struct TodoItemDrawerView: View {
                 HStack(spacing: 0) {
                     if edge == .right {
                         Circle()
-                            .fill((todo.isCompleted ? Color.gray : podColor).opacity(0.85))
+                            .fill(podColor.opacity(isDone ? 0.35 : 0.85))
                             .frame(width: 4, height: 4)
                             .padding(.leading, 4)
                         Spacer()
                     } else {
                         Spacer()
                         Circle()
-                            .fill((todo.isCompleted ? Color.gray : podColor).opacity(0.85))
+                            .fill(podColor.opacity(isDone ? 0.35 : 0.85))
                             .frame(width: 4, height: 4)
                             .padding(.trailing, 4)
                     }
@@ -124,9 +125,8 @@ public struct TodoItemDrawerView: View {
                 .cornerRadius(4)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke((todo.isCompleted ? Color.gray : podColor).opacity(0.7), lineWidth: 1)
+                        .stroke(podColor.opacity(isDone ? 0.3 : 0.7), lineWidth: 1)
                 )
-                .opacity(todo.isCompleted ? 0.6 : 1.0)
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing),
                     removal: .move(edge: edge == .left ? .leading : .trailing)
@@ -135,7 +135,7 @@ public struct TodoItemDrawerView: View {
             case .dockedFlush:
                 // 剩下的保持不动，紧贴导轨
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(todo.isCompleted ? Color.gray.opacity(0.3) : podColor)
+                    .fill(podColor.opacity(isDone ? 0.35 : 0.9))
                     .frame(width: 6, height: cardH)
             }
         }
@@ -203,7 +203,7 @@ public struct CalendarItemDrawerView: View {
                     if edge == .left { pinButton }
 
                     Rectangle()
-                        .fill(isPast ? Color.gray.opacity(0.4) : (isOngoing ? Color.green : podColor))
+                        .fill(podColor.opacity(isPast ? 0.35 : 1.0))
                         .frame(width: 3.5, height: cardH - 12)
                         .cornerRadius(1.75)
 
@@ -211,28 +211,28 @@ public struct CalendarItemDrawerView: View {
                         HStack(spacing: 4) {
                             Text(event.title)
                                 .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                                // 过期日程置灰
-                                .foregroundColor(isPast ? Color.gray.opacity(0.6) : (palette.style == .native ? Color.primary : .white))
+                                // 过期日程保持同色系低对比度
+                                .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
                                 .lineLimit(1)
 
                             Spacer(minLength: 2)
 
-                            // 到点日程呼吸/进行中提醒
+                            // 到点日程同色发光提醒
                             if isOngoing {
                                 Text("LIVE")
                                     .font(.system(size: 8, weight: .heavy, design: .monospaced))
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1)
-                                    .background(Color.green.opacity(0.2))
-                                    .foregroundColor(.green)
+                                    .background(podColor.opacity(0.25))
+                                    .foregroundColor(podColor)
                                     .cornerRadius(3)
                             } else if isImminent {
                                 Text("即到")
                                     .font(.system(size: 8, weight: .bold))
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1)
-                                    .background(Color.orange.opacity(0.2))
-                                    .foregroundColor(.orange)
+                                    .background(podColor.opacity(0.2))
+                                    .foregroundColor(podColor)
                                     .cornerRadius(3)
                             }
 
@@ -249,8 +249,8 @@ public struct CalendarItemDrawerView: View {
                                     }
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1.5)
-                                    .background(Color.blue.opacity(0.2))
-                                    .foregroundColor(.blue)
+                                    .background(podColor.opacity(0.2))
+                                    .foregroundColor(podColor)
                                     .cornerRadius(3)
                                 }
                                 .buttonStyle(.plain)
@@ -260,7 +260,7 @@ public struct CalendarItemDrawerView: View {
 
                         Text("\(formattedTime(event: event)) · \(event.calendarTitle)")
                             .font(palette.fontMono)
-                            .foregroundColor(isPast ? Color.gray.opacity(0.4) : .gray)
+                            .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
                             .lineLimit(1)
                     }
 
@@ -275,12 +275,12 @@ public struct CalendarItemDrawerView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(
-                            isAlerting ? Color.green : (isPast ? Color.gray.opacity(0.3) : podColor),
+                            podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.3 : 0.8)),
                             lineWidth: isAlerting ? 2.0 : 1.5
                         )
                 )
-                .modifier(OptionalGlow(color: isAlerting ? Color.green : podColor, enabled: isAlerting))
-                .opacity(isPast ? 0.6 : 1.0)
+                // 到点日程边缘同色加发光提醒
+                .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
                 .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
@@ -292,14 +292,14 @@ public struct CalendarItemDrawerView: View {
                 HStack(spacing: 0) {
                     if edge == .right {
                         Circle()
-                            .fill((isPast ? Color.gray : (isOngoing ? Color.green : podColor)).opacity(0.85))
+                            .fill(podColor.opacity(isPast ? 0.35 : 0.85))
                             .frame(width: 4, height: 4)
                             .padding(.leading, 4)
                         Spacer()
                     } else {
                         Spacer()
                         Circle()
-                            .fill((isPast ? Color.gray : (isOngoing ? Color.green : podColor)).opacity(0.85))
+                            .fill(podColor.opacity(isPast ? 0.35 : 0.85))
                             .frame(width: 4, height: 4)
                             .padding(.trailing, 4)
                     }
@@ -309,19 +309,19 @@ public struct CalendarItemDrawerView: View {
                 .cornerRadius(4)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke((isPast ? Color.gray : (isOngoing ? Color.green : podColor)).opacity(0.7), lineWidth: 1)
+                        .stroke(podColor.opacity(isPast ? 0.3 : 0.7), lineWidth: 1)
                 )
-                .opacity(isPast ? 0.6 : 1.0)
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing),
                     removal: .move(edge: edge == .left ? .leading : .trailing)
                 ))
 
             case .dockedFlush:
-                // 剩下的保持不动，紧贴导轨
+                // 导轨贴边条：到点的日程同色加发光！
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(isPast ? Color.gray.opacity(0.3) : podColor.opacity(0.4))
-                    .frame(width: 6, height: cardH)
+                    .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8)))
+                    .frame(width: isAlerting ? 8 : 6, height: cardH)
+                    .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
             }
         }
     }

@@ -10,6 +10,10 @@ public struct TodoDrawerView: View {
         ThemeManager.shared.palette
     }
 
+    private var podColor: Color {
+        palette.podColor(for: "todo") // 待办专属活力琥珀金
+    }
+
     public init(store: PurahWorkspaceStore) {
         self.store = store
     }
@@ -33,9 +37,12 @@ public struct TodoDrawerView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let activeItem = store.todos.first(where: { $0.id == store.activeDrawerItemId }) {
+                // 【核心要求】：单个 item 单独弹出来
+                todoCard(todo: activeItem)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 5) {
                         ForEach(store.todos) { todo in
                             todoCard(todo: todo)
                         }
@@ -53,29 +60,33 @@ public struct TodoDrawerView: View {
 
     @ViewBuilder
     private func todoCard(todo: TodoItem) -> some View {
+        let isDone = todo.isCompleted
+
         HStack(spacing: 8) {
             Button {
                 Task {
                     await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
                 }
             } label: {
-                Image(systemName: todo.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(todo.isCompleted ? palette.primaryAccent : .gray)
+                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                    // 已完成保持同色系低对比度
+                    .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
                     .font(.system(size: 14))
             }
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(todo.title)
-                    .strikethrough(todo.isCompleted)
-                    .foregroundColor(todo.isCompleted ? .gray : (palette.style == .native ? Color.primary : .white))
-                    .font(.system(size: 12, design: .rounded))
+                    .strikethrough(isDone)
+                    // 已完成保持同色系低对比度，绝不换成死灰
+                    .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .lineLimit(2)
 
                 if let due = todo.dueDate {
                     Text(due.formatted(date: .abbreviated, time: .shortened))
                         .font(.system(size: 9))
-                        .foregroundColor(.gray)
+                        .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
                 }
             }
 
@@ -85,8 +96,8 @@ public struct TodoDrawerView: View {
                 .font(.system(size: 8))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(palette.primaryAccent.opacity(0.12))
-                .foregroundColor(palette.primaryAccent)
+                .background(podColor.opacity(isDone ? 0.10 : 0.18))
+                .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
                 .cornerRadius(3)
 
             Button {
@@ -94,17 +105,17 @@ public struct TodoDrawerView: View {
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 10))
-                    .foregroundColor(.gray.opacity(0.5))
+                    .foregroundColor(.gray.opacity(0.4))
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
-        .background(palette.surfaceBackground)
+        .background(palette.solidDrawerBackground)
         .cornerRadius(6)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                .stroke(podColor.opacity(isDone ? 0.35 : 0.9), lineWidth: 1)
         )
     }
 }

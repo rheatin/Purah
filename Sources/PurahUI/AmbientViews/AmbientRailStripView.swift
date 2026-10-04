@@ -7,6 +7,8 @@ public struct AmbientRailStripView: View {
     public let edge: MountEdge
     public let store: PurahWorkspaceStore
 
+    @State private var isShelfDropTargeted: Bool = false
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -24,522 +26,187 @@ public struct AmbientRailStripView: View {
                 .sorted { $0.range.start < $1.range.start }
 
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
-                // 轨底贴边基准线：严格对齐屏幕物理最边缘 (0 间隙)
+                // 轨底贴边基准线：严格对齐屏幕物理最边缘 (0 间隙，宽度 8px)
                 Rectangle()
-                    .fill(palette.railBackground.opacity(0.8))
-                    .frame(width: 4)
+                    .fill(palette.railBackground)
+                    .frame(width: 8)
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
 
-                // 挂载的每个 Pod 槽位，采用单项独立物理抽屉交互，铺满设定的槽位区间
+                // 挂载的每个 Pod 槽位，完全垂直铺满设定的槽位区间
                 ForEach(edgePods) { pod in
                     let startY = pod.range.start * totalHeight
-                    let podHeight = max(pod.range.length * totalHeight, 36.0)
+                    let podHeight = max(pod.range.length * totalHeight, 32.0)
 
                     VStack(spacing: 0) {
                         switch pod.id {
                         case "todo":
-                            todoPodItems(pod: pod, totalHeight: podHeight)
+                            todoRailBar(pod: pod, totalHeight: podHeight)
                         case "calendar":
-                            calendarPodItems(pod: pod, totalHeight: podHeight)
+                            calendarRailBar(pod: pod, totalHeight: podHeight)
                         case "music":
-                            musicPodItem(pod: pod, totalHeight: podHeight)
+                            musicRailBar(pod: pod, totalHeight: podHeight)
                         case "shelf":
-                            shelfPodItem(pod: pod, totalHeight: podHeight)
+                            shelfRailBar(pod: pod, totalHeight: podHeight)
                         case "notes":
-                            notesPodItem(pod: pod, totalHeight: podHeight)
+                            notesRailBar(pod: pod, totalHeight: podHeight)
                         default:
-                            genericPodItem(pod: pod, totalHeight: podHeight)
+                            genericRailBar(pod: pod, totalHeight: podHeight)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-                    .frame(height: podHeight)
+                    .frame(width: 8, height: podHeight)
                     .offset(y: startY)
                 }
             }
         }
-        .frame(width: 280)
+        .frame(width: 8)
         .ignoresSafeArea()
     }
 
-    // MARK: - Todo 单项抽屉联动 (TEST1 单独弹出，TEST2 / OVL 凸出一点)
+    // MARK: - Todo 导轨刻度条 (铺满设定区间，已完成项同色低对比度)
     @ViewBuilder
-    private func todoPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
+    private func todoRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let color = palette.podColor(for: "todo")
         if store.todos.isEmpty {
-            genericPodItem(pod: pod, totalHeight: totalHeight)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(0.35))
+                .frame(width: 6, height: totalHeight)
         } else {
             let count = max(store.todos.count, 1)
-            let spacing: CGFloat = 3.0
+            let spacing: CGFloat = 2.0
             let totalSpacing = spacing * CGFloat(count - 1)
-            let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 30.0)
+            let segH = max((totalHeight - totalSpacing) / CGFloat(count), 4.0)
 
             VStack(spacing: spacing) {
                 ForEach(store.todos.indices, id: \.self) { i in
                     let todo = store.todos[i]
-                    let isPinned = store.isItemPinned(id: todo.id)
-                    let isActive = (todo.id == store.activeDrawerItemId || isPinned)
-                    let activeIdx = store.todos.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
-                    let isNeighbor = (activeIdx != nil && abs(i - activeIdx!) == 1)
+                    let isDone = todo.isCompleted
+                    let isHovered = (todo.id == store.activeDrawerItemId)
 
-                    let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
-
-                    HStack(spacing: 0) {
-                        if edge == .right { Spacer(minLength: 0) }
-
-                        TodoItemDrawerView(
-                            todo: todo,
-                            edge: edge,
-                            state: state,
-                            isPinned: isPinned,
-                            height: itemH,
-                            store: store,
-                            onTogglePin: {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                    store.togglePinItem(id: todo.id)
-                                }
-                            }
-                        )
-                        .contentShape(Rectangle())
-                        .onHover { isHovered in
-                            if isHovered {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                    store.activeDrawerItemId = todo.id
-                                    store.hoveredPodId = pod.id
-                                }
-                            } else if store.activeDrawerItemId == todo.id && !isPinned {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                    store.activeDrawerItemId = nil
-                                }
-                            }
-                        }
-
-                        if edge == .left { Spacer(minLength: 0) }
-                    }
-                    .frame(height: itemH)
-                    .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-                    .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.pinnedDrawerItemIds)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color.opacity(isDone ? 0.35 : 0.9))
+                        .frame(width: isHovered ? 8 : 6, height: segH)
                 }
             }
+            .frame(width: 8, height: totalHeight)
         }
     }
 
-    // MARK: - Calendar 单项抽屉联动 (单个日程单独弹出，隔壁日程凸出一点)
+    // MARK: - Calendar 导轨时间轴 (到点日程同色发光呼吸提醒！)
     @ViewBuilder
-    private func calendarPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
-        if store.calendarEvents.isEmpty {
-            genericPodItem(pod: pod, totalHeight: totalHeight)
-        } else {
-            let count = max(store.calendarEvents.count, 1)
-            let spacing: CGFloat = 3.0
-            let totalSpacing = spacing * CGFloat(count - 1)
-            let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 32.0)
+    private func calendarRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let color = palette.podColor(for: "calendar")
+        let isAlerting = store.calendarEvents.contains(where: { ($0.isOngoing || $0.isImminent) }) && store.isEventGlowAlertEnabled
 
-            VStack(spacing: spacing) {
-                ForEach(store.calendarEvents.indices, id: \.self) { i in
-                    let event = store.calendarEvents[i]
-                    let isPinned = store.isItemPinned(id: event.id)
-                    let isActive = (event.id == store.activeDrawerItemId || isPinned)
-                    let activeIdx = store.calendarEvents.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
-                    let isNeighbor = (activeIdx != nil && abs(i - activeIdx!) == 1)
+        ZStack(alignment: .top) {
+            // 背景长条
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(isAlerting ? 1.0 : 0.6))
+                .frame(width: isAlerting ? 8 : 6, height: totalHeight)
+                // 到点的日程：边缘的 bar 同色加发光！
+                .modifier(OptionalGlow(color: color, enabled: isAlerting))
 
-                    let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
-
-                    HStack(spacing: 0) {
-                        if edge == .right { Spacer(minLength: 0) }
-
-                        CalendarItemDrawerView(
-                            event: event,
-                            edge: edge,
-                            state: state,
-                            isPinned: isPinned,
-                            height: itemH,
-                            store: store,
-                            onTogglePin: {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                    store.togglePinItem(id: event.id)
-                                }
-                            }
-                        )
-                        .contentShape(Rectangle())
-                        .onHover { isHovered in
-                            if isHovered {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                    store.activeDrawerItemId = event.id
-                                    store.hoveredPodId = pod.id
-                                }
-                            } else if store.activeDrawerItemId == event.id && !isPinned {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                    store.activeDrawerItemId = nil
-                                }
-                            }
-                        }
-
-                        if edge == .left { Spacer(minLength: 0) }
-                    }
-                    .frame(height: itemH)
-                    .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-                    .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.pinnedDrawerItemIds)
-                }
-            }
+            // 当前时间游标微光线
+            let progress = SystemCalendarSyncService.shared.todayProgress()
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: 8, height: 2)
+                .offset(y: totalHeight * progress)
+                .shadow(color: Color.white, radius: 2)
         }
+        .frame(width: 8, height: totalHeight)
     }
 
-    // MARK: - Music 单项抽屉 (实心弹出播放控制小窗，专属霓虹品红)
+    // MARK: - Music 导轨动态频谱 (铺满整条音乐槽位高度，实时跳跃)
     @ViewBuilder
-    private func musicPodItem(pod: SlotPod, totalHeight: CGFloat) -> some View {
-        let isPinned = store.isItemPinned(id: pod.id)
-        let isActive = (store.activeDrawerItemId == pod.id || isPinned)
-        let color = palette.podColor(for: "music")
-
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
-
-            if isActive {
-                HStack(spacing: 8) {
-                    if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-
-                    Image(systemName: "music.note")
-                        .foregroundColor(color)
-                        .font(.caption)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(store.musicTrack.title)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .lineLimit(1)
-                        Text(store.musicTrack.artist)
-                            .font(.system(size: 9))
-                            .foregroundColor(.gray)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 4)
-
-                    Button {
-                        SystemMusicSyncService.shared.togglePlayPause(store: store)
-                    } label: {
-                        Image(systemName: store.musicTrack.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(color)
-                    }
-                    .buttonStyle(.plain)
-
-                    if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-                }
-                .padding(.horizontal, 10)
-                .frame(width: 252, height: max(totalHeight, 38.0))
-                .background(palette.solidDrawerBackground)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(color, lineWidth: 1.5)
-                )
-                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-                .contentShape(Rectangle())
-                .onHover { isHovered in
-                    if !isHovered && !isPinned {
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                            store.activeDrawerItemId = nil
-                        }
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
-                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
-                ))
-            } else {
-                // 仅对贴边 8px 导轨区域响应悬停，绝不占用屏幕空白
-                WaveMeterAmbientView(
-                    samples: store.musicTrack.waveformSamples,
-                    isPlaying: store.musicTrack.isPlaying,
-                    isAnimated: store.isMusicWaveformAnimationEnabled
-                )
-                .frame(width: 8, height: totalHeight)
-                .contentShape(Rectangle())
-                .onHover { isHovered in
-                    if isHovered {
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                            store.activeDrawerItemId = pod.id
-                            store.hoveredPodId = pod.id
-                        }
-                    }
-                }
-            }
-
-            if edge == .left { Spacer(minLength: 0) }
-        }
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
+    private func musicRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        WaveMeterAmbientView(
+            samples: store.musicTrack.waveformSamples,
+            isPlaying: store.musicTrack.isPlaying,
+            isAnimated: store.isMusicWaveformAnimationEnabled,
+            height: totalHeight
+        )
+        .frame(width: 8, height: totalHeight)
     }
 
-    // MARK: - Shelf 单项抽屉 (实心弹出暂存架小窗，完全支持添加/删除/查看文件)
+    // MARK: - Shelf 导轨长条 (绝无圆点！全高长条，支持访达拖拽置入)
     @ViewBuilder
-    private func shelfPodItem(pod: SlotPod, totalHeight: CGFloat) -> some View {
-        let isPinned = store.isItemPinned(id: pod.id)
-        let isActive = (store.activeDrawerItemId == pod.id || isPinned)
+    private func shelfRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let color = palette.podColor(for: "shelf")
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(store.shelfFiles.isEmpty ? 0.4 : 0.85))
+                .frame(width: isShelfDropTargeted ? 8 : 6, height: totalHeight)
+                .modifier(OptionalGlow(color: color, enabled: isShelfDropTargeted))
 
-            if isActive {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-
-                        Image(systemName: "tray.fill")
-                            .foregroundColor(color)
-                            .font(.caption)
-
-                        Text("临时暂存架")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                        Spacer()
-
-                        Button("+ 暂存") {
-                            selectFilesToStash()
-                        }
-                        .buttonStyle(.bordered)
-                        .font(.system(size: 9))
-
-                        if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-                    }
-
-                    if store.shelfFiles.isEmpty {
-                        Text("点击上方或拖拽文件至此暂存")
-                            .font(.system(size: 10))
-                            .foregroundColor(.gray)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 10)
-                    } else {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            VStack(spacing: 4) {
-                                ForEach(store.shelfFiles) { file in
-                                    HStack(spacing: 6) {
-                                        Image(systemName: fileIcon(for: file.fileExtension))
-                                            .foregroundColor(color)
-                                            .font(.caption2)
-
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(file.name)
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                                .lineLimit(1)
-                                            Text(file.sizeDescription)
-                                                .font(.system(size: 8))
-                                                .foregroundColor(.gray)
-                                        }
-
-                                        Spacer()
-
-                                        if let path = file.filePath {
-                                            Button {
-                                                NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-                                            } label: {
-                                                Image(systemName: "magnifyingglass")
-                                                    .font(.system(size: 9))
-                                                    .foregroundColor(.gray)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .help("在访达中显示")
-                                        }
-
-                                        Button {
-                                            store.shelfFiles.removeAll { $0.id == file.id }
-                                        } label: {
-                                            Image(systemName: "xmark")
-                                                .font(.system(size: 8))
-                                                .foregroundColor(.gray)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                                    .background(palette.surfaceBackground.opacity(0.8))
-                                    .cornerRadius(4)
-                                }
-                            }
-                        }
-                    }
+            // 物理暂存微槽刻线
+            VStack(spacing: 8) {
+                ForEach(0..<min(max(store.shelfFiles.count, 3), 8), id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 4, height: 1.5)
                 }
-                .padding(8)
-                .frame(width: 252, height: max(totalHeight, 140.0))
-                .background(palette.solidDrawerBackground)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(color, lineWidth: 1.5)
-                )
-                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-                .contentShape(Rectangle())
-                .onHover { isHovered in
-                    if !isHovered && !isPinned {
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                            store.activeDrawerItemId = nil
-                        }
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
-                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
-                ))
-            } else {
-                // 仅对贴边 8px 导轨区域响应悬停，绝不占用屏幕空白
-                GhostDotAmbientView(hasContent: !store.shelfFiles.isEmpty)
-                    .frame(width: 8, height: totalHeight)
-                    .contentShape(Rectangle())
-                    .onHover { isHovered in
-                        if isHovered {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                store.activeDrawerItemId = pod.id
-                                store.hoveredPodId = pod.id
-                            }
-                        }
-                    }
             }
-
-            if edge == .left { Spacer(minLength: 0) }
+            .padding(.top, 6)
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
+        .frame(width: 8, height: totalHeight)
+        // 关键增强：直接从访达把文件拖拽到侧边长条上完成暂存
+        .onDrop(of: [.fileURL], isTargeted: $isShelfDropTargeted) { providers in
+            handleFileDrop(providers: providers)
+        }
     }
 
-    // MARK: - Notes 单项抽屉 (实心弹出便签小窗，完全支持自由打字编辑)
+    // MARK: - Notes 导轨长条 (绝无圆点！全高长条)
     @ViewBuilder
-    private func notesPodItem(pod: SlotPod, totalHeight: CGFloat) -> some View {
-        let isPinned = store.isItemPinned(id: pod.id)
-        let isActive = (store.activeDrawerItemId == pod.id || isPinned)
+    private func notesRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let color = palette.podColor(for: "notes")
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(store.quickNote.text.isEmpty ? 0.4 : 0.85))
+                .frame(width: 6, height: totalHeight)
 
-            if isActive {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-
-                        Image(systemName: "note.text")
-                            .foregroundColor(color)
-                            .font(.caption)
-
-                        Text("灵感便签")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                        Spacer()
-
-                        Text("\(store.quickNote.text.count) 字")
-                            .font(.system(size: 8))
-                            .foregroundColor(.gray)
-
-                        if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-                    }
-
-                    TextEditor(text: Binding(
-                        get: { store.quickNote.text },
-                        set: {
-                            store.quickNote.text = $0
-                            store.quickNote.lastModified = Date()
-                        }
-                    ))
-                    .font(.system(size: 11, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .background(palette.background.opacity(0.8))
-                    .cornerRadius(4)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
-                    )
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+            // 便签微米横格刻线
+            VStack(spacing: 6) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.black.opacity(0.3))
+                        .frame(width: 4, height: 1.5)
                 }
-                .padding(8)
-                .frame(width: 252, height: max(totalHeight, 140.0))
-                .background(palette.solidDrawerBackground)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(color, lineWidth: 1.5)
-                )
-                .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-                .contentShape(Rectangle())
-                .onHover { isHovered in
-                    if !isHovered && !isPinned {
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                            store.activeDrawerItemId = nil
-                        }
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
-                    removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
-                ))
-            } else {
-                // 仅对贴边 8px 导轨区域响应悬停，绝不占用屏幕空白
-                GhostDotAmbientView(hasContent: !store.quickNote.text.isEmpty)
-                    .frame(width: 8, height: totalHeight)
-                    .contentShape(Rectangle())
-                    .onHover { isHovered in
-                        if isHovered {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                store.activeDrawerItemId = pod.id
-                                store.hoveredPodId = pod.id
-                            }
-                        }
-                    }
             }
-
-            if edge == .left { Spacer(minLength: 0) }
+            .padding(.top, 6)
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
+        .frame(width: 8, height: totalHeight)
     }
 
     @ViewBuilder
-    private func genericPodItem(pod: SlotPod, totalHeight: CGFloat) -> some View {
+    private func genericRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let color = palette.podColor(for: pod.id)
-        RoundedRectangle(cornerRadius: 2)
-            .fill(color.opacity(0.4))
+        RoundedRectangle(cornerRadius: 3)
+            .fill(color.opacity(0.5))
             .frame(width: 6, height: totalHeight)
     }
 
-    private func pinButton(id: String, isPinned: Bool, color: Color) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                store.togglePinItem(id: id)
-            }
-        } label: {
-            Image(systemName: isPinned ? "pin.fill" : "pin")
-                .foregroundColor(isPinned ? color : .gray)
-                .font(.system(size: 11))
-                .scaleEffect(isPinned ? 1.2 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .help(isPinned ? "已固定 (点击取消)" : "固定此小窗常驻")
-    }
-
-    private func fileIcon(for ext: String) -> String {
-        switch ext.lowercased() {
-        case "pdf": return "doc.text.fill"
-        case "png", "jpg", "jpeg", "heic": return "photo.fill"
-        case "zip", "tar", "gz": return "archivebox.fill"
-        default: return "doc.fill"
-        }
-    }
-
-    private func selectFilesToStash() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.begin { response in
-            if response == .OK {
-                for url in panel.urls {
-                    let name = url.lastPathComponent
-                    let ext = url.pathExtension
-                    let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
-                    let size = (attr?[.size] as? Int64) ?? 0
-                    let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-                    store.shelfFiles.append(ShelfFileItem(name: name, sizeDescription: sizeDesc, fileExtension: ext, filePath: url.path))
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url = url {
+                    Task { @MainActor in
+                        let name = url.lastPathComponent
+                        let ext = url.pathExtension
+                        let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
+                        let size = (attr?[.size] as? Int64) ?? 0
+                        let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+                        store.shelfFiles.append(ShelfFileItem(
+                            name: name,
+                            sizeDescription: sizeDesc,
+                            fileExtension: ext,
+                            filePath: url.path
+                        ))
+                    }
                 }
             }
         }
+        return true
     }
 }

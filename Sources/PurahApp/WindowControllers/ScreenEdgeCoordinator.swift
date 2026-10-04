@@ -9,6 +9,12 @@ public final class ScreenEdgeCoordinator {
     private let store: PurahWorkspaceStore
     private var leftRailWindow: AmbientRailWindow?
     private var rightRailWindow: AmbientRailWindow?
+    private var activeDrawerWindow: DrawerPanelWindow?
+    private var currentDisplayedItemId: String?
+
+    public var activeDrawerFrame: NSRect? {
+        activeDrawerWindow?.frame
+    }
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
@@ -41,6 +47,51 @@ public final class ScreenEdgeCoordinator {
     }
 
     public func syncDrawer() {
-        // 单项抽屉已全部集成于 AmbientRailWindow 原生磁吸导轨中，不再需要多余浮动覆盖大窗
+        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
+        guard let activeId = activeId, let screen = NSScreen.screens.first ?? NSScreen.main else {
+            dismissDrawer()
+            return
+        }
+
+        // 查找所属 Pod
+        let pod: SlotPod?
+        if let p = store.pods.first(where: { $0.id == activeId }) {
+            pod = p
+        } else if store.todos.contains(where: { $0.id == activeId }) {
+            pod = store.pods.first(where: { $0.id == "todo" })
+        } else if store.calendarEvents.contains(where: { $0.id == activeId }) {
+            pod = store.pods.first(where: { $0.id == "calendar" })
+        } else {
+            pod = nil
+        }
+
+        guard let pod = pod, pod.isEnabled else {
+            dismissDrawer()
+            return
+        }
+
+        if activeDrawerWindow == nil || currentDisplayedItemId != activeId {
+            activeDrawerWindow?.orderOut(nil)
+            activeDrawerWindow?.close()
+            currentDisplayedItemId = activeId
+
+            activeDrawerWindow = DrawerPanelWindow(
+                pod: pod,
+                screen: screen,
+                store: store
+            ) { [weak self] in
+                self?.dismissDrawer()
+            }
+            activeDrawerWindow?.orderFront(nil)
+        }
+    }
+
+    public func dismissDrawer() {
+        store.activeDrawerItemId = nil
+        store.activeDrawerPodId = nil
+        currentDisplayedItemId = nil
+        activeDrawerWindow?.orderOut(nil)
+        activeDrawerWindow?.close()
+        activeDrawerWindow = nil
     }
 }
