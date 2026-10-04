@@ -50,20 +50,10 @@ public struct TodoItemDrawerView: View {
 
             if state == .expandedDrawer {
                 expandedCard(isDone: isDone, cardH: cardH)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(.opacity.combined(with: .move(edge: edge == .right ? .trailing : .leading)))
             } else if state == .neighborPeek {
                 neighborPeekCard(isDone: isDone, cardH: cardH)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(.opacity)
             }
         }
         .frame(height: cardH)
@@ -233,20 +223,10 @@ public struct CalendarItemDrawerView: View {
 
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isAlerting: isAlerting)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(.opacity.combined(with: .move(edge: edge == .right ? .trailing : .leading)))
             } else if state == .neighborPeek {
                 neighborPeekCard(cardH: cardH, isPast: isPast)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(.opacity)
             }
         }
         .frame(height: cardH)

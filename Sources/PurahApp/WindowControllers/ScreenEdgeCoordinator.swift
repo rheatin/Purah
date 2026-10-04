@@ -36,11 +36,9 @@ public final class ScreenEdgeCoordinator {
 
         leftRailWindow = AmbientRailWindow(edge: .left, screen: screen, store: store)
         leftRailWindow?.orderFront(nil)
-        leftRailWindow?.setExpanded(false)
 
         rightRailWindow = AmbientRailWindow(edge: .right, screen: screen, store: store)
         rightRailWindow?.orderFront(nil)
-        rightRailWindow?.setExpanded(false)
     }
 
     public func updateRailWidths() {
@@ -48,36 +46,14 @@ public final class ScreenEdgeCoordinator {
         rightRailWindow?.updateWidth()
     }
 
-    public func expandRail(for edge: MountEdge) {
-        if edge == .left {
-            leftRailWindow?.setExpanded(true)
-        } else {
-            rightRailWindow?.setExpanded(true)
-        }
-    }
-
-    public func collapseRail(for edge: MountEdge) {
-        let isLeftPinned = store.isDrawerPinned || store.pinnedDrawerItemIds.contains(where: { store.pod(forItemId: $0)?.edge == .left })
-        let isRightPinned = store.isDrawerPinned || store.pinnedDrawerItemIds.contains(where: { store.pod(forItemId: $0)?.edge == .right })
-        if edge == .left && !isLeftPinned {
-            leftRailWindow?.setExpanded(false)
-        } else if edge == .right && !isRightPinned {
-            rightRailWindow?.setExpanded(false)
-        }
-    }
-
     /// 同步并展现单项抽屉：完全由 AmbientRailStripView 在同窗口内 0 间隙弹簧滑出，绝不创建多余浮动子窗口
     public func syncDrawer(for edge: MountEdge? = nil) {
-        if let edge = edge {
-            expandRail(for: edge)
-        }
+        // 状态由 store 响应式驱动
     }
 
     public func dismissDrawer() {
         store.activeDrawerItemId = nil
         store.activeDrawerPodId = nil
         store.hoveredPodId = nil
-        collapseRail(for: .left)
-        collapseRail(for: .right)
     }
 }

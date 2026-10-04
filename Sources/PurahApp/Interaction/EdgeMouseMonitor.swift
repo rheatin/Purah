@@ -66,7 +66,6 @@ public final class EdgeMouseMonitor {
         guard isAtEdge else { return }
 
         let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right
-        coordinator?.expandRail(for: edge)
         let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
 
         let candidatePod = store.pods.first { pod in
