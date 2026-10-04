@@ -19,7 +19,7 @@ public final class DrawerPanelWindow: NSPanel {
 
     public init(pod: SlotPod, screen: NSScreen, store: PurahWorkspaceStore, onClose: @escaping () -> Void) {
         let screenRect = screen.frame
-        let drawerWidth: CGFloat = 260.0
+        let drawerWidth: CGFloat = (pod.id == "music" ? 300.0 : 280.0)
 
         // 计算当前是否命中单个 item 抽屉
         let activeItemId = store.activeDrawerItemId
@@ -34,46 +34,43 @@ public final class DrawerPanelWindow: NSPanel {
 
         if let activeTodo = activeTodo, pod.id == "todo" {
             // 单个待办弹出的实心小窗
-            drawerHeight = 44.0
+            drawerHeight = 48.0
             let count = max(store.todos.count, 1)
             let itemSlotH = barHeight / CGFloat(count)
             let idx = store.todos.firstIndex(where: { $0.id == activeTodo.id }) ?? 0
             let itemYFromTop = fullBarTopY - CGFloat(idx) * itemSlotH
             originY = itemYFromTop - drawerHeight
         } else if let activeEvent = activeEvent, pod.id == "calendar" {
-            // 单个日程弹出的实心小窗
-            drawerHeight = 52.0
+            // 单个日程弹出的实心小窗：给足 64pt 高度，标题、时间、参会链接与 Pin 针绝不挤压
+            drawerHeight = 64.0
             let count = max(store.calendarEvents.count, 1)
             let itemSlotH = barHeight / CGFloat(count)
             let idx = store.calendarEvents.firstIndex(where: { $0.id == activeEvent.id }) ?? 0
             let itemYFromTop = fullBarTopY - CGFloat(idx) * itemSlotH
             originY = itemYFromTop - drawerHeight
         } else if pod.id == "calendar" {
-            // 完整日程列表小窗：给足高度空间 (至少 240pt)，彻底解决卡片挤压模糊
+            // 完整日程列表小窗
             drawerHeight = max(barHeight, 240.0)
             originY = screenRect.minY + (screenRect.height * (1.0 - CGFloat(pod.range.start + pod.range.length)))
         } else if pod.id == "todo" {
-            // 完整待办列表小窗：给足高度空间 (至少 220pt)
+            // 完整待办列表小窗
             drawerHeight = max(barHeight, 220.0)
             originY = screenRect.minY + (screenRect.height * (1.0 - CGFloat(pod.range.start + pod.range.length)))
         } else if pod.id == "vitals" {
-            // 性能热态脉搏：CPU/内存 Top3 列表高度 (140pt)
             drawerHeight = 140.0
             originY = fullBarTopY - drawerHeight
         } else if pod.id == "scripts" {
-            // 脚本跑道小窗：快捷指令动作列表高度 (160pt)
             drawerHeight = 160.0
             originY = fullBarTopY - drawerHeight
         } else if pod.id == "notes" {
-            // 便签小窗：给足打字输入高度 (160pt)
             drawerHeight = 160.0
             originY = fullBarTopY - drawerHeight
         } else if pod.id == "shelf" {
-            // 暂存架小窗：给足文件收纳与拖拽区域 (170pt)
             drawerHeight = 170.0
             originY = fullBarTopY - drawerHeight
         } else if pod.id == "music" {
-            drawerHeight = 54.0
+            // 音乐卡片宽阔饱满，大号封面、全幅进度条与控制器
+            drawerHeight = 118.0
             originY = fullBarTopY - drawerHeight
         } else {
             drawerHeight = max(barHeight, 160.0)
