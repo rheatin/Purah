@@ -31,35 +31,38 @@ public struct WaveMeterAmbientView: View {
 
         Group {
             if isPlaying && isAnimated {
-                TimelineView(.animation) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    VStack(spacing: spacing) {
-                        ForEach(0..<barCount, id: \.self) { idx in
-                            // 动态多频正弦谐波，完整铺满整条音乐槽位高度
+                // 使用 30fps 周期采样 + Metal GPU Canvas 直推，杜绝高 CPU 占用与内存抖动
+                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
+                    Canvas { context, size in
+                        let time = timeline.date.timeIntervalSinceReferenceDate
+                        for idx in 0..<barCount {
                             let phase = Double(idx) * 0.45
                             let wave = (sin(time * 7.5 + phase) + cos(time * 4.2 + phase * 0.5) + 2.0) / 4.0
                             let sampleIdx = idx % max(samples.count, 1)
                             let amp = max(0.25, (samples[sampleIdx] * 0.4) + (wave * 0.6))
+                            let w = max(CGFloat(amp) * 8.0, 2.5)
+                            let y = CGFloat(idx) * (barHeight + spacing)
 
-                            Rectangle()
-                                .fill(musicColor)
-                                .frame(width: max(amp * 8.0, 2.5), height: barHeight)
+                            let rect = CGRect(x: size.width - w, y: y, width: w, height: barHeight)
+                            context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(musicColor))
                         }
                     }
-                    .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
+                    .frame(width: 8, height: totalH)
                 }
             } else {
-                VStack(spacing: spacing) {
-                    ForEach(0..<barCount, id: \.self) { idx in
+                Canvas { context, size in
+                    for idx in 0..<barCount {
                         let sampleIdx = idx % max(samples.count, 1)
                         let amp = isPlaying ? samples[sampleIdx] : 0.25
-                        Rectangle()
-                            .fill(isPlaying ? musicColor : palette.borderColor)
-                            .frame(width: max(amp * 6.0, 2.0), height: barHeight)
+                        let w = max(CGFloat(amp) * 6.0, 2.0)
+                        let y = CGFloat(idx) * (barHeight + spacing)
+                        let rect = CGRect(x: size.width - w, y: y, width: w, height: barHeight)
+                        context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(isPlaying ? musicColor : palette.borderColor))
                     }
                 }
+                .frame(width: 8, height: totalH)
             }
         }
-        .frame(height: totalH)
+        .drawingGroup() // 开启 Metal GPU 离屏渲染加速
     }
 }
