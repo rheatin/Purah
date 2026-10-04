@@ -89,6 +89,16 @@ public final class AmbientRailWindow: NSPanel {
         }
     }
 
+    public override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            if !self.isKeyWindow {
+                NSApp.activate(ignoringOtherApps: true)
+                self.makeKey()
+            }
+        }
+        super.sendEvent(event)
+    }
+
     public func updateWidth() {
         // Redrawn reactively via workspace store
     }
@@ -161,7 +171,10 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
             }
-            (self.window as? AmbientRailWindow)?.setInteractive(false)
+            if let window = self.window as? AmbientRailWindow {
+                window.setInteractive(false)
+                window.resignKey()
+            }
         }
     }
 
@@ -195,7 +208,10 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             store.activeDrawerPodId = nil
             store.hoveredPodId = nil
         }
-        (self.window as? AmbientRailWindow)?.setInteractive(false)
+        if let window = self.window as? AmbientRailWindow {
+            window.setInteractive(false)
+            window.resignKey()
+        }
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
