@@ -30,6 +30,8 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
     public var isUsingRealReminders: Bool = false
     public var calendarScope: CalendarTimeScope = .today
     public var remindersScope: RemindersScope = .allIncomplete
+    public var isEventGlowAlertEnabled: Bool = true
+    public var isMusicWaveformAnimationEnabled: Bool = true
 
     // 内置 Pod 业务数据
     public var calendarEvents: [CalendarEventItem] = []

@@ -7,6 +7,7 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
     public var location: String
     public var calendarTitle: String
     public var colorHex: String?
+    public var url: URL?
     public var startTime: Date
     public var endTime: Date
     public var isAllDay: Bool
@@ -17,6 +18,7 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
         location: String = "Apple 日历",
         calendarTitle: String = "默认日历",
         colorHex: String? = nil,
+        url: URL? = nil,
         startTime: Date,
         endTime: Date,
         isAllDay: Bool = false
@@ -26,8 +28,23 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
         self.location = location
         self.calendarTitle = calendarTitle
         self.colorHex = colorHex
+        self.url = url
         self.startTime = startTime
         self.endTime = endTime
         self.isAllDay = isAllDay
+    }
+
+    public var isPast: Bool {
+        endTime < Date()
+    }
+
+    public var isOngoing: Bool {
+        let now = Date()
+        return now >= startTime && now <= endTime
+    }
+
+    public var isImminent: Bool {
+        let now = Date()
+        return now < startTime && startTime.timeIntervalSince(now) <= 900 // 15分钟内
     }
 }
