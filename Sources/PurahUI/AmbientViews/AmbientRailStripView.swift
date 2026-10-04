@@ -34,6 +34,7 @@ public struct AmbientRailStripView: View {
                 ForEach(edgePods) { pod in
                     let startY = pod.range.start * totalHeight
                     let podHeight = max(pod.range.length * totalHeight, 36.0)
+                    let isThisPodActive = (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id))
 
                     VStack(spacing: 0) {
                         switch pod.id {
@@ -58,6 +59,7 @@ public struct AmbientRailStripView: View {
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                     .frame(height: podHeight, alignment: .top)
                     .offset(y: startY)
+                    .zIndex(isThisPodActive ? 100 : 1)
                 }
             }
         }
@@ -150,13 +152,6 @@ public struct AmbientRailStripView: View {
                 )
                 .id(event.id)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = event.id
-                        store.activeDrawerPodId = pod.id
-                        store.hoveredPodId = pod.id
-                    }
-                }
                 .onHover { isHovered in
                     if isHovered {
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
@@ -189,6 +184,16 @@ public struct AmbientRailStripView: View {
                 height: totalHeight
             )
             .frame(width: barW, height: totalHeight)
+            .contentShape(Rectangle())
+            .onHover { isHovered in
+                if isHovered {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                        store.activeDrawerItemId = pod.id
+                        store.activeDrawerPodId = pod.id
+                        store.hoveredPodId = pod.id
+                    }
+                }
+            }
 
             if isActive {
                 musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
@@ -198,16 +203,6 @@ public struct AmbientRailStripView: View {
                             removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
                     )
-            }
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
@@ -290,6 +285,19 @@ public struct AmbientRailStripView: View {
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             RailBarAmbientView(type: .shelf, hasContent: !store.shelfFiles.isEmpty, color: color, barWidth: barW)
                 .frame(width: barW, height: totalHeight)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = pod.id
+                            store.activeDrawerPodId = pod.id
+                            store.hoveredPodId = pod.id
+                        }
+                    }
+                }
+                .onDrop(of: [.fileURL], isTargeted: $isShelfDropTargeted) { providers in
+                    handleFileDrop(providers: providers)
+                }
 
             if isActive {
                 shelfDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
@@ -300,19 +308,6 @@ public struct AmbientRailStripView: View {
                         )
                     )
             }
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
-                }
-            }
-        }
-        .onDrop(of: [.fileURL], isTargeted: $isShelfDropTargeted) { providers in
-            handleFileDrop(providers: providers)
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
@@ -412,6 +407,16 @@ public struct AmbientRailStripView: View {
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             RailBarAmbientView(type: .notes, hasContent: !store.quickNote.text.isEmpty, color: color, barWidth: barW)
                 .frame(width: barW, height: totalHeight)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = pod.id
+                            store.activeDrawerPodId = pod.id
+                            store.hoveredPodId = pod.id
+                        }
+                    }
+                }
 
             if isActive {
                 notesDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
@@ -421,16 +426,6 @@ public struct AmbientRailStripView: View {
                             removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
                     )
-            }
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
@@ -577,6 +572,16 @@ public struct AmbientRailStripView: View {
                     .padding(.top, 4)
             }
             .frame(width: barW, height: totalHeight)
+            .contentShape(Rectangle())
+            .onHover { isHovered in
+                if isHovered {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                        store.activeDrawerItemId = pod.id
+                        store.activeDrawerPodId = pod.id
+                        store.hoveredPodId = pod.id
+                    }
+                }
+            }
 
             if isActive {
                 scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
@@ -586,16 +591,6 @@ public struct AmbientRailStripView: View {
                             removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
                     )
-            }
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
