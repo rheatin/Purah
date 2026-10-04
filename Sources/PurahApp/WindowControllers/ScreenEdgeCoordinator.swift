@@ -40,24 +40,30 @@ public final class ScreenEdgeCoordinator {
         rightRailWindow?.orderFront(nil)
     }
 
-    public func setRailExpanded(_ isExpanded: Bool, for edge: MountEdge? = nil) {
-        if edge == nil || edge == .left {
+    /// 严格独立控制左右侧边导轨展开状态，绝不联动推挤对侧窗口
+    public func setRailExpanded(_ isExpanded: Bool, for edge: MountEdge) {
+        if edge == .left {
             leftRailWindow?.setExpanded(isExpanded)
-        }
-        if edge == nil || edge == .right {
+            rightRailWindow?.setExpanded(false)
+        } else {
             rightRailWindow?.setExpanded(isExpanded)
+            leftRailWindow?.setExpanded(false)
         }
     }
 
-    public func syncDrawer() {
-        // 单项物理抽屉直接在 AmbientRailWindow 中呈现一体化滑动
-        let hasActive = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
-        setRailExpanded(hasActive)
+    public func syncDrawer(for edge: MountEdge? = nil) {
+        if let targetEdge = edge ?? store.activePod?.edge {
+            let hasActive = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
+            setRailExpanded(hasActive, for: targetEdge)
+        } else {
+            dismissDrawer()
+        }
     }
 
     public func dismissDrawer() {
         store.activeDrawerItemId = nil
         store.activeDrawerPodId = nil
-        setRailExpanded(false)
+        leftRailWindow?.setExpanded(false)
+        rightRailWindow?.setExpanded(false)
     }
 }

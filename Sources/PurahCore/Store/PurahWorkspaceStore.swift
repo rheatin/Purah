@@ -25,6 +25,24 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         pinnedDrawerItemIds.contains(id)
     }
 
+    public var activePod: SlotPod? {
+        if let podId = activeDrawerPodId, let p = pods.first(where: { $0.id == podId }) {
+            return p
+        }
+        if let itemId = activeDrawerItemId {
+            if todos.contains(where: { $0.id == itemId }) {
+                return pods.first(where: { $0.id == "todo" })
+            }
+            if calendarEvents.contains(where: { $0.id == itemId }) {
+                return pods.first(where: { $0.id == "calendar" })
+            }
+            if let p = pods.first(where: { $0.id == itemId }) {
+                return p
+            }
+        }
+        return nil
+    }
+
     // 真实系统应用同步标志与细粒度时间/分类范围
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false

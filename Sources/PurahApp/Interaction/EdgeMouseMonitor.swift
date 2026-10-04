@@ -83,7 +83,7 @@ public final class EdgeMouseMonitor {
                 if store.activeDrawerItemId != item.id {
                     store.activeDrawerItemId = item.id
                     store.activeDrawerPodId = candidate.id
-                    coordinator?.syncDrawer()
+                    coordinator?.syncDrawer(for: edge)
                 }
             } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
                 let count = max(store.calendarEvents.count, 1)
@@ -93,13 +93,13 @@ public final class EdgeMouseMonitor {
                 if store.activeDrawerItemId != item.id {
                     store.activeDrawerItemId = item.id
                     store.activeDrawerPodId = candidate.id
-                    coordinator?.syncDrawer()
+                    coordinator?.syncDrawer(for: edge)
                 }
             } else {
                 if store.activeDrawerPodId != candidate.id {
                     store.activeDrawerPodId = candidate.id
                     store.activeDrawerItemId = candidate.id
-                    coordinator?.syncDrawer()
+                    coordinator?.syncDrawer(for: edge)
                 }
             }
         }
