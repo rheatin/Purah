@@ -150,18 +150,18 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         let isPinned = store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
         guard !isPinned else { return }
 
-        let point = convert(event.locationInWindow, from: nil)
+        let winPoint = event.locationInWindow
         let barW: CGFloat = CGFloat(store.railBarWidth)
-        let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW - 6) : (point.x <= bounds.minX + barW + 6)
+        let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
         if isOnRail { return }
 
-        // Check if inside active drawer card bounds (NSHostingView flipped coordinates: y=0 is top)
+        // Check if inside active drawer card bounds using canonical window coordinates (0 at bottom, totalH at top)
         if let activePod = store.activePod, activePod.edge == edge {
             let totalH = bounds.height
-            let startY = totalH * activePod.range.start - 60
-            let endY = totalH * (activePod.range.start + activePod.range.length) + 60
-            let inDrawerX = (edge == .right) ? (point.x >= bounds.maxX - 340) : (point.x <= bounds.minX + 340)
-            let inDrawerY = (point.y >= startY && point.y <= endY)
+            let minY = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
+            let maxY = totalH * (1.0 - activePod.range.start) + 60
+            let inDrawerX = (edge == .right) ? (winPoint.x >= bounds.maxX - 340) : (winPoint.x <= bounds.minX + 340)
+            let inDrawerY = (winPoint.y >= minY && winPoint.y <= maxY)
             if inDrawerX && inDrawerY {
                 // Mouse is inside the drawer card or its interactive controls; stay open
                 return
@@ -190,17 +190,17 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         // Guard against premature collapse when mouse moves into subview buttons or text fields
         let mouseLoc = NSEvent.mouseLocation
         if let win = self.window, win.frame.contains(mouseLoc) {
-            let localPoint = convert(win.convertPoint(fromScreen: mouseLoc), from: nil)
+            let winPoint = win.convertPoint(fromScreen: mouseLoc)
             let barW: CGFloat = CGFloat(store.railBarWidth)
-            let isOnRail = (edge == .right) ? (localPoint.x >= bounds.maxX - barW - 6) : (localPoint.x <= bounds.minX + barW + 6)
+            let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
             if isOnRail { return }
 
             if let activePod = store.activePod, activePod.edge == edge {
                 let totalH = bounds.height
-                let startY = totalH * activePod.range.start - 60
-                let endY = totalH * (activePod.range.start + activePod.range.length) + 60
-                let inDrawerX = (edge == .right) ? (localPoint.x >= bounds.maxX - 340) : (localPoint.x <= bounds.minX + 340)
-                let inDrawerY = (localPoint.y >= startY && localPoint.y <= endY)
+                let minY = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
+                let maxY = totalH * (1.0 - activePod.range.start) + 60
+                let inDrawerX = (edge == .right) ? (winPoint.x >= bounds.maxX - 340) : (winPoint.x <= bounds.minX + 340)
+                let inDrawerY = (winPoint.y >= minY && winPoint.y <= maxY)
                 if inDrawerX && inDrawerY {
                     return
                 }
@@ -237,15 +237,15 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         let hasActive = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty)
         if hasActive, let activePod = store.activePod, activePod.edge == edge {
             let totalH = bounds.height
-            let startY = totalH * activePod.range.start - 60
-            let endY = totalH * (activePod.range.start + activePod.range.length) + 60
+            let minY = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
+            let maxY = totalH * (1.0 - activePod.range.start) + 60
             let inDrawerX: Bool
             if edge == .right {
                 inDrawerX = (point.x >= bounds.maxX - 340)
             } else {
                 inDrawerX = (point.x <= bounds.minX + 340)
             }
-            let inDrawerY = (point.y >= startY && point.y <= endY)
+            let inDrawerY = (point.y >= minY && point.y <= maxY)
             if inDrawerX && inDrawerY {
                 return super.hitTest(point)
             }
