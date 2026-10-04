@@ -83,17 +83,6 @@ public final class AmbientRailWindow: NSPanel {
         class_replaceMethod(frameClass, originalSelector, imp, "@@:{CGPoint=dd}")
     }
 
-    public func setExpanded(_ expanded: Bool) {
-        let targetWidth: CGFloat = expanded ? 340.0 : 14.0
-        guard abs(self.frame.width - targetWidth) > 1.0 else { return }
-
-        let screenRect = targetScreen.frame
-        let visibleRect = targetScreen.visibleFrame
-        let newX = (edge == .left) ? screenRect.minX : (screenRect.maxX - targetWidth)
-        let newFrame = NSRect(x: newX, y: visibleRect.minY, width: targetWidth, height: visibleRect.height)
-        self.setFrame(newFrame, display: true, animate: false)
-    }
-
     public func updateWidth() {
         // 导轨自定义宽度更新由 store 响应式重绘
     }
@@ -166,9 +155,6 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
             }
-            if let window = self.window as? AmbientRailWindow {
-                window.setExpanded(false)
-            }
         }
     }
 
@@ -180,9 +166,6 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
                 store.activeDrawerItemId = nil
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
-            }
-            if let window = self.window as? AmbientRailWindow {
-                window.setExpanded(false)
             }
         }
     }

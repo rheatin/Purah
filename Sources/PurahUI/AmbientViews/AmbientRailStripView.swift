@@ -81,43 +81,39 @@ public struct AmbientRailStripView: View {
         let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 24.0)
 
         VStack(spacing: spacing) {
-            ForEach(store.todos.indices, id: \.self) { i in
-                let todo = store.todos[i]
+            ForEach(store.todos) { todo in
                 let isPinned = store.isItemPinned(id: todo.id)
                 let isActive = (todo.id == store.activeDrawerItemId || isPinned)
                 let activeIdx = store.todos.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
-                let isNeighbor = (activeIdx != nil && abs(i - activeIdx!) == 1)
+                let thisIdx = store.todos.firstIndex(where: { $0.id == todo.id }) ?? -99
+                let isNeighbor = (activeIdx != nil && abs(thisIdx - activeIdx!) == 1)
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
 
-                HStack(spacing: 0) {
-                    if edge == .right { Spacer(minLength: 0) }
-
-                    TodoItemDrawerView(
-                        todo: todo,
-                        edge: edge,
-                        state: state,
-                        isPinned: isPinned,
-                        height: itemH,
-                        store: store,
-                        onTogglePin: {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                store.togglePinItem(id: todo.id)
-                            }
-                        }
-                    )
-                    .contentShape(Rectangle())
-                    .onHover { isHovered in
-                        if isHovered {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                store.activeDrawerItemId = todo.id
-                                store.hoveredPodId = pod.id
-                            }
+                TodoItemDrawerView(
+                    todo: todo,
+                    edge: edge,
+                    state: state,
+                    isPinned: isPinned,
+                    height: itemH,
+                    store: store,
+                    onTogglePin: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                            store.togglePinItem(id: todo.id)
                         }
                     }
-
-                    if edge == .left { Spacer(minLength: 0) }
+                )
+                .id(todo.id)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = todo.id
+                            store.hoveredPodId = pod.id
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.activeDrawerItemId)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.pinnedDrawerItemIds)
@@ -136,50 +132,46 @@ public struct AmbientRailStripView: View {
         let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 26.0)
 
         VStack(spacing: spacing) {
-            ForEach(store.calendarEvents.indices, id: \.self) { i in
-                let event = store.calendarEvents[i]
+            ForEach(store.calendarEvents) { event in
                 let isPinned = store.isItemPinned(id: event.id)
                 let isActive = (event.id == store.activeDrawerItemId || isPinned)
                 let activeIdx = store.calendarEvents.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
-                let isNeighbor = (activeIdx != nil && abs(i - activeIdx!) == 1)
+                let thisIdx = store.calendarEvents.firstIndex(where: { $0.id == event.id }) ?? -99
+                let isNeighbor = (activeIdx != nil && abs(thisIdx - activeIdx!) == 1)
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
 
-                HStack(spacing: 0) {
-                    if edge == .right { Spacer(minLength: 0) }
-
-                    CalendarItemDrawerView(
-                        event: event,
-                        edge: edge,
-                        state: state,
-                        isPinned: isPinned,
-                        height: itemH,
-                        store: store,
-                        onTogglePin: {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                store.togglePinItem(id: event.id)
-                            }
+                CalendarItemDrawerView(
+                    event: event,
+                    edge: edge,
+                    state: state,
+                    isPinned: isPinned,
+                    height: itemH,
+                    store: store,
+                    onTogglePin: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                            store.togglePinItem(id: event.id)
                         }
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    }
+                )
+                .id(event.id)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                        store.activeDrawerItemId = event.id
+                        store.activeDrawerPodId = pod.id
+                        store.hoveredPodId = pod.id
+                    }
+                }
+                .onHover { isHovered in
+                    if isHovered {
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
                             store.activeDrawerItemId = event.id
-                            store.activeDrawerPodId = pod.id
                             store.hoveredPodId = pod.id
                         }
                     }
-                    .onHover { isHovered in
-                        if isHovered {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                store.activeDrawerItemId = event.id
-                                store.hoveredPodId = pod.id
-                            }
-                        }
-                    }
-
-                    if edge == .left { Spacer(minLength: 0) }
                 }
+                .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.activeDrawerItemId)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.pinnedDrawerItemIds)
@@ -195,41 +187,36 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "music", store: store)
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            WaveMeterAmbientView(
+                samples: store.musicTrack.waveformSamples,
+                isPlaying: store.musicTrack.isPlaying,
+                isAnimated: store.isMusicWaveformAnimationEnabled,
+                height: totalHeight
+            )
+            .frame(width: barW, height: totalHeight)
 
-            ZStack(alignment: edge == .right ? .trailing : .leading) {
-                WaveMeterAmbientView(
-                    samples: store.musicTrack.waveformSamples,
-                    isPlaying: store.musicTrack.isPlaying,
-                    isAnimated: store.isMusicWaveformAnimationEnabled,
-                    height: totalHeight
-                )
-                .frame(width: barW, height: totalHeight)
-
-                if isActive {
-                    musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
+            if isActive {
+                musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
-                }
+                    )
             }
-            .contentShape(Rectangle())
-            .onHover { isHovered in
-                if isHovered {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = pod.id
-                        store.activeDrawerPodId = pod.id
-                        store.hoveredPodId = pod.id
-                    }
-                }
-            }
-
-            if edge == .left { Spacer(minLength: 0) }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            if isHovered {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = pod.id
+                    store.activeDrawerPodId = pod.id
+                    store.hoveredPodId = pod.id
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
@@ -308,39 +295,34 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "shelf", store: store)
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            RailBarAmbientView(type: .shelf, hasContent: !store.shelfFiles.isEmpty, color: color)
+                .frame(width: barW, height: totalHeight)
 
-            ZStack(alignment: edge == .right ? .trailing : .leading) {
-                RailBarAmbientView(type: .shelf, hasContent: !store.shelfFiles.isEmpty, color: color)
-                    .frame(width: barW, height: totalHeight)
-
-                if isActive {
-                    shelfDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
+            if isActive {
+                shelfDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
-                }
+                    )
             }
-            .contentShape(Rectangle())
-            .onHover { isHovered in
-                if isHovered {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = pod.id
-                        store.activeDrawerPodId = pod.id
-                        store.hoveredPodId = pod.id
-                    }
-                }
-            }
-            .onDrop(of: [.fileURL], isTargeted: $isShelfDropTargeted) { providers in
-                handleFileDrop(providers: providers)
-            }
-
-            if edge == .left { Spacer(minLength: 0) }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            if isHovered {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = pod.id
+                    store.activeDrawerPodId = pod.id
+                    store.hoveredPodId = pod.id
+                }
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isShelfDropTargeted) { providers in
+            handleFileDrop(providers: providers)
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
@@ -437,36 +419,31 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "notes", store: store)
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            RailBarAmbientView(type: .notes, hasContent: !store.quickNote.text.isEmpty, color: color)
+                .frame(width: barW, height: totalHeight)
 
-            ZStack(alignment: edge == .right ? .trailing : .leading) {
-                RailBarAmbientView(type: .notes, hasContent: !store.quickNote.text.isEmpty, color: color)
-                    .frame(width: barW, height: totalHeight)
-
-                if isActive {
-                    notesDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
+            if isActive {
+                notesDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
-                }
+                    )
             }
-            .contentShape(Rectangle())
-            .onHover { isHovered in
-                if isHovered {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = pod.id
-                        store.activeDrawerPodId = pod.id
-                        store.hoveredPodId = pod.id
-                    }
-                }
-            }
-
-            if edge == .left { Spacer(minLength: 0) }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            if isHovered {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = pod.id
+                    store.activeDrawerPodId = pod.id
+                    store.hoveredPodId = pod.id
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
@@ -529,45 +506,40 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: "vitals", store: store)
         let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 3.5)
+                    .fill(color.opacity(0.25))
+                    .frame(width: max(barW - 2, 3), height: totalHeight)
 
-            ZStack(alignment: edge == .right ? .trailing : .leading) {
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 3.5)
-                        .fill(color.opacity(0.25))
-                        .frame(width: max(barW - 2, 3), height: totalHeight)
+                RoundedRectangle(cornerRadius: 3.5)
+                    .fill(color)
+                    .frame(width: isPulsing ? barW : max(barW - 2, 3), height: max(totalHeight * CGFloat(cpu), 4.0))
+                    .modifier(OptionalGlow(color: color, enabled: isPulsing))
+            }
+            .frame(width: barW, height: totalHeight)
 
-                    RoundedRectangle(cornerRadius: 3.5)
-                        .fill(color)
-                        .frame(width: isPulsing ? barW : max(barW - 2, 3), height: max(totalHeight * CGFloat(cpu), 4.0))
-                        .modifier(OptionalGlow(color: color, enabled: isPulsing))
-                }
-                .frame(width: barW, height: totalHeight)
-
-                if isActive {
-                    vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
+            if isActive {
+                vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
-                }
+                    )
             }
-            .contentShape(Rectangle())
-            .onHover { isHovered in
-                if isHovered {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = pod.id
-                        store.activeDrawerPodId = pod.id
-                        store.hoveredPodId = pod.id
-                    }
-                }
-            }
-
-            if edge == .left { Spacer(minLength: 0) }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            if isHovered {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = pod.id
+                    store.activeDrawerPodId = pod.id
+                    store.hoveredPodId = pod.id
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
@@ -604,45 +576,40 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "scripts", store: store)
 
-        HStack(spacing: 0) {
-            if edge == .right { Spacer(minLength: 0) }
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: 3.5)
+                    .fill(color.opacity(0.85))
+                    .frame(width: max(barW - 2, 3), height: totalHeight)
 
-            ZStack(alignment: edge == .right ? .trailing : .leading) {
-                ZStack(alignment: .top) {
-                    RoundedRectangle(cornerRadius: 3.5)
-                        .fill(color.opacity(0.85))
-                        .frame(width: max(barW - 2, 3), height: totalHeight)
+                Rectangle()
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: max(barW - 4, 2), height: 2)
+                    .padding(.top, 4)
+            }
+            .frame(width: barW, height: totalHeight)
 
-                    Rectangle()
-                        .fill(Color.white.opacity(0.9))
-                        .frame(width: max(barW - 4, 2), height: 2)
-                        .padding(.top, 4)
-                }
-                .frame(width: barW, height: totalHeight)
-
-                if isActive {
-                    scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
+            if isActive {
+                scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
                         )
-                }
+                    )
             }
-            .contentShape(Rectangle())
-            .onHover { isHovered in
-                if isHovered {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = pod.id
-                        store.activeDrawerPodId = pod.id
-                        store.hoveredPodId = pod.id
-                    }
-                }
-            }
-
-            if edge == .left { Spacer(minLength: 0) }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            if isHovered {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = pod.id
+                    store.activeDrawerPodId = pod.id
+                    store.hoveredPodId = pod.id
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
