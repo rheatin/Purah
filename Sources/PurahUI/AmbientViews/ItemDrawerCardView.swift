@@ -74,11 +74,19 @@ public struct TodoItemDrawerView: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(todo.title)
-                    .strikethrough(isDone)
-                    .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .lineLimit(1)
+                TextField("", text: Binding(
+                    get: { todo.title },
+                    set: { newTitle in
+                        if let idx = store.todos.firstIndex(where: { $0.id == todo.id }) {
+                            store.todos[idx].title = newTitle
+                        }
+                    }
+                ))
+                .textFieldStyle(.plain)
+                .strikethrough(isDone)
+                .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .lineLimit(1)
 
                 if let due = todo.dueDate {
                     Text(due.formatted(date: .abbreviated, time: .shortened))

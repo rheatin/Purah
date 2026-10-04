@@ -56,7 +56,7 @@ public struct AmbientRailStripView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-                    .frame(height: podHeight)
+                    .frame(height: podHeight, alignment: .top)
                     .offset(y: startY)
                 }
             }
@@ -550,7 +550,7 @@ public struct AmbientRailStripView: View {
             HardwareVitalsDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: max(totalHeight, 155.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -620,7 +620,7 @@ public struct AmbientRailStripView: View {
             ScriptRunwayDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: max(totalHeight, 150.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
