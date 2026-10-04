@@ -1,0 +1,148 @@
+// Sources/PurahUI/Settings/ScreenSimulationCanvas.swift
+import SwiftUI
+import PurahCore
+
+public struct ScreenSimulationCanvas: View {
+    public let store: PurahWorkspaceStore
+    public let canvasWidth: Double = 540
+    public let canvasHeight: Double = 270
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        self.store = store
+    }
+
+    public var body: some View {
+        ZStack {
+            // 微缩屏幕底板
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(palette.borderColor, lineWidth: 1)
+                )
+
+            // 人体工学三大舒适区背景标尺
+            VStack(spacing: 0) {
+                // Glance Zone (0% ~ 20%)
+                Rectangle()
+                    .fill(Color.blue.opacity(0.06))
+                    .frame(height: canvasHeight * 0.20)
+                    .overlay(
+                        HStack {
+                            Text("GLANCE ZONE (0% ~ 20%)")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(.blue.opacity(0.8))
+                        },
+                        alignment: .center
+                    )
+
+                // Golden Action Zone (20% ~ 75%)
+                Rectangle()
+                    .fill(Color.green.opacity(0.06))
+                    .frame(height: canvasHeight * 0.55)
+                    .overlay(
+                        HStack {
+                            Text("GOLDEN ACTION ZONE (20% ~ 75%)")
+                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.green.opacity(0.8))
+                        },
+                        alignment: .center
+                    )
+
+                // Quick Flick Zone (75% ~ 100%)
+                Rectangle()
+                    .fill(Color.orange.opacity(0.06))
+                    .frame(height: canvasHeight * 0.25)
+                    .overlay(
+                        HStack {
+                            Text("QUICK FLICK ZONE (75% ~ 100%)")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(.orange.opacity(0.8))
+                        },
+                        alignment: .center
+                    )
+            }
+            .frame(width: canvasWidth, height: canvasHeight)
+
+            // 左右两侧磁吸轨道与 Pod 胶囊
+            HStack(spacing: 0) {
+                // 左侧轨道容器
+                ZStack(alignment: .topLeading) {
+                    // 左轨背景槽
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.15))
+                        .frame(width: 154, height: canvasHeight)
+
+                    ForEach(store.pods.filter { $0.edge == .left && $0.isEnabled }) { pod in
+                        let topY = pod.range.start * canvasHeight
+                        let h = max(pod.range.length * canvasHeight, 36.0)
+                        let centerY = topY + (h / 2.0)
+
+                        PodCapsuleView(
+                            pod: pod,
+                            canvasHeight: canvasHeight,
+                            onMove: { newStart in
+                                store.updatePodRange(id: pod.id, newRange: .init(start: newStart, length: pod.range.length))
+                            },
+                            onResize: { newLength in
+                                store.updatePodRange(id: pod.id, newRange: .init(start: pod.range.start, length: newLength))
+                            },
+                            onTransferEdge: {
+                                store.movePod(id: pod.id, to: .right)
+                            },
+                            onFillRail: {
+                                store.fillRail(podId: pod.id)
+                            }
+                        )
+                        .position(x: 77, y: centerY)
+                    }
+                }
+                .frame(width: 154, height: canvasHeight)
+                .clipped()
+
+                Spacer()
+
+                // 右侧轨道容器
+                ZStack(alignment: .topTrailing) {
+                    // 右轨背景槽
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.15))
+                        .frame(width: 154, height: canvasHeight)
+
+                    ForEach(store.pods.filter { $0.edge == .right && $0.isEnabled }) { pod in
+                        let topY = pod.range.start * canvasHeight
+                        let h = max(pod.range.length * canvasHeight, 36.0)
+                        let centerY = topY + (h / 2.0)
+
+                        PodCapsuleView(
+                            pod: pod,
+                            canvasHeight: canvasHeight,
+                            onMove: { newStart in
+                                store.updatePodRange(id: pod.id, newRange: .init(start: newStart, length: pod.range.length))
+                            },
+                            onResize: { newLength in
+                                store.updatePodRange(id: pod.id, newRange: .init(start: pod.range.start, length: newLength))
+                            },
+                            onTransferEdge: {
+                                store.movePod(id: pod.id, to: .left)
+                            },
+                            onFillRail: {
+                                store.fillRail(podId: pod.id)
+                            }
+                        )
+                        .position(x: 77, y: centerY)
+                    }
+                }
+                .frame(width: 154, height: canvasHeight)
+                .clipped()
+            }
+            .padding(.horizontal, 8)
+        }
+        .frame(width: canvasWidth, height: canvasHeight)
+        .clipped()
+    }
+}
