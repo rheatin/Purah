@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.apple.PurahPad</string>
+    <key>CFBundleName</key>
+    <string>Purah</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>2.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Purah 需要访问您的日历以在屏幕侧边显示今日日程与时间标尺。</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Purah 需要完整访问您的日历以在屏幕侧边显示今日日程与时间标尺。</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>Purah 需要访问您的提醒事项以同步待办列表与分段指示标。</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Purah 需要完整访问您的提醒事项以同步待办列表与分段指示标。</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Purah 需要控制音乐应用以提供播放与切歌快捷操作。</string>
+</dict>
+</plist>
