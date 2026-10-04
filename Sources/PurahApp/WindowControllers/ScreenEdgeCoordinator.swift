@@ -82,7 +82,7 @@ public final class ScreenEdgeCoordinator {
             ) { [weak self] in
                 self?.dismissDrawer()
             }
-            activeDrawerWindow?.orderFront(nil)
+            activeDrawerWindow?.presentWithSpring()
         }
     }
 
