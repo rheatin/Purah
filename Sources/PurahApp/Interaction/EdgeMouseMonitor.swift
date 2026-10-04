@@ -44,7 +44,7 @@ public final class EdgeMouseMonitor {
 
         let screenRect = screen.frame
         let isDrawerOpen = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty)
-        let activeWidth: CGFloat = isDrawerOpen ? 320 : 12
+        let activeWidth: CGFloat = isDrawerOpen ? 340 : 16
 
         let isNearLeft = point.x <= (screenRect.minX + activeWidth)
         let isNearRight = point.x >= (screenRect.maxX - activeWidth)
@@ -66,6 +66,7 @@ public final class EdgeMouseMonitor {
         guard isAtEdge else { return }
 
         let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right
+        coordinator?.expandRail(for: edge)
         let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
 
         let candidatePod = store.pods.first { pod in

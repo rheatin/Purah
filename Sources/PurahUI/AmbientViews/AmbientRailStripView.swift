@@ -113,10 +113,6 @@ public struct AmbientRailStripView: View {
                                 store.activeDrawerItemId = todo.id
                                 store.hoveredPodId = pod.id
                             }
-                        } else if store.activeDrawerItemId == todo.id && !isPinned {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                store.activeDrawerItemId = nil
-                            }
                         }
                     }
 
@@ -179,10 +175,6 @@ public struct AmbientRailStripView: View {
                                 store.activeDrawerItemId = event.id
                                 store.hoveredPodId = pod.id
                             }
-                        } else if store.activeDrawerItemId == event.id && !isPinned {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                                store.activeDrawerItemId = nil
-                            }
                         }
                     }
 
@@ -232,11 +224,6 @@ public struct AmbientRailStripView: View {
                         store.activeDrawerItemId = pod.id
                         store.activeDrawerPodId = pod.id
                         store.hoveredPodId = pod.id
-                    }
-                } else if (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id) && !isPinned {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = nil
-                        store.activeDrawerPodId = nil
                     }
                 }
             }
@@ -345,11 +332,6 @@ public struct AmbientRailStripView: View {
                         store.activeDrawerItemId = pod.id
                         store.activeDrawerPodId = pod.id
                         store.hoveredPodId = pod.id
-                    }
-                } else if (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id) && !isPinned {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = nil
-                        store.activeDrawerPodId = nil
                     }
                 }
             }
@@ -480,11 +462,6 @@ public struct AmbientRailStripView: View {
                         store.activeDrawerPodId = pod.id
                         store.hoveredPodId = pod.id
                     }
-                } else if (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id) && !isPinned {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = nil
-                        store.activeDrawerPodId = nil
-                    }
                 }
             }
 
@@ -586,11 +563,6 @@ public struct AmbientRailStripView: View {
                         store.activeDrawerPodId = pod.id
                         store.hoveredPodId = pod.id
                     }
-                } else if (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id) && !isPinned {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = nil
-                        store.activeDrawerPodId = nil
-                    }
                 }
             }
 
@@ -665,11 +637,6 @@ public struct AmbientRailStripView: View {
                         store.activeDrawerItemId = pod.id
                         store.activeDrawerPodId = pod.id
                         store.hoveredPodId = pod.id
-                    }
-                } else if (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id) && !isPinned {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = nil
-                        store.activeDrawerPodId = nil
                     }
                 }
             }

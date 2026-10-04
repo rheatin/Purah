@@ -25,6 +25,19 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         pinnedDrawerItemIds.contains(id)
     }
 
+    public func pod(forItemId id: String) -> SlotPod? {
+        if let p = pods.first(where: { $0.id == id }) {
+            return p
+        }
+        if todos.contains(where: { $0.id == id }) {
+            return pods.first(where: { $0.id == "todo" })
+        }
+        if calendarEvents.contains(where: { $0.id == id }) {
+            return pods.first(where: { $0.id == "calendar" })
+        }
+        return nil
+    }
+
     public var activePod: SlotPod? {
         if let podId = activeDrawerPodId, let p = pods.first(where: { $0.id == podId }) {
             return p
