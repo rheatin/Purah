@@ -1,6 +1,7 @@
 // Sources/PurahApp/WindowControllers/AmbientRailWindow.swift
 import AppKit
 import SwiftUI
+import ObjectiveC
 import PurahCore
 import PurahUI
 
@@ -48,11 +49,53 @@ public final class AmbientRailWindow: NSPanel {
 
         let rootView = AmbientRailStripView(edge: edge, store: store)
             .ignoresSafeArea()
-        self.contentView = PassThroughHostingView(rootView: rootView, edge: edge, store: store)
+        let hostingView = PassThroughHostingView(rootView: rootView, edge: edge, store: store)
+        self.contentView = hostingView
+
+        // 核心突破：让底层 NSNextStepFrame 在 contentView 返回 nil 时也严格返回 nil，彻底打通系统级点击穿透
+        if let frameView = hostingView.superview {
+            Self.enablePassThroughOnFrameView(frameView)
+        }
+    }
+
+    private static var hasSwizzledFrameView = false
+
+    private static func enablePassThroughOnFrameView(_ frameView: NSView) {
+        guard !hasSwizzledFrameView else { return }
+        hasSwizzledFrameView = true
+
+        let frameClass: AnyClass = object_getClass(frameView)!
+        let originalSelector = #selector(NSView.hitTest(_:))
+
+        let block: @convention(block) (AnyObject, NSPoint) -> NSView? = { (selfObj, point) in
+            guard let view = selfObj as? NSView else { return nil }
+            // 仅当子视图（PassThroughHostingView）明确返回可交互视图时才拦截；
+            // 否则严格返回 nil，100% 穿透到操作系统底层的其他所有应用！
+            for sub in view.subviews.reversed() {
+                let subPoint = view.convert(point, to: sub)
+                if let hit = sub.hitTest(subPoint) {
+                    return hit
+                }
+            }
+            return nil
+        }
+        let imp = imp_implementationWithBlock(block)
+        class_replaceMethod(frameClass, originalSelector, imp, "@@:{CGPoint=dd}")
+    }
+
+    public func setExpanded(_ expanded: Bool) {
+        let targetWidth: CGFloat = expanded ? 340.0 : 14.0
+        guard abs(self.frame.width - targetWidth) > 1.0 else { return }
+
+        let screenRect = targetScreen.frame
+        let visibleRect = targetScreen.visibleFrame
+        let newX = (edge == .left) ? screenRect.minX : (screenRect.maxX - targetWidth)
+        let newFrame = NSRect(x: newX, y: visibleRect.minY, width: targetWidth, height: visibleRect.height)
+        self.setFrame(newFrame, display: true, animate: false)
     }
 
     public func updateWidth() {
-        // 画布尺寸由 PassThroughHostingView 智能穿透控制
+        // 导轨自定义宽度更新由 store 响应式重绘
     }
 }
 
@@ -103,24 +146,28 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW - 6) : (point.x <= bounds.minX + barW + 6)
         if isOnRail { return }
 
-        // 检查是否在活跃抽屉的真实几何纵深区域内
+        // 检查是否在活跃抽屉的真实几何纵深区域内 (覆盖展开的 340pt 宽度与高度，确保鼠标进入卡片内部稳定保活)
         if let activePod = store.activePod, activePod.edge == edge {
             let totalH = bounds.height
-            let appkitTop = totalH * (1.0 - activePod.range.start) + 35
-            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 35
-            let inDrawerX = (edge == .right) ? (point.x >= bounds.maxX - 315) : (point.x <= bounds.minX + 315)
+            let appkitTop = totalH * (1.0 - activePod.range.start) + 40
+            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 40
+            let inDrawerX = (edge == .right) ? (point.x >= bounds.maxX - 340) : (point.x <= bounds.minX + 340)
             let inDrawerY = (point.y >= appkitBottom && point.y <= appkitTop)
             if inDrawerX && inDrawerY {
+                // 鼠标正在抽屉卡片内部查看或操作，坚决保持展开！
                 return
             }
         }
 
-        // 鼠标移出抽屉和导轨有效区域，自动收缩抽屉释放屏幕
+        // 鼠标真正移出抽屉和导轨有效区域，自动收缩抽屉释放屏幕
         if store.activeDrawerItemId != nil || store.activeDrawerPodId != nil {
             withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
                 store.activeDrawerItemId = nil
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
+            }
+            if let window = self.window as? AmbientRailWindow {
+                window.setExpanded(false)
             }
         }
     }
@@ -133,6 +180,9 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
                 store.activeDrawerItemId = nil
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
+            }
+            if let window = self.window as? AmbientRailWindow {
+                window.setExpanded(false)
             }
         }
     }
@@ -157,13 +207,13 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         if hasActive, let activePod = store.activePod, activePod.edge == edge {
             let totalH = bounds.height
             // 计算该 Pod 在 AppKit 坐标系（原点在左下角）下的垂直范围
-            let appkitTop = totalH * (1.0 - activePod.range.start) + 35
-            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 35
+            let appkitTop = totalH * (1.0 - activePod.range.start) + 40
+            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 40
             let inDrawerX: Bool
             if edge == .right {
-                inDrawerX = (point.x >= bounds.maxX - 315)
+                inDrawerX = (point.x >= bounds.maxX - 340)
             } else {
-                inDrawerX = (point.x <= bounds.minX + 315)
+                inDrawerX = (point.x <= bounds.minX + 340)
             }
             let inDrawerY = (point.y >= appkitBottom && point.y <= appkitTop)
             if inDrawerX && inDrawerY {
@@ -171,7 +221,7 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             }
         }
 
-        // 3. 其它所有透明空白区域：直接返回 nil，100% 穿透到背后的所有应用与桌面图标
+        // 3. 其它所有透明空白区域：直接返回 nil，配合 frameView swizzle，100% 穿透到背后的所有应用与桌面图标
         return nil
     }
 }

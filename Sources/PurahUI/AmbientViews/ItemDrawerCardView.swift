@@ -116,6 +116,7 @@ public struct TodoItemDrawerView: View {
         .frame(width: 280, height: cardH)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
+        .contentShape(drawerShape)
         .overlay(
             drawerShape
                 .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
@@ -324,6 +325,7 @@ public struct CalendarItemDrawerView: View {
         .frame(width: 290, height: cardH)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
+        .contentShape(drawerShape)
         .overlay(
             drawerShape
                 .stroke(
