@@ -14,7 +14,9 @@ public struct AmbientRailStripView: View {
     }
 
     public var isExpanded: Bool {
-        store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
+        // 关键修复：仅当激活项属于本侧边缘时才展开，对侧绝不动弹
+        guard let activePod = store.activePod else { return false }
+        return activePod.edge == edge
     }
 
     public init(edge: MountEdge, store: PurahWorkspaceStore) {
@@ -36,10 +38,10 @@ public struct AmbientRailStripView: View {
                     .frame(width: 4)
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
 
-                // 挂载的每个 Pod 槽位，采用单项独立物理抽屉交互，与 Bar 高度颜色严格一体化
+                // 挂载的每个 Pod 槽位，采用单项独立物理抽屉交互，数学严格对齐高度，绝不超出底线
                 ForEach(edgePods) { pod in
                     let startY = pod.range.start * totalHeight
-                    let podHeight = max(pod.range.length * totalHeight, 36.0)
+                    let podHeight = max(pod.range.length * totalHeight, 32.0)
 
                     VStack(spacing: 0) {
                         switch pod.id {
@@ -63,17 +65,18 @@ public struct AmbientRailStripView: View {
                 }
             }
         }
-        .frame(width: isExpanded ? 320 : 8)
+        .frame(width: isExpanded ? 320 : 16)
         .ignoresSafeArea()
     }
 
-    // MARK: - Todo 单项抽屉与导轨联动 (高度与 Bar 100% 相同，隔壁项凸出 28pt)
+    // MARK: - Todo 单项抽屉与导轨联动 (严格均分高度绝不溢出底线，圆润药丸倒角)
     @ViewBuilder
     private func todoPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let count = max(store.todos.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 30.0)
+        // 数学严格限制均分高度，绝不超出父容器底线
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 6.0)
 
         VStack(spacing: spacing) {
             ForEach(store.todos.indices, id: \.self) { i in
@@ -125,13 +128,14 @@ public struct AmbientRailStripView: View {
         .frame(height: totalHeight)
     }
 
-    // MARK: - Calendar 单项抽屉与导轨联动 (像 Todo 那样带有明确间隔分段！到点发光！)
+    // MARK: - Calendar 单项抽屉与导轨联动 (像 Todo 那样带有独立缝隙，绝不溢出底线，到点未弹出也发光)
     @ViewBuilder
     private func calendarPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let count = max(store.calendarEvents.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 32.0)
+        // 数学严格限制均分高度，绝不超出父容器底线
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 6.0)
 
         VStack(spacing: spacing) {
             ForEach(store.calendarEvents.indices, id: \.self) { i in
@@ -488,7 +492,7 @@ public struct AmbientRailStripView: View {
     @ViewBuilder
     private func genericRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let color = palette.podColor(for: pod.id)
-        RoundedRectangle(cornerRadius: 3)
+        RoundedRectangle(cornerRadius: 3.5)
             .fill(color.opacity(0.5))
             .frame(width: 8, height: totalHeight)
     }
