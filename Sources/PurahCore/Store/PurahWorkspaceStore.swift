@@ -129,8 +129,10 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
             SlotPod(id: "calendar", name: "日程时间标尺", systemIcon: "calendar", edge: .right, range: .init(start: 0.15, length: 0.35), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
             SlotPod(id: "todo", name: "待办指示标", systemIcon: "checklist", edge: .right, range: .init(start: 0.52, length: 0.25), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.12),
             SlotPod(id: "music", name: "音乐律动波", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.12), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.08),
-            SlotPod(id: "shelf", name: "临时暂存架", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.25, length: 0.35), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
-            SlotPod(id: "notes", name: "灵感草稿纸", systemIcon: "note.text", edge: .left, range: .init(start: 0.65, length: 0.20), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 30, minLength: 0.10)
+            SlotPod(id: "vitals", name: "性能热态脉搏", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.10, length: 0.16), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 30, minLength: 0.10),
+            SlotPod(id: "shelf", name: "临时暂存架", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.28, length: 0.30), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.12),
+            SlotPod(id: "notes", name: "灵感草稿纸", systemIcon: "note.text", edge: .left, range: .init(start: 0.60, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.10),
+            SlotPod(id: "scripts", name: "瞬时脚本跑道", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.80, length: 0.14), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.08)
         ]
     }
 
