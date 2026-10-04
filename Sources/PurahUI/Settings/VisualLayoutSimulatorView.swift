@@ -199,14 +199,32 @@ public struct VisualLayoutSimulatorView: View {
                             .pickerStyle(.segmented)
                         }
                     }
-                    .padding(10)
-                    .background(palette.surfaceBackground)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
-                    )
+
+                    Divider()
+                        .background(palette.borderColor.opacity(0.4))
+
+                    HStack(spacing: 24) {
+                        Toggle("到点日程呼吸发光提醒", isOn: Binding(
+                            get: { store.isEventGlowAlertEnabled },
+                            set: { store.isEventGlowAlertEnabled = $0 }
+                        ))
+                        .font(.caption)
+
+                        Toggle("音乐播放动态频谱动画", isOn: Binding(
+                            get: { store.isMusicWaveformAnimationEnabled },
+                            set: { store.isMusicWaveformAnimationEnabled = $0 }
+                        ))
+                        .font(.caption)
+                    }
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
                 }
+                .padding(10)
+                .background(palette.surfaceBackground)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
+                )
 
                 // 预设模式切换
                 VStack(alignment: .leading, spacing: 8) {
