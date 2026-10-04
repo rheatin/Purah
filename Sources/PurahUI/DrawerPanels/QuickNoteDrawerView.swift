@@ -5,44 +5,45 @@ import PurahCore
 public struct QuickNoteDrawerView: View {
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    private var noteColor: Color {
+        palette.podColor(for: "notes")
+    }
+
     public init(store: PurahWorkspaceStore) {
         self.store = store
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("QUICK SCRATCHPAD")
-                    .font(PurahTheme.monoFont)
-                    .foregroundColor(PurahTheme.cyanGlow)
-                Spacer()
-                Text("MARKDOWN READY")
-                    .font(PurahTheme.monoFont)
-                    .foregroundColor(.gray)
-            }
-
+        VStack(alignment: .leading, spacing: 6) {
             TextEditor(text: Binding(
                 get: { store.quickNote.text },
-                set: { store.quickNote.text = $0; store.quickNote.lastModified = Date() }
+                set: {
+                    store.quickNote.text = $0
+                    store.quickNote.lastModified = Date()
+                }
             ))
-            .font(.system(.body, design: .monospaced))
+            .font(.system(size: 11, design: .monospaced))
             .scrollContentBackground(.hidden)
-            .background(PurahTheme.darkSlate.opacity(0.6))
-            .cornerRadius(8)
+            .background(palette.solidDrawerBackground)
+            .cornerRadius(6)
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(PurahTheme.mutedBorder.opacity(0.4), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
             )
-            .foregroundColor(.white)
+            .foregroundColor(palette.style == .native ? Color.primary : .white)
 
             HStack {
                 Text("自动保存 · \(store.quickNote.lastModified.formatted(date: .omitted, time: .standard))")
-                    .font(.caption2)
+                    .font(.system(size: 8))
                     .foregroundColor(.gray)
                 Spacer()
-                Text("\(store.quickNote.text.count) 字符")
-                    .font(PurahTheme.monoFont)
-                    .foregroundColor(.gray)
+                Text("\(store.quickNote.text.count) 字")
+                    .font(.system(size: 8))
+                    .foregroundColor(noteColor)
             }
         }
     }

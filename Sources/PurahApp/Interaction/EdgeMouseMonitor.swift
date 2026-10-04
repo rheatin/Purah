@@ -43,8 +43,8 @@ public final class EdgeMouseMonitor {
         velocityTracker.add(point: point, timestamp: now)
 
         let screenRect = screen.frame
-        let hasActiveDrawer = (store.activeDrawerItemId != nil)
-        let activeWidth: CGFloat = hasActiveDrawer ? 290 : 20
+        let isDrawerOpen = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
+        let activeWidth: CGFloat = isDrawerOpen ? 275 : 10
 
         let isNearLeft = point.x <= (screenRect.minX + activeWidth)
         let isNearRight = point.x >= (screenRect.maxX - activeWidth)
@@ -54,16 +54,18 @@ public final class EdgeMouseMonitor {
             dwellTracker.reset()
             store.hoveredPodId = nil
 
-            // 离开焦点就自动收回（未手动 Pin 住的事项自动缩回）
-            if store.activeDrawerItemId != nil {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.70)) {
-                    store.activeDrawerItemId = nil
-                }
+            // 离开焦点就自动收回（未手动 Pin 住的事项自动缩回并彻底释放屏幕区域）
+            if (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil) && !store.isDrawerPinned && store.pinnedDrawerItemIds.isEmpty {
+                coordinator?.dismissDrawer()
             }
             return
         }
 
-        let edge: MountEdge = isNearLeft ? .left : .right
+        // 仅在鼠标靠近边缘 10px 导轨时进行单项槽位命中计算与快速唤起
+        let isAtEdge = point.x <= (screenRect.minX + 12) || point.x >= (screenRect.maxX - 12)
+        guard isAtEdge else { return }
+
+        let edge: MountEdge = point.x <= (screenRect.minX + 12) ? .left : .right
         let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
 
         let candidatePod = store.pods.first { pod in
@@ -71,5 +73,35 @@ public final class EdgeMouseMonitor {
         }
 
         store.hoveredPodId = candidatePod?.id
+
+        if let candidate = candidatePod {
+            if candidate.id == "todo" && !store.todos.isEmpty {
+                let count = max(store.todos.count, 1)
+                let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
+                let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+                let item = store.todos[itemIdx]
+                if store.activeDrawerItemId != item.id {
+                    store.activeDrawerItemId = item.id
+                    store.activeDrawerPodId = candidate.id
+                    coordinator?.syncDrawer()
+                }
+            } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
+                let count = max(store.calendarEvents.count, 1)
+                let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
+                let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+                let item = store.calendarEvents[itemIdx]
+                if store.activeDrawerItemId != item.id {
+                    store.activeDrawerItemId = item.id
+                    store.activeDrawerPodId = candidate.id
+                    coordinator?.syncDrawer()
+                }
+            } else {
+                if store.activeDrawerPodId != candidate.id {
+                    store.activeDrawerPodId = candidate.id
+                    store.activeDrawerItemId = candidate.id
+                    coordinator?.syncDrawer()
+                }
+            }
+        }
     }
 }

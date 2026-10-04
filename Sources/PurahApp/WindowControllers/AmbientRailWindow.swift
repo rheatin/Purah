@@ -6,9 +6,17 @@ import PurahUI
 
 @MainActor
 public final class AmbientRailWindow: NSPanel {
+    public override var canBecomeKey: Bool {
+        false // 仅为常驻微光导轨，不抢焦点
+    }
+
+    public override var canBecomeMain: Bool {
+        false
+    }
+
     public init(edge: MountEdge, screen: NSScreen, store: PurahWorkspaceStore) {
         let screenRect = screen.frame
-        let railWidth: CGFloat = 280 // 容纳单项弹出的实心抽屉 (248pt) + 边缘贴合导轨 (6pt)
+        let railWidth: CGFloat = 8 // 仅占用屏幕物理黑边 8px，绝不阻挡任何其他应用程序与桌面点击
         let x = (edge == .left) ? screenRect.minX : (screenRect.maxX - railWidth)
         let frame = NSRect(x: x, y: screenRect.minY, width: railWidth, height: screenRect.height)
 
