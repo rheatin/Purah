@@ -30,7 +30,7 @@ public struct AmbientRailStripView: View {
                 .sorted { $0.range.start < $1.range.start }
 
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
-                // 挂载的每个 Pod 槽位，采用单项独立物理抽屉交互，与 Bar 高度颜色严格一体化
+                // Active slot pods mounted with modular drawer interactions
                 ForEach(edgePods) { pod in
                     let startY = pod.range.start * totalHeight
                     let podHeight = max(pod.range.length * totalHeight, 36.0)
@@ -181,7 +181,7 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "music", store: store)
 
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             WaveMeterAmbientView(
                 samples: store.musicTrack.waveformSamples,
                 isPlaying: store.musicTrack.isPlaying,
@@ -219,8 +219,6 @@ public struct AmbientRailStripView: View {
     @ViewBuilder
     private func musicDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         HStack(spacing: 12) {
-            if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-
             ZStack {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(color.opacity(0.2))
@@ -272,7 +270,7 @@ public struct AmbientRailStripView: View {
                 .buttonStyle(.plain)
             }
 
-            if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+            pinButton(id: pod.id, isPinned: isPinned, color: color)
         }
         .padding(.horizontal, 10)
         .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: max(totalHeight, 44.0))
@@ -289,7 +287,7 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "shelf", store: store)
 
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             RailBarAmbientView(type: .shelf, hasContent: !store.shelfFiles.isEmpty, color: color, barWidth: barW)
                 .frame(width: barW, height: totalHeight)
 
@@ -326,8 +324,6 @@ public struct AmbientRailStripView: View {
     private func shelfDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-
                 Image(systemName: "tray.fill")
                     .foregroundColor(color)
                     .font(.caption)
@@ -344,7 +340,7 @@ public struct AmbientRailStripView: View {
                 .buttonStyle(.bordered)
                 .font(.system(size: 9))
 
-                if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                pinButton(id: pod.id, isPinned: isPinned, color: color)
             }
 
             if store.shelfFiles.isEmpty {
@@ -413,7 +409,7 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "notes", store: store)
 
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             RailBarAmbientView(type: .notes, hasContent: !store.quickNote.text.isEmpty, color: color, barWidth: barW)
                 .frame(width: barW, height: totalHeight)
 
@@ -447,8 +443,6 @@ public struct AmbientRailStripView: View {
     private func notesDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
-
                 Image(systemName: "note.text")
                     .foregroundColor(color)
                     .font(.caption)
@@ -463,7 +457,7 @@ public struct AmbientRailStripView: View {
                     .font(.system(size: 8))
                     .foregroundColor(.gray)
 
-                if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                pinButton(id: pod.id, isPinned: isPinned, color: color)
             }
 
             TextEditor(text: Binding(
@@ -501,7 +495,7 @@ public struct AmbientRailStripView: View {
         let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
 
         let radius = min(barW / 2, 4)
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: radius)
                     .fill(color.opacity(0.25))
@@ -515,7 +509,7 @@ public struct AmbientRailStripView: View {
             .frame(width: barW, height: totalHeight)
 
             if isActive {
-                vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned)
+                vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
                     .transition(
                         .asymmetric(
                             insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
@@ -541,10 +535,9 @@ public struct AmbientRailStripView: View {
     }
 
     @ViewBuilder
-    private func vitalsDrawerCard(pod: SlotPod, color: Color, isPinned: Bool) -> some View {
+    private func vitalsDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
                 Image(systemName: "waveform.path.ecg")
                     .foregroundColor(color)
                     .font(.caption)
@@ -552,12 +545,12 @@ public struct AmbientRailStripView: View {
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                 Spacer()
-                if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                pinButton(id: pod.id, isPinned: isPinned, color: color)
             }
             HardwareVitalsDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: max(totalHeight, 155.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -572,7 +565,7 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: "scripts", store: store)
 
         let radius = min(barW / 2, 4)
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: radius)
                     .fill(color.opacity(0.85))
@@ -586,7 +579,7 @@ public struct AmbientRailStripView: View {
             .frame(width: barW, height: totalHeight)
 
             if isActive {
-                scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned)
+                scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
                     .transition(
                         .asymmetric(
                             insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
@@ -612,10 +605,9 @@ public struct AmbientRailStripView: View {
     }
 
     @ViewBuilder
-    private func scriptsDrawerCard(pod: SlotPod, color: Color, isPinned: Bool) -> some View {
+    private func scriptsDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
                 Image(systemName: "terminal.fill")
                     .foregroundColor(color)
                     .font(.caption)
@@ -623,12 +615,12 @@ public struct AmbientRailStripView: View {
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                 Spacer()
-                if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                pinButton(id: pod.id, isPinned: isPinned, color: color)
             }
             ScriptRunwayDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: max(totalHeight, 150.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -637,7 +629,7 @@ public struct AmbientRailStripView: View {
 
     private var drawerShape: UnevenRoundedRectangle {
         if edge == .right {
-            // 右轨：左侧圆角 6px，右侧严格 0 圆角与屏幕物理黑边 0 间隙熔接
+            // Right rail: 6px pill radius on the left, 0px flush against right bezel
             return UnevenRoundedRectangle(
                 topLeadingRadius: 6,
                 bottomLeadingRadius: 6,
@@ -645,7 +637,7 @@ public struct AmbientRailStripView: View {
                 topTrailingRadius: 0
             )
         } else {
-            // 左轨：右侧圆角 6px，左侧严格 0 圆角
+            // Left rail: 6px pill radius on the right, 0px flush against left bezel
             return UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
