@@ -65,11 +65,18 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
         let events = eventStore.events(matching: predicate)
 
         let mapped = events.map { ekEvent in
-            CalendarEventItem(
+            var extractedURL = ekEvent.url
+            if extractedURL == nil {
+                let textToScan = "\(ekEvent.notes ?? "") \(ekEvent.location ?? "")"
+                extractedURL = Self.extractFirstURL(from: textToScan)
+            }
+
+            return CalendarEventItem(
                 id: ekEvent.eventIdentifier ?? UUID().uuidString,
                 title: ekEvent.title ?? "未命名日程",
                 location: ekEvent.location ?? "Apple 日历",
                 calendarTitle: ekEvent.calendar?.title ?? "日历",
+                url: extractedURL,
                 startTime: ekEvent.startDate,
                 endTime: ekEvent.endDate,
                 isAllDay: ekEvent.isAllDay
@@ -84,5 +91,13 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
 
         lastSyncDate = Date()
         isSyncing = false
+    }
+
+    public static func extractFirstURL(from text: String) -> URL? {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return nil
+        }
+        let matches = detector.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
+        return matches.first?.url
     }
 }
