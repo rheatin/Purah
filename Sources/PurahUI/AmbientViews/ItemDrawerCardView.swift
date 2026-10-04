@@ -62,8 +62,6 @@ public struct TodoItemDrawerView: View {
     @ViewBuilder
     private func expandedCard(isDone: Bool, cardH: CGFloat) -> some View {
         HStack(spacing: 8) {
-            if edge == .left { pinButton }
-
             Button {
                 Task {
                     await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
@@ -91,7 +89,7 @@ public struct TodoItemDrawerView: View {
 
             Spacer(minLength: 4)
 
-            // 所属分类标签
+            // Category tag
             Text(todo.listTitle)
                 .font(.system(size: 8))
                 .padding(.horizontal, 4)
@@ -100,7 +98,7 @@ public struct TodoItemDrawerView: View {
                 .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
                 .cornerRadius(3)
 
-            if edge == .right { pinButton }
+            pinButton
         }
         .padding(.horizontal, 10)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
@@ -142,7 +140,7 @@ public struct TodoItemDrawerView: View {
 
     private var drawerShape: UnevenRoundedRectangle {
         if edge == .right {
-            // 右轨：左侧圆角 (抽屉舌头)，右侧 0 圆角 (与物理黑边 0 间隙完全贴合)
+            // Right rail: 6px radius on left, 0px flush against right bezel
             return UnevenRoundedRectangle(
                 topLeadingRadius: 6,
                 bottomLeadingRadius: 6,
@@ -150,7 +148,7 @@ public struct TodoItemDrawerView: View {
                 topTrailingRadius: 0
             )
         } else {
-            // 左轨：右侧圆角，左侧 0 圆角
+            // Left rail: 6px radius on right, 0px flush against left bezel
             return UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
@@ -235,8 +233,6 @@ public struct CalendarItemDrawerView: View {
     @ViewBuilder
     private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isAlerting: Bool) -> some View {
         HStack(spacing: 8) {
-            if edge == .left { pinButton }
-
             Rectangle()
                 .fill(podColor.opacity(isPast ? 0.35 : 1.0))
                 .frame(width: 3.5, height: max(cardH - 10, 16))
@@ -249,8 +245,6 @@ public struct CalendarItemDrawerView: View {
                         .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
                         .lineLimit(1)
 
-                    Spacer(minLength: 2)
-
                     if isOngoing {
                         Text("LIVE")
                             .font(.system(size: 8, weight: .heavy, design: .monospaced))
@@ -260,35 +254,6 @@ public struct CalendarItemDrawerView: View {
                             .foregroundColor(podColor)
                             .cornerRadius(3)
                     }
-
-                    // Link meeting action button
-                    if let url = event.url {
-                        Button {
-                            NSWorkspace.shared.open(url)
-                        } label: {
-                            HStack(spacing: 2) {
-                                Image(systemName: "video.fill")
-                                    .font(.system(size: 8))
-                                Text("Join")
-                                    .font(.system(size: 8, weight: .bold))
-                            }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(podColor.opacity(0.2))
-                            .foregroundColor(podColor)
-                            .cornerRadius(3)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Open link: \(url.absoluteString)")
-                    }
-
-                    Text(event.calendarTitle)
-                        .font(.system(size: 8))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(podColor.opacity(isPast ? 0.10 : 0.15))
-                        .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
-                        .cornerRadius(3)
                 }
 
                 Text("\(formattedTime(event: event)) · \(event.location)")
@@ -297,9 +262,38 @@ public struct CalendarItemDrawerView: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 2)
+            Spacer(minLength: 4)
 
-            if edge == .right { pinButton }
+            // Link meeting action button
+            if let url = event.url {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 8))
+                        Text("Join")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(podColor.opacity(0.2))
+                    .foregroundColor(podColor)
+                    .cornerRadius(3)
+                }
+                .buttonStyle(.plain)
+                .help("Open link: \(url.absoluteString)")
+            }
+
+            Text(event.calendarTitle)
+                .font(.system(size: 8))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(podColor.opacity(isPast ? 0.10 : 0.15))
+                .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
+                .cornerRadius(3)
+
+            pinButton
         }
         .padding(.horizontal, 10)
         .frame(width: store.effectiveDrawerWidth(for: event.title, baseWidth: 290.0), height: cardH)
