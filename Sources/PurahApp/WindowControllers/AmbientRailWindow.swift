@@ -145,8 +145,8 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         // 检查是否在活跃抽屉的真实几何纵深区域内 (覆盖展开的 340pt 宽度与高度，确保鼠标进入卡片内部稳定保活)
         if let activePod = store.activePod, activePod.edge == edge {
             let totalH = bounds.height
-            let appkitTop = totalH * (1.0 - activePod.range.start) + 40
-            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 40
+            let appkitTop = totalH * (1.0 - activePod.range.start) + 60
+            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
             let inDrawerX = (edge == .right) ? (point.x >= bounds.maxX - 340) : (point.x <= bounds.minX + 340)
             let inDrawerY = (point.y >= appkitBottom && point.y <= appkitTop)
             if inDrawerX && inDrawerY {
@@ -169,14 +169,36 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         let isPinned = store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
-        if !isPinned {
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                store.activeDrawerItemId = nil
-                store.activeDrawerPodId = nil
-                store.hoveredPodId = nil
+        guard !isPinned else { return }
+
+        // 核心保护：判断鼠标全局坐标是否依然在窗口和活跃抽屉实体范围内！
+        // 当鼠标只是从卡片底板滑入内部的“进入”链接按钮、文本输入框或音乐控制键时，绝对不能收回！
+        let mouseLoc = NSEvent.mouseLocation
+        if let win = self.window, win.frame.contains(mouseLoc) {
+            let localPoint = convert(win.convertPoint(fromScreen: mouseLoc), from: nil)
+            let barW: CGFloat = CGFloat(store.railBarWidth)
+            let isOnRail = (edge == .right) ? (localPoint.x >= bounds.maxX - barW - 6) : (localPoint.x <= bounds.minX + barW + 6)
+            if isOnRail { return }
+
+            if let activePod = store.activePod, activePod.edge == edge {
+                let totalH = bounds.height
+                let appkitTop = totalH * (1.0 - activePod.range.start) + 60
+                let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
+                let inDrawerX = (edge == .right) ? (localPoint.x >= bounds.maxX - 340) : (localPoint.x <= bounds.minX + 340)
+                let inDrawerY = (localPoint.y >= appkitBottom && localPoint.y <= appkitTop)
+                if inDrawerX && inDrawerY {
+                    // 鼠标只是进入了卡片内部的子控件（如会议链接按钮），坚决保活！
+                    return
+                }
             }
-            (self.window as? AmbientRailWindow)?.setInteractive(false)
         }
+
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+            store.activeDrawerItemId = nil
+            store.activeDrawerPodId = nil
+            store.hoveredPodId = nil
+        }
+        (self.window as? AmbientRailWindow)?.setInteractive(false)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -199,8 +221,8 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         if hasActive, let activePod = store.activePod, activePod.edge == edge {
             let totalH = bounds.height
             // 计算该 Pod 在 AppKit 坐标系（原点在左下角）下的垂直范围
-            let appkitTop = totalH * (1.0 - activePod.range.start) + 40
-            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 40
+            let appkitTop = totalH * (1.0 - activePod.range.start) + 60
+            let appkitBottom = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
             let inDrawerX: Bool
             if edge == .right {
                 inDrawerX = (point.x >= bounds.maxX - 340)
