@@ -46,7 +46,7 @@ public struct TodoItemDrawerView: View {
             // 导轨贴边基座色条（始终严丝合缝紧贴物理边缘）
             Rectangle()
                 .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                .frame(width: 8, height: cardH)
+                .frame(width: CGFloat(store.railBarWidth), height: cardH)
 
             if state == .expandedDrawer {
                 expandedCard(isDone: isDone, cardH: cardH)
@@ -103,7 +103,7 @@ public struct TodoItemDrawerView: View {
             if edge == .right { pinButton }
         }
         .padding(.horizontal, 10)
-        .frame(width: 280, height: cardH)
+        .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .contentShape(drawerShape)
@@ -218,7 +218,7 @@ public struct CalendarItemDrawerView: View {
             // 贴边基座色条（始终严丝合缝紧贴物理边缘，同色发光）
             Rectangle()
                 .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
-                .frame(width: 8, height: cardH)
+                .frame(width: CGFloat(store.railBarWidth), height: cardH)
                 .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
 
             if state == .expandedDrawer {
@@ -302,7 +302,7 @@ public struct CalendarItemDrawerView: View {
             if edge == .right { pinButton }
         }
         .padding(.horizontal, 10)
-        .frame(width: 290, height: cardH)
+        .frame(width: store.effectiveDrawerWidth(for: event.title, baseWidth: 290.0), height: cardH)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .contentShape(drawerShape)

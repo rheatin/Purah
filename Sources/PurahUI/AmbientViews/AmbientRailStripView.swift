@@ -30,12 +30,6 @@ public struct AmbientRailStripView: View {
                 .sorted { $0.range.start < $1.range.start }
 
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
-                // 轨底贴边基座：严格对齐屏幕物理最边缘 (0 间隙)
-                Rectangle()
-                    .fill(palette.railBackground.opacity(0.85))
-                    .frame(width: barW)
-                    .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-
                 // 挂载的每个 Pod 槽位，采用单项独立物理抽屉交互，与 Bar 高度颜色严格一体化
                 ForEach(edgePods) { pod in
                     let startY = pod.range.start * totalHeight
@@ -281,7 +275,7 @@ public struct AmbientRailStripView: View {
             if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
         }
         .padding(.horizontal, 10)
-        .frame(width: 290, height: max(totalHeight, 44.0))
+        .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: max(totalHeight, 44.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -405,7 +399,7 @@ public struct AmbientRailStripView: View {
             }
         }
         .padding(8)
-        .frame(width: 280, height: max(totalHeight, 130.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: max(totalHeight, 130.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -490,7 +484,7 @@ public struct AmbientRailStripView: View {
             .foregroundColor(palette.style == .native ? Color.primary : .white)
         }
         .padding(8)
-        .frame(width: 280, height: max(totalHeight, 130.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: max(totalHeight, 130.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -562,7 +556,7 @@ public struct AmbientRailStripView: View {
             HardwareVitalsDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: 280)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -632,7 +626,7 @@ public struct AmbientRailStripView: View {
             ScriptRunwayDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: 280)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
