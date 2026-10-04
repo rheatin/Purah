@@ -51,6 +51,31 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
     public var isEventGlowAlertEnabled: Bool = true
     public var isMusicWaveformAnimationEnabled: Bool = true
 
+    // 用户自定义导轨宽度 (4px ~ 16px) 与功能区色彩
+    public var railBarWidth: Double = 8.0
+    public var customPodColors: [String: String] = [:]
+
+    public func defaultColorHex(for podId: String) -> String {
+        switch podId {
+        case "calendar": return "#FF5A60" // 珊瑚红橙
+        case "todo": return "#FF9E0A"     // 活力琥珀金
+        case "music": return "#FF2D55"    // 霓虹品红
+        case "vitals": return "#00E5A3"   // 性能翠绿
+        case "shelf": return "#2ED573"    // 极客薄荷绿
+        case "notes": return "#FFD166"    // 便签金黄
+        case "scripts": return "#6C5CE7"  // 终端曜石电紫
+        default: return "#00F5D4"
+        }
+    }
+
+    public func podColorHex(for podId: String) -> String {
+        customPodColors[podId] ?? defaultColorHex(for: podId)
+    }
+
+    public func setPodColorHex(podId: String, hex: String) {
+        customPodColors[podId] = hex
+    }
+
     // 内置 Pod 业务数据
     public var calendarEvents: [CalendarEventItem] = []
     public var todos: [TodoItem] = []

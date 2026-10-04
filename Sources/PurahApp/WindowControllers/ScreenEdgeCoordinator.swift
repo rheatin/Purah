@@ -9,6 +9,12 @@ public final class ScreenEdgeCoordinator {
     private let store: PurahWorkspaceStore
     private var leftRailWindow: AmbientRailWindow?
     private var rightRailWindow: AmbientRailWindow?
+    private var activeDrawerWindow: DrawerPanelWindow?
+    private var currentDisplayedItemId: String?
+
+    public var activeDrawerFrame: NSRect? {
+        activeDrawerWindow?.frame
+    }
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
@@ -40,30 +46,59 @@ public final class ScreenEdgeCoordinator {
         rightRailWindow?.orderFront(nil)
     }
 
-    /// 严格独立控制左右侧边导轨展开状态，绝不联动推挤对侧窗口
-    public func setRailExpanded(_ isExpanded: Bool, for edge: MountEdge) {
-        if edge == .left {
-            leftRailWindow?.setExpanded(isExpanded)
-            rightRailWindow?.setExpanded(false)
-        } else {
-            rightRailWindow?.setExpanded(isExpanded)
-            leftRailWindow?.setExpanded(false)
-        }
+    public func updateRailWidths() {
+        leftRailWindow?.updateWidth()
+        rightRailWindow?.updateWidth()
     }
 
+    /// 同步并展现单项抽屉，严格单侧弹出，绝对不影响对侧
     public func syncDrawer(for edge: MountEdge? = nil) {
-        if let targetEdge = edge ?? store.activePod?.edge {
-            let hasActive = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
-            setRailExpanded(hasActive, for: targetEdge)
-        } else {
+        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
+        guard let activeId = activeId, let screen = NSScreen.screens.first ?? NSScreen.main else {
             dismissDrawer()
+            return
+        }
+
+        // 查找所属 Pod
+        let pod: SlotPod?
+        if let p = store.pods.first(where: { $0.id == activeId }) {
+            pod = p
+        } else if store.todos.contains(where: { $0.id == activeId }) {
+            pod = store.pods.first(where: { $0.id == "todo" })
+        } else if store.calendarEvents.contains(where: { $0.id == activeId }) {
+            pod = store.pods.first(where: { $0.id == "calendar" })
+        } else {
+            pod = nil
+        }
+
+        guard let pod = pod, pod.isEnabled else {
+            dismissDrawer()
+            return
+        }
+
+        if activeDrawerWindow == nil || currentDisplayedItemId != activeId {
+            activeDrawerWindow?.orderOut(nil)
+            activeDrawerWindow?.close()
+            currentDisplayedItemId = activeId
+
+            activeDrawerWindow = DrawerPanelWindow(
+                pod: pod,
+                screen: screen,
+                store: store
+            ) { [weak self] in
+                self?.dismissDrawer()
+            }
+            // 纯水平 X 轴从屏幕物理边缘向中间弹射滑入
+            activeDrawerWindow?.presentWithSpring()
         }
     }
 
     public func dismissDrawer() {
         store.activeDrawerItemId = nil
         store.activeDrawerPodId = nil
-        leftRailWindow?.setExpanded(false)
-        rightRailWindow?.setExpanded(false)
+        currentDisplayedItemId = nil
+        activeDrawerWindow?.orderOut(nil)
+        activeDrawerWindow?.close()
+        activeDrawerWindow = nil
     }
 }

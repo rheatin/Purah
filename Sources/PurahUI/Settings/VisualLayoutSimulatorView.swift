@@ -95,6 +95,74 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
+                // 导轨微光条宽度自定义 (4px ~ 16px)
+                HStack {
+                    Text("导轨微光条宽度:")
+                        .font(palette.fontMono)
+                        .foregroundColor(palette.primaryAccent)
+                    Slider(value: Binding(
+                        get: { store.railBarWidth },
+                        set: { store.railBarWidth = $0 }
+                    ), in: 4.0...16.0, step: 1.0)
+                    Text("\(Int(store.railBarWidth)) px")
+                        .font(palette.fontMono)
+                        .foregroundColor(.gray)
+                        .frame(width: 45)
+                }
+                .padding(.horizontal, 4)
+
+                // 各功能专属色彩自定义
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("各功能槽位专属色彩自定义:")
+                            .font(palette.fontMono)
+                            .foregroundColor(palette.primaryAccent)
+                        Spacer()
+                        Button("恢复默认色彩") {
+                            store.customPodColors.removeAll()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                    }
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 6) {
+                        ForEach(store.pods) { pod in
+                            HStack(spacing: 6) {
+                                Image(systemName: pod.systemIcon)
+                                    .font(.caption2)
+                                    .foregroundColor(palette.podColor(for: pod.id, store: store))
+
+                                Text(pod.name)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+
+                                Spacer()
+
+                                ColorPicker("", selection: Binding(
+                                    get: { palette.podColor(for: pod.id, store: store) },
+                                    set: { newColor in
+                                        if let hex = newColor.toHex() {
+                                            store.setPodColorHex(podId: pod.id, hex: hex)
+                                        }
+                                    }
+                                ))
+                                .labelsHidden()
+                                .scaleEffect(0.8)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(palette.surfaceBackground)
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.podColor(for: pod.id, store: store).opacity(0.4), lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+
                 // 模块启用与挂载装配区 (Pod Module Selection & Activation)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
