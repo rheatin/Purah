@@ -1,5 +1,6 @@
 // Sources/PurahUI/AmbientViews/AmbientRailStripView.swift
 import SwiftUI
+import AppKit
 import PurahCore
 
 public struct AmbientRailStripView: View {
@@ -97,6 +98,7 @@ public struct AmbientRailStripView: View {
                                 }
                             }
                         )
+                        .contentShape(Rectangle())
                         .onHover { isHovered in
                             if isHovered {
                                 withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
@@ -157,6 +159,7 @@ public struct AmbientRailStripView: View {
                                 }
                             }
                         )
+                        .contentShape(Rectangle())
                         .onHover { isHovered in
                             if isHovered {
                                 withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
@@ -231,36 +234,43 @@ public struct AmbientRailStripView: View {
                         .stroke(color, lineWidth: 1.5)
                 )
                 .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if !isHovered && !isPinned {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = nil
+                        }
+                    }
+                }
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
                     removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
                 ))
             } else {
-                // 贴边微光律动
-                ZStack(alignment: edge == .left ? .leading : .trailing) {
-                    WaveMeterAmbientView(samples: store.musicTrack.waveformSamples, isPlaying: store.musicTrack.isPlaying)
-                        .frame(width: 6, height: totalHeight)
+                // 仅对贴边 8px 导轨区域响应悬停，绝不占用屏幕空白
+                WaveMeterAmbientView(
+                    samples: store.musicTrack.waveformSamples,
+                    isPlaying: store.musicTrack.isPlaying,
+                    isAnimated: store.isMusicWaveformAnimationEnabled
+                )
+                .frame(width: 8, height: totalHeight)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = pod.id
+                            store.hoveredPodId = pod.id
+                        }
+                    }
                 }
             }
 
             if edge == .left { Spacer(minLength: 0) }
         }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                }
-            } else if store.activeDrawerItemId == pod.id && !isPinned {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = nil
-                }
-            }
-        }
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
     }
 
-    // MARK: - Shelf 单项抽屉 (实心弹出暂存架小窗，专属极客薄荷绿)
+    // MARK: - Shelf 单项抽屉 (实心弹出暂存架小窗，完全支持添加/删除/查看文件)
     @ViewBuilder
     private func shelfPodItem(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let isPinned = store.isItemPinned(id: pod.id)
@@ -271,28 +281,88 @@ public struct AmbientRailStripView: View {
             if edge == .right { Spacer(minLength: 0) }
 
             if isActive {
-                HStack(spacing: 8) {
-                    if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
 
-                    Image(systemName: "tray.fill")
-                        .foregroundColor(color)
-                        .font(.caption)
+                        Image(systemName: "tray.fill")
+                            .foregroundColor(color)
+                            .font(.caption)
 
-                    VStack(alignment: .leading, spacing: 2) {
                         Text("临时暂存架")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        Text("\(store.shelfFiles.count) 个暂存文件")
-                            .font(.system(size: 9))
-                            .foregroundColor(.gray)
+
+                        Spacer()
+
+                        Button("+ 暂存") {
+                            selectFilesToStash()
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.system(size: 9))
+
+                        if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
                     }
 
-                    Spacer()
+                    if store.shelfFiles.isEmpty {
+                        Text("点击上方或拖拽文件至此暂存")
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 10)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(spacing: 4) {
+                                ForEach(store.shelfFiles) { file in
+                                    HStack(spacing: 6) {
+                                        Image(systemName: fileIcon(for: file.fileExtension))
+                                            .foregroundColor(color)
+                                            .font(.caption2)
 
-                    if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(file.name)
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                                .lineLimit(1)
+                                            Text(file.sizeDescription)
+                                                .font(.system(size: 8))
+                                                .foregroundColor(.gray)
+                                        }
+
+                                        Spacer()
+
+                                        if let path = file.filePath {
+                                            Button {
+                                                NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                                            } label: {
+                                                Image(systemName: "magnifyingglass")
+                                                    .font(.system(size: 9))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .help("在访达中显示")
+                                        }
+
+                                        Button {
+                                            store.shelfFiles.removeAll { $0.id == file.id }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 8))
+                                                .foregroundColor(.gray)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 4)
+                                    .background(palette.surfaceBackground.opacity(0.8))
+                                    .cornerRadius(4)
+                                }
+                            }
+                        }
+                    }
                 }
-                .padding(.horizontal, 10)
-                .frame(width: 252, height: max(totalHeight, 38.0))
+                .padding(8)
+                .frame(width: 252, height: max(totalHeight, 140.0))
                 .background(palette.solidDrawerBackground)
                 .cornerRadius(6)
                 .overlay(
@@ -300,33 +370,39 @@ public struct AmbientRailStripView: View {
                         .stroke(color, lineWidth: 1.5)
                 )
                 .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if !isHovered && !isPinned {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = nil
+                        }
+                    }
+                }
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
                     removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
                 ))
             } else {
+                // 仅对贴边 8px 导轨区域响应悬停，绝不占用屏幕空白
                 GhostDotAmbientView(hasContent: !store.shelfFiles.isEmpty)
-                    .frame(width: 6, height: totalHeight)
+                    .frame(width: 8, height: totalHeight)
+                    .contentShape(Rectangle())
+                    .onHover { isHovered in
+                        if isHovered {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                                store.activeDrawerItemId = pod.id
+                                store.hoveredPodId = pod.id
+                            }
+                        }
+                    }
             }
 
             if edge == .left { Spacer(minLength: 0) }
         }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                }
-            } else if store.activeDrawerItemId == pod.id && !isPinned {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = nil
-                }
-            }
-        }
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
     }
 
-    // MARK: - Notes 单项抽屉 (实心弹出便签小窗，专属暖阳金黄)
+    // MARK: - Notes 单项抽屉 (实心弹出便签小窗，完全支持自由打字编辑)
     @ViewBuilder
     private func notesPodItem(pod: SlotPod, totalHeight: CGFloat) -> some View {
         let isPinned = store.isItemPinned(id: pod.id)
@@ -337,29 +413,46 @@ public struct AmbientRailStripView: View {
             if edge == .right { Spacer(minLength: 0) }
 
             if isActive {
-                HStack(spacing: 8) {
-                    if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        if edge == .left { pinButton(id: pod.id, isPinned: isPinned, color: color) }
 
-                    Image(systemName: "note.text")
-                        .foregroundColor(color)
-                        .font(.caption)
+                        Image(systemName: "note.text")
+                            .foregroundColor(color)
+                            .font(.caption)
 
-                    VStack(alignment: .leading, spacing: 2) {
                         Text("灵感便签")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        Text(store.quickNote.text.prefix(22))
-                            .font(.system(size: 9))
+
+                        Spacer()
+
+                        Text("\(store.quickNote.text.count) 字")
+                            .font(.system(size: 8))
                             .foregroundColor(.gray)
-                            .lineLimit(1)
+
+                        if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
                     }
 
-                    Spacer()
-
-                    if edge == .right { pinButton(id: pod.id, isPinned: isPinned, color: color) }
+                    TextEditor(text: Binding(
+                        get: { store.quickNote.text },
+                        set: {
+                            store.quickNote.text = $0
+                            store.quickNote.lastModified = Date()
+                        }
+                    ))
+                    .font(.system(size: 11, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .background(palette.background.opacity(0.8))
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                    )
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
                 }
-                .padding(.horizontal, 10)
-                .frame(width: 252, height: max(totalHeight, 38.0))
+                .padding(8)
+                .frame(width: 252, height: max(totalHeight, 140.0))
                 .background(palette.solidDrawerBackground)
                 .cornerRadius(6)
                 .overlay(
@@ -367,28 +460,34 @@ public struct AmbientRailStripView: View {
                         .stroke(color, lineWidth: 1.5)
                 )
                 .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if !isHovered && !isPinned {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                            store.activeDrawerItemId = nil
+                        }
+                    }
+                }
                 .transition(.asymmetric(
                     insertion: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity),
                     removal: .move(edge: edge == .left ? .leading : .trailing).combined(with: .opacity)
                 ))
             } else {
+                // 仅对贴边 8px 导轨区域响应悬停，绝不占用屏幕空白
                 GhostDotAmbientView(hasContent: !store.quickNote.text.isEmpty)
-                    .frame(width: 6, height: totalHeight)
+                    .frame(width: 8, height: totalHeight)
+                    .contentShape(Rectangle())
+                    .onHover { isHovered in
+                        if isHovered {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                                store.activeDrawerItemId = pod.id
+                                store.hoveredPodId = pod.id
+                            }
+                        }
+                    }
             }
 
             if edge == .left { Spacer(minLength: 0) }
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                }
-            } else if store.activeDrawerItemId == pod.id && !isPinned {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = nil
-                }
-            }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
     }
@@ -414,5 +513,33 @@ public struct AmbientRailStripView: View {
         }
         .buttonStyle(.plain)
         .help(isPinned ? "已固定 (点击取消)" : "固定此小窗常驻")
+    }
+
+    private func fileIcon(for ext: String) -> String {
+        switch ext.lowercased() {
+        case "pdf": return "doc.text.fill"
+        case "png", "jpg", "jpeg", "heic": return "photo.fill"
+        case "zip", "tar", "gz": return "archivebox.fill"
+        default: return "doc.fill"
+        }
+    }
+
+    private func selectFilesToStash() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.begin { response in
+            if response == .OK {
+                for url in panel.urls {
+                    let name = url.lastPathComponent
+                    let ext = url.pathExtension
+                    let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
+                    let size = (attr?[.size] as? Int64) ?? 0
+                    let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+                    store.shelfFiles.append(ShelfFileItem(name: name, sizeDescription: sizeDesc, fileExtension: ext, filePath: url.path))
+                }
+            }
+        }
     }
 }
