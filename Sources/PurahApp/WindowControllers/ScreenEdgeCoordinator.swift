@@ -9,12 +9,6 @@ public final class ScreenEdgeCoordinator {
     private let store: PurahWorkspaceStore
     private var leftRailWindow: AmbientRailWindow?
     private var rightRailWindow: AmbientRailWindow?
-    private var activeDrawerWindow: DrawerPanelWindow?
-    private var currentDisplayedItemId: String?
-
-    public var activeDrawerFrame: NSRect? {
-        activeDrawerWindow?.frame
-    }
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
@@ -35,7 +29,8 @@ public final class ScreenEdgeCoordinator {
     }
 
     public func rebuildWindows() {
-        guard let screen = NSScreen.screens.first ?? NSScreen.main else { return }
+        // 优先使用当前用户活跃屏幕 NSScreen.main
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         leftRailWindow?.close()
         rightRailWindow?.close()
 
@@ -51,54 +46,14 @@ public final class ScreenEdgeCoordinator {
         rightRailWindow?.updateWidth()
     }
 
-    /// 同步并展现单项抽屉，严格单侧弹出，绝对不影响对侧
+    /// 同步并展现单项抽屉：完全由 AmbientRailStripView 在同窗口内 0 间隙弹簧滑出，绝不创建多余浮动子窗口
     public func syncDrawer(for edge: MountEdge? = nil) {
-        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
-        guard let activeId = activeId, let screen = NSScreen.screens.first ?? NSScreen.main else {
-            dismissDrawer()
-            return
-        }
-
-        // 查找所属 Pod
-        let pod: SlotPod?
-        if let p = store.pods.first(where: { $0.id == activeId }) {
-            pod = p
-        } else if store.todos.contains(where: { $0.id == activeId }) {
-            pod = store.pods.first(where: { $0.id == "todo" })
-        } else if store.calendarEvents.contains(where: { $0.id == activeId }) {
-            pod = store.pods.first(where: { $0.id == "calendar" })
-        } else {
-            pod = nil
-        }
-
-        guard let pod = pod, pod.isEnabled else {
-            dismissDrawer()
-            return
-        }
-
-        if activeDrawerWindow == nil || currentDisplayedItemId != activeId {
-            activeDrawerWindow?.orderOut(nil)
-            activeDrawerWindow?.close()
-            currentDisplayedItemId = activeId
-
-            activeDrawerWindow = DrawerPanelWindow(
-                pod: pod,
-                screen: screen,
-                store: store
-            ) { [weak self] in
-                self?.dismissDrawer()
-            }
-            // 纯水平 X 轴从屏幕物理边缘向中间弹射滑入
-            activeDrawerWindow?.presentWithSpring()
-        }
+        // 状态由 store 响应式驱动，单画布架构彻底杜绝重复 view
     }
 
     public func dismissDrawer() {
         store.activeDrawerItemId = nil
         store.activeDrawerPodId = nil
-        currentDisplayedItemId = nil
-        activeDrawerWindow?.orderOut(nil)
-        activeDrawerWindow?.close()
-        activeDrawerWindow = nil
+        store.hoveredPodId = nil
     }
 }
