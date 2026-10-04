@@ -126,6 +126,10 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true // Dispatch first click directly to controls and text inputs in accessory background app
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let existing = trackingArea {
