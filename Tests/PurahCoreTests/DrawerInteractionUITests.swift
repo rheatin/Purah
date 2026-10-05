@@ -354,4 +354,34 @@ struct DrawerInteractionUITests {
         let speed = sqrt(vel.x * vel.x + vel.y * vel.y)
         #expect(speed > 900.0, "Rapid swipe should register as high-speed fling to prevent accidental drawer explosion")
     }
+
+    @Test("FluidWaveformScrubber initializes and triggers seek callback accurately")
+    @MainActor
+    func testFluidWaveformScrubberSeek() {
+        var soughtProgress: Double?
+        var scrubbingState: (Bool, Double)?
+
+        let scrubber = FluidWaveformScrubber(
+            progress: 0.35,
+            isPlaying: true,
+            color: .pink,
+            samples: [0.2, 0.5, 0.8],
+            onScrubChange: { dragging, prog in
+                scrubbingState = (dragging, prog)
+            },
+            onSeek: { prog in
+                soughtProgress = prog
+            }
+        )
+
+        #expect(scrubber.progress == 0.35)
+        #expect(scrubber.isPlaying == true)
+
+        scrubber.onScrubChange(true, 0.60)
+        #expect(scrubbingState?.0 == true)
+        #expect(scrubbingState?.1 == 0.60)
+
+        scrubber.onSeek(0.80)
+        #expect(soughtProgress == 0.80)
+    }
 }
