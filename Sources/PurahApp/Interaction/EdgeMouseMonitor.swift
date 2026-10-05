@@ -54,12 +54,14 @@ public final class EdgeMouseMonitor {
             dwellTracker.reset()
             store.hoveredPodId = nil
 
-            if (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil) && !store.isDrawerPinned && store.pinnedDrawerItemIds.isEmpty {
+            let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
+                                        (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
+                                        store.isDrawerPinned
+            if !isCurrentActivePinned {
                 coordinator?.dismissDrawer()
-            } else {
-                coordinator?.setInteractive(false, for: .left)
-                coordinator?.setInteractive(false, for: .right)
             }
+            coordinator?.setInteractive(false, for: .left)
+            coordinator?.setInteractive(false, for: .right)
             return
         }
 

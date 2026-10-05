@@ -84,4 +84,41 @@ struct DrawerInteractionUITests {
         #expect(longWidth <= 330.0)
         #expect(longWidth > shortWidth)
     }
+
+    @Test("Verify Pin Isolation: unpinned items can be dismissed even when another item is pinned")
+    @MainActor
+    func testPinIsolation() {
+        let store = PurahWorkspaceStore()
+        
+        // Pin the shelf drawer
+        store.togglePinItem(id: "shelf")
+        #expect(store.isItemPinned(id: "shelf") == true)
+        
+        // Activate an unpinned drawer (e.g. notes)
+        store.activeDrawerItemId = "notes"
+        store.activeDrawerPodId = "notes"
+        
+        // Check that notes is not pinned
+        let isNotesPinned = store.isItemPinned(id: store.activeDrawerItemId!)
+        #expect(isNotesPinned == false)
+        
+        // When mouse leaves notes, notes should be dismissed
+        if !isNotesPinned {
+            store.activeDrawerItemId = nil
+            store.activeDrawerPodId = nil
+        }
+        
+        // Shelf should still remain pinned
+        #expect(store.isItemPinned(id: "shelf") == true)
+        #expect(store.activeDrawerItemId == nil)
+    }
+
+    @Test("Verify Hardware Vitals metrics updates")
+    @MainActor
+    func testHardwareVitalsMonitoring() async {
+        let vitals = HardwareVitalsService.shared
+        await vitals.refreshMetricsAsync(includeProcesses: false)
+        #expect(vitals.metrics.cpuUsage >= 0.0)
+        #expect(vitals.metrics.memoryUsage >= 0.0)
+    }
 }

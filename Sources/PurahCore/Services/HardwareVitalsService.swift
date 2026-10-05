@@ -48,10 +48,12 @@ public final class HardwareVitalsService: @unchecked Sendable {
     private var previousCpuInfoCount: mach_msg_type_number_t = 0
 
     public init() {
-        // 关键修复：构造函数内绝不执行阻塞性或子进程操作，避免主线程加载阻塞或断点信号拦截
         Task.detached(priority: .utility) { [weak self] in
-            await self?.refreshMetricsAsync()
+            await self?.refreshMetricsAsync(includeProcesses: false)
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            await self?.refreshMetricsAsync(includeProcesses: false)
         }
+        startMonitoring(interval: 2.0)
     }
 
     public func startMonitoring(interval: TimeInterval = 3.0) {
