@@ -355,34 +355,18 @@ struct DrawerInteractionUITests {
         #expect(speed > 900.0, "Rapid swipe should register as high-speed fling to prevent accidental drawer explosion")
     }
 
-    @Test("FluidWaveformScrubber initializes and triggers seek callback accurately")
+    @Test("Music seek callback updates track position and progress")
     @MainActor
-    func testFluidWaveformScrubberSeek() {
-        var soughtProgress: Double?
-        var scrubbingState: (Bool, Double)?
+    func testMusicSeekCallback() {
+        let store = PurahWorkspaceStore()
+        store.musicTrack.durationSeconds = 200.0
+        SystemMusicSyncService.shared.seek(to: 0.50, store: store)
+        #expect(store.musicTrack.playbackProgress == 0.50)
+        #expect(store.musicTrack.currentPositionSeconds == 100.0)
 
-        let scrubber = FluidWaveformScrubber(
-            progress: 0.35,
-            isPlaying: true,
-            color: .pink,
-            samples: [0.2, 0.5, 0.8],
-            onScrubChange: { dragging, prog in
-                scrubbingState = (dragging, prog)
-            },
-            onSeek: { prog in
-                soughtProgress = prog
-            }
-        )
-
-        #expect(scrubber.progress == 0.35)
-        #expect(scrubber.isPlaying == true)
-
-        scrubber.onScrubChange(true, 0.60)
-        #expect(scrubbingState?.0 == true)
-        #expect(scrubbingState?.1 == 0.60)
-
-        scrubber.onSeek(0.80)
-        #expect(soughtProgress == 0.80)
+        SystemMusicSyncService.shared.seek(to: 0.80, store: store)
+        #expect(store.musicTrack.playbackProgress == 0.80)
+        #expect(store.musicTrack.currentPositionSeconds == 160.0)
     }
 
     @Test("Right rail unpinned drawer retracts independently when left rail or other items are pinned")

@@ -201,18 +201,13 @@ public struct AmbientRailStripView: View {
 
             if isActive {
                 musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(drawerTransition)
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder
@@ -253,18 +248,13 @@ public struct AmbientRailStripView: View {
 
             if isActive {
                 shelfDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(drawerTransition)
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder
@@ -373,18 +363,13 @@ public struct AmbientRailStripView: View {
 
             if isActive {
                 notesDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(drawerTransition)
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder
@@ -470,18 +455,13 @@ public struct AmbientRailStripView: View {
 
             if isActive {
                 vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(drawerTransition)
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: slotH, alignment: .top)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder
@@ -535,18 +515,13 @@ public struct AmbientRailStripView: View {
 
             if isActive {
                 scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                        )
-                    )
+                    .transition(drawerTransition)
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: slotH, alignment: .top)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder
@@ -594,15 +569,10 @@ public struct AmbientRailStripView: View {
     }
 
     private var drawerTransition: AnyTransition {
-        let anchor: UnitPoint = (edge == .right) ? .trailing : .leading
-        let offsetDistance: CGFloat = (edge == .right) ? 26 : -26
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
         return .asymmetric(
-            insertion: .opacity
-                .combined(with: .scale(scale: 0.92, anchor: anchor))
-                .combined(with: .offset(x: offsetDistance)),
-            removal: .opacity
-                .combined(with: .scale(scale: 0.95, anchor: anchor))
-                .combined(with: .offset(x: offsetDistance * 0.70))
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
         )
     }
 
@@ -626,14 +596,14 @@ public struct AmbientRailStripView: View {
             palette: palette,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.76)) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                     store.activeDrawerItemId = pod.id
                     store.activeDrawerPodId = pod.id
                     store.hoveredPodId = pod.id
                 }
             },
             requestDismiss: {
-                withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
                     if store.activeDrawerItemId == pod.id {
                         store.activeDrawerItemId = nil
                     }
