@@ -5,12 +5,30 @@ import Foundation
 
 @Suite("Hardware Vitals and Script Runway Tests")
 struct VitalsAndScriptTests {
-    @Test("Hardware Vitals reads CPU and Memory load accurately")
+    @Test("Hardware Vitals reads CPU, Memory, Disk, Power and Thermal accurately")
     func testHardwareVitals() {
         let service = HardwareVitalsService.shared
-        service.refreshMetrics()
-        #expect(service.metrics.cpuUsage >= 0.0 && service.metrics.cpuUsage <= 1.0)
-        #expect(service.metrics.memoryUsage >= 0.0 && service.metrics.memoryUsage <= 1.0)
+        service.refreshMetrics(includeProcesses: true)
+        let metrics = service.metrics
+
+        #expect(metrics.cpuUsage >= 0.0 && metrics.cpuUsage <= 1.0)
+        #expect(metrics.memoryUsage >= 0.0 && metrics.memoryUsage <= 1.0)
+        #expect(metrics.memoryUsedGB >= 0.0)
+        #expect(metrics.memoryTotalGB > 0.0)
+        #expect(metrics.diskFreeGB >= 0.0)
+        #expect(metrics.diskTotalGB > 0.0)
+        #expect(metrics.batteryLevel >= 0 && metrics.batteryLevel <= 100)
+        #expect(!metrics.powerSource.isEmpty)
+        #expect(!metrics.thermalStateDescription.isEmpty)
+    }
+
+    @Test("Hardware Vitals async refresh works correctly")
+    func testHardwareVitalsAsync() async {
+        let service = HardwareVitalsService.shared
+        await service.refreshMetricsAsync(includeProcesses: true)
+        let metrics = service.metrics
+        #expect(metrics.diskTotalGB > 0.0)
+        #expect(metrics.memoryTotalGB > 0.0)
     }
 
     @Test("Script Runway defines default maintenance actions")
