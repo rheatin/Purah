@@ -211,7 +211,7 @@ public struct HardwareVitalsDrawerView: View {
                                         .foregroundColor(palette.dangerAccent)
                                         .cornerRadius(4)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.tactile)
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)

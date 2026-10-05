@@ -600,6 +600,19 @@ public struct AmbientRailStripView: View {
         }
     }
 
+    private var drawerTransition: AnyTransition {
+        let anchor: UnitPoint = (edge == .right) ? .trailing : .leading
+        let offsetDistance: CGFloat = (edge == .right) ? 26 : -26
+        return .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 0.92, anchor: anchor))
+                .combined(with: .offset(x: offsetDistance)),
+            removal: .opacity
+                .combined(with: .scale(scale: 0.95, anchor: anchor))
+                .combined(with: .offset(x: offsetDistance * 0.70))
+        )
+    }
+
     // MARK: - Plugin Pod Rendering
     @ViewBuilder
     private func renderPluginPod(plugin: any PurahPodPlugin, pod: SlotPod, totalHeight: CGFloat) -> some View {
@@ -620,14 +633,14 @@ public struct AmbientRailStripView: View {
             palette: palette,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.76)) {
                     store.activeDrawerItemId = pod.id
                     store.activeDrawerPodId = pod.id
                     store.hoveredPodId = pod.id
                 }
             },
             requestDismiss: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
                     if store.activeDrawerItemId == pod.id {
                         store.activeDrawerItemId = nil
                     }
@@ -637,7 +650,7 @@ public struct AmbientRailStripView: View {
                 }
             },
             togglePin: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
                     store.togglePinItem(id: pod.id)
                 }
             }
@@ -656,27 +669,17 @@ public struct AmbientRailStripView: View {
             if isActive {
                 if pod.id == "music" {
                     musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
-                        )
+                        .transition(drawerTransition)
                 } else {
                     pluginDrawerCard(plugin: plugin, pod: pod, context: context, totalHeight: slotH)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
-                            )
-                        )
+                        .transition(drawerTransition)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: slotH, alignment: .top)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+        .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder
@@ -715,14 +718,16 @@ public struct AmbientRailStripView: View {
 
     private func pinButton(id: String, isPinned: Bool, color: Color) -> some View {
         Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
                 store.togglePinItem(id: id)
             }
         } label: {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .foregroundColor(isPinned ? color : .gray)
                 .font(.system(size: 11))
-                .scaleEffect(isPinned ? 1.2 : 1.0)
+                .rotationEffect(.degrees(isPinned ? -25 : 0))
+                .scaleEffect(isPinned ? 1.18 : 1.0)
+                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
         }
         .buttonStyle(.plain)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")

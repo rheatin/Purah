@@ -50,13 +50,35 @@ public struct TodoItemDrawerView: View {
 
             if state == .expandedDrawer {
                 expandedCard(isDone: isDone, cardH: cardH)
-                    .transition(.opacity.combined(with: .move(edge: edge == .right ? .trailing : .leading)))
+                    .transition(itemDrawerTransition)
             } else if state == .neighborPeek {
                 neighborPeekCard(isDone: isDone, cardH: cardH)
-                    .transition(.opacity)
+                    .transition(neighborPeekTransition)
             }
         }
         .frame(height: cardH)
+        .animation(.spring(response: 0.26, dampingFraction: 0.78), value: state)
+    }
+
+    private var itemDrawerTransition: AnyTransition {
+        let anchor: UnitPoint = (edge == .right) ? .trailing : .leading
+        let offsetDistance: CGFloat = (edge == .right) ? 20 : -20
+        return .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 0.94, anchor: anchor))
+                .combined(with: .offset(x: offsetDistance)),
+            removal: .opacity
+                .combined(with: .scale(scale: 0.96, anchor: anchor))
+                .combined(with: .offset(x: offsetDistance * 0.70))
+        )
+    }
+
+    private var neighborPeekTransition: AnyTransition {
+        let offsetDistance: CGFloat = (edge == .right) ? 10 : -10
+        return .asymmetric(
+            insertion: .opacity.combined(with: .offset(x: offsetDistance)),
+            removal: .opacity.combined(with: .offset(x: offsetDistance * 0.6))
+        )
     }
 
     @ViewBuilder
@@ -168,11 +190,17 @@ public struct TodoItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        Button(action: onTogglePin) {
+        Button {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                onTogglePin()
+            }
+        } label: {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .foregroundColor(isPinned ? podColor : .gray)
                 .font(.system(size: 11))
-                .scaleEffect(isPinned ? 1.2 : 1.0)
+                .rotationEffect(.degrees(isPinned ? -25 : 0))
+                .scaleEffect(isPinned ? 1.18 : 1.0)
+                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
         }
         .buttonStyle(.plain)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
@@ -230,13 +258,35 @@ public struct CalendarItemDrawerView: View {
 
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isAlerting: isAlerting)
-                    .transition(.opacity.combined(with: .move(edge: edge == .right ? .trailing : .leading)))
+                    .transition(itemDrawerTransition)
             } else if state == .neighborPeek {
                 neighborPeekCard(cardH: cardH, isPast: isPast)
-                    .transition(.opacity)
+                    .transition(neighborPeekTransition)
             }
         }
         .frame(height: cardH)
+        .animation(.spring(response: 0.26, dampingFraction: 0.78), value: state)
+    }
+
+    private var itemDrawerTransition: AnyTransition {
+        let anchor: UnitPoint = (edge == .right) ? .trailing : .leading
+        let offsetDistance: CGFloat = (edge == .right) ? 20 : -20
+        return .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 0.94, anchor: anchor))
+                .combined(with: .offset(x: offsetDistance)),
+            removal: .opacity
+                .combined(with: .scale(scale: 0.96, anchor: anchor))
+                .combined(with: .offset(x: offsetDistance * 0.70))
+        )
+    }
+
+    private var neighborPeekTransition: AnyTransition {
+        let offsetDistance: CGFloat = (edge == .right) ? 10 : -10
+        return .asymmetric(
+            insertion: .opacity.combined(with: .offset(x: offsetDistance)),
+            removal: .opacity.combined(with: .offset(x: offsetDistance * 0.6))
+        )
     }
 
     @ViewBuilder
@@ -300,7 +350,7 @@ public struct CalendarItemDrawerView: View {
                     .foregroundColor(podColor)
                     .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .help("Open link: \(url.absoluteString)")
             }
 
@@ -376,11 +426,17 @@ public struct CalendarItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        Button(action: onTogglePin) {
+        Button {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                onTogglePin()
+            }
+        } label: {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .foregroundColor(isPinned ? podColor : .gray)
                 .font(.system(size: 11))
-                .scaleEffect(isPinned ? 1.2 : 1.0)
+                .rotationEffect(.degrees(isPinned ? -25 : 0))
+                .scaleEffect(isPinned ? 1.18 : 1.0)
+                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
         }
         .buttonStyle(.plain)
     }
