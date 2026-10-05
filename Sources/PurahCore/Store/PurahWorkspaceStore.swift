@@ -37,6 +37,16 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         pinnedDrawerItemIds.contains(id)
     }
 
+    public func hasPinnedItem(on edge: MountEdge) -> Bool {
+        if isDrawerPinned { return true }
+        for pod in pods where pod.edge == edge && pod.isEnabled {
+            if isItemPinned(id: pod.id) { return true }
+            if pod.id == "todo" && todos.contains(where: { isItemPinned(id: $0.id) }) { return true }
+            if pod.id == "calendar" && calendarEvents.contains(where: { isItemPinned(id: $0.id) }) { return true }
+        }
+        return false
+    }
+
     public func pod(forItemId id: String) -> SlotPod? {
         if let p = pods.first(where: { $0.id == id }) {
             return p

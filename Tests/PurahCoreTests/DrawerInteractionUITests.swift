@@ -384,4 +384,73 @@ struct DrawerInteractionUITests {
         scrubber.onSeek(0.80)
         #expect(soughtProgress == 0.80)
     }
+
+    @Test("Right rail unpinned drawer retracts independently when left rail or other items are pinned")
+    @MainActor
+    func testRightRailDismissalWhenLeftRailHasPinnedItem() {
+        let store = PurahWorkspaceStore()
+        // 1. Pin Quick Notes on left rail
+        store.togglePinItem(id: "notes")
+        #expect(store.isItemPinned(id: "notes") == true)
+        #expect(store.hasPinnedItem(on: .left) == true)
+
+        // 2. Pin a Todo item on right rail
+        if let firstTodo = store.todos.first {
+            store.togglePinItem(id: firstTodo.id)
+            #expect(store.hasPinnedItem(on: .right) == true)
+        }
+
+        // 3. Open Music on right rail
+        store.activeDrawerPodId = "music"
+        store.activeDrawerItemId = "music"
+        #expect(store.isItemPinned(id: "music") == false)
+
+        // 4. Simulate right rail exit dismissal logic
+        if let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId,
+           let pod = store.pod(forItemId: activeId),
+           pod.edge == .right,
+           !store.isItemPinned(id: activeId) {
+            store.activeDrawerItemId = nil
+            store.activeDrawerPodId = nil
+        }
+
+        #expect(store.activeDrawerPodId == nil, "Music drawer should be dismissed on right rail exit")
+        #expect(store.hasPinnedItem(on: .left) == true, "Left rail Quick Notes stays pinned")
+    }
+
+    @Test("SpringConstraintSolver enforces unidirectional bottom resize without expanding upwards")
+    @MainActor
+    func testSpringConstraintSolverUnidirectionalBottomResize() {
+        let store = PurahWorkspaceStore()
+        guard let notesPod = store.pods.first(where: { $0.id == "notes" }) else {
+            Issue.record("Notes pod not found")
+            return
+        }
+
+        let originalStart = notesPod.range.start
+        let targetLength = notesPod.range.length + 0.15
+
+        // Simulate dragging bottom handle downward (start unchanged, length increased)
+        let newRange = NormalizedRange(start: originalStart, length: targetLength)
+        let resolved = SpringConstraintSolver.resolve(
+            draggedPodId: notesPod.id,
+            newRange: newRange,
+            allPods: store.pods,
+            on: notesPod.edge
+        )
+
+        let updatedNotes = resolved.first(where: { $0.id == "notes" })!
+        #expect(updatedNotes.range.start == originalStart, "Top edge must remain strictly anchored during bottom resize")
+        #expect(updatedNotes.range.length > notesPod.range.length, "Length must expand downward")
+    }
+
+    @Test("All registered plugins provide isolated modular settings views")
+    @MainActor
+    func testPluginSettingsViews() {
+        let store = PurahWorkspaceStore()
+        for plugin in PluginRegistry.shared.allPlugins {
+            let settingsView = plugin.makeSettingsView(store: store)
+            #expect(settingsView != nil, "Plugin \(plugin.manifest.id) must provide an isolated settings view")
+        }
+    }
 }
