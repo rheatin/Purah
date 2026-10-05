@@ -492,22 +492,33 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: "vitals", store: store)
         let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
 
+        let slotH = max(totalHeight, 145.0)
         let radius = min(barW / 2, 4)
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: radius)
                     .fill(color.opacity(0.25))
-                    .frame(width: barW, height: totalHeight)
+                    .frame(width: barW, height: slotH)
 
                 RoundedRectangle(cornerRadius: radius)
                     .fill(color)
-                    .frame(width: barW, height: max(totalHeight * CGFloat(cpu), 4.0))
+                    .frame(width: barW, height: max(slotH * CGFloat(cpu), 4.0))
                     .modifier(OptionalGlow(color: color, enabled: isPulsing))
             }
-            .frame(width: barW, height: totalHeight)
+            .frame(width: barW, height: slotH)
+            .contentShape(Rectangle())
+            .onHover { isHovered in
+                if isHovered {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                        store.activeDrawerItemId = pod.id
+                        store.activeDrawerPodId = pod.id
+                        store.hoveredPodId = pod.id
+                    }
+                }
+            }
 
             if isActive {
-                vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
+                vitalsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
                     .transition(
                         .asymmetric(
                             insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
@@ -516,18 +527,8 @@ public struct AmbientRailStripView: View {
                     )
             }
         }
-        .contentShape(Rectangle())
-        .onHover { isHovered in
-            if isHovered {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
-                }
-            }
-        }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-        .frame(height: totalHeight)
+        .frame(height: slotH, alignment: .top)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
     }
@@ -548,7 +549,7 @@ public struct AmbientRailStripView: View {
             HardwareVitalsDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -563,19 +564,20 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = palette.podColor(for: "scripts", store: store)
 
+        let slotH = max(totalHeight, 140.0)
         let radius = min(barW / 2, 4)
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: radius)
                     .fill(color.opacity(0.85))
-                    .frame(width: barW, height: totalHeight)
+                    .frame(width: barW, height: slotH)
 
                 Rectangle()
                     .fill(Color.white.opacity(0.9))
                     .frame(width: max(barW - 2, 2), height: 2)
                     .padding(.top, 4)
             }
-            .frame(width: barW, height: totalHeight)
+            .frame(width: barW, height: slotH)
             .contentShape(Rectangle())
             .onHover { isHovered in
                 if isHovered {
@@ -588,7 +590,7 @@ public struct AmbientRailStripView: View {
             }
 
             if isActive {
-                scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: totalHeight)
+                scriptsDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
                     .transition(
                         .asymmetric(
                             insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
@@ -598,7 +600,7 @@ public struct AmbientRailStripView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-        .frame(height: totalHeight)
+        .frame(height: slotH, alignment: .top)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
     }
@@ -619,7 +621,7 @@ public struct AmbientRailStripView: View {
             ScriptRunwayDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0))
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))

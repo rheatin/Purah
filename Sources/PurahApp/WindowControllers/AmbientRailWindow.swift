@@ -150,8 +150,10 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        let isPinned = store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
-        guard !isPinned else { return }
+        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
+                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
+                                    store.isDrawerPinned
+        guard !isCurrentActivePinned else { return }
 
         let winPoint = event.locationInWindow
         let barW: CGFloat = CGFloat(store.railBarWidth)
@@ -187,8 +189,10 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        let isPinned = store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty
-        guard !isPinned else { return }
+        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
+                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
+                                    store.isDrawerPinned
+        guard !isCurrentActivePinned else { return }
 
         // Guard against premature collapse when mouse moves into subview buttons or text fields
         let mouseLoc = NSEvent.mouseLocation
