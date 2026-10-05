@@ -6,9 +6,6 @@ import PurahCore
 public struct MusicDrawerView: View {
     public let store: PurahWorkspaceStore
 
-    @State private var backwardOffset: CGFloat = 0
-    @State private var forwardOffset: CGFloat = 0
-    @State private var playPauseScale: CGFloat = 1.0
     @State private var isBackwardHovered: Bool = false
     @State private var isForwardHovered: Bool = false
     @State private var isPlayPauseHovered: Bool = false
@@ -77,7 +74,7 @@ public struct MusicDrawerView: View {
                         }
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                     .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
                 }
 
@@ -113,11 +110,10 @@ public struct MusicDrawerView: View {
                 }
                 .padding(.horizontal, 4)
 
-                // MARK: - Floating Media Buttons with Atoll-style Spring Nudges
+                // MARK: - Floating Media Buttons with Reactive Spring Nudges
                 HStack(spacing: 28) {
                     // Backward Button
                     Button {
-                        triggerBackwardNudge()
                         SystemMusicSyncService.shared.previousTrack(store: store)
                     } label: {
                         Image(systemName: "backward.fill")
@@ -129,13 +125,11 @@ public struct MusicDrawerView: View {
                                     .fill(isBackwardHovered ? Color.primary.opacity(0.10) : Color.clear)
                             )
                     }
-                    .buttonStyle(.plain)
-                    .offset(x: backwardOffset)
+                    .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
                     .onHover { isBackwardHovered = $0 }
 
                     // Play / Pause Hero Button
                     Button {
-                        triggerPlayPauseBounce()
                         SystemMusicSyncService.shared.togglePlayPause(store: store)
                     } label: {
                         ZStack {
@@ -150,18 +144,16 @@ public struct MusicDrawerView: View {
                                 .contentTransition(.symbolEffect(.replace))
                         }
                         .frame(width: 38, height: 38)
-                        .scaleEffect(playPauseScale)
                         .background(
                             Circle()
                                 .fill(isPlayPauseHovered ? musicColor.opacity(0.12) : Color.clear)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HeroPlayPauseButtonStyle())
                     .onHover { isPlayPauseHovered = $0 }
 
                     // Forward Button
                     Button {
-                        triggerForwardNudge()
                         SystemMusicSyncService.shared.nextTrack(store: store)
                     } label: {
                         Image(systemName: "forward.fill")
@@ -173,8 +165,7 @@ public struct MusicDrawerView: View {
                                     .fill(isForwardHovered ? Color.primary.opacity(0.10) : Color.clear)
                             )
                     }
-                    .buttonStyle(.plain)
-                    .offset(x: forwardOffset)
+                    .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 5))
                     .onHover { isForwardHovered = $0 }
                 }
                 .frame(maxWidth: .infinity)
@@ -247,38 +238,37 @@ public struct MusicDrawerView: View {
         }
     }
 
-    private func triggerBackwardNudge() {
-        withAnimation(.spring(response: 0.14, dampingFraction: 0.55)) {
-            backwardOffset = -6
-        }
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.65).delay(0.08)) {
-            backwardOffset = 0
-        }
-    }
-
-    private func triggerForwardNudge() {
-        withAnimation(.spring(response: 0.14, dampingFraction: 0.55)) {
-            forwardOffset = 6
-        }
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.65).delay(0.08)) {
-            forwardOffset = 0
-        }
-    }
-
-    private func triggerPlayPauseBounce() {
-        withAnimation(.spring(response: 0.14, dampingFraction: 0.45)) {
-            playPauseScale = 0.85
-        }
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.60).delay(0.08)) {
-            playPauseScale = 1.0
-        }
-    }
-
     private func timeString(for seconds: Double) -> String {
         let total = max(Int(seconds), 0)
         let m = total / 60
         let s = total % 60
         return String(format: "%02d:%02d", m, s)
+    }
+}
+
+// MARK: - Reactive Tactile Button Styles for Media Controls
+public struct MediaNudgeButtonStyle: ButtonStyle {
+    public let nudgeOffset: CGFloat
+
+    public init(nudgeOffset: CGFloat) {
+        self.nudgeOffset = nudgeOffset
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .offset(x: configuration.isPressed ? nudgeOffset : 0)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.16, dampingFraction: 0.65), value: configuration.isPressed)
+    }
+}
+
+public struct HeroPlayPauseButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.16, dampingFraction: 0.60), value: configuration.isPressed)
     }
 }
 

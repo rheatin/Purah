@@ -104,7 +104,7 @@ public struct CalendarDrawerView: View {
                     }
 
                     // 专属 Pin 针
-                    pinButton(isPinned: store.isDrawerPinned)
+                    pinButton(id: event.id, isPinned: store.isItemPinned(id: event.id))
                 }
 
                 HStack(spacing: 6) {
@@ -228,10 +228,10 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    private func pinButton(isPinned: Bool) -> some View {
+    private func pinButton(id: String, isPinned: Bool) -> some View {
         Button {
             withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                store.isDrawerPinned.toggle()
+                store.togglePinItem(id: id)
             }
         } label: {
             ZStack {
@@ -248,7 +248,7 @@ public struct CalendarDrawerView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tactile)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 

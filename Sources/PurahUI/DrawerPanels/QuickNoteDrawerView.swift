@@ -4,6 +4,7 @@ import PurahCore
 
 public struct QuickNoteDrawerView: View {
     public let store: PurahWorkspaceStore
+    @State private var debounceTask: Task<Void, Never>?
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -24,7 +25,12 @@ public struct QuickNoteDrawerView: View {
                 set: {
                     store.quickNote.text = $0
                     store.quickNote.lastModified = Date()
-                    store.savePersistentState()
+                    debounceTask?.cancel()
+                    debounceTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        guard !Task.isCancelled else { return }
+                        store.savePersistentState()
+                    }
                 }
             ))
             .font(.system(size: 11, design: .monospaced))
@@ -46,6 +52,11 @@ public struct QuickNoteDrawerView: View {
                     .font(.system(size: 8))
                     .foregroundColor(noteColor)
             }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
+            debounceTask = nil
+            store.savePersistentState()
         }
     }
 }

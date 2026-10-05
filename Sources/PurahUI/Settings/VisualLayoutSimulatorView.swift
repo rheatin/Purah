@@ -37,7 +37,7 @@ public struct VisualLayoutSimulatorView: View {
                     Spacer()
 
                     Button {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
                             store.autoLayoutAll()
                         }
                     } label: {
@@ -53,7 +53,7 @@ public struct VisualLayoutSimulatorView: View {
                         .cornerRadius(8)
                         .modifier(OptionalGlow(color: palette.primaryAccent, enabled: palette.useGlow))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                 }
                 .padding(.horizontal, 4)
 
@@ -180,7 +180,7 @@ public struct VisualLayoutSimulatorView: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(store.pods) { pod in
                                 Button {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    withAnimation(.spring(response: 0.24, dampingFraction: 0.80)) {
                                         store.togglePodEnabled(id: pod.id)
                                     }
                                 } label: {
@@ -217,7 +217,7 @@ public struct VisualLayoutSimulatorView: View {
                                             .stroke(pod.isEnabled ? palette.primaryAccent.opacity(0.3) : palette.borderColor.opacity(0.3), lineWidth: 1)
                                     )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.tactile)
                             }
                         }
                     }
@@ -231,7 +231,7 @@ public struct VisualLayoutSimulatorView: View {
                     HStack(spacing: 12) {
                         ForEach(PodPreset.allCases) { preset in
                             Button {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
                                     store.applyPreset(preset)
                                 }
                             } label: {
@@ -254,7 +254,7 @@ public struct VisualLayoutSimulatorView: View {
                                         .stroke(store.currentPreset == preset ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: 1.5)
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tactile)
                         }
                     }
                 }

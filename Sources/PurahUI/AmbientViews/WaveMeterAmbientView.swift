@@ -8,6 +8,8 @@ public struct WaveMeterAmbientView: View {
     public var isAnimated: Bool
     public var height: CGFloat
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -30,7 +32,7 @@ public struct WaveMeterAmbientView: View {
         let barHeight = max((totalH - (CGFloat(barCount - 1) * spacing)) / CGFloat(barCount), 2.5)
 
         Group {
-            if isPlaying && isAnimated {
+            if isPlaying && isAnimated && !reduceMotion {
                 // 使用 30fps 周期采样 + Metal GPU Canvas 直推，杜绝高 CPU 占用与内存抖动
                 TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
                     Canvas { context, size in
@@ -53,7 +55,7 @@ public struct WaveMeterAmbientView: View {
                 Canvas { context, size in
                     for idx in 0..<barCount {
                         let sampleIdx = idx % max(samples.count, 1)
-                        let amp = isPlaying ? samples[sampleIdx] : 0.25
+                        let amp = isPlaying ? (samples.isEmpty ? 0.4 : samples[sampleIdx]) : 0.25
                         let w = max(CGFloat(amp) * 6.0, 2.0)
                         let y = CGFloat(idx) * (barHeight + spacing)
                         let rect = CGRect(x: size.width - w, y: y, width: w, height: barHeight)

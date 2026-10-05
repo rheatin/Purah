@@ -45,6 +45,10 @@ public struct TodoDrawerView: View {
                     VStack(spacing: 5) {
                         ForEach(store.todos) { todo in
                             todoCard(todo: todo)
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 0.96).combined(with: .opacity),
+                                    removal: .scale(scale: 0.95).combined(with: .opacity)
+                                ))
                         }
                     }
                     .padding(.vertical, 2)
@@ -73,7 +77,7 @@ public struct TodoDrawerView: View {
                     .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
                     .font(.system(size: 14))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tactile)
 
             VStack(alignment: .leading, spacing: 2) {
                 TextField("", text: Binding(
@@ -109,13 +113,15 @@ public struct TodoDrawerView: View {
                 .cornerRadius(3)
 
             Button {
-                store.todos.removeAll { $0.id == todo.id }
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                    store.todos.removeAll { $0.id == todo.id }
+                }
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 10))
                     .foregroundColor(.gray.opacity(0.4))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tactile)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)

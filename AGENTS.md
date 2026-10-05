@@ -93,7 +93,7 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
    - Respects `accessibilityReduceMotion`: switches to static calm bars when reduce motion is enabled.
 4. **Tactile Pushpin & Button Feedback**:
    - Pin button: Tacking into board adds `-25°` rotation with a spring bounce (`1.15x`).
-   - Action buttons: Adopt `TactileButtonStyle` with a subtle `scale(0.93)` spring feedback on press.
+   - Action buttons: Adopt `TactileButtonStyle` with a subtle `scale(0.96)` spring feedback on press.
 
 ---
 
