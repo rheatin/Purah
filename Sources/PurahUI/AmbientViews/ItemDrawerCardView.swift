@@ -292,10 +292,9 @@ public struct CalendarItemDrawerView: View {
         let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
 
         HStack(spacing: 8) {
-            Rectangle()
+            Circle()
                 .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                .frame(width: 3.5, height: max(cardH - 10, 16))
-                .cornerRadius(1.75)
+                .frame(width: 6, height: 6)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
