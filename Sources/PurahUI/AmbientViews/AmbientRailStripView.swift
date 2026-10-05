@@ -273,6 +273,7 @@ public struct AmbientRailStripView: View {
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
         .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+        .compositingGroup()
     }
 
     // MARK: - Shelf 单项抽屉 (全高长条，支持访达拖拽置入)
@@ -395,6 +396,7 @@ public struct AmbientRailStripView: View {
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
         .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+        .compositingGroup()
     }
 
     // MARK: - Notes 单项抽屉 (全高长条，可打字编辑)
@@ -478,6 +480,7 @@ public struct AmbientRailStripView: View {
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
         .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+        .compositingGroup()
     }
 
     // MARK: - Vitals 性能脉搏长条
@@ -550,6 +553,7 @@ public struct AmbientRailStripView: View {
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
         .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+        .compositingGroup()
     }
 
     // MARK: - Scripts 终端跑道长条
@@ -620,6 +624,7 @@ public struct AmbientRailStripView: View {
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
         .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+        .compositingGroup()
     }
 
     private var drawerShape: UnevenRoundedRectangle {
