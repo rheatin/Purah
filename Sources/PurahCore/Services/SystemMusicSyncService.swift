@@ -11,6 +11,7 @@ public final class SystemMusicSyncService: @unchecked Sendable {
     @ObservationIgnored private var spotifyObserver: Any?
     @ObservationIgnored private var cachedArtworkKey: String?
     @ObservationIgnored private var cachedArtworkData: Data?
+    @ObservationIgnored private var playbackTimer: Timer?
 
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
@@ -41,6 +42,11 @@ public final class SystemMusicSyncService: @unchecked Sendable {
         ) { [weak self, weak store] notification in
             self?.handleSpotifyInfo(notification: notification, store: store)
         }
+
+        // 3. Query initial playback state if player is already running
+        Task { [weak self, weak store] in
+            await self?.pollCurrentPlayingState(store: store)
+        }
     }
 
     public func handlePlayerInfo(notification: Notification, store: PurahWorkspaceStore?) {
@@ -63,7 +69,6 @@ public final class SystemMusicSyncService: @unchecked Sendable {
         let totalSec = max(totalTimeMs / 1000.0, 1.0)
         let progress = min(max(currentPosSec / totalSec, 0.0), 1.0)
 
-        // Waveform samples
         let samples: [Double] = (0..<14).map { _ in
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
@@ -79,14 +84,16 @@ public final class SystemMusicSyncService: @unchecked Sendable {
                 playbackProgress: progress,
                 currentPositionSeconds: currentPosSec,
                 durationSeconds: totalSec,
+                lastUpdated: Date(),
+                playbackRate: isPlaying ? 1.0 : 0.0,
                 waveformSamples: samples,
                 artworkData: existingArtwork,
                 sourceApp: "Apple Music",
                 sourceBundleId: "com.apple.Music"
             )
+            updatePlaybackTimer(store: store, isPlaying: isPlaying)
         }
 
-        // Asynchronously fetch artwork if not cached
         if existingArtwork == nil {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
@@ -130,11 +137,14 @@ public final class SystemMusicSyncService: @unchecked Sendable {
                 playbackProgress: progress,
                 currentPositionSeconds: currentPosSec,
                 durationSeconds: durationSec,
+                lastUpdated: Date(),
+                playbackRate: isPlaying ? 1.0 : 0.0,
                 waveformSamples: samples,
                 artworkData: existingArtwork,
                 sourceApp: "Spotify",
                 sourceBundleId: "com.spotify.client"
             )
+            updatePlaybackTimer(store: store, isPlaying: isPlaying)
         }
 
         if existingArtwork == nil {
@@ -147,6 +157,82 @@ public final class SystemMusicSyncService: @unchecked Sendable {
                     }
                 }
             }
+        }
+    }
+
+    public func pollCurrentPlayingState(store: PurahWorkspaceStore?) async {
+        guard isMusicAppRunning else { return }
+        let script = """
+        tell application "Music"
+            try
+                set pState to (player state is playing)
+                set tName to name of current track
+                set tArtist to artist of current track
+                set tAlbum to album of current track
+                set tPos to player position
+                set tDur to duration of current track
+                return {pState, tName, tArtist, tAlbum, tPos, tDur}
+            on error
+                return {}
+            end try
+        end tell
+        """
+        guard let appleScript = NSAppleScript(source: script) else { return }
+        var errorInfo: NSDictionary?
+        let descriptor = appleScript.executeAndReturnError(&errorInfo)
+        guard errorInfo == nil, descriptor.numberOfItems >= 6 else { return }
+
+        let isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
+        let title = descriptor.atIndex(2)?.stringValue ?? "Unknown Track"
+        let artist = descriptor.atIndex(3)?.stringValue ?? "Apple Music"
+        let album = descriptor.atIndex(4)?.stringValue ?? ""
+        let pos = descriptor.atIndex(5)?.doubleValue ?? 0.0
+        let dur = descriptor.atIndex(6)?.doubleValue ?? 180.0
+        let progress = dur > 0 ? min(max(pos / dur, 0.0), 1.0) : 0.0
+
+        await MainActor.run {
+            guard let store = store else { return }
+            store.musicTrack = MusicTrackInfo(
+                title: title,
+                artist: artist,
+                album: album,
+                isPlaying: isPlaying,
+                playbackProgress: progress,
+                currentPositionSeconds: pos,
+                durationSeconds: dur,
+                lastUpdated: Date(),
+                playbackRate: isPlaying ? 1.0 : 0.0,
+                sourceApp: "Apple Music",
+                sourceBundleId: "com.apple.Music"
+            )
+            updatePlaybackTimer(store: store, isPlaying: isPlaying)
+        }
+
+        if let art = await fetchArtwork(title: title, artist: artist, album: album) {
+            await MainActor.run {
+                if store?.musicTrack.title == title {
+                    store?.musicTrack.artworkData = art
+                }
+            }
+        }
+    }
+
+    private func updatePlaybackTimer(store: PurahWorkspaceStore?, isPlaying: Bool) {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+
+        guard isPlaying, let store = store else { return }
+
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak store] _ in
+            guard let store = store, store.musicTrack.isPlaying else { return }
+            let cur = store.musicTrack.calculatedCurrentTime
+            let prog = store.musicTrack.calculatedProgress
+            let samples: [Double] = (0..<14).map { _ in
+                Double.random(in: 0.25...0.95)
+            }
+            store.musicTrack.currentPositionSeconds = cur
+            store.musicTrack.playbackProgress = prog
+            store.musicTrack.waveformSamples = samples
         }
     }
 
@@ -225,7 +311,14 @@ public final class SystemMusicSyncService: @unchecked Sendable {
     }
 
     public func togglePlayPause(store: PurahWorkspaceStore?) {
-        store?.musicTrack.isPlaying.toggle()
+        guard let store = store else { return }
+        let nowPlaying = !store.musicTrack.isPlaying
+        store.musicTrack.isPlaying = nowPlaying
+        store.musicTrack.playbackRate = nowPlaying ? 1.0 : 0.0
+        store.musicTrack.currentPositionSeconds = store.musicTrack.calculatedCurrentTime
+        store.musicTrack.lastUpdated = Date()
+        updatePlaybackTimer(store: store, isPlaying: nowPlaying)
+
         if isMusicAppRunning {
             Task.detached { [weak self] in
                 self?.runAppleScript("tell application \"Music\" to playpause")
@@ -268,9 +361,9 @@ public final class SystemMusicSyncService: @unchecked Sendable {
         let total = max(store.musicTrack.durationSeconds, 1.0)
         let targetSec = clamped * total
 
-        // Immediate UI feedback
-        store.musicTrack.playbackProgress = clamped
         store.musicTrack.currentPositionSeconds = targetSec
+        store.musicTrack.lastUpdated = Date()
+        store.musicTrack.playbackProgress = clamped
 
         if isMusicAppRunning {
             Task.detached { [weak self] in

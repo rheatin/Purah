@@ -230,24 +230,63 @@ struct DrawerInteractionUITests {
         let totalH = 1000.0
         let cardBottom = totalH * (1.0 - (notesPod.range.start + notesPod.range.length))
         let cardTop = totalH * (1.0 - notesPod.range.start)
-        let minY = max(cardBottom - 6.0, 0.0)
-        let maxY = min(cardTop + 6.0, totalH)
+        let minY = max(cardBottom - 4.0, 0.0)
+        let maxY = min(cardTop + 4.0, totalH)
         let drawerW = store.effectiveDrawerWidth(baseWidth: notesPod.drawerWidth) + 8.0
 
-        // Test 1: Empty desktop area above Quick Notes (y = 800)
+        // Test 1: Empty desktop area above Quick Notes (y = 800) - where Orca is in user screenshot
         let abovePointY = 800.0
         let isAboveInDrawer = (abovePointY >= minY && abovePointY <= maxY)
-        #expect(isAboveInDrawer == false)
+        #expect(isAboveInDrawer == false, "Empty area above Quick Notes must not be captured")
 
         // Test 2: Empty desktop area below Quick Notes (y = 80)
         let belowPointY = 80.0
         let isBelowInDrawer = (belowPointY >= minY && belowPointY <= maxY)
-        #expect(isBelowInDrawer == false)
+        #expect(isBelowInDrawer == false, "Empty area below Quick Notes must not be captured")
 
-        // Test 3: Area to the right of drawer (x = 330 where drawerW ~ 288)
-        let rightPointX = 330.0
+        // Test 3: Area to the right of drawer (x = 320 where drawerW ~ 288)
+        let rightPointX = 320.0
         let isRightInDrawer = (rightPointX <= drawerW)
-        #expect(isRightInDrawer == false)
+        #expect(isRightInDrawer == false, "Area to the right of drawer must not be captured")
+
+        // Test 4: Inside drawer card (x = 100, y = 300)
+        let insidePointY = 300.0
+        let insidePointX = 100.0
+        let isInsideY = (insidePointY >= minY && insidePointY <= maxY)
+        let isInsideX = (insidePointX <= drawerW)
+        #expect(isInsideX && isInsideY, "Inside Quick Notes card must be captured")
+    }
+
+    @Test("Music track calculates real-time progress accurately based on time elapsed")
+    @MainActor
+    func testMusicRealTimeProgressCalculation() {
+        let tenSecondsAgo = Date().addingTimeInterval(-10.0)
+        let track = MusicTrackInfo(
+            title: "Marigold",
+            artist: "Aimyon",
+            currentPositionSeconds: 0.0,
+            durationSeconds: 306.0,
+            lastUpdated: tenSecondsAgo,
+            playbackRate: 1.0
+        )
+
+        // Wall-clock time should advance position by ~10 seconds
+        let current = track.calculatedCurrentTime
+        let progress = track.calculatedProgress
+
+        #expect(current >= 9.8 && current <= 15.0)
+        #expect(progress > 0.03 && progress < 0.06)
+
+        // When paused (playbackRate == 0), position does not advance
+        let pausedTrack = MusicTrackInfo(
+            title: "Marigold",
+            artist: "Aimyon",
+            currentPositionSeconds: 45.0,
+            durationSeconds: 306.0,
+            lastUpdated: tenSecondsAgo,
+            playbackRate: 0.0
+        )
+        #expect(pausedTrack.calculatedCurrentTime == 45.0)
     }
 
     @Test("Music track info retains real artwork data and audio source identity")

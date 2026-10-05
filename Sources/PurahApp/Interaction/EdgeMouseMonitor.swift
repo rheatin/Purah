@@ -43,42 +43,37 @@ public final class EdgeMouseMonitor {
         velocityTracker.add(point: point, timestamp: now)
 
         let screenRect = screen.frame
-        let isDrawerOpen = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty)
-        let activeWidth: CGFloat = isDrawerOpen ? 340 : 16
 
-        let isNearLeft = point.x <= (screenRect.minX + activeWidth)
-        let isNearRight = point.x >= (screenRect.maxX - activeWidth)
+        // Check if point is near the 14px trigger rail on either side
+        let isAtLeftEdge = point.x <= (screenRect.minX + 14)
+        let isAtRightEdge = point.x >= (screenRect.maxX - 14)
 
-        // Dismiss drawer and restore full pass-through when mouse exits the active zone
-        if !isNearLeft && !isNearRight {
+        // Check 2D bounding boxes for drawers on left and right
+        let isInsideLeftDrawer = isPointInsideAnyDrawerCard(point: point, screenRect: screenRect, edge: .left)
+        let isInsideRightDrawer = isPointInsideAnyDrawerCard(point: point, screenRect: screenRect, edge: .right)
+
+        let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer
+        let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer
+
+        coordinator?.setInteractive(shouldBeInteractiveLeft, for: .left)
+        coordinator?.setInteractive(shouldBeInteractiveRight, for: .right)
+
+        // If mouse is neither on a rail nor inside an active/pinned drawer card:
+        if !shouldBeInteractiveLeft && !shouldBeInteractiveRight {
             dwellTracker.reset()
             store.hoveredPodId = nil
 
             let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
-            let isCurrentActivePinned = activeId != nil && store.isItemPinned(id: activeId!)
-            if !isCurrentActivePinned {
+            if let active = activeId, !store.isItemPinned(id: active) {
                 coordinator?.dismissDrawer()
             }
-
-            let hasLeftPinned = store.pods.contains { $0.edge == .left && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
-            let hasRightPinned = store.pods.contains { $0.edge == .right && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
-            coordinator?.setInteractive(hasLeftPinned, for: .left)
-            coordinator?.setInteractive(hasRightPinned, for: .right)
             return
         }
 
-        // Activate interactive mode when near edge or inside open drawer
-        let isAtEdge = point.x <= (screenRect.minX + 14) || point.x >= (screenRect.maxX - 14)
-        if isAtEdge {
-            let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right
-            coordinator?.setInteractive(true, for: edge)
-        } else if isDrawerOpen {
-            let edge: MountEdge = isNearLeft ? .left : .right
-            coordinator?.setInteractive(true, for: edge)
-        }
-        guard isAtEdge else { return }
+        // Only trigger drawer expansion when physically on the 14px edge
+        guard isAtLeftEdge || isAtRightEdge else { return }
 
-        let edge: MountEdge = point.x <= (screenRect.minX + 14) ? .left : .right
+        let edge: MountEdge = isAtLeftEdge ? .left : .right
         let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
 
         let candidatePod = store.pods.first { pod in
@@ -119,5 +114,38 @@ public final class EdgeMouseMonitor {
                 }
             }
         }
+    }
+
+    private func isPointInsideAnyDrawerCard(point: NSPoint, screenRect: CGRect, edge: MountEdge) -> Bool {
+        let totalH = screenRect.height
+
+        for pod in store.pods where pod.edge == edge && pod.isEnabled {
+            let isPodPinned = store.isItemPinned(id: pod.id)
+            let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
+            let hasActiveOrPinnedChild = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
+                                         (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
+
+            if isPodPinned || isPodActive || hasActiveOrPinnedChild {
+                let topOfPodY = screenRect.maxY - (pod.range.start * totalH)
+                let bottomOfPodY = screenRect.maxY - ((pod.range.start + pod.range.length) * totalH)
+
+                let minY = bottomOfPodY - 6.0
+                let maxY = topOfPodY + 6.0
+
+                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
+                let inDrawerX: Bool
+                if edge == .right {
+                    inDrawerX = point.x >= (screenRect.maxX - drawerW)
+                } else {
+                    inDrawerX = point.x <= (screenRect.minX + drawerW)
+                }
+                let inDrawerY = (point.y >= minY && point.y <= maxY)
+
+                if inDrawerX && inDrawerY {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
