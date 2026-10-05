@@ -156,17 +156,22 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
 
             // Check if any sub-item is active or pinned (for todo and calendar)
-            let hasPinnedItem = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
-                                (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
+            let hasActiveOrPinnedChild = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
+                                         (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
 
-            if isPodPinned || isPodActive || hasPinnedItem || store.isDrawerPinned {
-                let minY = totalH * (1.0 - (pod.range.start + pod.range.length)) - 60
-                let maxY = totalH * (1.0 - pod.range.start) + 60
+            // ONLY intercept if this pod is ACTUALLY active or pinned
+            if isPodPinned || isPodActive || hasActiveOrPinnedChild {
+                let cardBottom = totalH * (1.0 - (pod.range.start + pod.range.length))
+                let cardTop = totalH * (1.0 - pod.range.start)
+                let minY = max(cardBottom - 6.0, 0.0)
+                let maxY = min(cardTop + 6.0, totalH)
+
+                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
                 let inDrawerX: Bool
                 if edge == .right {
-                    inDrawerX = (point.x >= bounds.maxX - 340)
+                    inDrawerX = (point.x >= bounds.maxX - drawerW)
                 } else {
-                    inDrawerX = (point.x <= bounds.minX + 340)
+                    inDrawerX = (point.x <= bounds.minX + drawerW)
                 }
                 let inDrawerY = (point.y >= minY && point.y <= maxY)
                 if inDrawerX && inDrawerY {
@@ -195,22 +200,23 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             return
         }
 
-        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
-                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
-                                    store.isDrawerPinned ||
-                                    !store.pinnedDrawerItemIds.isEmpty
-        guard !isCurrentActivePinned else { return }
-
-        // Mouse genuinely left the drawer and rail; smoothly retract
-        if store.activeDrawerItemId != nil || store.activeDrawerPodId != nil {
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                store.activeDrawerItemId = nil
-                store.activeDrawerPodId = nil
-                store.hoveredPodId = nil
-            }
-            if let window = self.window as? AmbientRailWindow {
-                window.setInteractive(false)
-                window.resignKey()
+        // Mouse genuinely left this edge's drawer and rail; retract active unpinned drawer
+        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
+        if let active = activeId {
+            let isCurrentActivePinned = store.isItemPinned(id: active)
+            if !isCurrentActivePinned {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = nil
+                    store.activeDrawerPodId = nil
+                    store.hoveredPodId = nil
+                }
+                if let window = self.window as? AmbientRailWindow {
+                    let hasPinnedOnThisEdge = store.pods.contains { $0.edge == edge && store.isItemPinned(id: $0.id) }
+                    window.setInteractive(hasPinnedOnThisEdge)
+                    if !hasPinnedOnThisEdge {
+                        window.resignKey()
+                    }
+                }
             }
         }
     }
@@ -229,20 +235,23 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             }
         }
 
-        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
-                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
-                                    store.isDrawerPinned ||
-                                    !store.pinnedDrawerItemIds.isEmpty
-        guard !isCurrentActivePinned else { return }
-
-        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-            store.activeDrawerItemId = nil
-            store.activeDrawerPodId = nil
-            store.hoveredPodId = nil
-        }
-        if let window = self.window as? AmbientRailWindow {
-            window.setInteractive(false)
-            window.resignKey()
+        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
+        if let active = activeId {
+            let isCurrentActivePinned = store.isItemPinned(id: active)
+            if !isCurrentActivePinned {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = nil
+                    store.activeDrawerPodId = nil
+                    store.hoveredPodId = nil
+                }
+                if let window = self.window as? AmbientRailWindow {
+                    let hasPinnedOnThisEdge = store.pods.contains { $0.edge == edge && store.isItemPinned(id: $0.id) }
+                    window.setInteractive(hasPinnedOnThisEdge)
+                    if !hasPinnedOnThisEdge {
+                        window.resignKey()
+                    }
+                }
+            }
         }
     }
 
