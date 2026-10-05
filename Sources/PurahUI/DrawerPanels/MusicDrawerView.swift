@@ -12,6 +12,8 @@ public struct MusicDrawerView: View {
     @State private var isBackwardHovered: Bool = false
     @State private var isForwardHovered: Bool = false
     @State private var isPlayPauseHovered: Bool = false
+    @State private var isScrubbing: Bool = false
+    @State private var scrubbedProgress: Double = 0.0
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -29,8 +31,11 @@ public struct MusicDrawerView: View {
         let isPlaying = store.musicTrack.isPlaying
 
         TimelineView(.periodic(from: .now, by: isPlaying ? 0.5 : 60.0)) { _ in
-            let currentSec = store.musicTrack.calculatedCurrentTime
-            let progress = store.musicTrack.calculatedProgress
+            let liveCurrentSec = store.musicTrack.calculatedCurrentTime
+            let liveProgress = store.musicTrack.calculatedProgress
+
+            let displayProgress = isScrubbing ? scrubbedProgress : liveProgress
+            let displaySec = isScrubbing ? (scrubbedProgress * max(store.musicTrack.durationSeconds, 1.0)) : liveCurrentSec
 
             VStack(spacing: 10) {
                 // MARK: - Header: Album Art & Audio Source Badge & Track Info & Pin
@@ -82,7 +87,7 @@ public struct MusicDrawerView: View {
                         let barCount = 28
                         let totalSpacing = CGFloat(barCount - 1) * 2.0
                         let barWidth = max((geo.size.width - totalSpacing) / CGFloat(barCount), 2.0)
-                        let currentProgressIdx = Int(progress * Double(barCount))
+                        let currentProgressIdx = Int(displayProgress * Double(barCount))
 
                         HStack(spacing: 2) {
                             ForEach(0..<barCount, id: \.self) { idx in
@@ -110,8 +115,13 @@ public struct MusicDrawerView: View {
                         .gesture(
                             DragGesture(minimumDistance: 0)
                                 .onChanged { value in
-                                    let newProgress = min(max(value.location.x / geo.size.width, 0.0), 1.0)
-                                    SystemMusicSyncService.shared.seek(to: newProgress, store: store)
+                                    isScrubbing = true
+                                    scrubbedProgress = min(max(value.location.x / geo.size.width, 0.0), 1.0)
+                                }
+                                .onEnded { value in
+                                    let finalProgress = min(max(value.location.x / geo.size.width, 0.0), 1.0)
+                                    isScrubbing = false
+                                    SystemMusicSyncService.shared.seek(to: finalProgress, store: store)
                                 }
                         )
                     }
@@ -119,7 +129,7 @@ public struct MusicDrawerView: View {
 
                     // Time Labels
                     HStack {
-                        Text(timeString(for: currentSec))
+                        Text(timeString(for: displaySec))
                             .font(palette.fontMono)
                             .font(.system(size: 8))
                             .foregroundColor(.secondary)

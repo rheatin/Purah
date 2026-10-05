@@ -231,6 +231,7 @@ public final class SystemMusicSyncService: @unchecked Sendable {
                 Double.random(in: 0.25...0.95)
             }
             store.musicTrack.currentPositionSeconds = cur
+            store.musicTrack.lastUpdated = Date()
             store.musicTrack.playbackProgress = prog
             store.musicTrack.waveformSamples = samples
         }
