@@ -65,7 +65,10 @@ public final class ScreenEdgeCoordinator {
         store.activeDrawerItemId = nil
         store.activeDrawerPodId = nil
         store.hoveredPodId = nil
-        setInteractive(false, for: .left)
-        setInteractive(false, for: .right)
+
+        let hasLeftPinned = store.pods.contains { $0.edge == .left && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
+        let hasRightPinned = store.pods.contains { $0.edge == .right && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
+        setInteractive(hasLeftPinned, for: .left)
+        setInteractive(hasRightPinned, for: .right)
     }
 }

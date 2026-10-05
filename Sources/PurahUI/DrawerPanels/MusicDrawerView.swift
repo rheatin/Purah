@@ -30,24 +30,10 @@ public struct MusicDrawerView: View {
         let progress = store.musicTrack.playbackProgress
 
         VStack(spacing: 10) {
-            // MARK: - Header: Album Art & Track Info & Pin
+            // MARK: - Header: Album Art & Audio Source Badge & Track Info & Pin
             HStack(spacing: 10) {
-                // Album Art Capsule
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(musicColor.opacity(0.15))
-                        .frame(width: 42, height: 42)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(musicColor.opacity(0.7), lineWidth: 1.2)
-                        )
-                        .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
-
-                    Image(systemName: "music.note")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(musicColor)
-                        .symbolEffect(.bounce, value: isPlaying)
-                }
+                // Album Art with Atoll-style Source Badge
+                albumArtWithSourceBadge
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(store.musicTrack.title)
@@ -89,8 +75,8 @@ public struct MusicDrawerView: View {
                     HStack(spacing: 2) {
                         ForEach(0..<barCount, id: \.self) { idx in
                             let isPlayed = idx <= currentProgressIdx
-                            let sampleIdx = idx % store.musicTrack.waveformSamples.count
-                            let sampleVal = store.musicTrack.waveformSamples[sampleIdx]
+                            let sampleIdx = idx % max(store.musicTrack.waveformSamples.count, 1)
+                            let sampleVal = store.musicTrack.waveformSamples.isEmpty ? 0.3 : store.musicTrack.waveformSamples[sampleIdx]
                             let minH: CGFloat = 4.0
                             let maxH: CGFloat = geo.size.height
                             let barH = max(minH, maxH * CGFloat(sampleVal))
@@ -107,7 +93,7 @@ public struct MusicDrawerView: View {
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
                                 let newProgress = min(max(value.location.x / geo.size.width, 0.0), 1.0)
-                                store.musicTrack.playbackProgress = newProgress
+                                SystemMusicSyncService.shared.seek(to: newProgress, store: store)
                             }
                     )
                 }
@@ -115,12 +101,12 @@ public struct MusicDrawerView: View {
 
                 // Time Labels
                 HStack {
-                    Text(timeString(for: progress * 210))
+                    Text(timeString(for: store.musicTrack.currentPositionSeconds))
                         .font(palette.fontMono)
                         .font(.system(size: 8))
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text("03:30")
+                    Text(timeString(for: store.musicTrack.durationSeconds))
                         .font(palette.fontMono)
                         .font(.system(size: 8))
                         .foregroundColor(.secondary)
@@ -201,6 +187,66 @@ public struct MusicDrawerView: View {
         }
     }
 
+    // MARK: - Album Art View with Source Badge
+    @ViewBuilder
+    private var albumArtWithSourceBadge: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let data = store.musicTrack.artworkData, let nsImg = NSImage(data: data) {
+                Image(nsImage: nsImg)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.6), lineWidth: 1.0)
+                    )
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(musicColor.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(musicColor.opacity(0.7), lineWidth: 1.2)
+                        )
+                        .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
+
+                    Image(systemName: "music.note")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(musicColor)
+                        .symbolEffect(.bounce, value: store.musicTrack.isPlaying)
+                }
+            }
+
+            // Atoll-style Audio Source Badge at bottom-right corner
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(0.85))
+                    .frame(width: 15, height: 15)
+                    .overlay(
+                        Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                    )
+
+                Image(systemName: sourceIconName(for: store.musicTrack.sourceApp))
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .offset(x: 3, y: 3)
+        }
+    }
+
+    private func sourceIconName(for source: String) -> String {
+        let lower = source.lowercased()
+        if lower.contains("spotify") {
+            return "waveform"
+        } else if lower.contains("chrome") || lower.contains("safari") || lower.contains("browser") {
+            return "globe"
+        } else {
+            return "apple.logo"
+        }
+    }
+
     private func triggerBackwardNudge() {
         withAnimation(.spring(response: 0.16, dampingFraction: 0.65)) {
             backwardOffset = -5
@@ -235,7 +281,7 @@ public struct MusicDrawerView: View {
     }
 
     private func timeString(for seconds: Double) -> String {
-        let total = Int(seconds)
+        let total = max(Int(seconds), 0)
         let m = total / 60
         let s = total % 60
         return String(format: "%02d:%02d", m, s)
