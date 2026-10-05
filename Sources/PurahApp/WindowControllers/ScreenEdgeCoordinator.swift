@@ -61,13 +61,28 @@ public final class ScreenEdgeCoordinator {
         }
     }
 
-    public func dismissDrawer() {
-        store.activeDrawerItemId = nil
-        store.activeDrawerPodId = nil
-        store.hoveredPodId = nil
+    public func dismissDrawer(for edge: MountEdge? = nil) {
+        if let edge = edge {
+            if let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId,
+               let pod = store.pod(forItemId: activeId),
+               pod.edge == edge,
+               !store.isItemPinned(id: activeId) {
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                    store.activeDrawerItemId = nil
+                    store.activeDrawerPodId = nil
+                    store.hoveredPodId = nil
+                }
+            }
+        } else {
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                store.activeDrawerItemId = nil
+                store.activeDrawerPodId = nil
+                store.hoveredPodId = nil
+            }
+        }
 
-        let hasLeftPinned = store.pods.contains { $0.edge == .left && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
-        let hasRightPinned = store.pods.contains { $0.edge == .right && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
+        let hasLeftPinned = store.hasPinnedItem(on: .left)
+        let hasRightPinned = store.hasPinnedItem(on: .right)
         setInteractive(hasLeftPinned, for: .left)
         setInteractive(hasRightPinned, for: .right)
     }

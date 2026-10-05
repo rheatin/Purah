@@ -79,8 +79,6 @@ public struct ScreenSimulationCanvas: View {
 
                     ForEach(store.pods.filter { $0.edge == .left && $0.isEnabled }) { pod in
                         let topY = pod.range.start * canvasHeight
-                        let h = max(pod.range.length * canvasHeight, 36.0)
-                        let centerY = topY + (h / 2.0)
 
                         PodCapsuleView(
                             pod: pod,
@@ -98,10 +96,10 @@ public struct ScreenSimulationCanvas: View {
                                 store.fillRail(podId: pod.id)
                             }
                         )
-                        .position(x: 77, y: centerY)
+                        .offset(x: 4, y: topY)
                     }
                 }
-                .frame(width: 154, height: canvasHeight)
+                .frame(width: 154, height: canvasHeight, alignment: .topLeading)
                 .clipped()
 
                 Spacer()
@@ -115,8 +113,6 @@ public struct ScreenSimulationCanvas: View {
 
                     ForEach(store.pods.filter { $0.edge == .right && $0.isEnabled }) { pod in
                         let topY = pod.range.start * canvasHeight
-                        let h = max(pod.range.length * canvasHeight, 36.0)
-                        let centerY = topY + (h / 2.0)
 
                         PodCapsuleView(
                             pod: pod,
@@ -134,10 +130,10 @@ public struct ScreenSimulationCanvas: View {
                                 store.fillRail(podId: pod.id)
                             }
                         )
-                        .position(x: 77, y: centerY)
+                        .offset(x: -4, y: topY)
                     }
                 }
-                .frame(width: 154, height: canvasHeight)
+                .frame(width: 154, height: canvasHeight, alignment: .topTrailing)
                 .clipped()
             }
             .padding(.horizontal, 8)

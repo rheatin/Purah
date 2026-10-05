@@ -13,7 +13,8 @@ public final class EdgeMouseMonitor {
     private let flingDetector = FlingIntentDetector()
     private let dwellTracker = DwellTracker(threshold: 0.16)
     private var globalMonitor: Any?
-    private var exitGraceTask: Task<Void, Never>?
+    private var leftExitGraceTask: Task<Void, Never>?
+    private var rightExitGraceTask: Task<Void, Never>?
     private var lastCandidatePodId: String?
     private var candidateHoverStartTime: Date?
 
@@ -33,8 +34,10 @@ public final class EdgeMouseMonitor {
     }
 
     public func stop() {
-        exitGraceTask?.cancel()
-        exitGraceTask = nil
+        leftExitGraceTask?.cancel()
+        leftExitGraceTask = nil
+        rightExitGraceTask?.cancel()
+        rightExitGraceTask = nil
         if let monitor = globalMonitor {
             NSEvent.removeMonitor(monitor)
             globalMonitor = nil
@@ -53,41 +56,51 @@ public final class EdgeMouseMonitor {
         let isAtLeftEdge = point.x <= (screenRect.minX + 14)
         let isAtRightEdge = point.x >= (screenRect.maxX - 14)
 
-        // Check 2D bounding boxes for drawers on left and right
+        // Check 2D bounding boxes for drawers on left and right independently
         let isInsideLeftDrawer = isPointInsideAnyDrawerCard(point: point, screenRect: screenRect, edge: .left)
         let isInsideRightDrawer = isPointInsideAnyDrawerCard(point: point, screenRect: screenRect, edge: .right)
 
         let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer
         let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer
 
-        // If mouse is inside drawer or on rail: cancel exit grace window immediately
-        if shouldBeInteractiveLeft || shouldBeInteractiveRight {
-            exitGraceTask?.cancel()
-            exitGraceTask = nil
-            coordinator?.setInteractive(shouldBeInteractiveLeft, for: .left)
-            coordinator?.setInteractive(shouldBeInteractiveRight, for: .right)
+        // 1. Manage Left Rail independence
+        if shouldBeInteractiveLeft {
+            leftExitGraceTask?.cancel()
+            leftExitGraceTask = nil
+            coordinator?.setInteractive(true, for: .left)
         } else {
-            // Mouse is outside: start 150ms Exit Grace Window to prevent accidental collapse
-            if exitGraceTask == nil {
-                exitGraceTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms grace delay
-                    guard !Task.isCancelled else { return }
-                    guard let self = self else { return }
-
-                    self.dwellTracker.reset()
-                    self.store.hoveredPodId = nil
-                    self.lastCandidatePodId = nil
-                    self.candidateHoverStartTime = nil
-
-                    let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
-                    if let active = activeId, !self.store.isItemPinned(id: active) {
-                        self.coordinator?.dismissDrawer()
-                    }
-                    self.coordinator?.setInteractive(false, for: .left)
-                    self.coordinator?.setInteractive(false, for: .right)
-                    self.exitGraceTask = nil
+            if leftExitGraceTask == nil {
+                leftExitGraceTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    guard !Task.isCancelled, let self = self else { return }
+                    self.coordinator?.dismissDrawer(for: .left)
+                    self.leftExitGraceTask = nil
                 }
             }
+        }
+
+        // 2. Manage Right Rail independence
+        if shouldBeInteractiveRight {
+            rightExitGraceTask?.cancel()
+            rightExitGraceTask = nil
+            coordinator?.setInteractive(true, for: .right)
+        } else {
+            if rightExitGraceTask == nil {
+                rightExitGraceTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    guard !Task.isCancelled, let self = self else { return }
+                    self.coordinator?.dismissDrawer(for: .right)
+                    self.rightExitGraceTask = nil
+                }
+            }
+        }
+
+        // If mouse is neither on a rail nor inside an active/pinned drawer card on either side
+        if !shouldBeInteractiveLeft && !shouldBeInteractiveRight {
+            dwellTracker.reset()
+            store.hoveredPodId = nil
+            lastCandidatePodId = nil
+            candidateHoverStartTime = nil
             return
         }
 

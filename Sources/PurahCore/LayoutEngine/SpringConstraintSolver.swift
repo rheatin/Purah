@@ -20,18 +20,30 @@ public enum SpringConstraintSolver {
             return allPods
         }
 
-        // 1. 约束被拖拽 Pod 的边界
-        var clampedStart = max(newRange.start, bounds.lowerBound)
-        let maxAllowedLength = bounds.upperBound - clampedStart
-        let clampedLength = min(max(newRange.length, edgePods[targetIndex].minLength), maxAllowedLength)
-        if clampedStart + clampedLength > bounds.upperBound {
-            clampedStart = bounds.upperBound - clampedLength
+        // 1. 约束被拖拽 Pod 的边界 (单向顶部锚定：若是底部拉伸，起点绝对锁定)
+        let isResizingOnly = abs(newRange.start - edgePods[targetIndex].range.start) < 0.0001
+
+        var clampedStart = edgePods[targetIndex].range.start
+        var clampedLength = newRange.length
+
+        if !isResizingOnly {
+            clampedStart = max(newRange.start, bounds.lowerBound)
+            let maxAllowedLength = bounds.upperBound - clampedStart
+            clampedLength = min(max(newRange.length, edgePods[targetIndex].minLength), maxAllowedLength)
+            if clampedStart + clampedLength > bounds.upperBound {
+                clampedStart = bounds.upperBound - clampedLength
+            }
+        } else {
+            // 纯单向底部缩放：顶部坐标绝对锁死，杜绝反向向上膨胀
+            clampedStart = edgePods[targetIndex].range.start
+            let maxAllowed = max(bounds.upperBound - clampedStart, edgePods[targetIndex].minLength)
+            clampedLength = min(max(newRange.length, edgePods[targetIndex].minLength), maxAllowed)
         }
 
         edgePods[targetIndex].range = NormalizedRange(start: clampedStart, length: clampedLength)
 
-        // 2. 向前推挤 (Predecessors: targetIndex - 1 downTo 0)
-        if targetIndex > 0 {
+        // 2. 向前推挤 (仅在整体移动模块时向前推，底部缩放绝不逆向推挤上方模块)
+        if !isResizingOnly && targetIndex > 0 {
             for i in stride(from: targetIndex - 1, through: 0, by: -1) {
                 let rightBound = edgePods[i + 1].range.start - minSpacing
                 if edgePods[i].range.end > rightBound {

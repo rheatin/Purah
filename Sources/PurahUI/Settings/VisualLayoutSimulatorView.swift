@@ -164,54 +164,76 @@ public struct VisualLayoutSimulatorView: View {
                     }
                 }
 
-                // 3. Feature Accent Colors Card
-                settingsCard(title: "Feature Accent Colors", icon: "swatchpalette.fill") {
-                    VStack(spacing: 10) {
+                // 3. Modular Pod Plugins & Settings
+                settingsCard(title: "Modular Pod Plugins", icon: "square.stack.3d.up.fill") {
+                    VStack(spacing: 12) {
                         HStack {
-                            Text("Customize individual accent colors")
+                            Text("Dedicated settings and isolated appearance for each plugin module")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
                             Button("Reset Colors") {
                                 store.customPodColors.removeAll()
+                                store.savePersistentState()
                             }
                             .buttonStyle(.plain)
                             .font(.caption.weight(.medium))
                             .foregroundColor(palette.primaryAccent)
                         }
 
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            ForEach(store.pods) { pod in
-                                HStack(spacing: 8) {
-                                    Circle()
-                                        .fill(palette.podColor(for: pod.id, store: store))
-                                        .frame(width: 10, height: 10)
+                        VStack(spacing: 10) {
+                            ForEach(PluginRegistry.shared.allPlugins, id: \.manifest.id) { plugin in
+                                let podId = plugin.manifest.id
+                                let podColor = palette.podColor(for: podId, store: store)
 
-                                    Image(systemName: pod.systemIcon)
-                                        .font(.caption2)
-                                        .foregroundColor(palette.podColor(for: pod.id, store: store))
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Plugin Header: Icon + Name + Description + ColorPicker
+                                    HStack(spacing: 8) {
+                                        Image(systemName: plugin.manifest.systemIcon)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(podColor)
+                                            .frame(width: 22, height: 22)
 
-                                    Text(pod.name)
-                                        .font(.subheadline)
-                                        .lineLimit(1)
-
-                                    Spacer()
-
-                                    ColorPicker("", selection: Binding(
-                                        get: { palette.podColor(for: pod.id, store: store) },
-                                        set: { newColor in
-                                            if let hex = newColor.toHex() {
-                                                store.setPodColorHex(podId: pod.id, hex: hex)
-                                            }
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(plugin.manifest.displayName)
+                                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                            Text(plugin.manifest.description)
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
                                         }
-                                    ))
-                                    .labelsHidden()
-                                    .scaleEffect(0.8)
+
+                                        Spacer()
+
+                                        ColorPicker("", selection: Binding(
+                                            get: { podColor },
+                                            set: { newColor in
+                                                if let hex = newColor.toHex() {
+                                                    store.setPodColorHex(podId: podId, hex: hex)
+                                                }
+                                            }
+                                        ))
+                                        .labelsHidden()
+                                        .scaleEffect(0.85)
+                                    }
+
+                                    // Isolated Plugin Settings (if provided by plugin)
+                                    if let settingsView = plugin.makeSettingsView(store: store) {
+                                        Divider()
+                                            .background(palette.borderColor.opacity(0.25))
+
+                                        settingsView
+                                            .padding(.top, 2)
+                                    }
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                                .padding(10)
+                                .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
                                 .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(podColor.opacity(0.25), lineWidth: 1)
+                                )
                             }
                         }
                     }
@@ -279,69 +301,7 @@ public struct VisualLayoutSimulatorView: View {
                 // 5. Mini Screen Simulation
                 ScreenSimulationCanvas(store: store)
 
-                // 6. Content Preferences Card
-                settingsCard(title: "Content Preferences", icon: "list.bullet.rectangle.fill") {
-                    VStack(spacing: 12) {
-                        HStack(spacing: 16) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Calendar Scope")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Picker("", selection: Binding(
-                                    get: { store.calendarScope },
-                                    set: { newScope in
-                                        store.calendarScope = newScope
-                                        SystemCalendarSyncService.shared.syncEvents(into: store, scope: newScope)
-                                    }
-                                )) {
-                                    ForEach(CalendarTimeScope.allCases) { scope in
-                                        Text(scope.title).tag(scope)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Reminders Scope")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Picker("", selection: Binding(
-                                    get: { store.remindersScope },
-                                    set: { newScope in
-                                        store.remindersScope = newScope
-                                        Task {
-                                            await SystemRemindersSyncService.shared.syncReminders(into: store, scope: newScope)
-                                        }
-                                    }
-                                )) {
-                                    ForEach(RemindersScope.allCases) { scope in
-                                        Text(scope.title).tag(scope)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                            }
-                        }
-
-                        Divider()
-                            .background(palette.borderColor.opacity(0.3))
-
-                        VStack(spacing: 8) {
-                            Toggle("Pulsing Glow for Imminent Events", isOn: Binding(
-                                get: { store.isEventGlowAlertEnabled },
-                                set: { store.isEventGlowAlertEnabled = $0 }
-                            ))
-                            .font(.subheadline)
-
-                            Toggle("Live Audio Waveform Animation", isOn: Binding(
-                                get: { store.isMusicWaveformAnimationEnabled },
-                                set: { store.isMusicWaveformAnimationEnabled = $0 }
-                            ))
-                            .font(.subheadline)
-                        }
-                    }
-                }
-
-                // 7. Presets Card
+                // 6. Presets Card
                 settingsCard(title: "Ergonomic Presets", icon: "sparkle") {
                     HStack(spacing: 12) {
                         ForEach(PodPreset.allCases) { preset in
