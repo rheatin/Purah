@@ -265,13 +265,22 @@ public final class HardwareVitalsService: @unchecked Sendable {
         }
 
         if let prev = previousCpuInfo {
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), vm_size_t(previousCpuInfoCount))
+            let byteSize = vm_size_t(previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), byteSize)
         }
 
         previousCpuInfo = cpuInfo
         previousCpuInfoCount = numCpuInfo
 
         return min(max(totalUsage, 0.0), 1.0)
+    }
+
+    deinit {
+        timer?.invalidate()
+        if let prev = previousCpuInfo {
+            let byteSize = vm_size_t(previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), byteSize)
+        }
     }
 
     // MARK: - Native Darwin proc_pidinfo & NSWorkspace collection

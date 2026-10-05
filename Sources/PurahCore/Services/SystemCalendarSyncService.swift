@@ -8,6 +8,7 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
     public static let shared = SystemCalendarSyncService()
 
     private var eventStore = EKEventStore()
+    public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
     public private(set) var calendarCount: Int = 0
@@ -19,7 +20,7 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.syncEvents(into: nil)
+                self?.syncEvents(into: self?.boundStore)
             }
         }
     }
@@ -41,17 +42,22 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
         return min(max(elapsed / totalSeconds, 0.0), 1.0)
     }
 
-    public func syncEvents(into store: PurahWorkspaceStore?, scope: CalendarTimeScope? = nil) {
-        eventStore.refreshSourcesIfNecessary()
+    public func syncEvents(into store: PurahWorkspaceStore? = nil, scope: CalendarTimeScope? = nil) {
+        if let store = store {
+            self.boundStore = store
+        }
+        let targetStore = store ?? self.boundStore
 
         let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event))
         guard status.isGranted else {
-            store?.isUsingRealCalendar = false
+            targetStore?.isUsingRealCalendar = false
             return
         }
 
+        eventStore.refreshSourcesIfNecessary()
+
         isSyncing = true
-        let targetScope = scope ?? store?.calendarScope ?? .today
+        let targetScope = scope ?? targetStore?.calendarScope ?? .today
         let interval = targetScope.dateInterval(from: Date())
 
         let allCalendars = eventStore.calendars(for: .event)
@@ -83,12 +89,11 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
             )
         }
 
-        if let store = store {
-            store.calendarScope = targetScope
-            store.isUsingRealCalendar = true
-            store.calendarEvents = mapped.sorted { $0.startTime < $1.startTime }
+        if let targetStore = targetStore {
+            targetStore.calendarScope = targetScope
+            targetStore.isUsingRealCalendar = true
+            targetStore.calendarEvents = mapped.sorted { $0.startTime < $1.startTime }
         }
-
         lastSyncDate = Date()
         isSyncing = false
     }

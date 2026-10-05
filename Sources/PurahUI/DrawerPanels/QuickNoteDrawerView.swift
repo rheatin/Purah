@@ -24,6 +24,7 @@ public struct QuickNoteDrawerView: View {
                 set: {
                     store.quickNote.text = $0
                     store.quickNote.lastModified = Date()
+                    store.savePersistentState()
                 }
             ))
             .font(.system(size: 11, design: .monospaced))
