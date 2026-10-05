@@ -80,12 +80,13 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
 
 ## 4. Animation & Motion Philosophy (Emil Kowalski Principles)
 
-1. **Physicality & Origin**:
-   - Drawers do NOT use raw horizontal translation (`.move(edge:)`).
-   - Drawers unfold from their edge anchor (`.leading` on left rail, `.trailing` on right rail) combining `scaleEffect(0.92 -> 1.0)`, subtle slide offset (`26pt`), and opacity.
+1. **Physicality & Origin (Pure Bezel Slide)**:
+   - Drawers are physical architectural extensions of the screen bezel.
+   - Drawers use edge-anchored physical sliding (`.move(edge: edge == .right ? .trailing : .leading)`) with 100% solid opacity during exit.
+   - **Zero Ghosting Rule**: Never apply opacity fades on drawer card dismissals. A dark translucent card floating over user content looks like a dirty ghost artifact. The card glides smoothly and solidly back into the screen bezel.
 2. **Asymmetric Easing & Duration**:
-   - **Entrance**: Natural Apple-style deceleration spring: `response: 0.28, dampingFraction: 0.76`.
-   - **Retraction / Exit**: Fast, crisp dismissal in 180ms: `response: 0.18, dampingFraction: 0.90`.
+   - **Entrance**: Natural Apple-style deceleration spring: `response: 0.30, dampingFraction: 0.80`.
+   - **Retraction / Exit**: Fast, crisp dismissal in ~160ms: `response: 0.20, dampingFraction: 0.92`.
 3. **Fluid Waveform Visualizer (60 / 120 FPS Metal GPU)**:
    - Audio visualizers use SwiftUI `Canvas` with `.drawingGroup()` driven by `TimelineView(.animation(paused: !isPlaying || reduceMotion))`.
    - Sound waves follow superposition wave equations ($w_1\sin + w_2\cos + w_3\sin$) for silky organic flow.
