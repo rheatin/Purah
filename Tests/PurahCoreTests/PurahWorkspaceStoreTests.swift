@@ -53,4 +53,32 @@ struct PurahWorkspaceStoreTests {
         let cal = store.pods.first(where: { $0.id == "calendar" })!
         #expect(cal.range.length >= 0.35)
     }
+
+    @Test("PurahWorkspaceStore persists notes and settings via savePersistentState and loadPersistentState")
+    func testStorePersistence() {
+        let store = PurahWorkspaceStore()
+        store.quickNote.text = "Testing persistence functionality"
+        store.setPodColorHex(podId: "notes", hex: "#123456")
+        store.fixedDrawerWidth = 310.0
+        store.drawerWidthMode = .adaptive
+        store.savePersistentState()
+
+        let freshStore = PurahWorkspaceStore()
+        freshStore.loadPersistentState()
+
+        #expect(freshStore.quickNote.text == "Testing persistence functionality")
+        #expect(freshStore.customPodColors["notes"] == "#123456")
+        #expect(freshStore.fixedDrawerWidth == 310.0)
+        #expect(freshStore.drawerWidthMode == .adaptive)
+    }
+
+    @Test("SystemCalendarSyncService and SystemRemindersSyncService bind store weakly")
+    func testSyncServiceStoreBinding() {
+        let store = PurahWorkspaceStore()
+        SystemCalendarSyncService.shared.boundStore = store
+        #expect(SystemCalendarSyncService.shared.boundStore === store)
+
+        SystemRemindersSyncService.shared.boundStore = store
+        #expect(SystemRemindersSyncService.shared.boundStore === store)
+    }
 }

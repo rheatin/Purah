@@ -291,6 +291,7 @@ public struct FluidWaveformScrubber: View {
     public let onScrubChange: (Bool, Double) -> Void
     public let onSeek: (Double) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isScrubbing: Bool = false
     @State private var dragProgress: Double = 0.0
 
@@ -325,7 +326,7 @@ public struct FluidWaveformScrubber: View {
 
             ZStack(alignment: .leading) {
                 // Metal GPU 60/120FPS Animation Canvas
-                TimelineView(.animation(paused: !isPlaying)) { timeline in
+                TimelineView(.animation(paused: !isPlaying || reduceMotion)) { timeline in
                     Canvas { context, size in
                         let time = timeline.date.timeIntervalSinceReferenceDate
 
@@ -345,7 +346,7 @@ public struct FluidWaveformScrubber: View {
                             let rawSample = samples.isEmpty ? 0.35 : samples[sampleIdx]
 
                             // Dynamic amplitude: resting breathing state when paused, alive fluid flow when playing
-                            let amp = isPlaying ? (rawSample * 0.25 + fluidFactor * 0.75) : (rawSample * 0.30)
+                            let amp = reduceMotion ? (rawSample * 0.50) : (isPlaying ? (rawSample * 0.25 + fluidFactor * 0.75) : (rawSample * 0.30))
                             let barH = max(minBarHeight, totalH * CGFloat(amp))
                             let y = (totalH - barH) / 2.0
 

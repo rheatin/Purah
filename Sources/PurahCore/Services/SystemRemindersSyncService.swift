@@ -8,6 +8,7 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
     public static let shared = SystemRemindersSyncService()
 
     private var eventStore = EKEventStore()
+    public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
 
@@ -18,7 +19,7 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                await self?.syncReminders(into: nil)
+                await self?.syncReminders(into: self?.boundStore)
             }
         }
     }
@@ -81,27 +82,37 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
         }
     }
 
-    public func syncReminders(into store: PurahWorkspaceStore?, scope: RemindersScope? = nil) async {
+    public func syncReminders(into store: PurahWorkspaceStore? = nil, scope: RemindersScope? = nil) async {
+        if let store = store {
+            self.boundStore = store
+        }
+        let targetStore = store ?? self.boundStore
+
         let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
         guard status.isGranted else {
-            store?.isUsingRealReminders = false
+            targetStore?.isUsingRealReminders = false
             return
         }
 
         isSyncing = true
-        let targetScope = scope ?? store?.remindersScope ?? .allIncomplete
+        let targetScope = scope ?? targetStore?.remindersScope ?? .allIncomplete
         let items = await fetchReminders(scope: targetScope)
 
-        if let store = store {
-            store.remindersScope = targetScope
-            store.isUsingRealReminders = true
-            store.todos = items
+        if let targetStore = targetStore {
+            targetStore.remindersScope = targetScope
+            targetStore.isUsingRealReminders = true
+            targetStore.todos = items
         }
         lastSyncDate = Date()
         isSyncing = false
     }
 
-    public func addReminder(title: String, into store: PurahWorkspaceStore?) async -> Bool {
+    public func addReminder(title: String, into store: PurahWorkspaceStore? = nil) async -> Bool {
+        if let store = store {
+            self.boundStore = store
+        }
+        let targetStore = store ?? self.boundStore
+
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
 
@@ -112,33 +123,36 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
             reminder.calendar = calendar
             do {
                 try eventStore.save(reminder, commit: true)
-                await syncReminders(into: store)
+                await syncReminders(into: targetStore)
                 return true
             } catch {
-                store?.todos.append(TodoItem(title: trimmed))
+                targetStore?.todos.append(TodoItem(title: trimmed))
                 return true
             }
         } else {
-            // 未授权或未提供系统权限时，保存在本地 Store
-            store?.todos.append(TodoItem(title: trimmed))
+            targetStore?.todos.append(TodoItem(title: trimmed))
             return true
         }
     }
 
-    public func toggleCompletion(id: String, into store: PurahWorkspaceStore?) async {
+    public func toggleCompletion(id: String, into store: PurahWorkspaceStore? = nil) async {
+        if let store = store {
+            self.boundStore = store
+        }
+        let targetStore = store ?? self.boundStore
+
         let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
         if status.isGranted {
             if let item = eventStore.calendarItem(withIdentifier: id) as? EKReminder {
                 item.isCompleted.toggle()
                 try? eventStore.save(item, commit: true)
-                await syncReminders(into: store)
+                await syncReminders(into: targetStore)
                 return
             }
         }
 
-        // 本地切换
-        if let idx = store?.todos.firstIndex(where: { $0.id == id }) {
-            store?.todos[idx].isCompleted.toggle()
+        if let idx = targetStore?.todos.firstIndex(where: { $0.id == id }) {
+            targetStore?.todos[idx].isCompleted.toggle()
         }
     }
 }

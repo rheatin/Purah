@@ -115,6 +115,7 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
 
     public func setPodColorHex(podId: String, hex: String) {
         customPodColors[podId] = hex
+        savePersistentState()
     }
 
     // Built-in Pod Business Data
@@ -129,7 +130,53 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         self.calendarEvents = Self.defaultEvents()
         self.todos = Self.defaultTodos()
         self.shelfFiles = Self.defaultShelfFiles()
+        loadPersistentState()
         autoLayoutAll()
+    }
+
+    // MARK: - Local Persistence
+    public func loadPersistentState() {
+        let defaults = UserDefaults.standard
+
+        if let savedText = defaults.string(forKey: "purah.quickNote.text") {
+            let lastMod = (defaults.object(forKey: "purah.quickNote.lastModified") as? Date) ?? Date()
+            self.quickNote = NoteContent(text: savedText, lastModified: lastMod)
+        }
+
+        if let colors = defaults.dictionary(forKey: "purah.customPodColors") as? [String: String] {
+            self.customPodColors = colors
+        }
+
+        if let modeStr = defaults.string(forKey: "purah.drawerWidthMode"),
+           let mode = DrawerWidthMode(rawValue: modeStr) {
+            self.drawerWidthMode = mode
+        }
+
+        let savedFixedW = defaults.double(forKey: "purah.fixedDrawerWidth")
+        if savedFixedW >= 220.0 {
+            self.fixedDrawerWidth = savedFixedW
+        }
+
+        let savedRailW = defaults.double(forKey: "purah.railBarWidth")
+        if savedRailW >= 4.0 {
+            self.railBarWidth = savedRailW
+        }
+
+        if let presetStr = defaults.string(forKey: "purah.currentPreset"),
+           let preset = PodPreset(rawValue: presetStr) {
+            self.currentPreset = preset
+        }
+    }
+
+    public func savePersistentState() {
+        let defaults = UserDefaults.standard
+        defaults.set(quickNote.text, forKey: "purah.quickNote.text")
+        defaults.set(quickNote.lastModified, forKey: "purah.quickNote.lastModified")
+        defaults.set(customPodColors, forKey: "purah.customPodColors")
+        defaults.set(drawerWidthMode.rawValue, forKey: "purah.drawerWidthMode")
+        defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
+        defaults.set(railBarWidth, forKey: "purah.railBarWidth")
+        defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
     }
 
     public func autoLayoutAll() {
