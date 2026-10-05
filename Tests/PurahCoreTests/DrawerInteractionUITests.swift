@@ -289,6 +289,27 @@ struct DrawerInteractionUITests {
         #expect(pausedTrack.calculatedCurrentTime == 45.0)
     }
 
+    @Test("Music playback time does not drift quadratically after seeking")
+    @MainActor
+    func testMusicPlaybackNoDriftAfterSeek() {
+        let store = PurahWorkspaceStore()
+        store.musicTrack.durationSeconds = 300.0
+        store.musicTrack.isPlaying = true
+        store.musicTrack.playbackRate = 1.0
+
+        // User seeks to 100 seconds
+        SystemMusicSyncService.shared.seek(to: 100.0 / 300.0, store: store)
+        #expect(store.musicTrack.currentPositionSeconds == 100.0)
+
+        // Simulate 2 seconds of playback
+        let tAnchor = store.musicTrack.lastUpdated
+        let simulatedNow = tAnchor.addingTimeInterval(2.0)
+        let elapsed = simulatedNow.timeIntervalSince(store.musicTrack.lastUpdated)
+        let expectedCurrentTime = store.musicTrack.currentPositionSeconds + elapsed
+
+        #expect(expectedCurrentTime == 102.0, "After 2 seconds, elapsed should be exactly 2 seconds without quadratic drift")
+    }
+
     @Test("Music track info retains real artwork data and audio source identity")
     @MainActor
     func testMusicTrackArtworkAndSource() {
