@@ -37,23 +37,27 @@ public struct AmbientRailStripView: View {
                     let isThisPodActive = (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id))
 
                     VStack(spacing: 0) {
-                        switch pod.id {
-                        case "todo":
+                        if pod.id == "todo" {
                             todoPodItems(pod: pod, totalHeight: podHeight)
-                        case "calendar":
+                        } else if pod.id == "calendar" {
                             calendarPodItems(pod: pod, totalHeight: podHeight)
-                        case "music":
-                            musicPodItem(pod: pod, totalHeight: podHeight)
-                        case "shelf":
-                            shelfPodItem(pod: pod, totalHeight: podHeight)
-                        case "notes":
-                            notesPodItem(pod: pod, totalHeight: podHeight)
-                        case "vitals":
-                            vitalsRailBar(pod: pod, totalHeight: podHeight)
-                        case "scripts":
-                            scriptsRailBar(pod: pod, totalHeight: podHeight)
-                        default:
-                            genericRailBar(pod: pod, totalHeight: podHeight)
+                        } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
+                            renderPluginPod(plugin: plugin, pod: pod, totalHeight: podHeight)
+                        } else {
+                            switch pod.id {
+                            case "music":
+                                musicPodItem(pod: pod, totalHeight: podHeight)
+                            case "shelf":
+                                shelfPodItem(pod: pod, totalHeight: podHeight)
+                            case "notes":
+                                notesPodItem(pod: pod, totalHeight: podHeight)
+                            case "vitals":
+                                vitalsRailBar(pod: pod, totalHeight: podHeight)
+                            case "scripts":
+                                scriptsRailBar(pod: pod, totalHeight: podHeight)
+                            default:
+                                genericRailBar(pod: pod, totalHeight: podHeight)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
@@ -647,6 +651,111 @@ public struct AmbientRailStripView: View {
                 topTrailingRadius: 6
             )
         }
+    }
+
+    // MARK: - Plugin Pod Rendering
+    @ViewBuilder
+    private func renderPluginPod(plugin: any PurahPodPlugin, pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let isPinned = store.isItemPinned(id: pod.id)
+        let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
+        let color = palette.podColor(for: pod.id, store: store)
+        let slotH = max(totalHeight, 36.0)
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: edge,
+            railWidth: barW,
+            slotHeight: slotH,
+            drawerWidth: store.effectiveDrawerWidth(baseWidth: 280.0),
+            isExpanded: isActive,
+            isPinned: isPinned,
+            accentColor: color,
+            palette: palette,
+            store: store,
+            requestExpand: {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = pod.id
+                    store.activeDrawerPodId = pod.id
+                    store.hoveredPodId = pod.id
+                }
+            },
+            requestDismiss: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                    if store.activeDrawerItemId == pod.id {
+                        store.activeDrawerItemId = nil
+                    }
+                    if store.activeDrawerPodId == pod.id {
+                        store.activeDrawerPodId = nil
+                    }
+                }
+            },
+            togglePin: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    store.togglePinItem(id: pod.id)
+                }
+            }
+        )
+
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
+            plugin.makeRailBarView(context: context)
+                .frame(width: barW, height: slotH)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        context.requestExpand()
+                    }
+                }
+
+            if isActive {
+                if pod.id == "music" {
+                    musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
+                            )
+                        )
+                } else {
+                    pluginDrawerCard(plugin: plugin, pod: pod, context: context, totalHeight: slotH)
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity),
+                                removal: .move(edge: edge == .right ? .trailing : .leading).combined(with: .opacity)
+                            )
+                        )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
+        .frame(height: slotH, alignment: .top)
+        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerItemId)
+        .animation(.spring(response: 0.32, dampingFraction: 0.72), value: store.activeDrawerPodId)
+    }
+
+    @ViewBuilder
+    private func pluginDrawerCard(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext, totalHeight: CGFloat) -> some View {
+        let color = context.accentColor
+        let isPinned = context.isPinned
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: plugin.manifest.systemIcon)
+                    .foregroundColor(color)
+                    .font(.caption)
+                Text(plugin.manifest.displayName)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                Spacer()
+                pinButton(id: pod.id, isPinned: isPinned, color: color)
+            }
+            plugin.makeDrawerView(context: context)
+        }
+        .padding(8)
+        .frame(width: context.drawerWidth, height: totalHeight)
+        .background(palette.solidDrawerBackground)
+        .clipShape(drawerShape)
+        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
+        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+        .compositingGroup()
     }
 
     @ViewBuilder
