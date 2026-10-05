@@ -59,12 +59,11 @@ public struct CalendarDrawerView: View {
         let isImminent = event.isImminent
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
-        HStack(alignment: .top, spacing: 10) {
-            // 左侧状态指示色条
-            Rectangle()
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
                 .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                .frame(width: 4, height: 44)
-                .cornerRadius(2)
+                .frame(width: 7, height: 7)
+                .padding(.top, 4)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {

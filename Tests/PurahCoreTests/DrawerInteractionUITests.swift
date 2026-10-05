@@ -483,4 +483,12 @@ struct DrawerInteractionUITests {
         #expect(PreferencesTab.plugins.title == "Plugins")
         #expect(PreferencesTab.plugins.icon == "puzzlepiece.extension.fill")
     }
+
+    @Test("Hardware vitals minimum height covers full process list for scrolling")
+    @MainActor
+    func testHardwareVitalsPhysicalCardHeight() {
+        let store = PurahWorkspaceStore()
+        let vitalsMinH = store.minimumDrawerHeight(for: "vitals")
+        #expect(vitalsMinH >= 300.0, "Hardware Vitals minimum drawer height must be at least 300pt to prevent scroll cutoff")
+    }
 }

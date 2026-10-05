@@ -73,17 +73,18 @@ public final class ScreenEdgeCoordinator {
                     store.hoveredPodId = nil
                 }
             }
+            let hasPinned = store.hasPinnedItem(on: edge)
+            setInteractive(hasPinned, for: edge)
         } else {
             withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
                 store.activeDrawerItemId = nil
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
             }
+            let hasLeftPinned = store.hasPinnedItem(on: .left)
+            let hasRightPinned = store.hasPinnedItem(on: .right)
+            setInteractive(hasLeftPinned, for: .left)
+            setInteractive(hasRightPinned, for: .right)
         }
-
-        let hasLeftPinned = store.hasPinnedItem(on: .left)
-        let hasRightPinned = store.hasPinnedItem(on: .right)
-        setInteractive(hasLeftPinned, for: .left)
-        setInteractive(hasRightPinned, for: .right)
     }
 }
