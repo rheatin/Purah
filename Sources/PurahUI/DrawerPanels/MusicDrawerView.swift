@@ -57,75 +57,46 @@ public struct MusicDrawerView: View {
 
                     Spacer(minLength: 4)
 
-                // Pin Button
-                Button {
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                        store.togglePinItem(id: "music")
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(store.isItemPinned(id: "music") ? musicColor.opacity(0.18) : Color.primary.opacity(0.06))
-                            .frame(width: 24, height: 24)
-
-                        Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
-                            .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .secondary)
-                            .font(.system(size: 11, weight: .semibold))
-                            .rotationEffect(.degrees(store.isItemPinned(id: "music") ? -25 : 0))
-                            .scaleEffect(store.isItemPinned(id: "music") ? 1.15 : 1.0)
-                            .animation(.spring(response: 0.26, dampingFraction: 0.55), value: store.isItemPinned(id: "music"))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
-                }
-
-                // MARK: - Atoll-inspired Real-time Waveform Scrubber
-                VStack(spacing: 4) {
-                    GeometryReader { geo in
-                        let barCount = 28
-                        let totalSpacing = CGFloat(barCount - 1) * 2.0
-                        let barWidth = max((geo.size.width - totalSpacing) / CGFloat(barCount), 2.0)
-                        let currentProgressIdx = Int(displayProgress * Double(barCount))
-
-                        HStack(spacing: 2) {
-                            ForEach(0..<barCount, id: \.self) { idx in
-                                let isPlayed = idx <= currentProgressIdx
-                                let t = Date().timeIntervalSinceReferenceDate
-                                let wave1 = sin(t * 3.4 + Double(idx) * 0.44)
-                                let wave2 = cos(t * 2.2 + Double(idx) * 0.31)
-                                let waveFactor = 0.5 + 0.5 * ((wave1 + wave2) / 2.0)
-
-                                let sampleIdx = idx % max(store.musicTrack.waveformSamples.count, 1)
-                                let baseSample = store.musicTrack.waveformSamples.isEmpty ? 0.35 : store.musicTrack.waveformSamples[sampleIdx]
-                                let dynamicVal = isPlaying ? (baseSample * 0.35 + waveFactor * 0.65) : (baseSample * 0.30)
-                                let minH: CGFloat = 4.0
-                                let maxH: CGFloat = geo.size.height
-                                let barH = max(minH, maxH * CGFloat(dynamicVal))
-
-                                Capsule(style: .continuous)
-                                    .fill(isPlayed ? musicColor : Color.primary.opacity(0.12))
-                                    .frame(width: barWidth, height: barH)
-                                    .animation(.spring(response: 0.22, dampingFraction: 0.70), value: dynamicVal)
-                            }
+                    // Pin Button
+                    Button {
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                            store.togglePinItem(id: "music")
                         }
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(store.isItemPinned(id: "music") ? musicColor.opacity(0.18) : Color.primary.opacity(0.06))
+                                .frame(width: 24, height: 24)
+
+                            Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
+                                .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .secondary)
+                                .font(.system(size: 11, weight: .semibold))
+                                .rotationEffect(.degrees(store.isItemPinned(id: "music") ? -25 : 0))
+                                .scaleEffect(store.isItemPinned(id: "music") ? 1.15 : 1.0)
+                                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: store.isItemPinned(id: "music"))
+                        }
                         .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    isScrubbing = true
-                                    scrubbedProgress = min(max(value.location.x / geo.size.width, 0.0), 1.0)
-                                }
-                                .onEnded { value in
-                                    let finalProgress = min(max(value.location.x / geo.size.width, 0.0), 1.0)
-                                    isScrubbing = false
-                                    SystemMusicSyncService.shared.seek(to: finalProgress, store: store)
-                                }
-                        )
                     }
-                    .frame(height: 22)
+                    .buttonStyle(.plain)
+                    .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
+                }
+
+                // MARK: - Metal GPU 60/120FPS Fluid Waveform Scrubber
+                VStack(spacing: 4) {
+                    FluidWaveformScrubber(
+                        progress: displayProgress,
+                        isPlaying: isPlaying,
+                        color: musicColor,
+                        samples: store.musicTrack.waveformSamples,
+                        onScrubChange: { dragging, prog in
+                            isScrubbing = dragging
+                            scrubbedProgress = prog
+                        },
+                        onSeek: { newProg in
+                            isScrubbing = false
+                            SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                        }
+                    )
 
                     // Time Labels
                     HStack {
@@ -308,5 +279,114 @@ public struct MusicDrawerView: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%02d:%02d", m, s)
+    }
+}
+
+// MARK: - Metal GPU 60/120FPS Fluid Waveform Scrubber
+public struct FluidWaveformScrubber: View {
+    public let progress: Double
+    public let isPlaying: Bool
+    public let color: Color
+    public let samples: [Double]
+    public let onScrubChange: (Bool, Double) -> Void
+    public let onSeek: (Double) -> Void
+
+    @State private var isScrubbing: Bool = false
+    @State private var dragProgress: Double = 0.0
+
+    private let barCount = 30
+    private let spacing: CGFloat = 2.5
+    private let minBarHeight: CGFloat = 4.0
+
+    public init(
+        progress: Double,
+        isPlaying: Bool,
+        color: Color,
+        samples: [Double],
+        onScrubChange: @escaping (Bool, Double) -> Void,
+        onSeek: @escaping (Double) -> Void
+    ) {
+        self.progress = progress
+        self.isPlaying = isPlaying
+        self.color = color
+        self.samples = samples
+        self.onScrubChange = onScrubChange
+        self.onSeek = onSeek
+    }
+
+    public var body: some View {
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let totalH = geo.size.height
+            let currentProg = isScrubbing ? dragProgress : progress
+            let activeWidth = totalW * CGFloat(currentProg)
+            let totalSpacing = CGFloat(barCount - 1) * spacing
+            let barW = max((totalW - totalSpacing) / CGFloat(barCount), 2.5)
+
+            ZStack(alignment: .leading) {
+                // Metal GPU 60/120FPS Animation Canvas
+                TimelineView(.animation(paused: !isPlaying)) { timeline in
+                    Canvas { context, size in
+                        let time = timeline.date.timeIntervalSinceReferenceDate
+
+                        for i in 0..<barCount {
+                            let x = CGFloat(i) * (barW + spacing)
+                            let isPlayed = (x + barW / 2.0) <= activeWidth
+
+                            // Continuous fluid traveling wave equation:
+                            // Superposition of fundamental wave + harmonic + traveling spatial phase
+                            let phase = Double(i) * 0.38
+                            let w1 = sin(time * 5.8 + phase)
+                            let w2 = cos(time * 3.4 + phase * 0.70)
+                            let w3 = sin(time * 1.6 + Double(i) * 0.15)
+                            let fluidFactor = (w1 * 0.45 + w2 * 0.35 + w3 * 0.20 + 1.0) / 2.0 // 0.0 .. 1.0
+
+                            let sampleIdx = i % max(samples.count, 1)
+                            let rawSample = samples.isEmpty ? 0.35 : samples[sampleIdx]
+
+                            // Dynamic amplitude: resting breathing state when paused, alive fluid flow when playing
+                            let amp = isPlaying ? (rawSample * 0.25 + fluidFactor * 0.75) : (rawSample * 0.30)
+                            let barH = max(minBarHeight, totalH * CGFloat(amp))
+                            let y = (totalH - barH) / 2.0
+
+                            let barRect = CGRect(x: x, y: y, width: barW, height: barH)
+                            let path = Path(roundedRect: barRect, cornerRadius: barW / 2.0)
+
+                            if isPlayed {
+                                context.fill(path, with: .color(color))
+                            } else {
+                                context.fill(path, with: .color(Color.primary.opacity(0.12)))
+                            }
+                        }
+
+                        // Luminous Scrubber Thumb while dragging
+                        if isScrubbing {
+                            let thumbX = min(max(activeWidth, 0), totalW)
+                            let thumbRect = CGRect(x: thumbX - 1.5, y: 1, width: 3, height: totalH - 2)
+                            context.fill(Path(roundedRect: thumbRect, cornerRadius: 1.5), with: .color(.white))
+                        }
+                    }
+                    .frame(width: totalW, height: totalH)
+                }
+                .drawingGroup() // Metal GPU hardware accelerated
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        isScrubbing = true
+                        let prog = min(max(value.location.x / totalW, 0.0), 1.0)
+                        dragProgress = prog
+                        onScrubChange(true, prog)
+                    }
+                    .onEnded { value in
+                        let final = min(max(value.location.x / totalW, 0.0), 1.0)
+                        isScrubbing = false
+                        onScrubChange(false, final)
+                        onSeek(final)
+                    }
+            )
+        }
+        .frame(height: 24)
     }
 }
