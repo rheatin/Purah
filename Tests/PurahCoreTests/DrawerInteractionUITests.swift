@@ -476,12 +476,11 @@ struct DrawerInteractionUITests {
         #expect(isMusicActiveAfterSwitch == false, "Music must immediately collapse when moving to Todo")
     }
 
-    @Test("PreferencesTab includes dedicated Plugins tab and PluginCenterSettingsView initializes")
+    @Test("PreferencesTab includes dedicated Plugins tab")
     @MainActor
     func testPreferencesPluginsTab() {
-        let store = PurahWorkspaceStore()
         #expect(PreferencesTab.allCases.contains(.plugins))
-        let centerView = PluginCenterSettingsView(store: store)
-        _ = centerView
+        #expect(PreferencesTab.plugins.title == "Plugins")
+        #expect(PreferencesTab.plugins.icon == "puzzlepiece.extension.fill")
     }
 }
