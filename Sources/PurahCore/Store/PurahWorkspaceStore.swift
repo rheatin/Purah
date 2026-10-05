@@ -88,8 +88,10 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
             return CGFloat(min(max(fixedDrawerWidth, 220.0), 330.0))
         case .adaptive:
             let charCount = text.count
-            let calculated = Double(charCount) * 7.5 + 130.0
-            let clamped = min(max(calculated, 230.0), 330.0)
+            let textBonus = Double(charCount) * 5.0
+            let extraOffset = max(baseWidth - 280.0, 0.0)
+            let calculated = 230.0 + textBonus + extraOffset
+            let clamped = min(max(calculated, 230.0 + extraOffset), 330.0)
             return CGFloat(clamped)
         }
     }

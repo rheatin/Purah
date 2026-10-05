@@ -56,12 +56,16 @@ public final class EdgeMouseMonitor {
 
             let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
                                         (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
-                                        store.isDrawerPinned
+                                        store.isDrawerPinned ||
+                                        !store.pinnedDrawerItemIds.isEmpty
             if !isCurrentActivePinned {
                 coordinator?.dismissDrawer()
             }
-            coordinator?.setInteractive(false, for: .left)
-            coordinator?.setInteractive(false, for: .right)
+
+            let hasLeftPinned = store.pods.contains { $0.edge == .left && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
+            let hasRightPinned = store.pods.contains { $0.edge == .right && store.isItemPinned(id: $0.id) } || store.isDrawerPinned
+            coordinator?.setInteractive(hasLeftPinned, for: .left)
+            coordinator?.setInteractive(hasRightPinned, for: .right)
             return
         }
 
