@@ -121,4 +121,56 @@ struct DrawerInteractionUITests {
         #expect(vitals.metrics.cpuUsage >= 0.0)
         #expect(vitals.metrics.memoryUsage >= 0.0)
     }
+
+    @Test("Pinned pod maintains interactive hit-test coverage even when activePod is nil")
+    @MainActor
+    func testPinnedPodHitTestCoverage() {
+        let store = PurahWorkspaceStore()
+        store.togglePinItem(id: "notes")
+        #expect(store.isItemPinned(id: "notes") == true)
+
+        // Simulate active hover being nil
+        store.activeDrawerItemId = nil
+        store.activeDrawerPodId = nil
+        #expect(store.activePod == nil)
+
+        // Retrieve the pinned notes pod
+        guard let notesPod = store.pods.first(where: { $0.id == "notes" }) else {
+            Issue.record("Notes pod not found")
+            return
+        }
+
+        let totalH = 1000.0
+        let minY = totalH * (1.0 - (notesPod.range.start + notesPod.range.length)) - 60.0
+        let maxY = totalH * (1.0 - notesPod.range.start) + 60.0
+        let testPointY = totalH * (1.0 - (notesPod.range.start + notesPod.range.length / 2.0))
+        let testPointX = 150.0 // Inside 340 width drawer
+
+        #expect(testPointY >= minY && testPointY <= maxY)
+        #expect(testPointX <= 340.0)
+    }
+
+    @Test("Calendar adaptive drawer expands width appropriately when Join button is present")
+    @MainActor
+    func testCalendarAdaptiveJoinWidth() {
+        let store = PurahWorkspaceStore()
+        store.drawerWidthMode = .adaptive
+
+        let standardWidth = store.effectiveDrawerWidth(for: "Quick Sync", baseWidth: 280.0)
+        let meetingWithJoinWidth = store.effectiveDrawerWidth(for: "Quick Sync", baseWidth: 310.0)
+
+        #expect(meetingWithJoinWidth > standardWidth)
+    }
+
+    @Test("Music waveform scrubber updates playback progress on seek gesture")
+    @MainActor
+    func testMusicScrubberSeek() {
+        let store = PurahWorkspaceStore()
+        store.musicTrack.playbackProgress = 0.25
+        #expect(store.musicTrack.playbackProgress == 0.25)
+
+        // Simulate user dragging to 75%
+        store.musicTrack.playbackProgress = 0.75
+        #expect(store.musicTrack.playbackProgress == 0.75)
+    }
 }

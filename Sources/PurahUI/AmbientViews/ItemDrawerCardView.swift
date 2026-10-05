@@ -215,7 +215,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, 34.0)
+        let cardH = max(height, event.url != nil ? 38.0 : 34.0)
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
@@ -241,6 +241,9 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isAlerting: Bool) -> some View {
+        let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
+        let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
+
         HStack(spacing: 8) {
             Rectangle()
                 .fill(podColor.opacity(isPast ? 0.35 : 1.0))
@@ -273,22 +276,29 @@ public struct CalendarItemDrawerView: View {
 
             Spacer(minLength: 4)
 
-            // Link meeting action button
+            // Link meeting action button (Prominent, finger-friendly pill)
             if let url = event.url {
                 Button {
                     NSWorkspace.shared.open(url)
                 } label: {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 4) {
                         Image(systemName: "video.fill")
-                            .font(.system(size: 8))
+                            .font(.system(size: 10, weight: .bold))
                         Text("Join")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
                     }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1.5)
-                    .background(podColor.opacity(0.2))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(podColor.opacity(0.24))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(podColor.opacity(0.75), lineWidth: 1.0)
+                    )
                     .foregroundColor(podColor)
-                    .cornerRadius(3)
+                    .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                 }
                 .buttonStyle(.plain)
                 .help("Open link: \(url.absoluteString)")
@@ -305,7 +315,7 @@ public struct CalendarItemDrawerView: View {
             pinButton
         }
         .padding(.horizontal, 10)
-        .frame(width: store.effectiveDrawerWidth(for: event.title, baseWidth: 290.0), height: cardH)
+        .frame(width: effectiveW, height: cardH)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .contentShape(drawerShape)

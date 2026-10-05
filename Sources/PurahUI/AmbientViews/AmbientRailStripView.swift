@@ -217,67 +217,14 @@ public struct AmbientRailStripView: View {
 
     @ViewBuilder
     private func musicDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(color.opacity(0.2))
-                    .frame(width: 38, height: 38)
-                Image(systemName: "music.note")
-                    .foregroundColor(color)
-                    .font(.system(size: 16))
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(store.musicTrack.title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-                Text(store.musicTrack.artist)
-                    .font(.system(size: 9))
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 6)
-
-            HStack(spacing: 16) {
-                Button {
-                    SystemMusicSyncService.shared.previousTrack(store: store)
-                } label: {
-                    Image(systemName: "backward.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    SystemMusicSyncService.shared.togglePlayPause(store: store)
-                } label: {
-                    Image(systemName: store.musicTrack.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 26))
-                        .foregroundColor(color)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    SystemMusicSyncService.shared.nextTrack(store: store)
-                } label: {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                }
-                .buttonStyle(.plain)
-            }
-
-            pinButton(id: pod.id, isPinned: isPinned, color: color)
-        }
-        .padding(.horizontal, 10)
-        .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: max(totalHeight, 44.0))
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-        .compositingGroup()
+        MusicDrawerView(store: store)
+            .padding(8)
+            .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: max(totalHeight, 136.0))
+            .background(palette.solidDrawerBackground)
+            .clipShape(drawerShape)
+            .overlay(drawerShape.stroke(color, lineWidth: 1.5))
+            .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+            .compositingGroup()
     }
 
     // MARK: - Shelf 单项抽屉 (全高长条，支持访达拖拽置入)

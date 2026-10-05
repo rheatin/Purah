@@ -95,7 +95,6 @@ public final class AmbientRailWindow: NSPanel {
     public override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown {
             if !self.isKeyWindow {
-                NSApp.activate(ignoringOtherApps: true)
                 self.makeKey()
             }
         }
@@ -148,30 +147,59 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         self.trackingArea = area
     }
 
+    private func isPointInInteractiveDrawer(_ point: NSPoint) -> Bool {
+        let totalH = bounds.height
+
+        // Check each enabled pod on this edge
+        for pod in store.pods where pod.edge == edge && pod.isEnabled {
+            let isPodPinned = store.isItemPinned(id: pod.id)
+            let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
+
+            // Check if any sub-item is active or pinned (for todo and calendar)
+            let hasPinnedItem = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
+                                (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
+
+            if isPodPinned || isPodActive || hasPinnedItem || store.isDrawerPinned {
+                let minY = totalH * (1.0 - (pod.range.start + pod.range.length)) - 60
+                let maxY = totalH * (1.0 - pod.range.start) + 60
+                let inDrawerX: Bool
+                if edge == .right {
+                    inDrawerX = (point.x >= bounds.maxX - 340)
+                } else {
+                    inDrawerX = (point.x <= bounds.minX + 340)
+                }
+                let inDrawerY = (point.y >= minY && point.y <= maxY)
+                if inDrawerX && inDrawerY {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
-                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
-                                    store.isDrawerPinned
-        guard !isCurrentActivePinned else { return }
 
         let winPoint = event.locationInWindow
         let barW: CGFloat = CGFloat(store.railBarWidth)
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
-        if isOnRail { return }
 
-        // Check if inside active drawer card bounds using canonical window coordinates (0 at bottom, totalH at top)
-        if let activePod = store.activePod, activePod.edge == edge {
-            let totalH = bounds.height
-            let minY = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
-            let maxY = totalH * (1.0 - activePod.range.start) + 60
-            let inDrawerX = (edge == .right) ? (winPoint.x >= bounds.maxX - 340) : (winPoint.x <= bounds.minX + 340)
-            let inDrawerY = (winPoint.y >= minY && winPoint.y <= maxY)
-            if inDrawerX && inDrawerY {
-                // Mouse is inside the drawer card or its interactive controls; stay open
-                return
+        // If inside drawer or on rail, ensure window is interactive and gain key focus immediately
+        if isOnRail || isPointInInteractiveDrawer(winPoint) {
+            if let window = self.window as? AmbientRailWindow {
+                window.setInteractive(true)
+                if !window.isKeyWindow {
+                    window.makeKey()
+                }
             }
+            return
         }
+
+        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
+                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
+                                    store.isDrawerPinned ||
+                                    !store.pinnedDrawerItemIds.isEmpty
+        guard !isCurrentActivePinned else { return }
 
         // Mouse genuinely left the drawer and rail; smoothly retract
         if store.activeDrawerItemId != nil || store.activeDrawerPodId != nil {
@@ -189,10 +217,6 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
-                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
-                                    store.isDrawerPinned
-        guard !isCurrentActivePinned else { return }
 
         // Guard against premature collapse when mouse moves into subview buttons or text fields
         let mouseLoc = NSEvent.mouseLocation
@@ -200,19 +224,16 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
             let winPoint = win.convertPoint(fromScreen: mouseLoc)
             let barW: CGFloat = CGFloat(store.railBarWidth)
             let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
-            if isOnRail { return }
-
-            if let activePod = store.activePod, activePod.edge == edge {
-                let totalH = bounds.height
-                let minY = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
-                let maxY = totalH * (1.0 - activePod.range.start) + 60
-                let inDrawerX = (edge == .right) ? (winPoint.x >= bounds.maxX - 340) : (winPoint.x <= bounds.minX + 340)
-                let inDrawerY = (winPoint.y >= minY && winPoint.y <= maxY)
-                if inDrawerX && inDrawerY {
-                    return
-                }
+            if isOnRail || isPointInInteractiveDrawer(winPoint) {
+                return
             }
         }
+
+        let isCurrentActivePinned = (store.activeDrawerItemId != nil && store.isItemPinned(id: store.activeDrawerItemId!)) ||
+                                    (store.activeDrawerPodId != nil && store.isItemPinned(id: store.activeDrawerPodId!)) ||
+                                    store.isDrawerPinned ||
+                                    !store.pinnedDrawerItemIds.isEmpty
+        guard !isCurrentActivePinned else { return }
 
         withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
             store.activeDrawerItemId = nil
@@ -230,32 +251,14 @@ final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
         let barW: CGFloat = CGFloat(store.railBarWidth)
 
         // 1. On rail baseline: always handle interaction
-        let isOnRail: Bool
-        if edge == .right {
-            isOnRail = (point.x >= bounds.maxX - barW - 6)
-        } else {
-            isOnRail = (point.x <= bounds.minX + barW + 6)
-        }
+        let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW - 6) : (point.x <= bounds.minX + barW + 6)
         if isOnRail {
             return super.hitTest(point)
         }
 
-        // 2. Over active/pinned drawer card: intercept events
-        let hasActive = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil || store.isDrawerPinned || !store.pinnedDrawerItemIds.isEmpty)
-        if hasActive, let activePod = store.activePod, activePod.edge == edge {
-            let totalH = bounds.height
-            let minY = totalH * (1.0 - (activePod.range.start + activePod.range.length)) - 60
-            let maxY = totalH * (1.0 - activePod.range.start) + 60
-            let inDrawerX: Bool
-            if edge == .right {
-                inDrawerX = (point.x >= bounds.maxX - 340)
-            } else {
-                inDrawerX = (point.x <= bounds.minX + 340)
-            }
-            let inDrawerY = (point.y >= minY && point.y <= maxY)
-            if inDrawerX && inDrawerY {
-                return super.hitTest(point)
-            }
+        // 2. Over any active or pinned drawer card: intercept events
+        if isPointInInteractiveDrawer(point) {
+            return super.hitTest(point)
         }
 
         // 3. Transparent area: return nil for 100% pass-through to background apps

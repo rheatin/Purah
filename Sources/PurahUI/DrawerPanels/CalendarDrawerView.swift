@@ -75,22 +75,29 @@ public struct CalendarDrawerView: View {
 
                     Spacer(minLength: 4)
 
-                    // 参会链接胶囊按钮
+                    // 参会链接胶囊按钮 (放大手感，自适应布局)
                     if let url = event.url {
                         Button {
                             NSWorkspace.shared.open(url)
                         } label: {
-                            HStack(spacing: 3) {
+                            HStack(spacing: 4) {
                                 Image(systemName: "video.fill")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 10, weight: .bold))
                                 Text("Join")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
                             }
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(podColor.opacity(0.2))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(podColor.opacity(0.24))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(podColor.opacity(0.75), lineWidth: 1.0)
+                            )
                             .foregroundColor(podColor)
-                            .cornerRadius(4)
+                            .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                         }
                         .buttonStyle(.plain)
                         .help("Open link: \(url.absoluteString)")
@@ -163,9 +170,9 @@ public struct CalendarDrawerView: View {
 
         switch state {
         case .expandedDrawer:
-            // 完整弹出的日程抽屉小窗
+            // 完整弹出的日程抽屉小窗 (自适应宽度与会议链接)
             singleEventCard(event: event)
-                .frame(width: 252)
+                .frame(width: store.effectiveDrawerWidth(for: event.title, baseWidth: event.url != nil ? 310.0 : 280.0))
 
         case .neighborPeek:
             // 隔壁的日程：略微伸出来一点 (50pt peek tab，不显示拥挤文字)
