@@ -93,17 +93,9 @@ public struct ScriptsRailBarPluginView: View {
 
     public var body: some View {
         let radius = min(context.railWidth / 2, 4)
-        ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: radius)
-                .fill(context.accentColor.opacity(0.85))
-                .frame(width: context.railWidth, height: context.slotHeight)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.9))
-                .frame(width: max(context.railWidth - 2, 2), height: 2)
-                .padding(.top, 4)
-        }
-        .frame(width: context.railWidth, height: context.slotHeight)
+        RoundedRectangle(cornerRadius: radius)
+            .fill(context.accentColor.opacity(0.88))
+            .frame(width: context.railWidth, height: context.slotHeight)
     }
 }
 

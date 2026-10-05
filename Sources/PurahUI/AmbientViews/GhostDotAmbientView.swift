@@ -23,24 +23,10 @@ public struct RailBarAmbientView: View {
 
     public var body: some View {
         let radius = min(barWidth / 2, 4)
-        ZStack(alignment: .top) {
-            // 全高实心导轨长条底板
-            RoundedRectangle(cornerRadius: radius)
-                .fill(color.opacity(hasContent ? 0.85 : 0.4))
-                .frame(width: barWidth)
-
-            // 内部微刻度刻线
-            VStack(spacing: 6) {
-                ForEach(0..<6, id: \.self) { _ in
-                    Rectangle()
-                        .fill(Color.black.opacity(0.3))
-                        .frame(width: max(barWidth - 2, 2), height: 1.5)
-                }
-            }
-            .padding(.top, 8)
-        }
-        .frame(width: barWidth)
-        .frame(maxHeight: .infinity)
+        RoundedRectangle(cornerRadius: radius)
+            .fill(color.opacity(hasContent ? 0.88 : 0.40))
+            .frame(width: barWidth)
+            .frame(maxHeight: .infinity)
     }
 }
 

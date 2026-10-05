@@ -518,16 +518,9 @@ public struct AmbientRailStripView: View {
         let slotH = max(totalHeight, 140.0)
         let radius = min(barW / 2, 4)
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            ZStack(alignment: .top) {
-                RoundedRectangle(cornerRadius: radius)
-                    .fill(color.opacity(0.85))
-                    .frame(width: barW, height: slotH)
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.9))
-                    .frame(width: max(barW - 2, 2), height: 2)
-                    .padding(.top, 4)
-            }
+            RoundedRectangle(cornerRadius: radius)
+                .fill(color.opacity(0.88))
+                .frame(width: barW, height: slotH)
             .frame(width: barW, height: slotH)
             .contentShape(Rectangle())
             .onHover { isHovered in
@@ -722,12 +715,19 @@ public struct AmbientRailStripView: View {
                 store.togglePinItem(id: id)
             }
         } label: {
-            Image(systemName: isPinned ? "pin.fill" : "pin")
-                .foregroundColor(isPinned ? color : .gray)
-                .font(.system(size: 11))
-                .rotationEffect(.degrees(isPinned ? -25 : 0))
-                .scaleEffect(isPinned ? 1.18 : 1.0)
-                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            ZStack {
+                Circle()
+                    .fill(isPinned ? color.opacity(0.18) : Color.primary.opacity(0.06))
+                    .frame(width: 24, height: 24)
+
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .foregroundColor(isPinned ? color : .secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .rotationEffect(.degrees(isPinned ? -25 : 0))
+                    .scaleEffect(isPinned ? 1.15 : 1.0)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
