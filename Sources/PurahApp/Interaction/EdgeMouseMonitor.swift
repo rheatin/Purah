@@ -28,7 +28,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func start() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
             self?.handleMouse(event: event)
         }
     }
@@ -50,15 +50,15 @@ public final class EdgeMouseMonitor {
         let now = Date()
         velocityTracker.add(point: point, timestamp: now)
 
-        let screenRect = screen.frame
+        let visibleRect = screen.visibleFrame
 
         // Check if point is near the 14px trigger rail on either side
-        let isAtLeftEdge = point.x <= (screenRect.minX + 14)
-        let isAtRightEdge = point.x >= (screenRect.maxX - 14)
+        let isAtLeftEdge = point.x <= (visibleRect.minX + 14)
+        let isAtRightEdge = point.x >= (visibleRect.maxX - 14)
 
         // Check 2D bounding boxes for drawers on left and right independently
-        let isInsideLeftDrawer = isPointInsideAnyDrawerCard(point: point, screenRect: screenRect, edge: .left)
-        let isInsideRightDrawer = isPointInsideAnyDrawerCard(point: point, screenRect: screenRect, edge: .right)
+        let isInsideLeftDrawer = isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: .left)
+        let isInsideRightDrawer = isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: .right)
 
         let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer
         let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer
@@ -113,7 +113,7 @@ public final class EdgeMouseMonitor {
         guard speed < 900.0 else { return }
 
         let edge: MountEdge = isAtLeftEdge ? .left : .right
-        let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
+        let normalizedY = 1.0 - ((point.y - visibleRect.minY) / visibleRect.height)
 
         let candidatePod = store.pods.first { pod in
             pod.edge == edge && pod.isEnabled && pod.range.contains(normalizedY)
@@ -133,42 +133,40 @@ public final class EdgeMouseMonitor {
         // Instant trigger on slow movement (<300 px/s), or after 80ms dwell on normal movement
         guard hoverDuration >= 0.08 || speed < 300.0 || store.activeDrawerPodId == candidate.id else { return }
 
-        if let candidate = candidatePod {
-            if candidate.id == "todo" && !store.todos.isEmpty {
-                let count = max(store.todos.count, 1)
-                let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
-                let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
-                let item = store.todos[itemIdx]
-                if store.activeDrawerItemId != item.id {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = item.id
-                        store.activeDrawerPodId = candidate.id
-                    }
+        if candidate.id == "todo" && !store.todos.isEmpty {
+            let count = max(store.todos.count, 1)
+            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
+            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+            let item = store.todos[itemIdx]
+            if store.activeDrawerItemId != item.id {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = item.id
+                    store.activeDrawerPodId = candidate.id
                 }
-            } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
-                let count = max(store.calendarEvents.count, 1)
-                let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
-                let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
-                let item = store.calendarEvents[itemIdx]
-                if store.activeDrawerItemId != item.id {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerItemId = item.id
-                        store.activeDrawerPodId = candidate.id
-                    }
+            }
+        } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
+            let count = max(store.calendarEvents.count, 1)
+            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
+            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+            let item = store.calendarEvents[itemIdx]
+            if store.activeDrawerItemId != item.id {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = item.id
+                    store.activeDrawerPodId = candidate.id
                 }
-            } else {
-                if store.activeDrawerPodId != candidate.id {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                        store.activeDrawerPodId = candidate.id
-                        store.activeDrawerItemId = candidate.id
-                    }
+            }
+        } else {
+            if store.activeDrawerPodId != candidate.id {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerPodId = candidate.id
+                    store.activeDrawerItemId = candidate.id
                 }
             }
         }
     }
 
-    private func isPointInsideAnyDrawerCard(point: NSPoint, screenRect: CGRect, edge: MountEdge) -> Bool {
-        let totalH = screenRect.height
+    private func isPointInsideAnyDrawerCard(point: NSPoint, visibleRect: CGRect, edge: MountEdge) -> Bool {
+        let totalH = visibleRect.height
 
         for pod in store.pods where pod.edge == edge && pod.isEnabled {
             let isPodPinned = store.isItemPinned(id: pod.id)
@@ -177,8 +175,9 @@ public final class EdgeMouseMonitor {
                                          (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let topOfPodY = screenRect.maxY - (pod.range.start * totalH)
-                let bottomOfPodY = screenRect.maxY - ((pod.range.start + pod.range.length) * totalH)
+                let physicalCardH = max(pod.range.length * totalH, store.minimumDrawerHeight(for: pod.id))
+                let topOfPodY = visibleRect.maxY - (pod.range.start * totalH)
+                let bottomOfPodY = topOfPodY - physicalCardH
 
                 let minY = bottomOfPodY - 6.0
                 let maxY = topOfPodY + 6.0
@@ -186,9 +185,9 @@ public final class EdgeMouseMonitor {
                 let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
                 let inDrawerX: Bool
                 if edge == .right {
-                    inDrawerX = point.x >= (screenRect.maxX - drawerW)
+                    inDrawerX = point.x >= (visibleRect.maxX - drawerW)
                 } else {
-                    inDrawerX = point.x <= (screenRect.minX + drawerW)
+                    inDrawerX = point.x <= (visibleRect.minX + drawerW)
                 }
                 let inDrawerY = (point.y >= minY && point.y <= maxY)
 
