@@ -114,8 +114,6 @@ public struct AmbientRailStripView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
-                .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.activeDrawerItemId)
-                .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.pinnedDrawerItemIds)
             }
         }
         .frame(height: totalHeight)
@@ -164,8 +162,6 @@ public struct AmbientRailStripView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
-                .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.activeDrawerItemId)
-                .animation(.spring(response: 0.30, dampingFraction: 0.72), value: store.pinnedDrawerItemIds)
             }
         }
         .frame(height: totalHeight)

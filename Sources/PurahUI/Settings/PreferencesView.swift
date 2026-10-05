@@ -64,7 +64,7 @@ public struct PreferencesView: View {
                                 .stroke(selectedTab == tab ? palette.borderColor : Color.clear, lineWidth: 1)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                 }
                 Spacer()
             }

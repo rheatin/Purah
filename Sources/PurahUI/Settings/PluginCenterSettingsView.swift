@@ -95,7 +95,7 @@ public struct PluginCenterSettingsView: View {
                                         .stroke(isSelected ? palette.primaryAccent.opacity(0.35) : Color.clear, lineWidth: 1)
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tactile)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -205,7 +205,7 @@ public struct PluginCenterSettingsView: View {
                                         store.customPodColors.removeValue(forKey: podId)
                                         store.savePersistentState()
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.tactile)
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundColor(palette.primaryAccent)
                                 }
