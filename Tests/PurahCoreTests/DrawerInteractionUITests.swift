@@ -437,4 +437,21 @@ struct DrawerInteractionUITests {
             #expect(settingsView != nil, "Plugin \(plugin.manifest.id) must provide an isolated settings view")
         }
     }
+
+    @Test("Physical card height incorporates minimumDrawerHeight to capture scroll wheel")
+    @MainActor
+    func testPhysicalCardHeightCoversMinimumDrawerHeight() {
+        let store = PurahWorkspaceStore()
+        let scriptsMinH = store.minimumDrawerHeight(for: "scripts")
+        #expect(scriptsMinH >= 140.0, "Script Runway minimum drawer height must be at least 140pt")
+
+        let totalH = 1000.0
+        guard let scriptsPod = store.pods.first(where: { $0.id == "scripts" }) else {
+            Issue.record("Scripts pod not found")
+            return
+        }
+
+        let physicalH = max(scriptsPod.range.length * totalH, store.minimumDrawerHeight(for: scriptsPod.id))
+        #expect(physicalH >= 140.0, "Rendered physical height must be at least 140pt even if normalized range is smaller")
+    }
 }

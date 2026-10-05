@@ -55,10 +55,11 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                                          (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let cardBottom = totalH * (1.0 - (pod.range.start + pod.range.length))
+                let physicalCardH = max(pod.range.length * totalH, store.minimumDrawerHeight(for: pod.id))
                 let cardTop = totalH * (1.0 - pod.range.start)
-                let minY = max(cardBottom - 4.0, 0.0)
-                let maxY = min(cardTop + 4.0, totalH)
+                let cardBottom = cardTop - physicalCardH
+                let minY = max(cardBottom - 6.0, 0.0)
+                let maxY = min(cardTop + 6.0, totalH)
 
                 let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
                 let inDrawerX: Bool
@@ -74,6 +75,16 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             }
         }
         return false
+    }
+
+    public override func scrollWheel(with event: NSEvent) {
+        let winPoint = event.locationInWindow
+        if isPointInInteractiveDrawer(winPoint) {
+            if let panel = self.window as? NSPanel {
+                panel.ignoresMouseEvents = false
+            }
+        }
+        super.scrollWheel(with: event)
     }
 
     public override func mouseMoved(with event: NSEvent) {

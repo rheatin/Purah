@@ -106,6 +106,19 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         }
     }
 
+    public func minimumDrawerHeight(for podId: String) -> CGFloat {
+        switch podId {
+        case "scripts": return 140.0
+        case "vitals": return 145.0
+        case "music": return 136.0
+        case "shelf": return 130.0
+        case "notes": return 130.0
+        case "calendar": return 160.0
+        case "todo": return 160.0
+        default: return 120.0
+        }
+    }
+
     public func defaultColorHex(for podId: String) -> String {
         switch podId {
         case "calendar": return "#FF5A60" // Coral Red
