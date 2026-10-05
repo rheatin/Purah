@@ -58,7 +58,8 @@ public final class HardwareVitalsService: @unchecked Sendable {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task.detached(priority: .utility) { [weak self] in
-                await self?.refreshMetricsAsync()
+                // Lightweight periodic poll (CPU & Memory values only, zero process iteration overhead)
+                await self?.refreshMetricsAsync(includeProcesses: false)
             }
         }
     }
@@ -68,11 +69,11 @@ public final class HardwareVitalsService: @unchecked Sendable {
         timer = nil
     }
 
-    public func refreshMetrics() {
+    public func refreshMetrics(includeProcesses: Bool = true) {
         let cpu = readCPUUsage()
         let mem = readMemoryUsage()
         let thermal = (cpu > 0.80 || mem > 0.85)
-        let top = readTopProcessesNative()
+        let top = includeProcesses ? readTopProcessesNative() : metrics.topProcesses
 
         metrics = HardwareVitalsInfo(
             cpuUsage: cpu,
@@ -82,11 +83,12 @@ public final class HardwareVitalsService: @unchecked Sendable {
         )
     }
 
-    public func refreshMetricsAsync() async {
+    public func refreshMetricsAsync(includeProcesses: Bool = false) async {
         let cpu = readCPUUsage()
         let mem = readMemoryUsage()
         let thermal = (cpu > 0.80 || mem > 0.85)
-        let top = readTopProcessesNative()
+        let currentProcesses = await MainActor.run { self.metrics.topProcesses }
+        let top = includeProcesses ? readTopProcessesNative() : (currentProcesses.isEmpty ? readTopProcessesNative() : currentProcesses)
 
         await MainActor.run {
             self.metrics = HardwareVitalsInfo(

@@ -83,8 +83,8 @@ public struct HardwareVitalsDrawerView: View {
                         .foregroundColor(.secondary)
                     Spacer()
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            vitals.refreshMetrics()
+                        Task {
+                            await vitals.refreshMetricsAsync(includeProcesses: true)
                         }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -136,6 +136,9 @@ public struct HardwareVitalsDrawerView: View {
         }
         .onAppear {
             vitals.startMonitoring()
+            Task {
+                await vitals.refreshMetricsAsync(includeProcesses: true)
+            }
         }
     }
 }

@@ -118,6 +118,7 @@ public struct TodoItemDrawerView: View {
                 .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
         )
         .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 2)
+        .compositingGroup() // Offload shadows & layers to Metal GPU texture cache
     }
 
     @ViewBuilder
@@ -317,6 +318,7 @@ public struct CalendarItemDrawerView: View {
         )
         .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
         .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 3)
+        .compositingGroup() // Offload shadows & layers to Metal GPU texture cache
     }
 
     @ViewBuilder
