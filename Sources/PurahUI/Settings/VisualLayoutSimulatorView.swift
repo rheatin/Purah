@@ -164,86 +164,11 @@ public struct VisualLayoutSimulatorView: View {
                     }
                 }
 
-                // 3. Modular Pod Plugins & Settings
-                settingsCard(title: "Modular Pod Plugins", icon: "square.stack.3d.up.fill") {
-                    VStack(spacing: 12) {
-                        HStack {
-                            Text("Dedicated settings and isolated appearance for each plugin module")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Button("Reset Colors") {
-                                store.customPodColors.removeAll()
-                                store.savePersistentState()
-                            }
-                            .buttonStyle(.plain)
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(palette.primaryAccent)
-                        }
-
-                        VStack(spacing: 10) {
-                            ForEach(PluginRegistry.shared.allPlugins, id: \.manifest.id) { plugin in
-                                let podId = plugin.manifest.id
-                                let podColor = palette.podColor(for: podId, store: store)
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    // Plugin Header: Icon + Name + Description + ColorPicker
-                                    HStack(spacing: 8) {
-                                        Image(systemName: plugin.manifest.systemIcon)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(podColor)
-                                            .frame(width: 22, height: 22)
-
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(plugin.manifest.displayName)
-                                                .font(.system(size: 12, weight: .bold, design: .rounded))
-                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                            Text(plugin.manifest.description)
-                                                .font(.system(size: 9))
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(1)
-                                        }
-
-                                        Spacer()
-
-                                        ColorPicker("", selection: Binding(
-                                            get: { podColor },
-                                            set: { newColor in
-                                                if let hex = newColor.toHex() {
-                                                    store.setPodColorHex(podId: podId, hex: hex)
-                                                }
-                                            }
-                                        ))
-                                        .labelsHidden()
-                                        .scaleEffect(0.85)
-                                    }
-
-                                    // Isolated Plugin Settings (if provided by plugin)
-                                    if let settingsView = plugin.makeSettingsView(store: store) {
-                                        Divider()
-                                            .background(palette.borderColor.opacity(0.25))
-
-                                        settingsView
-                                            .padding(.top, 2)
-                                    }
-                                }
-                                .padding(10)
-                                .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(podColor.opacity(0.25), lineWidth: 1)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 4. Module Assembly Card
+                // 3. Module Assembly Card
                 settingsCard(title: "Rail Module Assembly", icon: "square.grid.2x2.fill") {
                     VStack(spacing: 10) {
                         HStack {
-                            Text("Toggle modules to mount or unmount on rails")
+                            Text("Toggle modules to mount or unmount on rails. Configure each in the Plugins tab.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -275,9 +200,9 @@ public struct VisualLayoutSimulatorView: View {
 
                                         Spacer()
 
-                                        Text(pod.edge == .left ? "Left Rail" : "Right Rail")
-                                            .font(.system(size: 8, weight: .bold))
-                                            .padding(.horizontal, 4)
+                                        Text(pod.edge == .left ? "Left" : "Right")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
                                             .background(pod.isEnabled ? palette.primaryAccent.opacity(0.12) : Color.gray.opacity(0.15))
                                             .foregroundColor(pod.isEnabled ? palette.primaryAccent : .gray)
@@ -298,10 +223,10 @@ public struct VisualLayoutSimulatorView: View {
                     }
                 }
 
-                // 5. Mini Screen Simulation
+                // 4. Mini Screen Simulation
                 ScreenSimulationCanvas(store: store)
 
-                // 6. Presets Card
+                // 5. Presets Card
                 settingsCard(title: "Ergonomic Presets", icon: "sparkle") {
                     HStack(spacing: 12) {
                         ForEach(PodPreset.allCases) { preset in
