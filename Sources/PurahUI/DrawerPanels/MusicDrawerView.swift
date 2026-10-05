@@ -52,19 +52,21 @@ public struct MusicDrawerView: View {
 
                     Spacer(minLength: 4)
 
-                    // Pin Button
-                    Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                            store.togglePinItem(id: "music")
-                        }
-                    } label: {
-                        Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
-                            .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .gray)
-                            .font(.system(size: 11))
-                            .scaleEffect(store.isItemPinned(id: "music") ? 1.15 : 1.0)
+                // Pin Button
+                Button {
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                        store.togglePinItem(id: "music")
                     }
-                    .buttonStyle(.plain)
-                    .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
+                } label: {
+                    Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
+                        .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .gray)
+                        .font(.system(size: 11))
+                        .rotationEffect(.degrees(store.isItemPinned(id: "music") ? -25 : 0))
+                        .scaleEffect(store.isItemPinned(id: "music") ? 1.18 : 1.0)
+                        .animation(.spring(response: 0.26, dampingFraction: 0.55), value: store.isItemPinned(id: "music"))
+                }
+                .buttonStyle(.plain)
+                .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
                 }
 
                 // MARK: - Atoll-inspired Real-time Waveform Scrubber
@@ -78,16 +80,22 @@ public struct MusicDrawerView: View {
                         HStack(spacing: 2) {
                             ForEach(0..<barCount, id: \.self) { idx in
                                 let isPlayed = idx <= currentProgressIdx
+                                let t = Date().timeIntervalSinceReferenceDate
+                                let wave1 = sin(t * 3.4 + Double(idx) * 0.44)
+                                let wave2 = cos(t * 2.2 + Double(idx) * 0.31)
+                                let waveFactor = 0.5 + 0.5 * ((wave1 + wave2) / 2.0)
+
                                 let sampleIdx = idx % max(store.musicTrack.waveformSamples.count, 1)
-                                let sampleVal = store.musicTrack.waveformSamples.isEmpty ? 0.3 : store.musicTrack.waveformSamples[sampleIdx]
+                                let baseSample = store.musicTrack.waveformSamples.isEmpty ? 0.35 : store.musicTrack.waveformSamples[sampleIdx]
+                                let dynamicVal = isPlaying ? (baseSample * 0.35 + waveFactor * 0.65) : (baseSample * 0.30)
                                 let minH: CGFloat = 4.0
                                 let maxH: CGFloat = geo.size.height
-                                let barH = max(minH, maxH * CGFloat(sampleVal))
+                                let barH = max(minH, maxH * CGFloat(dynamicVal))
 
                                 Capsule(style: .continuous)
                                     .fill(isPlayed ? musicColor : Color.primary.opacity(0.12))
                                     .frame(width: barWidth, height: barH)
-                                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isPlaying)
+                                    .animation(.spring(response: 0.22, dampingFraction: 0.70), value: dynamicVal)
                             }
                         }
                         .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
@@ -252,35 +260,29 @@ public struct MusicDrawerView: View {
     }
 
     private func triggerBackwardNudge() {
-        withAnimation(.spring(response: 0.16, dampingFraction: 0.65)) {
-            backwardOffset = -5
+        withAnimation(.spring(response: 0.14, dampingFraction: 0.55)) {
+            backwardOffset = -6
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.75)) {
-                backwardOffset = 0
-            }
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.65).delay(0.08)) {
+            backwardOffset = 0
         }
     }
 
     private func triggerForwardNudge() {
-        withAnimation(.spring(response: 0.16, dampingFraction: 0.65)) {
-            forwardOffset = 5
+        withAnimation(.spring(response: 0.14, dampingFraction: 0.55)) {
+            forwardOffset = 6
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(.spring(response: 0.24, dampingFraction: 0.75)) {
-                forwardOffset = 0
-            }
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.65).delay(0.08)) {
+            forwardOffset = 0
         }
     }
 
     private func triggerPlayPauseBounce() {
-        withAnimation(.spring(response: 0.14, dampingFraction: 0.5)) {
-            playPauseScale = 0.88
+        withAnimation(.spring(response: 0.14, dampingFraction: 0.45)) {
+            playPauseScale = 0.85
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
-                playPauseScale = 1.0
-            }
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.60).delay(0.08)) {
+            playPauseScale = 1.0
         }
     }
 

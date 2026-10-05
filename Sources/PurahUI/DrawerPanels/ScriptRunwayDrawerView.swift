@@ -47,10 +47,13 @@ public struct ScriptRunwayDrawerView: View {
                             } label: {
                                 Text(runway.isRunning && runway.lastExecutedActionId == action.id ? "..." : "Run")
                                     .font(.system(size: 8, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(scriptColor)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(4)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(scriptColor)
-                            .foregroundColor(.white)
+                            .buttonStyle(.tactile)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)

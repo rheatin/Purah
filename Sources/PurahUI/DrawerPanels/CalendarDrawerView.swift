@@ -99,7 +99,7 @@ public struct CalendarDrawerView: View {
                             .foregroundColor(podColor)
                             .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tactile)
                         .help("Open link: \(url.absoluteString)")
                     }
 
@@ -230,14 +230,16 @@ public struct CalendarDrawerView: View {
 
     private func pinButton(isPinned: Bool) -> some View {
         Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
                 store.isDrawerPinned.toggle()
             }
         } label: {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .foregroundColor(isPinned ? podColor : .gray)
                 .font(.system(size: 11))
-                .scaleEffect(isPinned ? 1.2 : 1.0)
+                .rotationEffect(.degrees(isPinned ? -25 : 0))
+                .scaleEffect(isPinned ? 1.18 : 1.0)
+                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
         }
         .buttonStyle(.plain)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
