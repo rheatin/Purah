@@ -37,6 +37,18 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         pinnedDrawerItemIds.contains(id)
     }
 
+    public func activateDrawer(podId: String, itemId: String? = nil) {
+        activeDrawerPodId = podId
+        activeDrawerItemId = itemId ?? podId
+        hoveredPodId = podId
+    }
+
+    public func dismissActiveDrawer() {
+        activeDrawerPodId = nil
+        activeDrawerItemId = nil
+        hoveredPodId = nil
+    }
+
     public func hasPinnedItem(on edge: MountEdge) -> Bool {
         if isDrawerPinned { return true }
         for pod in pods where pod.edge == edge && pod.isEnabled {

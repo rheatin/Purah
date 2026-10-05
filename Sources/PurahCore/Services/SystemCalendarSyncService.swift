@@ -77,8 +77,13 @@ public final class SystemCalendarSyncService: @unchecked Sendable {
                 extractedURL = Self.extractFirstURL(from: textToScan)
             }
 
+            // Construct guaranteed unique ID per occurrence for recurring events
+            let baseId = ekEvent.eventIdentifier ?? UUID().uuidString
+            let occurrenceTimestamp = Int(ekEvent.startDate.timeIntervalSince1970)
+            let uniqueId = "\(baseId)_\(occurrenceTimestamp)"
+
             return CalendarEventItem(
-                id: ekEvent.eventIdentifier ?? UUID().uuidString,
+                id: uniqueId,
                 title: ekEvent.title ?? "Untitled Event",
                 location: ekEvent.location ?? "Apple Calendar",
                 calendarTitle: ekEvent.calendar?.title ?? "Calendar",

@@ -454,4 +454,34 @@ struct DrawerInteractionUITests {
         let physicalH = max(scriptsPod.range.length * totalH, store.minimumDrawerHeight(for: scriptsPod.id))
         #expect(physicalH >= 140.0, "Rendered physical height must be at least 140pt even if normalized range is smaller")
     }
+
+    @Test("Hovering Todo or Calendar item immediately dismisses active Music drawer on same rail")
+    @MainActor
+    func testHoveringTodoDismissesMusicDrawer() {
+        let store = PurahWorkspaceStore()
+
+        // 1. Open Music on right rail
+        store.activateDrawer(podId: "music")
+        #expect(store.activeDrawerPodId == "music")
+        let isMusicActiveInitially = (store.activeDrawerItemId == "music" || store.activeDrawerPodId == "music" || store.isItemPinned(id: "music"))
+        #expect(isMusicActiveInitially == true)
+
+        // 2. User moves mouse to a Todo item on the same rail
+        store.activateDrawer(podId: "todo", itemId: "todo-item-42")
+        #expect(store.activeDrawerPodId == "todo")
+        #expect(store.activeDrawerItemId == "todo-item-42")
+
+        // 3. Verify Music is no longer active
+        let isMusicActiveAfterSwitch = (store.activeDrawerItemId == "music" || store.activeDrawerPodId == "music" || store.isItemPinned(id: "music"))
+        #expect(isMusicActiveAfterSwitch == false, "Music must immediately collapse when moving to Todo")
+    }
+
+    @Test("PreferencesTab includes dedicated Plugins tab and PluginCenterSettingsView initializes")
+    @MainActor
+    func testPreferencesPluginsTab() {
+        let store = PurahWorkspaceStore()
+        #expect(PreferencesTab.allCases.contains(.plugins))
+        let centerView = PluginCenterSettingsView(store: store)
+        _ = centerView
+    }
 }

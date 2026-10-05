@@ -28,4 +28,46 @@ struct CalendarSyncTests {
         let monthInterval = CalendarTimeScope.thisMonth.dateInterval(from: now)
         #expect(monthInterval.duration >= 86400 * 27)
     }
+
+    @Test("Recurring event occurrences have distinct composite unique IDs")
+    func testRecurringEventUniqueIDs() {
+        let baseEventId = "EKEvent-Recurring-Standup"
+        let monday = Date()
+        let tuesday = monday.addingTimeInterval(86400)
+        let wednesday = monday.addingTimeInterval(86400 * 2)
+
+        let occurrence1 = CalendarEventItem(
+            id: "\(baseEventId)_\(Int(monday.timeIntervalSince1970))",
+            title: "Daily Standup",
+            startTime: monday,
+            endTime: monday.addingTimeInterval(1800)
+        )
+        let occurrence2 = CalendarEventItem(
+            id: "\(baseEventId)_\(Int(tuesday.timeIntervalSince1970))",
+            title: "Daily Standup",
+            startTime: tuesday,
+            endTime: tuesday.addingTimeInterval(1800)
+        )
+        let occurrence3 = CalendarEventItem(
+            id: "\(baseEventId)_\(Int(wednesday.timeIntervalSince1970))",
+            title: "Daily Standup",
+            startTime: wednesday,
+            endTime: wednesday.addingTimeInterval(1800)
+        )
+
+        // Verify IDs are distinct
+        #expect(occurrence1.id != occurrence2.id)
+        #expect(occurrence2.id != occurrence3.id)
+        #expect(occurrence1.id != occurrence3.id)
+
+        // Verify activating occurrence1 does not activate occurrence2
+        let store = PurahWorkspaceStore()
+        store.calendarEvents = [occurrence1, occurrence2, occurrence3]
+        store.activateDrawer(podId: "calendar", itemId: occurrence1.id)
+
+        #expect(store.activeDrawerItemId == occurrence1.id)
+        #expect(occurrence1.id == store.activeDrawerItemId)
+        #expect(occurrence2.id != store.activeDrawerItemId, "Occurrence 2 must remain docked when occurrence 1 is popped out")
+        #expect(occurrence3.id != store.activeDrawerItemId, "Occurrence 3 must remain docked when occurrence 1 is popped out")
+    }
 }

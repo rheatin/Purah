@@ -4,13 +4,15 @@ import PurahCore
 
 public enum PreferencesTab: String, CaseIterable, Identifiable {
     case layout
+    case plugins
     case permissions
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .layout: return "Layout Simulator"
+        case .layout: return "Layout & Rails"
+        case .plugins: return "Plugins"
         case .permissions: return "Permissions & Access"
         }
     }
@@ -18,6 +20,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
     public var icon: String {
         switch self {
         case .layout: return "slider.horizontal.2.square"
+        case .plugins: return "puzzlepiece.extension.fill"
         case .permissions: return "lock.shield"
         }
     }
@@ -77,6 +80,8 @@ public struct PreferencesView: View {
                 switch selectedTab {
                 case .layout:
                     VisualLayoutSimulatorView(store: store)
+                case .plugins:
+                    PluginCenterSettingsView(store: store)
                 case .permissions:
                     SystemAccessSettingsView(store: store)
                 }

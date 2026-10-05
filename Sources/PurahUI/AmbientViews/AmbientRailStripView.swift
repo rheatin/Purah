@@ -107,9 +107,8 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                            store.activeDrawerItemId = todo.id
-                            store.hoveredPodId = pod.id
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            store.activateDrawer(podId: pod.id, itemId: todo.id)
                         }
                     }
                 }
@@ -158,9 +157,8 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                            store.activeDrawerItemId = event.id
-                            store.hoveredPodId = pod.id
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            store.activateDrawer(podId: pod.id, itemId: event.id)
                         }
                     }
                 }

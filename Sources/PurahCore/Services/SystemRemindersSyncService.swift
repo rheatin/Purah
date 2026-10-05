@@ -69,8 +69,12 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
 
                 let mapped = filtered.map { rem in
                     let dueDate = rem.dueDateComponents.flatMap { cal.date(from: $0) }
+                    let baseId = rem.calendarItemIdentifier
+                    let dueTimestamp = dueDate.map { Int($0.timeIntervalSince1970) } ?? 0
+                    let uniqueId = dueTimestamp > 0 ? "\(baseId)_\(dueTimestamp)" : baseId
+
                     return TodoItem(
-                        id: rem.calendarItemIdentifier,
+                        id: uniqueId,
                         title: rem.title ?? "Untitled Reminder",
                         listTitle: rem.calendar?.title ?? "Reminders",
                         dueDate: dueDate,
@@ -143,7 +147,8 @@ public final class SystemRemindersSyncService: @unchecked Sendable {
 
         let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
         if status.isGranted {
-            if let item = eventStore.calendarItem(withIdentifier: id) as? EKReminder {
+            let baseIdentifier = id.components(separatedBy: "_").first ?? id
+            if let item = eventStore.calendarItem(withIdentifier: baseIdentifier) as? EKReminder {
                 item.isCompleted.toggle()
                 try? eventStore.save(item, commit: true)
                 await syncReminders(into: targetStore)
