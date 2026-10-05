@@ -13,6 +13,9 @@ public final class EdgeMouseMonitor {
     private let flingDetector = FlingIntentDetector()
     private let dwellTracker = DwellTracker(threshold: 0.16)
     private var globalMonitor: Any?
+    private var exitGraceTask: Task<Void, Never>?
+    private var lastCandidatePodId: String?
+    private var candidateHoverStartTime: Date?
 
     public init(store: PurahWorkspaceStore, coordinator: ScreenEdgeCoordinator? = nil) {
         self.store = store
@@ -30,6 +33,8 @@ public final class EdgeMouseMonitor {
     }
 
     public func stop() {
+        exitGraceTask?.cancel()
+        exitGraceTask = nil
         if let monitor = globalMonitor {
             NSEvent.removeMonitor(monitor)
             globalMonitor = nil
@@ -55,23 +60,44 @@ public final class EdgeMouseMonitor {
         let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer
         let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer
 
-        coordinator?.setInteractive(shouldBeInteractiveLeft, for: .left)
-        coordinator?.setInteractive(shouldBeInteractiveRight, for: .right)
+        // If mouse is inside drawer or on rail: cancel exit grace window immediately
+        if shouldBeInteractiveLeft || shouldBeInteractiveRight {
+            exitGraceTask?.cancel()
+            exitGraceTask = nil
+            coordinator?.setInteractive(shouldBeInteractiveLeft, for: .left)
+            coordinator?.setInteractive(shouldBeInteractiveRight, for: .right)
+        } else {
+            // Mouse is outside: start 150ms Exit Grace Window to prevent accidental collapse
+            if exitGraceTask == nil {
+                exitGraceTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms grace delay
+                    guard !Task.isCancelled else { return }
+                    guard let self = self else { return }
 
-        // If mouse is neither on a rail nor inside an active/pinned drawer card:
-        if !shouldBeInteractiveLeft && !shouldBeInteractiveRight {
-            dwellTracker.reset()
-            store.hoveredPodId = nil
+                    self.dwellTracker.reset()
+                    self.store.hoveredPodId = nil
+                    self.lastCandidatePodId = nil
+                    self.candidateHoverStartTime = nil
 
-            let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
-            if let active = activeId, !store.isItemPinned(id: active) {
-                coordinator?.dismissDrawer()
+                    let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
+                    if let active = activeId, !self.store.isItemPinned(id: active) {
+                        self.coordinator?.dismissDrawer()
+                    }
+                    self.coordinator?.setInteractive(false, for: .left)
+                    self.coordinator?.setInteractive(false, for: .right)
+                    self.exitGraceTask = nil
+                }
             }
             return
         }
 
         // Only trigger drawer expansion when physically on the 14px edge
         guard isAtLeftEdge || isAtRightEdge else { return }
+
+        // Velocity speed check: suppress accidental popups on rapid fling across screen edge (>900 px/s)
+        let vel = velocityTracker.currentVelocity()
+        let speed = sqrt(vel.x * vel.x + vel.y * vel.y)
+        guard speed < 900.0 else { return }
 
         let edge: MountEdge = isAtLeftEdge ? .left : .right
         let normalizedY = 1.0 - ((point.y - screenRect.minY) / screenRect.height)
@@ -81,6 +107,18 @@ public final class EdgeMouseMonitor {
         }
 
         store.hoveredPodId = candidatePod?.id
+
+        guard let candidate = candidatePod else { return }
+
+        // Hover dwell hysteresis: when moving between pods, require deliberate intent
+        if candidate.id != lastCandidatePodId {
+            lastCandidatePodId = candidate.id
+            candidateHoverStartTime = now
+        }
+
+        let hoverDuration = now.timeIntervalSince(candidateHoverStartTime ?? now)
+        // Instant trigger on slow movement (<300 px/s), or after 80ms dwell on normal movement
+        guard hoverDuration >= 0.08 || speed < 300.0 || store.activeDrawerPodId == candidate.id else { return }
 
         if let candidate = candidatePod {
             if candidate.id == "todo" && !store.todos.isEmpty {

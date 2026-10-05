@@ -7,6 +7,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public let edge: MountEdge
     public let store: PurahWorkspaceStore
     private var trackingArea: NSTrackingArea?
+    private var exitGraceTask: Task<Void, Never>?
 
     public init(rootView: Content, edge: MountEdge, store: PurahWorkspaceStore) {
         self.edge = edge
@@ -83,6 +84,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
 
         if isOnRail || isPointInInteractiveDrawer(winPoint) {
+            exitGraceTask?.cancel()
+            exitGraceTask = nil
             if let panel = self.window as? NSPanel {
                 panel.ignoresMouseEvents = false
                 if !panel.isKeyWindow {
@@ -92,19 +95,29 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
 
-        if let panel = self.window as? NSPanel {
-            panel.ignoresMouseEvents = true
-        }
+        // When mouse steps outside, use 150ms Exit Grace Window before retracting
+        if exitGraceTask == nil {
+            exitGraceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard !Task.isCancelled else { return }
+                guard let self = self else { return }
 
-        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
-        if let active = activeId {
-            let isCurrentActivePinned = store.isItemPinned(id: active)
-            if !isCurrentActivePinned {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = nil
-                    store.activeDrawerPodId = nil
-                    store.hoveredPodId = nil
+                if let panel = self.window as? NSPanel {
+                    panel.ignoresMouseEvents = true
                 }
+
+                let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
+                if let active = activeId {
+                    let isCurrentActivePinned = self.store.isItemPinned(id: active)
+                    if !isCurrentActivePinned {
+                        withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                            self.store.activeDrawerItemId = nil
+                            self.store.activeDrawerPodId = nil
+                            self.store.hoveredPodId = nil
+                        }
+                    }
+                }
+                self.exitGraceTask = nil
             }
         }
     }
@@ -118,23 +131,34 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             let barW: CGFloat = CGFloat(store.railBarWidth)
             let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
             if isOnRail || isPointInInteractiveDrawer(winPoint) {
+                exitGraceTask?.cancel()
+                exitGraceTask = nil
                 return
             }
         }
 
-        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
-        if let active = activeId {
-            let isCurrentActivePinned = store.isItemPinned(id: active)
-            if !isCurrentActivePinned {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = nil
-                    store.activeDrawerPodId = nil
-                    store.hoveredPodId = nil
+        if exitGraceTask == nil {
+            exitGraceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard !Task.isCancelled else { return }
+                guard let self = self else { return }
+
+                let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
+                if let active = activeId {
+                    let isCurrentActivePinned = self.store.isItemPinned(id: active)
+                    if !isCurrentActivePinned {
+                        withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                            self.store.activeDrawerItemId = nil
+                            self.store.activeDrawerPodId = nil
+                            self.store.hoveredPodId = nil
+                        }
+                        if let panel = self.window as? NSPanel {
+                            panel.ignoresMouseEvents = true
+                            panel.resignKey()
+                        }
+                    }
                 }
-                if let panel = self.window as? NSPanel {
-                    panel.ignoresMouseEvents = true
-                    panel.resignKey()
-                }
+                self.exitGraceTask = nil
             }
         }
     }

@@ -195,12 +195,19 @@ public struct TodoItemDrawerView: View {
                 onTogglePin()
             }
         } label: {
-            Image(systemName: isPinned ? "pin.fill" : "pin")
-                .foregroundColor(isPinned ? podColor : .gray)
-                .font(.system(size: 11))
-                .rotationEffect(.degrees(isPinned ? -25 : 0))
-                .scaleEffect(isPinned ? 1.18 : 1.0)
-                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            ZStack {
+                Circle()
+                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
+                    .frame(width: 22, height: 22)
+
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .foregroundColor(isPinned ? podColor : .secondary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isPinned ? -25 : 0))
+                    .scaleEffect(isPinned ? 1.15 : 1.0)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
@@ -431,14 +438,22 @@ public struct CalendarItemDrawerView: View {
                 onTogglePin()
             }
         } label: {
-            Image(systemName: isPinned ? "pin.fill" : "pin")
-                .foregroundColor(isPinned ? podColor : .gray)
-                .font(.system(size: 11))
-                .rotationEffect(.degrees(isPinned ? -25 : 0))
-                .scaleEffect(isPinned ? 1.18 : 1.0)
-                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            ZStack {
+                Circle()
+                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
+                    .frame(width: 22, height: 22)
+
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .foregroundColor(isPinned ? podColor : .secondary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isPinned ? -25 : 0))
+                    .scaleEffect(isPinned ? 1.15 : 1.0)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {

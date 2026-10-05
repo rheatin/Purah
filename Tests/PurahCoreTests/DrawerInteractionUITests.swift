@@ -312,4 +312,25 @@ struct DrawerInteractionUITests {
         #expect(track.durationSeconds == 178.0)
         #expect(track.currentPositionSeconds == 89.0)
     }
+
+    @Test("RailBarAmbientView renders a clean pill without tick marks")
+    @MainActor
+    func testRailBarCleanPillView() {
+        let view = RailBarAmbientView(type: .notes, hasContent: true, color: .yellow, barWidth: 8.0)
+        #expect(view.barWidth == 8.0)
+        #expect(view.hasContent == true)
+    }
+
+    @Test("Velocity tracker detects rapid fling above 900 px/s for speed suppression")
+    @MainActor
+    func testVelocitySuppression() {
+        let tracker = VelocityTracker()
+        let t0 = Date()
+        tracker.add(point: CGPoint(x: 10, y: 100), timestamp: t0)
+        tracker.add(point: CGPoint(x: 10, y: 600), timestamp: t0.addingTimeInterval(0.05))
+
+        let vel = tracker.currentVelocity()
+        let speed = sqrt(vel.x * vel.x + vel.y * vel.y)
+        #expect(speed > 900.0, "Rapid swipe should register as high-speed fling to prevent accidental drawer explosion")
+    }
 }

@@ -58,12 +58,19 @@ public struct MusicDrawerView: View {
                         store.togglePinItem(id: "music")
                     }
                 } label: {
-                    Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
-                        .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .gray)
-                        .font(.system(size: 11))
-                        .rotationEffect(.degrees(store.isItemPinned(id: "music") ? -25 : 0))
-                        .scaleEffect(store.isItemPinned(id: "music") ? 1.18 : 1.0)
-                        .animation(.spring(response: 0.26, dampingFraction: 0.55), value: store.isItemPinned(id: "music"))
+                    ZStack {
+                        Circle()
+                            .fill(store.isItemPinned(id: "music") ? musicColor.opacity(0.18) : Color.primary.opacity(0.06))
+                            .frame(width: 24, height: 24)
+
+                        Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
+                            .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .secondary)
+                            .font(.system(size: 11, weight: .semibold))
+                            .rotationEffect(.degrees(store.isItemPinned(id: "music") ? -25 : 0))
+                            .scaleEffect(store.isItemPinned(id: "music") ? 1.15 : 1.0)
+                            .animation(.spring(response: 0.26, dampingFraction: 0.55), value: store.isItemPinned(id: "music"))
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
