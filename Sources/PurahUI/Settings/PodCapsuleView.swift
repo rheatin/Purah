@@ -78,7 +78,7 @@ public struct PodCapsuleView: View {
             .padding(.top, 6)
             .padding(.bottom, 4)
             .contentShape(Rectangle())
-            // Header-driven anchor-based move gesture (no runaway compounding)
+            // Header-driven anchor-based move gesture with Apple rubber-banding
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
@@ -86,17 +86,29 @@ public struct PodCapsuleView: View {
                             dragInitialStart = pod.range.start
                         }
                         let deltaYRatio = Double(value.translation.height / canvasHeight)
-                        let targetStart = (dragInitialStart ?? pod.range.start) + deltaYRatio
-                        onMove(targetStart)
+                        let rawTarget = (dragInitialStart ?? pod.range.start) + deltaYRatio
+                        let safeBounds: ClosedRange<Double> = 0.02...max(0.98 - pod.range.length, 0.02)
+                        let dampedStart = RubberBandingEngine.clampWithRubberband(
+                            value: rawTarget,
+                            bounds: safeBounds,
+                            dimension: 0.20,
+                            constant: 0.55
+                        )
+                        onMove(dampedStart)
                     }
                     .onEnded { _ in
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            let safeBounds: ClosedRange<Double> = 0.02...max(0.98 - pod.range.length, 0.02)
+                            let finalStart = min(max(pod.range.start, safeBounds.lowerBound), safeBounds.upperBound)
+                            onMove(finalStart)
+                        }
                         dragInitialStart = nil
                     }
             )
 
             Spacer()
 
-            // 2. High-Affinity Bottom Resize Handle (Real-time 60FPS spring push)
+            // 2. High-Affinity Bottom Resize Handle (Real-time 60FPS spring push with rubberband)
             ZStack {
                 Rectangle()
                     .fill(Color.clear)
@@ -112,7 +124,7 @@ public struct PodCapsuleView: View {
             .onHover { isHovered in
                 isResizeHovered = isHovered
             }
-            // Real-time anchor-based resize gesture
+            // Real-time anchor-based resize gesture with Apple rubberband damping
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
@@ -120,10 +132,23 @@ public struct PodCapsuleView: View {
                             resizeInitialLength = pod.range.length
                         }
                         let deltaRatio = Double(value.translation.height / canvasHeight)
-                        let targetLength = max(pod.minLength, (resizeInitialLength ?? pod.range.length) + deltaRatio)
-                        onResize(targetLength)
+                        let rawLength = (resizeInitialLength ?? pod.range.length) + deltaRatio
+                        let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
+                        let legalBounds: ClosedRange<Double> = pod.minLength...maxLegalLength
+                        let dampedLength = RubberBandingEngine.clampWithRubberband(
+                            value: rawLength,
+                            bounds: legalBounds,
+                            dimension: 0.25,
+                            constant: 0.55
+                        )
+                        onResize(dampedLength)
                     }
                     .onEnded { _ in
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
+                            let finalLength = min(max(pod.range.length, pod.minLength), maxLegalLength)
+                            onResize(finalLength)
+                        }
                         resizeInitialLength = nil
                     }
             )
