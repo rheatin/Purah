@@ -112,4 +112,27 @@ struct VitalsAndScriptTests {
         store.vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
         store.savePersistentState()
     }
+
+    @Test("PurahWorkspaceStore scripts decomposition state and dynamic height")
+    func testScriptsDecompositionState() {
+        let store = PurahWorkspaceStore()
+        store.isScriptsDecomposed = true
+        store.scriptsEnabledActionIds = ["a1", "a2", "a3"]
+
+        let height = store.minimumDrawerHeight(for: "scripts")
+        // 3 items * 56.0 + 2 gaps * 2.5 = 168.0 + 5.0 = 173.0
+        #expect(height >= 168.0)
+        #expect(store.isScriptsDecomposed == true)
+
+        // Test persistence roundtrip
+        store.savePersistentState()
+        let reloaded = PurahWorkspaceStore()
+        #expect(reloaded.isScriptsDecomposed == true)
+        #expect(reloaded.scriptsEnabledActionIds == ["a1", "a2", "a3"])
+
+        // Reset
+        store.isScriptsDecomposed = false
+        store.scriptsEnabledActionIds = ScriptRunwayService.shared.actions.map(\.id)
+        store.savePersistentState()
+    }
 }
