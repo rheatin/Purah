@@ -58,6 +58,17 @@ public final class ScriptRunwayService {
         saveActions()
     }
 
+    public func updateAction(_ action: ScriptActionItem) {
+        if let index = actions.firstIndex(where: { $0.id == action.id }) {
+            actions[index] = action
+            saveActions()
+        }
+    }
+
+    public func action(for id: String) -> ScriptActionItem? {
+        actions.first { $0.id == id }
+    }
+
     public func resetToDefaults() {
         actions = Self.defaultActions()
         saveActions()
