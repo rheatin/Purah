@@ -4,7 +4,8 @@ import EventKit
 import Observation
 
 @Observable
-public final class SystemRemindersSyncService: @unchecked Sendable {
+@MainActor
+public final class SystemRemindersSyncService {
     public static let shared = SystemRemindersSyncService()
 
     private var eventStore = EKEventStore()

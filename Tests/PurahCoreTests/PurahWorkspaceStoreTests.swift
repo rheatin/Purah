@@ -3,6 +3,7 @@ import Testing
 @testable import PurahCore
 
 @Suite("Workspace Store Tests")
+@MainActor
 struct PurahWorkspaceStoreTests {
     @Test("Initializes with standard built-in pods including vitals and scripts")
     func testDefaultPods() {
@@ -46,11 +47,11 @@ struct PurahWorkspaceStoreTests {
     }
 
     @Test("Fill rail expands pod to span safe boundary without crashing")
-    func testFillRail() {
+    func testFillRail() throws {
         let store = PurahWorkspaceStore()
         store.fillRail(podId: "calendar")
 
-        let cal = store.pods.first(where: { $0.id == "calendar" })!
+        let cal = try #require(store.pods.first(where: { $0.id == "calendar" }))
         #expect(cal.range.length >= 0.35)
     }
 

@@ -33,22 +33,23 @@ struct PluginArchitectureTests {
     }
 
     @Test("PluginRegistry registers all standard built-in plugins on startup")
-    func testBuiltInPluginsRegistered() {
+    func testBuiltInPluginsRegistered() throws {
         let registry = PluginRegistry.shared
         let expectedIds = ["vitals", "scripts", "notes", "shelf", "music", "calendar", "todo"]
 
         for id in expectedIds {
-            let plugin = registry.plugin(for: id)
-            #expect(plugin != nil, "Expected built-in plugin '\(id)' to be registered")
-            #expect(plugin?.manifest.id == id)
-            #expect(!plugin!.manifest.displayName.isEmpty)
+            let plugin = try #require(registry.plugin(for: id), "Expected built-in plugin '\(id)' to be registered")
+            #expect(plugin.manifest.id == id)
+            #expect(!plugin.manifest.displayName.isEmpty)
         }
         #expect(registry.allPlugins.count >= 7)
     }
 
     @Test("Custom plugin can be registered and unregistered with lifecycle callbacks")
+    @MainActor
     func testCustomPluginRegistrationAndLifecycle() {
-        final class MockCustomPlugin: PurahPodPlugin, @unchecked Sendable {
+        @MainActor
+        final class MockCustomPlugin: PurahPodPlugin {
             nonisolated let manifest = PurahPluginManifest(
                 id: "com.purah.mock",
                 displayName: "Mock Plugin",

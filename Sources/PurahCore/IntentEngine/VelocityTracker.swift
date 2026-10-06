@@ -2,8 +2,8 @@
 import Foundation
 import CoreGraphics
 
-public final class VelocityTracker: @unchecked Sendable {
-    private struct Sample {
+public struct VelocityTracker: Sendable {
+    private struct Sample: Sendable {
         let point: CGPoint
         let timestamp: Date
     }
@@ -13,7 +13,7 @@ public final class VelocityTracker: @unchecked Sendable {
 
     public init() {}
 
-    public func add(point: CGPoint, timestamp: Date = Date()) {
+    public mutating func add(point: CGPoint, timestamp: Date = Date()) {
         samples.append(Sample(point: point, timestamp: timestamp))
         let cutoff = timestamp.addingTimeInterval(-maxWindow)
         samples.removeAll { $0.timestamp < cutoff }
@@ -32,7 +32,7 @@ public final class VelocityTracker: @unchecked Sendable {
         return CGPoint(x: dx / dt, y: dy / dt)
     }
 
-    public func reset() {
+    public mutating func reset() {
         samples.removeAll()
     }
 }

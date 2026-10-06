@@ -25,7 +25,8 @@ public enum AccessStatus: String, Codable, Sendable, CaseIterable {
 }
 
 @Observable
-public final class PermissionManager: @unchecked Sendable {
+@MainActor
+public final class PermissionManager {
     public static let shared = PermissionManager()
 
     public private(set) var calendarStatus: AccessStatus = .notDetermined
@@ -52,20 +53,11 @@ public final class PermissionManager: @unchecked Sendable {
 
     public static func status(from ekStatus: EKAuthorizationStatus) -> AccessStatus {
         switch ekStatus {
-        case .notDetermined:
-            return .notDetermined
-        case .restricted:
-            return .restricted
-        case .denied:
-            return .denied
-        case .authorized:
-            return .authorized
-        case .fullAccess:
-            return .authorized
-        case .writeOnly:
-            return .authorized
-        @unknown default:
-            return .notDetermined
+        case .notDetermined: .notDetermined
+        case .restricted: .restricted
+        case .denied: .denied
+        case .authorized, .fullAccess, .writeOnly: .authorized
+        @unknown default: .notDetermined
         }
     }
 

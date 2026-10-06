@@ -11,19 +11,19 @@ public enum VitalsMetricType: String, CaseIterable, Codable, Sendable, Identifia
 
     public var displayName: String {
         switch self {
-        case .cpu: return "CPU Load"
-        case .ram: return "Memory (RAM)"
-        case .power: return "Power & Thermal"
-        case .disk: return "Disk Storage"
+        case .cpu: "CPU Load"
+        case .ram: "Memory (RAM)"
+        case .power: "Power & Thermal"
+        case .disk: "Disk Storage"
         }
     }
 
     public var systemIcon: String {
         switch self {
-        case .cpu: return "cpu"
-        case .ram: return "memorychip"
-        case .power: return "bolt.batteryblock.fill"
-        case .disk: return "internaldrive"
+        case .cpu: "cpu"
+        case .ram: "memorychip"
+        case .power: "bolt.batteryblock.fill"
+        case .disk: "internaldrive"
         }
     }
 }

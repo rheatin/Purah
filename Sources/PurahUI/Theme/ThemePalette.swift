@@ -23,6 +23,7 @@ public struct ThemePalette: Sendable {
     public let fontTitle: Font
     public let fontMono: Font
 
+    @MainActor
     public func podColor(for podId: String, store: PurahWorkspaceStore? = nil) -> Color {
         if let store = store, let customHex = store.customPodColors[podId] {
             return Color(hex: customHex)

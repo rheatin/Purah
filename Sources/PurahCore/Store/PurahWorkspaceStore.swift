@@ -15,7 +15,8 @@ public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
 }
 
 @Observable
-public final class PurahWorkspaceStore: @unchecked Sendable {
+@MainActor
+public final class PurahWorkspaceStore {
     public var pods: [SlotPod] = []
     public var activeDrawerPodId: String? = nil
     public var activeDrawerItemId: String? = nil

@@ -4,6 +4,7 @@ import Foundation
 @testable import PurahCore
 
 @Suite("System Music Sync Tests")
+@MainActor
 struct MusicSyncTests {
     @Test("Processes Music.app notification userInfo correctly")
     func testNotificationParsing() {

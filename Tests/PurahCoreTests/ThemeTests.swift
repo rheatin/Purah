@@ -4,8 +4,10 @@ import Testing
 @testable import PurahUI
 
 @Suite("Theme System Tests")
+@MainActor
 struct ThemeTests {
     @Test("Defaults to macOS Liquid Native theme with continuous curvature")
+    @MainActor
     func testLiquidNativeTheme() {
         let theme = ThemeManager()
         #expect(theme.currentStyle == .native)

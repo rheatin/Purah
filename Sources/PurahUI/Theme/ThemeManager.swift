@@ -4,7 +4,8 @@ import Observation
 import PurahCore
 
 @Observable
-public final class ThemeManager: @unchecked Sendable {
+@MainActor
+public final class ThemeManager {
     public static let shared = ThemeManager()
 
     public var currentStyle: AppThemeStyle = .native {

@@ -1,10 +1,11 @@
 // Sources/PurahCore/Services/SystemMusicSyncService.swift
-import Foundation
+@preconcurrency import Foundation
 import AppKit
 import Observation
 
 @Observable
-public final class SystemMusicSyncService: @unchecked Sendable {
+@MainActor
+public final class SystemMusicSyncService {
     public static let shared = SystemMusicSyncService()
 
     @ObservationIgnored private var musicObserver: Any?
@@ -30,7 +31,10 @@ public final class SystemMusicSyncService: @unchecked Sendable {
             object: nil,
             queue: .main
         ) { [weak self, weak store] notification in
-            self?.handleAppleMusicInfo(notification: notification, store: store)
+            nonisolated(unsafe) let notif = notification
+            MainActor.assumeIsolated {
+                self?.handleAppleMusicInfo(notification: notif, store: store)
+            }
         }
 
         // 2. Spotify observer
@@ -40,7 +44,10 @@ public final class SystemMusicSyncService: @unchecked Sendable {
             object: nil,
             queue: .main
         ) { [weak self, weak store] notification in
-            self?.handleSpotifyInfo(notification: notification, store: store)
+            nonisolated(unsafe) let notif = notification
+            MainActor.assumeIsolated {
+                self?.handleSpotifyInfo(notification: notif, store: store)
+            }
         }
 
         // 3. Query initial playback state if player is already running
@@ -224,16 +231,18 @@ public final class SystemMusicSyncService: @unchecked Sendable {
         guard isPlaying, let store = store else { return }
 
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak store] _ in
-            guard let store = store, store.musicTrack.isPlaying else { return }
-            let cur = store.musicTrack.calculatedCurrentTime
-            let prog = store.musicTrack.calculatedProgress
-            let samples: [Double] = (0..<14).map { _ in
-                Double.random(in: 0.25...0.95)
+            MainActor.assumeIsolated {
+                guard let store = store, store.musicTrack.isPlaying else { return }
+                let cur = store.musicTrack.calculatedCurrentTime
+                let prog = store.musicTrack.calculatedProgress
+                let samples: [Double] = (0..<14).map { _ in
+                    Double.random(in: 0.25...0.95)
+                }
+                store.musicTrack.currentPositionSeconds = cur
+                store.musicTrack.lastUpdated = Date()
+                store.musicTrack.playbackProgress = prog
+                store.musicTrack.waveformSamples = samples
             }
-            store.musicTrack.currentPositionSeconds = cur
-            store.musicTrack.lastUpdated = Date()
-            store.musicTrack.playbackProgress = prog
-            store.musicTrack.waveformSamples = samples
         }
     }
 
@@ -321,36 +330,36 @@ public final class SystemMusicSyncService: @unchecked Sendable {
         updatePlaybackTimer(store: store, isPlaying: nowPlaying)
 
         if isMusicAppRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Music\" to playpause")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Music\" to playpause")
             }
         } else if isSpotifyRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Spotify\" to playpause")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Spotify\" to playpause")
             }
         }
     }
 
     public func nextTrack(store: PurahWorkspaceStore?) {
         if isMusicAppRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Music\" to next track")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Music\" to next track")
             }
         } else if isSpotifyRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Spotify\" to next track")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Spotify\" to next track")
             }
         }
     }
 
     public func previousTrack(store: PurahWorkspaceStore?) {
         if isMusicAppRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Music\" to previous track")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Music\" to previous track")
             }
         } else if isSpotifyRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Spotify\" to previous track")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Spotify\" to previous track")
             }
         }
     }
@@ -367,18 +376,18 @@ public final class SystemMusicSyncService: @unchecked Sendable {
         store.musicTrack.playbackProgress = clamped
 
         if isMusicAppRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Music\" to set player position to \(targetSec)")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Music\" to set player position to \(targetSec)")
             }
         } else if isSpotifyRunning {
-            Task.detached { [weak self] in
-                self?.runAppleScript("tell application \"Spotify\" to set player position to \(targetSec)")
+            Task.detached {
+                Self.executeAppleScript("tell application \"Spotify\" to set player position to \(targetSec)")
             }
         }
     }
 
     @discardableResult
-    private func runAppleScript(_ script: String) -> Bool {
+    nonisolated private static func executeAppleScript(_ script: String) -> Bool {
         guard let appleScript = NSAppleScript(source: script) else { return false }
         var errorInfo: NSDictionary?
         appleScript.executeAndReturnError(&errorInfo)

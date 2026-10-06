@@ -4,6 +4,7 @@ import Foundation
 @testable import PurahCore
 
 @Suite("System Reminders Sync Tests")
+@MainActor
 struct RemindersSyncTests {
     @Test("Add reminder falls back to in-memory store when unauthorized")
     func testAddReminderFallback() async {

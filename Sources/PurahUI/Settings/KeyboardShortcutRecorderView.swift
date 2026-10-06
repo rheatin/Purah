@@ -6,7 +6,7 @@ import PurahCore
 
 @MainActor
 @Observable
-public final class ShortcutRecorderState: @unchecked Sendable {
+public final class ShortcutRecorderState {
     public var isRecording: Bool = false
     public var pulseOutline: Bool = false
     private var localMonitor: Any? = nil

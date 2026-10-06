@@ -4,13 +4,14 @@ import Foundation
 @testable import PurahCore
 
 @Suite("System Calendar Sync Tests")
+@MainActor
 struct CalendarSyncTests {
     @Test("Calculates valid normalized day progress")
-    func testDayProgress() {
+    func testDayProgress() throws {
         let service = SystemCalendarSyncService()
         let cal = Calendar.current
         let today = Date()
-        let midday = cal.date(bySettingHour: 12, minute: 0, second: 0, of: today)!
+        let midday = try #require(cal.date(bySettingHour: 12, minute: 0, second: 0, of: today))
 
         let progress = service.todayProgress(referenceDate: midday)
         #expect(abs(progress - 0.5) < 0.05)

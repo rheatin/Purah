@@ -4,14 +4,15 @@ import Foundation
 @testable import PurahCore
 
 @Suite("App Updater & Version Tests")
+@MainActor
 struct AppUpdaterTests {
     @Test("Semantic version parsing and comparison")
-    func testVersionComparison() {
-        let v1 = SemanticVersion("2.0.0")!
-        let v2 = SemanticVersion("2.1.0")!
-        let v3 = SemanticVersion("2.0.1")!
-        let v4 = SemanticVersion("3.0.0")!
-        let vSame = SemanticVersion("2.0.0")!
+    func testVersionComparison() throws {
+        let v1 = try #require(SemanticVersion("2.0.0"))
+        let v2 = try #require(SemanticVersion("2.1.0"))
+        let v3 = try #require(SemanticVersion("2.0.1"))
+        let v4 = try #require(SemanticVersion("3.0.0"))
+        let vSame = try #require(SemanticVersion("2.0.0"))
 
         #expect(v1 < v2)
         #expect(v1 < v3)
@@ -21,21 +22,20 @@ struct AppUpdaterTests {
     }
 
     @Test("Update detection logic based on release version")
-    func testUpdateEvaluation() {
+    func testUpdateEvaluation() throws {
         let updater = AppUpdaterManager(currentVersion: "2.0.0")
-
-        let olderRelease = AppReleaseInfo(
+        let older = AppReleaseInfo(
             version: "1.9.5",
-            releaseNotes: "Old fixes",
-            downloadURL: URL(string: "https://github.com/purah/releases/tag/v1.9.5")!
+            releaseNotes: "Older",
+            downloadURL: try #require(URL(string: "https://github.com/purah/releases/tag/v1.9.5"))
         )
-        #expect(!updater.isNewer(release: olderRelease))
+        #expect(!updater.isNewer(release: older))
 
-        let newerRelease = AppReleaseInfo(
+        let newer = AppReleaseInfo(
             version: "2.1.0",
-            releaseNotes: "- Added Zonai device battery monitor\n- Enhanced Fling intent filtering",
-            downloadURL: URL(string: "https://github.com/purah/releases/tag/v2.1.0")!
+            releaseNotes: "Newer",
+            downloadURL: try #require(URL(string: "https://github.com/purah/releases/tag/v2.1.0"))
         )
-        #expect(updater.isNewer(release: newerRelease))
+        #expect(updater.isNewer(release: newer))
     }
 }

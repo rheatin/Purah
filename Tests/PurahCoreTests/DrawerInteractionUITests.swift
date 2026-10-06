@@ -87,7 +87,7 @@ struct DrawerInteractionUITests {
 
     @Test("Verify Pin Isolation: unpinned items can be dismissed even when another item is pinned")
     @MainActor
-    func testPinIsolation() {
+    func testPinIsolation() throws {
         let store = PurahWorkspaceStore()
         
         // Pin the shelf drawer
@@ -99,7 +99,8 @@ struct DrawerInteractionUITests {
         store.activeDrawerPodId = "notes"
         
         // Check that notes is not pinned
-        let isNotesPinned = store.isItemPinned(id: store.activeDrawerItemId!)
+        let activeId = try #require(store.activeDrawerItemId)
+        let isNotesPinned = store.isItemPinned(id: activeId)
         #expect(isNotesPinned == false)
         
         // When mouse leaves notes, notes should be dismissed
@@ -345,7 +346,7 @@ struct DrawerInteractionUITests {
     @Test("Velocity tracker detects rapid fling above 900 px/s for speed suppression")
     @MainActor
     func testVelocitySuppression() {
-        let tracker = VelocityTracker()
+        var tracker = VelocityTracker()
         let t0 = Date()
         tracker.add(point: CGPoint(x: 10, y: 100), timestamp: t0)
         tracker.add(point: CGPoint(x: 10, y: 600), timestamp: t0.addingTimeInterval(0.05))
@@ -404,7 +405,7 @@ struct DrawerInteractionUITests {
 
     @Test("SpringConstraintSolver enforces unidirectional bottom resize without expanding upwards")
     @MainActor
-    func testSpringConstraintSolverUnidirectionalBottomResize() {
+    func testBottomResizeConstraint() throws {
         let store = PurahWorkspaceStore()
         guard let notesPod = store.pods.first(where: { $0.id == "notes" }) else {
             Issue.record("Notes pod not found")
@@ -423,7 +424,7 @@ struct DrawerInteractionUITests {
             on: notesPod.edge
         )
 
-        let updatedNotes = resolved.first(where: { $0.id == "notes" })!
+        let updatedNotes = try #require(resolved.first(where: { $0.id == "notes" }))
         #expect(updatedNotes.range.start == originalStart, "Top edge must remain strictly anchored during bottom resize")
         #expect(updatedNotes.range.length > notesPod.range.length, "Length must expand downward")
     }

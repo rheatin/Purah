@@ -34,7 +34,8 @@ public struct ScriptActionItem: Identifiable, Codable, Sendable {
 }
 
 @Observable
-public final class ScriptRunwayService: @unchecked Sendable {
+@MainActor
+public final class ScriptRunwayService {
     public static let shared = ScriptRunwayService()
 
     public var actions: [ScriptActionItem] = []
@@ -96,26 +97,28 @@ public final class ScriptRunwayService: @unchecked Sendable {
     }
 
     private func runShell(command: String) async -> (success: Bool, message: String) {
-        let task = Process()
-        task.launchPath = "/bin/zsh"
-        task.arguments = ["-c", command]
+        await Task.detached(priority: .userInitiated) {
+            let task = Process()
+            task.launchPath = "/bin/zsh"
+            task.arguments = ["-c", command]
 
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
 
-        do {
-            try task.run()
-            task.waitUntilExit()
+            do {
+                try task.run()
+                task.waitUntilExit()
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
-            let success = (task.terminationStatus == 0)
-            let msg = success ? (output.isEmpty ? "Success" : output) : "Failed (exit code \(task.terminationStatus))"
-            return (success, msg)
-        } catch {
-            return (false, "Process error: \(error.localizedDescription)")
-        }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                let success = (task.terminationStatus == 0)
+                let msg = success ? (output.isEmpty ? "Success" : output) : "Failed (exit code \(task.terminationStatus))"
+                return (success, msg)
+            } catch {
+                return (false, "Process error: \(error.localizedDescription)")
+            }
+        }.value
     }
 
     private func runAppleScript(script: String) async -> (success: Bool, message: String) {

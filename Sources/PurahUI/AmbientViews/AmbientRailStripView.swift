@@ -88,7 +88,7 @@ public struct AmbientRailStripView: View {
                 let isActive = (todo.id == store.activeDrawerItemId || isPinned)
                 let activeIdx = store.todos.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
                 let thisIdx = store.todos.firstIndex(where: { $0.id == todo.id }) ?? -99
-                let isNeighbor = (activeIdx != nil && abs(thisIdx - activeIdx!) == 1)
+                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
 
@@ -136,7 +136,7 @@ public struct AmbientRailStripView: View {
                 let isActive = (event.id == store.activeDrawerItemId || isPinned)
                 let activeIdx = store.calendarEvents.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
                 let thisIdx = store.calendarEvents.firstIndex(where: { $0.id == event.id }) ?? -99
-                let isNeighbor = (activeIdx != nil && abs(thisIdx - activeIdx!) == 1)
+                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
 
@@ -185,7 +185,7 @@ public struct AmbientRailStripView: View {
                 let isActive = (itemId == store.activeDrawerItemId || isPinned)
                 let activeIdx = metrics.firstIndex(where: { "vitals-\($0.rawValue)" == (store.activeDrawerItemId ?? "") })
                 let thisIdx = metrics.firstIndex(where: { $0 == metric }) ?? -99
-                let isNeighbor = (activeIdx != nil && abs(thisIdx - activeIdx!) == 1)
+                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
 

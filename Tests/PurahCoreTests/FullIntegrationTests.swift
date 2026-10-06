@@ -3,6 +3,7 @@ import Testing
 @testable import PurahCore
 
 @Suite("End-to-End System Integration Tests")
+@MainActor
 struct FullIntegrationTests {
     @Test("Complete cycle: Preset -> AutoLayout -> Drag Stretch -> Collision Solve -> Zero Overlap")
     func testCompleteLayoutCycle() {
