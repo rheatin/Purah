@@ -78,10 +78,10 @@ public final class HardwareVitalsService: @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 200_000_000)
             await self?.refreshMetricsAsync(includeProcesses: false)
         }
-        startMonitoring(interval: 2.0)
+        startMonitoring(interval: 1.0)
     }
 
-    public func startMonitoring(interval: TimeInterval = 3.0) {
+    public func startMonitoring(interval: TimeInterval = 1.0) {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task.detached(priority: .utility) { [weak self] in

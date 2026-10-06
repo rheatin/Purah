@@ -114,6 +114,7 @@ public final class PurahWorkspaceStore {
     // Decomposable Hardware Vitals settings
     public var isVitalsDecomposed: Bool = false
     public var vitalsEnabledMetrics: [VitalsMetricType] = [.cpu, .ram, .power, .disk]
+    public var vitalsThresholds: VitalsColorThresholds = .init()
 
     // Decomposable Scripts Runway settings
     public var isScriptsDecomposed: Bool = false
@@ -257,6 +258,10 @@ public final class PurahWorkspaceStore {
                 self.vitalsEnabledMetrics = parsed
             }
         }
+        if let data = defaults.data(forKey: "purah.vitals.thresholds"),
+           let thresholds = try? JSONDecoder().decode(VitalsColorThresholds.self, from: data) {
+            self.vitalsThresholds = thresholds
+        }
 
         self.isScriptsDecomposed = defaults.bool(forKey: "purah.scripts.isDecomposed")
         if let actions = defaults.stringArray(forKey: "purah.scripts.enabledActionIds") {
@@ -284,6 +289,9 @@ public final class PurahWorkspaceStore {
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(isVitalsDecomposed, forKey: "purah.vitals.isDecomposed")
         defaults.set(vitalsEnabledMetrics.map { $0.rawValue }, forKey: "purah.vitals.enabledMetrics")
+        if let data = try? JSONEncoder().encode(vitalsThresholds) {
+            defaults.set(data, forKey: "purah.vitals.thresholds")
+        }
         defaults.set(isScriptsDecomposed, forKey: "purah.scripts.isDecomposed")
         defaults.set(scriptsEnabledActionIds, forKey: "purah.scripts.enabledActionIds")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
