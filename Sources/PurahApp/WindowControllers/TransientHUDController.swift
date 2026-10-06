@@ -67,7 +67,7 @@ public final class TransientHUDController {
         if let screen = NSScreen.main ?? NSScreen.screens.first {
             let screenRect = screen.visibleFrame
             let x = screenRect.midX - width / 2.0
-            let y = screenRect.midY - height / 2.0
+            let y = screenRect.minY + 90.0
             panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         }
 

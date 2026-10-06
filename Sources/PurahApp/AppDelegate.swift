@@ -44,7 +44,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let frozen = store.isRailsFrozen
         coordinator?.setFrozen(frozen)
         mouseMonitor?.setFrozen(frozen)
-        TransientHUDController.shared.show(isFrozen: frozen)
+        TransientHUDController.shared.show(isFrozen: frozen, shortcut: store.hotKeyShortcut.displayString)
         updateStatusItemForFreeze()
     }
 
