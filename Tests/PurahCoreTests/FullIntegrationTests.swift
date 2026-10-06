@@ -1,5 +1,6 @@
 // Tests/PurahCoreTests/FullIntegrationTests.swift
 import Testing
+import Foundation
 @testable import PurahCore
 
 @Suite("End-to-End System Integration Tests")
@@ -42,7 +43,13 @@ struct FullIntegrationTests {
         await updater.checkForUpdates()
         #expect(updater.state == .upToDate(currentVersion: PurahCore.version))
 
-        updater.simulateFoundNewVersion()
+        let newRelease = AppReleaseInfo(
+            version: "2.1.0",
+            releaseDate: Date(),
+            releaseNotes: "Purah v2.1.0",
+            downloadURL: URL(string: "https://github.com/purah/releases/tag/v2.1.0")!
+        )
+        await updater.checkForUpdates(simulatedRelease: newRelease)
         if case .updateAvailable(let release) = updater.state {
             #expect(release.version == "2.1.0")
         } else {

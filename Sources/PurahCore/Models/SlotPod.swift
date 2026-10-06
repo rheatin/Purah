@@ -14,7 +14,6 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
     public var minLength: Double
     public var isEnabled: Bool
     public var drawerWidth: Double
-    public var drawerHeight: Double
 
     public init(
         id: String,
@@ -28,8 +27,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         ergonomicWeight: Double,
         minLength: Double = 0.10,
         isEnabled: Bool = true,
-        drawerWidth: Double = 260,
-        drawerHeight: Double = 420
+        drawerWidth: Double = 260
     ) {
         self.id = id
         self.nameKey = nameKey
@@ -43,7 +41,6 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         self.minLength = minLength
         self.isEnabled = isEnabled
         self.drawerWidth = drawerWidth
-        self.drawerHeight = drawerHeight
     }
 
     public init(
@@ -57,8 +54,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         ergonomicWeight: Double,
         minLength: Double = 0.10,
         isEnabled: Bool = true,
-        drawerWidth: Double = 260,
-        drawerHeight: Double = 420
+        drawerWidth: Double = 260
     ) {
         self.init(
             id: id,
@@ -72,8 +68,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
             ergonomicWeight: ergonomicWeight,
             minLength: minLength,
             isEnabled: isEnabled,
-            drawerWidth: drawerWidth,
-            drawerHeight: drawerHeight
+            drawerWidth: drawerWidth
         )
     }
 

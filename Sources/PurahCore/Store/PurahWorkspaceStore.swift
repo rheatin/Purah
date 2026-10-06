@@ -349,13 +349,8 @@ public final class PurahWorkspaceStore {
     public func autoLayoutAll() {
         let left = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .left)
         let right = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .right)
-        let resolved = left + right
-        let map = Dictionary(uniqueKeysWithValues: resolved.map { ($0.id, $0) })
-        for i in 0..<pods.count {
-            if let updated = map[pods[i].id] {
-                pods[i] = updated
-            }
-        }
+        let map = Dictionary(uniqueKeysWithValues: (left + right).map { ($0.id, $0) })
+        pods = pods.map { map[$0.id] ?? $0 }
     }
 
     public func togglePodEnabled(id: String) {

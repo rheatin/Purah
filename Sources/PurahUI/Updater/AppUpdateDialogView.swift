@@ -118,13 +118,6 @@ public struct AppUpdateDialogView: View {
 
             // Bottom Buttons
             HStack {
-                Button("Simulate Update") {
-                    updater.simulateFoundNewVersion()
-                }
-                .buttonStyle(.tactile)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-
                 Spacer()
 
                 Button("Close") {
