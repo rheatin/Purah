@@ -89,12 +89,7 @@ public struct DropShelfDrawerView: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
-                            .background(palette.solidDrawerBackground)
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
-                            )
+                            .liquidCardBackground(cornerRadius: 6, strokeColor: palette.borderColor.opacity(0.4))
                         }
                     }
                     .padding(.vertical, 2)

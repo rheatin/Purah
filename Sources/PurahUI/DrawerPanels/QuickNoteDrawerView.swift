@@ -35,13 +35,15 @@ public struct QuickNoteDrawerView: View {
             ))
             .font(.system(size: 11, design: .monospaced))
             .scrollContentBackground(.hidden)
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
             )
-            .foregroundColor(palette.style == .native ? Color.primary : .white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
+            )
+            .foregroundColor(.primary)
 
             HStack {
                 Text("Auto-saved · \(store.quickNote.lastModified.formatted(date: .omitted, time: .standard))")

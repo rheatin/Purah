@@ -134,13 +134,10 @@ public struct CalendarDrawerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.solidDrawerBackground)
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8)), lineWidth: isAlerting ? 2.0 : 1.2)
+        .liquidCardBackground(
+            cornerRadius: 8,
+            strokeColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8))
         )
-        .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
     }
 
     // MARK: - 阶梯式抽屉列表

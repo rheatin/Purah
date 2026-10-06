@@ -340,8 +340,8 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
 
     private static func defaultShelfFiles() -> [ShelfFileItem] {
         [
-            ShelfFileItem(name: "Zonai_Battery_Spec.pdf", sizeDescription: "2.4 MB", fileExtension: "pdf"),
-            ShelfFileItem(name: "Hyrule_Survey_Map.png", sizeDescription: "14.8 MB", fileExtension: "png")
+            ShelfFileItem(name: "macOS_Workflow_Spec.pdf", sizeDescription: "2.4 MB", fileExtension: "pdf"),
+            ShelfFileItem(name: "Architecture_Diagram.png", sizeDescription: "4.8 MB", fileExtension: "png")
         ]
     }
 }

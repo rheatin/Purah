@@ -125,11 +125,9 @@ public struct TodoDrawerView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
-        .background(palette.solidDrawerBackground)
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(podColor.opacity(isDone ? 0.35 : 0.9), lineWidth: 1)
+        .liquidCardBackground(
+            cornerRadius: 8,
+            strokeColor: podColor.opacity(isDone ? 0.35 : 0.9)
         )
     }
 }

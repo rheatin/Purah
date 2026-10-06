@@ -5,24 +5,18 @@ import Testing
 
 @Suite("Theme System Tests")
 struct ThemeTests {
-    @Test("Defaults to macOS Native theme")
-    func testDefaultTheme() {
+    @Test("Defaults to macOS Liquid Native theme with continuous curvature")
+    func testLiquidNativeTheme() {
         let theme = ThemeManager()
         #expect(theme.currentStyle == .native)
         #expect(!theme.palette.useGlow)
         #expect(!theme.palette.useRuneCorners)
+        #expect(theme.palette.cornerRadius == 12.0)
     }
 
-    @Test("Can switch to Purah Pad theme")
-    func testThemeSwitching() {
-        let theme = ThemeManager()
-        theme.currentStyle = .purahPad
-        #expect(theme.currentStyle == .purahPad)
-        #expect(theme.palette.useGlow)
-        #expect(theme.palette.useRuneCorners)
-
-        // Switch back to default
-        theme.currentStyle = .native
-        #expect(theme.currentStyle == .native)
+    @Test("AppThemeStyle has single unified Liquid Native style")
+    func testSingleUnifiedStyle() {
+        #expect(AppThemeStyle.allCases.count == 1)
+        #expect(AppThemeStyle.native.displayName.contains("Liquid"))
     }
 }

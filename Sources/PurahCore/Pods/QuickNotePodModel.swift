@@ -6,7 +6,7 @@ public struct NoteContent: Codable, Sendable {
     public var lastModified: Date
 
     public init(
-        text: String = "# Purah Pad Quick Scratchpad\n- Research Sheikah slate technology\n- Calibrate edge rail sensors",
+        text: String = "# Purah Quick Scratchpad\n- Verify macOS liquid edge sensors\n- Calibrate display geometry",
         lastModified: Date = Date()
     ) {
         self.text = text
