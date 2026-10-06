@@ -47,11 +47,11 @@ public struct QuickNoteDrawerView: View {
 
             HStack {
                 Text("Auto-saved · \(store.quickNote.lastModified.formatted(date: .omitted, time: .standard))")
-                    .font(.system(size: 8))
+                    .purahCaption(size: 8)
                     .foregroundColor(.gray)
                 Spacer()
                 Text("\(store.quickNote.text.count) chars")
-                    .font(.system(size: 8))
+                    .purahCaption(size: 8)
                     .foregroundColor(noteColor)
             }
         }

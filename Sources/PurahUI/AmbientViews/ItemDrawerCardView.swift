@@ -103,11 +103,12 @@ public struct TodoItemDrawerView: View {
                 .strikethrough(isDone)
                 .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
                 .font(.system(size: 11, weight: .medium, design: .rounded))
+                .opticalTracking(size: 11)
                 .lineLimit(1)
 
                 if let due = todo.dueDate {
                     Text(due.formatted(date: .abbreviated, time: .shortened))
-                        .font(.system(size: 9))
+                        .purahCaption(size: 9)
                         .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
                 }
             }
@@ -116,7 +117,7 @@ public struct TodoItemDrawerView: View {
 
             // Category tag
             Text(todo.listTitle)
-                .font(.system(size: 8))
+                .purahBadge(size: 8, weight: .bold)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
                 .background(podColor.opacity(isDone ? 0.10 : 0.18))
@@ -314,7 +315,7 @@ public struct CalendarItemDrawerView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(event.title)
-                            .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
+                            .purahTitle(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded)
                             .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
                             .lineLimit(1)
 
@@ -324,7 +325,7 @@ public struct CalendarItemDrawerView: View {
                                     .fill(Color.white)
                                     .frame(width: 3.5, height: 3.5)
                                 Text("NOW")
-                                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                                    .purahBadge(size: 8, weight: .heavy, design: .rounded)
                             }
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -334,7 +335,7 @@ public struct CalendarItemDrawerView: View {
                         } else if isImminent {
                             HStack(spacing: 3) {
                                 Text("SOON")
-                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                                    .purahBadge(size: 8, weight: .bold, design: .rounded)
                             }
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1.5)
@@ -811,12 +812,12 @@ public struct ScriptItemDrawerView: View {
                     .frame(width: 14)
 
                 Text(action.name)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .purahTitle(size: 11, weight: .bold, design: .rounded)
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
 
                 Text(badgeText(for: action.commandType))
-                    .font(.system(size: 7, weight: .bold))
+                    .purahBadge(size: 7, weight: .bold)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1.5)
                     .background(podColor.opacity(0.18))
@@ -831,7 +832,7 @@ public struct ScriptItemDrawerView: View {
             // Row 2: Description or script content in monospaced font (cleanly truncated)
             let preview = !action.description.isEmpty ? action.description : action.scriptContent
             Text(preview)
-                .font(.system(size: 8.5, design: .monospaced))
+                .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -847,14 +848,14 @@ public struct ScriptItemDrawerView: View {
                             .font(.system(size: 8))
                             .foregroundColor(.green)
                         Text(output)
-                            .font(.system(size: 8, design: .monospaced))
+                            .purahCaption(size: 8, weight: .regular, design: .monospaced)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 } else {
                     Text(action.commandType.rawValue.capitalized)
-                        .font(.system(size: 8))
+                        .purahCaption(size: 8, weight: .regular)
                         .foregroundColor(.secondary)
                 }
 
@@ -876,7 +877,7 @@ public struct ScriptItemDrawerView: View {
                                 .font(.system(size: 7))
                         }
                         Text(isRunning ? "Running..." : "Run Action")
-                            .font(.system(size: 9, weight: .bold))
+                            .purahCaption(size: 9, weight: .bold, design: .rounded)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
