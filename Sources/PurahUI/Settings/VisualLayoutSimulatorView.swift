@@ -57,6 +57,47 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
+                // Capacity Overload Warning Banner
+                if store.isRailOverloaded(edge: .left) || store.isRailOverloaded(edge: .right) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title3)
+                            .foregroundColor(.orange)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Rail Capacity Overload Warning")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundColor(.orange)
+
+                            if store.isRailOverloaded(edge: .left) {
+                                let req = Int(store.totalRequiredHeight(for: .left))
+                                let avail = Int(store.availableScreenHeight(for: .left))
+                                let pct = Int(store.capacityRatio(for: .left) * 100)
+                                Text("• Left Rail requires \(req)pt (available: \(avail)pt · \(pct)% used). Bottom chips may be crowded. Consider reducing decomposed sub-items or assigning modules to the right rail.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            if store.isRailOverloaded(edge: .right) {
+                                let req = Int(store.totalRequiredHeight(for: .right))
+                                let avail = Int(store.availableScreenHeight(for: .right))
+                                let pct = Int(store.capacityRatio(for: .right) * 100)
+                                Text("• Right Rail requires \(req)pt (available: \(avail)pt · \(pct)% used). Bottom chips may be crowded. Consider reducing decomposed sub-items or assigning modules to the left rail.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.orange.opacity(0.12))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+                    )
+                }
+
                 // 1. Motion & Dynamics Card
                 settingsCard(title: "Motion & Dynamics", icon: "waveform.path") {
                     VStack(spacing: 12) {

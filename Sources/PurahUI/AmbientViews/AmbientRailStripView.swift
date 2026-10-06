@@ -32,42 +32,42 @@ public struct AmbientRailStripView: View {
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
                 // Active slot pods mounted with modular drawer interactions
                 ForEach(edgePods) { pod in
-                    let startY = pod.range.start * totalHeight
-                    let podHeight = max(pod.range.length * totalHeight, 36.0)
+                    let spanH = effectivePodSpan(pod: pod, totalHeight: totalHeight)
+                    let startY = clampedPodStartY(pod: pod, totalHeight: totalHeight)
                     let isThisPodActive = (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id))
 
                     VStack(spacing: 0) {
                         if pod.id == "todo" {
-                            todoPodItems(pod: pod, totalHeight: podHeight)
+                            todoPodItems(pod: pod, totalHeight: spanH)
                         } else if pod.id == "calendar" {
-                            calendarPodItems(pod: pod, totalHeight: podHeight)
+                            calendarPodItems(pod: pod, totalHeight: spanH)
                         } else if pod.id == "vitals" && store.isVitalsDecomposed {
-                            decomposedVitalsPodItems(pod: pod, totalHeight: podHeight)
+                            decomposedVitalsPodItems(pod: pod, totalHeight: spanH)
                         } else if pod.id == "scripts" && store.isScriptsDecomposed {
-                            decomposedScriptsPodItems(pod: pod, totalHeight: podHeight)
+                            decomposedScriptsPodItems(pod: pod, totalHeight: spanH)
                         } else if pod.id == "vitals" {
-                            vitalsRailBar(pod: pod, totalHeight: podHeight)
+                            vitalsRailBar(pod: pod, totalHeight: spanH)
                         } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
-                            renderPluginPod(plugin: plugin, pod: pod, totalHeight: podHeight)
+                            renderPluginPod(plugin: plugin, pod: pod, totalHeight: spanH)
                         } else {
                             switch pod.id {
                             case "music":
-                                musicPodItem(pod: pod, totalHeight: podHeight)
+                                musicPodItem(pod: pod, totalHeight: spanH)
                             case "shelf":
-                                shelfPodItem(pod: pod, totalHeight: podHeight)
+                                shelfPodItem(pod: pod, totalHeight: spanH)
                             case "notes":
-                                notesPodItem(pod: pod, totalHeight: podHeight)
+                                notesPodItem(pod: pod, totalHeight: spanH)
                             case "vitals":
-                                vitalsRailBar(pod: pod, totalHeight: podHeight)
+                                vitalsRailBar(pod: pod, totalHeight: spanH)
                             case "scripts":
-                                scriptsRailBar(pod: pod, totalHeight: podHeight)
+                                scriptsRailBar(pod: pod, totalHeight: spanH)
                             default:
-                                genericRailBar(pod: pod, totalHeight: podHeight)
+                                genericRailBar(pod: pod, totalHeight: spanH)
                             }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-                    .frame(height: podHeight, alignment: .top)
+                    .frame(height: spanH, alignment: .top)
                     .offset(y: startY)
                     .zIndex(isThisPodActive ? 100 : 1)
                 }
@@ -76,6 +76,29 @@ public struct AmbientRailStripView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .left ? .leading : .trailing)
         .ignoresSafeArea()
+    }
+
+    private func effectivePodSpan(pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
+        let podHeight = max(pod.range.length * totalHeight, 36.0)
+        if pod.id == "scripts" && store.isScriptsDecomposed {
+            let count = max(store.scriptsEnabledActions.count, 1)
+            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+        } else if pod.id == "vitals" && store.isVitalsDecomposed {
+            let count = max(store.vitalsEnabledMetrics.count, 1)
+            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+        } else {
+            return podHeight
+        }
+    }
+
+    private func clampedPodStartY(pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
+        let startY = pod.range.start * totalHeight
+        let span = effectivePodSpan(pod: pod, totalHeight: totalHeight)
+        let safeBottomY = totalHeight - 8.0
+        if startY + span > safeBottomY {
+            return max(safeBottomY - span, 8.0)
+        }
+        return startY
     }
 
     // MARK: - Todo 单项抽屉与导轨联动 (高度与 Bar 100% 相同，隔壁项凸出 28pt)
@@ -288,8 +311,9 @@ public struct AmbientRailStripView: View {
                     }
                 }
                 .onTapGesture {
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                        store.activateDrawer(podId: pod.id, itemId: itemId)
+                    // One-Tap Rail Fire: Directly fire the script on bar tap!
+                    Task {
+                        _ = await ScriptRunwayService.shared.executeAction(action)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
