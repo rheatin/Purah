@@ -488,6 +488,17 @@ struct DrawerInteractionUITests {
         #expect(vitalsMinH >= 300.0, "Hardware Vitals minimum drawer height must be at least 300pt to prevent scroll cutoff")
     }
 
+    @Test("Decomposed vitals sub-bar height guarantees at least 56pt per metric")
+    @MainActor
+    func testDecomposedVitalsSubBarHeight() {
+        let store = PurahWorkspaceStore()
+        store.isVitalsDecomposed = true
+        store.vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
+        let h = store.minimumDrawerHeight(for: "vitals")
+        #expect(h >= 220.0, "Total decomposed vitals height must accommodate 4 sub-bars")
+        store.isVitalsDecomposed = false
+    }
+
     @Test("KeyboardShortcutRecorderView Carbon modifier mapping and function key detection")
     @MainActor
     func testKeyboardShortcutRecorderModifierMapping() {

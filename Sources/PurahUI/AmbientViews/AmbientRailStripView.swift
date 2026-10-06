@@ -176,7 +176,9 @@ public struct AmbientRailStripView: View {
         let count = max(metrics.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 26.0)
+        let minBarH: CGFloat = 56.0
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minBarH)
+        let totalSpanH = max(totalHeight, CGFloat(count) * minBarH + totalSpacing)
 
         VStack(spacing: spacing) {
             ForEach(metrics) { metric in
@@ -215,7 +217,7 @@ public struct AmbientRailStripView: View {
                 .frame(height: itemH)
             }
         }
-        .frame(height: totalHeight)
+        .frame(height: totalSpanH)
     }
 
     // MARK: - Music 单项抽屉 (宽幅展开，全高频谱律动)

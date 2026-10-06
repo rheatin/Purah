@@ -517,12 +517,21 @@ public struct VitalsItemDrawerView: View {
 
     public var body: some View {
         let cardH = max(height, 32.0)
+        let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
+        let barW = CGFloat(store.railBarWidth)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条
-            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(podColor.opacity(metricOpacity))
-                .frame(width: CGFloat(store.railBarWidth), height: cardH)
+            // 贴边基座色条 (微缩电平动态占用柱)
+            ZStack(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: barRadius)
+                    .fill(telemetryColor.opacity(0.18))
+                    .frame(width: barW, height: cardH)
+
+                RoundedRectangle(cornerRadius: barRadius)
+                    .fill(telemetryColor)
+                    .frame(width: barW, height: max(cardH * CGFloat(telemetryRatio), 4.0))
+            }
+            .frame(width: barW, height: cardH)
 
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH)
@@ -536,16 +545,36 @@ public struct VitalsItemDrawerView: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
     }
 
-    private var metricOpacity: Double {
+    private var telemetryRatio: Double {
         switch metric {
         case .cpu:
-            return vitals.metrics.cpuUsage > 0.80 ? 1.0 : 0.85
+            return vitals.metrics.cpuUsage
         case .ram:
-            return vitals.metrics.memoryUsage > 0.85 ? 1.0 : 0.85
+            return vitals.metrics.memoryUsage
         case .power:
-            return vitals.metrics.batteryLevel < 20 ? 1.0 : 0.85
+            return Double(vitals.metrics.batteryLevel) / 100.0
         case .disk:
-            return 0.85
+            let total = vitals.metrics.diskTotalGB
+            let free = vitals.metrics.diskFreeGB
+            return total > 0 ? max(min((total - free) / total, 1.0), 0.0) : 0.5
+        }
+    }
+
+    private var telemetryColor: Color {
+        switch metric {
+        case .cpu:
+            let u = vitals.metrics.cpuUsage
+            if u > 0.80 { return palette.dangerAccent }
+            if u > 0.50 { return palette.warningAccent }
+            return podColor
+        case .ram:
+            return vitals.metrics.memoryUsage > 0.85 ? palette.dangerAccent : podColor
+        case .power:
+            if vitals.metrics.isCharging { return .green }
+            if vitals.metrics.batteryLevel < 20 { return palette.dangerAccent }
+            return podColor
+        case .disk:
+            return telemetryRatio > 0.90 ? palette.dangerAccent : podColor
         }
     }
 
@@ -578,7 +607,7 @@ public struct VitalsItemDrawerView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(width: effectiveW, height: max(cardH, 130.0))
+        .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
     }
 

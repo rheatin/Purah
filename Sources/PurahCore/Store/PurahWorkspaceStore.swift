@@ -140,6 +140,10 @@ public final class PurahWorkspaceStore {
     }
 
     public func minimumDrawerHeight(for podId: String) -> CGFloat {
+        if podId == "vitals" && isVitalsDecomposed {
+            let count = max(vitalsEnabledMetrics.count, 1)
+            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        }
         switch podId {
         case "vitals": return 320.0
         case "scripts": return 220.0
