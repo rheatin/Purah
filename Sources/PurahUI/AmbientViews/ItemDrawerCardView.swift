@@ -246,14 +246,32 @@ public struct CalendarItemDrawerView: View {
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条（圆角与左侧完全对称统一，同色发光）
-            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
-                .frame(width: CGFloat(store.railBarWidth), height: cardH)
-                .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
+            // 贴边基座色条（圆角与左侧完全对称统一，到时间/进行中呼吸光晕）
+            if isAlerting {
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    let breath = (sin(time * 3.6) + 1.0) / 2.0
+                    let alpha = 0.60 + breath * 0.40
+                    let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: barRadius)
+                            .fill(podColor.opacity(alpha * 0.5))
+                            .frame(width: CGFloat(store.railBarWidth) + 4, height: cardH + 2)
+                            .blur(radius: 2)
+
+                        RoundedRectangle(cornerRadius: barRadius)
+                            .fill(podColor.opacity(alpha))
+                            .frame(width: CGFloat(store.railBarWidth), height: cardH)
+                    }
+                }
+            } else {
+                RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
+                    .fill(podColor.opacity(isPast ? 0.35 : 0.85))
+                    .frame(width: CGFloat(store.railBarWidth), height: cardH)
+            }
 
             if state == .expandedDrawer {
-                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isAlerting: isAlerting)
+                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting)
                     .transition(itemDrawerTransition)
             } else if state == .neighborPeek {
                 neighborPeekCard(cardH: cardH, isPast: isPast)
@@ -281,14 +299,31 @@ public struct CalendarItemDrawerView: View {
     }
 
     @ViewBuilder
-    private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isAlerting: Bool) -> some View {
+    private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool) -> some View {
         let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
         let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
 
         HStack(spacing: 8) {
-            Circle()
-                .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                .frame(width: 6, height: 6)
+            if isAlerting {
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    let pulse = (sin(time * 4.2) + 1.0) / 2.0
+                    ZStack {
+                        Circle()
+                            .stroke(podColor.opacity(0.6 * (1.0 - pulse)), lineWidth: 1.2)
+                            .frame(width: 6 + pulse * 6, height: 6 + pulse * 6)
+                        Circle()
+                            .fill(podColor)
+                            .frame(width: 7, height: 7)
+                            .shadow(color: podColor.opacity(0.8), radius: 3)
+                    }
+                    .frame(width: 14, height: 14)
+                }
+            } else {
+                Circle()
+                    .fill(podColor.opacity(isPast ? 0.35 : 1.0))
+                    .frame(width: 6, height: 6)
+            }
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
@@ -298,13 +333,27 @@ public struct CalendarItemDrawerView: View {
                         .lineLimit(1)
 
                     if isOngoing {
-                        Text("LIVE")
-                            .font(.system(size: 8, weight: .heavy, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(podColor.opacity(0.25))
-                            .foregroundColor(podColor)
-                            .cornerRadius(3)
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 3.5, height: 3.5)
+                            Text("NOW")
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(podColor))
+                        .foregroundColor(.white)
+                        .shadow(color: podColor.opacity(0.6), radius: 3)
+                    } else if isImminent {
+                        HStack(spacing: 3) {
+                            Text("SOON")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(podColor.opacity(0.25)))
+                        .foregroundColor(podColor)
                     }
                 }
 
@@ -356,6 +405,17 @@ public struct CalendarItemDrawerView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: effectiveW, height: cardH)
+        .background(
+            ZStack {
+                if isOngoing {
+                    LinearGradient(
+                        colors: [podColor.opacity(0.18), podColor.opacity(0.04), Color.clear],
+                        startPoint: edge == .right ? .trailing : .leading,
+                        endPoint: edge == .right ? .leading : .trailing
+                    )
+                }
+            }
+        )
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.9))

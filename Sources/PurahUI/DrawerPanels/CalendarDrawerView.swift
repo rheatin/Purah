@@ -60,10 +60,28 @@ public struct CalendarDrawerView: View {
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
         HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                .frame(width: 7, height: 7)
-                .padding(.top, 4)
+            if isAlerting {
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    let pulse = (sin(time * 4.2) + 1.0) / 2.0
+                    ZStack {
+                        Circle()
+                            .stroke(podColor.opacity(0.6 * (1.0 - pulse)), lineWidth: 1.2)
+                            .frame(width: 7 + pulse * 6, height: 7 + pulse * 6)
+                        Circle()
+                            .fill(podColor)
+                            .frame(width: 7, height: 7)
+                            .shadow(color: podColor.opacity(0.8), radius: 3)
+                    }
+                    .frame(width: 14, height: 14)
+                }
+                .padding(.top, 2)
+            } else {
+                Circle()
+                    .fill(podColor.opacity(isPast ? 0.35 : 1.0))
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 4)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -71,6 +89,30 @@ public struct CalendarDrawerView: View {
                         .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
                         .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
                         .lineLimit(1)
+
+                    if isOngoing {
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 3.5, height: 3.5)
+                            Text("NOW")
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(podColor))
+                        .foregroundColor(.white)
+                        .shadow(color: podColor.opacity(0.6), radius: 3)
+                    } else if isImminent {
+                        HStack(spacing: 3) {
+                            Text("SOON")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(podColor.opacity(0.25)))
+                        .foregroundColor(podColor)
+                    }
 
                     Spacer(minLength: 4)
 
@@ -134,6 +176,17 @@ public struct CalendarDrawerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            ZStack {
+                if isOngoing {
+                    LinearGradient(
+                        colors: [podColor.opacity(0.18), podColor.opacity(0.04), Color.clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                }
+            }
+        )
         .liquidCardBackground(
             cornerRadius: 8,
             strokeColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8))
