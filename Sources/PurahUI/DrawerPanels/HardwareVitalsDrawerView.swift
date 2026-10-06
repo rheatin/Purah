@@ -269,6 +269,8 @@ public struct VitalsFocusedDrawerView: View {
                 powerFocusedView(metrics: metrics)
             case .disk:
                 diskFocusedView(metrics: metrics)
+            case .gpu, .thermal, .network:
+                EmptyView()
             }
         }
         .onAppear {

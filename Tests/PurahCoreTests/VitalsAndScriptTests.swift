@@ -23,6 +23,25 @@ struct VitalsAndScriptTests {
         #expect(!metrics.thermalStateDescription.isEmpty)
     }
 
+    @Test("VitalsMetricType includes GPU, Thermal, Network cases")
+    func testExtendedMetricTypes() {
+        let all = VitalsMetricType.allCases
+        #expect(all.contains(.gpu))
+        #expect(all.contains(.thermal))
+        #expect(all.contains(.network))
+        #expect(VitalsMetricType.gpu.systemIcon == "display")
+        #expect(VitalsMetricType.thermal.systemIcon == "thermometer.medium")
+        #expect(VitalsMetricType.network.systemIcon == "network")
+
+        let service = HardwareVitalsService.shared
+        service.refreshMetrics(includeProcesses: false)
+        let metrics = service.metrics
+        #expect(metrics.gpuUsage >= 0.0 && metrics.gpuUsage <= 1.0)
+        #expect(metrics.networkDownSpeed >= 0.0)
+        #expect(metrics.networkUpSpeed >= 0.0)
+        #expect(!metrics.thermalStateDescription.isEmpty)
+    }
+
     @Test("Hardware Vitals async refresh works correctly")
     func testHardwareVitalsAsync() async {
         let service = HardwareVitalsService.shared
@@ -95,7 +114,7 @@ struct VitalsAndScriptTests {
     @MainActor
     func testVitalsMetricDecompositionSettings() {
         let store = PurahWorkspaceStore()
-        #expect(VitalsMetricType.allCases.count == 4)
+        #expect(VitalsMetricType.allCases.count == 7)
         #expect(VitalsMetricType.cpu.displayName == "CPU Load")
 
         store.isVitalsDecomposed = true
