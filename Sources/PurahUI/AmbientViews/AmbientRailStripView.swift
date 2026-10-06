@@ -323,11 +323,7 @@ public struct AmbientRailStripView: View {
         }
         .padding(8)
         .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-        .compositingGroup()
+        .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     // MARK: - Notes 单项抽屉 (全高长条，可打字编辑)
@@ -467,11 +463,7 @@ public struct AmbientRailStripView: View {
         }
         .padding(8)
         .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-        .compositingGroup()
+        .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     // MARK: - Scripts 终端跑道长条
