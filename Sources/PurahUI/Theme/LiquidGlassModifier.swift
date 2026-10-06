@@ -2,6 +2,38 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Native macOS Behind-Window Visual Effect View
+public struct NativeVisualEffectView: NSViewRepresentable {
+    public let material: NSVisualEffectView.Material
+    public let blendingMode: NSVisualEffectView.BlendingMode
+    public let state: NSVisualEffectView.State
+
+    public init(
+        material: NSVisualEffectView.Material = .hudWindow,
+        blendingMode: NSVisualEffectView.BlendingMode = .behindWindow,
+        state: NSVisualEffectView.State = .active
+    ) {
+        self.material = material
+        self.blendingMode = blendingMode
+        self.state = state
+    }
+
+    public func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = state
+        view.wantsLayer = true
+        return view
+    }
+
+    public func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = state
+    }
+}
+
 // MARK: - Chromatic Harmony Color Helper
 public extension Color {
     /// 计算基于 HSB 色域空间谐振偏移 (+35°) 的 Apple Music 极光次级渗透色
@@ -49,7 +81,7 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
             .clipShape(shape)
             .contentShape(shape)
             .overlay(
-                // 极简微弱折射微边框 (0.8pt，告别生硬粗白框)
+                // 极简微弱折射微边框 (0.8pt，纯净自然)
                 shape
                     .strokeBorder(
                         Color.white.opacity(colorScheme == .dark ? 0.16 : 0.28),
@@ -57,12 +89,11 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
                     )
             )
             .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.38 : 0.14),
+                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12),
                 radius: 16,
                 x: 0,
                 y: 5
             )
-            .compositingGroup()
     }
 
     @ViewBuilder
@@ -70,34 +101,19 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
         let secondary = accentColor.harmonicSecondary()
 
         ZStack {
-            // 1. 半透明微透底板
-            Color.black.opacity(colorScheme == .dark ? 0.45 : 0.20)
+            // 1. macOS 核心硬件级 Behind-Window 模糊：100% 实时穿透并模糊底层活动窗口、照片或桌面！
+            NativeVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
 
-            // 2. 双点高斯色斑极光网格 (Chromatic Aurora Mesh)
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-
-                ZStack {
-                    // 主强调色气泡 (右上)
-                    Circle()
-                        .fill(accentColor.opacity(colorScheme == .dark ? 0.36 : 0.28))
-                        .frame(width: max(w * 0.85, 120), height: max(w * 0.85, 120))
-                        .offset(x: w * 0.22, y: -h * 0.15)
-                        .blur(radius: 45)
-
-                    // 次级谐振色气泡 (左下)
-                    Circle()
-                        .fill(secondary.opacity(colorScheme == .dark ? 0.32 : 0.24))
-                        .frame(width: max(w * 0.95, 130), height: max(w * 0.95, 130))
-                        .offset(x: -w * 0.25, y: h * 0.25)
-                        .blur(radius: 50)
-                }
-            }
-
-            // 3. Apple 原生 Ultra-Thin 磨砂面罩 (柔化融合底层极光)
-            Rectangle()
-                .fill(.ultraThinMaterial.opacity(0.85))
+            // 2. Apple Music 极光氛围微晕 (透光率极高，仅 8%~14% 浓度，绝不遮蔽底层画面)
+            LinearGradient(
+                stops: [
+                    .init(color: accentColor.opacity(colorScheme == .dark ? 0.14 : 0.08), location: 0.0),
+                    .init(color: secondary.opacity(colorScheme == .dark ? 0.09 : 0.05), location: 0.65),
+                    .init(color: Color.clear, location: 1.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 }
@@ -136,29 +152,17 @@ public struct LiquidCardBackgroundModifier: ViewModifier {
         let secondary = accent.harmonicSecondary()
 
         ZStack {
-            Color.black.opacity(colorScheme == .dark ? 0.35 : 0.15)
+            NativeVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
 
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-
-                ZStack {
-                    Circle()
-                        .fill(accent.opacity(colorScheme == .dark ? 0.32 : 0.22))
-                        .frame(width: max(w * 0.75, 80), height: max(w * 0.75, 80))
-                        .offset(x: w * 0.20, y: -h * 0.10)
-                        .blur(radius: 35)
-
-                    Circle()
-                        .fill(secondary.opacity(colorScheme == .dark ? 0.28 : 0.18))
-                        .frame(width: max(w * 0.85, 90), height: max(w * 0.85, 90))
-                        .offset(x: -w * 0.20, y: h * 0.15)
-                        .blur(radius: 40)
-                }
-            }
-
-            Rectangle()
-                .fill(.ultraThinMaterial.opacity(0.85))
+            LinearGradient(
+                stops: [
+                    .init(color: accent.opacity(colorScheme == .dark ? 0.12 : 0.06), location: 0.0),
+                    .init(color: secondary.opacity(colorScheme == .dark ? 0.08 : 0.04), location: 0.70),
+                    .init(color: Color.clear, location: 1.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 }
