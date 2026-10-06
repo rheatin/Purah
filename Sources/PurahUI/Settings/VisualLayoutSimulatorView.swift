@@ -164,7 +164,18 @@ public struct VisualLayoutSimulatorView: View {
                     }
                 }
 
-                // 3. Module Assembly Card
+                // 3. Hotkeys & Freeze Mode Card
+                settingsCard(title: "Hotkeys & Freeze Mode", icon: "keyboard.fill") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Toggle to hide and freeze all rails instantly for clean screenshots or edge-docked buttons.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        KeyboardShortcutRecorderView(store: store)
+                    }
+                }
+
+                // 4. Module Assembly Card
                 settingsCard(title: "Rail Module Assembly", icon: "square.grid.2x2.fill") {
                     VStack(spacing: 10) {
                         HStack {
@@ -223,10 +234,10 @@ public struct VisualLayoutSimulatorView: View {
                     }
                 }
 
-                // 4. Mini Screen Simulation
+                // 5. Mini Screen Simulation
                 ScreenSimulationCanvas(store: store)
 
-                // 5. Presets Card
+                // 6. Presets Card
                 settingsCard(title: "Ergonomic Presets", icon: "sparkle") {
                     HStack(spacing: 12) {
                         ForEach(PodPreset.allCases) { preset in
