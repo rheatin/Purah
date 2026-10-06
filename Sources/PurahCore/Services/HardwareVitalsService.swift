@@ -3,6 +3,7 @@ import Foundation
 import AppKit
 import Darwin
 import Observation
+import IOKit
 import IOKit.ps
 
 public struct ProcessInfoItem: Identifiable, Sendable {
@@ -21,6 +22,7 @@ public struct ProcessInfoItem: Identifiable, Sendable {
 
 public struct HardwareVitalsInfo: Sendable {
     public var cpuUsage: Double // 0.0 ~ 1.0
+    public var gpuUsage: Double // 0.0 ~ 1.0
     public var memoryUsage: Double // 0.0 ~ 1.0
     public var memoryUsedGB: Double
     public var memoryTotalGB: Double
@@ -31,10 +33,13 @@ public struct HardwareVitalsInfo: Sendable {
     public var powerSource: String
     public var thermalStateDescription: String
     public var isUnderThermalPressure: Bool
+    public var networkDownSpeed: Double // bytes/sec
+    public var networkUpSpeed: Double // bytes/sec
     public var topProcesses: [ProcessInfoItem]
 
     public init(
         cpuUsage: Double = 0.15,
+        gpuUsage: Double = 0.05,
         memoryUsage: Double = 0.45,
         memoryUsedGB: Double = 8.0,
         memoryTotalGB: Double = 16.0,
@@ -45,9 +50,12 @@ public struct HardwareVitalsInfo: Sendable {
         powerSource: String = "AC Power",
         thermalStateDescription: String = "Nominal",
         isUnderThermalPressure: Bool = false,
+        networkDownSpeed: Double = 0.0,
+        networkUpSpeed: Double = 0.0,
         topProcesses: [ProcessInfoItem] = []
     ) {
         self.cpuUsage = cpuUsage
+        self.gpuUsage = gpuUsage
         self.memoryUsage = memoryUsage
         self.memoryUsedGB = memoryUsedGB
         self.memoryTotalGB = memoryTotalGB
@@ -58,6 +66,8 @@ public struct HardwareVitalsInfo: Sendable {
         self.powerSource = powerSource
         self.thermalStateDescription = thermalStateDescription
         self.isUnderThermalPressure = isUnderThermalPressure
+        self.networkDownSpeed = networkDownSpeed
+        self.networkUpSpeed = networkUpSpeed
         self.topProcesses = topProcesses
     }
 }
@@ -71,6 +81,9 @@ public final class HardwareVitalsService: @unchecked Sendable {
 
     @ObservationIgnored private var previousCpuInfo: processor_info_array_t?
     @ObservationIgnored private var previousCpuInfoCount: mach_msg_type_number_t = 0
+    @ObservationIgnored private var previousNetworkInBytes: UInt64?
+    @ObservationIgnored private var previousNetworkOutBytes: UInt64?
+    @ObservationIgnored private var previousNetworkTimestamp: Date?
 
     public init() {
         Task.detached(priority: .utility) { [weak self] in
@@ -98,14 +111,17 @@ public final class HardwareVitalsService: @unchecked Sendable {
 
     public func refreshMetrics(includeProcesses: Bool = true) {
         let cpu = readCPUUsage()
+        let gpu = readGPUUsage()
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
         let battery = readBatteryInfo()
         let thermal = readThermalState()
+        let net = readNetworkThroughput()
         let top = includeProcesses ? readTopProcessesNative() : metrics.topProcesses
 
         metrics = HardwareVitalsInfo(
             cpuUsage: cpu,
+            gpuUsage: gpu,
             memoryUsage: mem.usage,
             memoryUsedGB: mem.usedGB,
             memoryTotalGB: mem.totalGB,
@@ -115,23 +131,28 @@ public final class HardwareVitalsService: @unchecked Sendable {
             isCharging: battery.isCharging,
             powerSource: battery.source,
             thermalStateDescription: thermal.description,
-            isUnderThermalPressure: thermal.isPressure || cpu > 0.80 || mem.usage > 0.85,
+            isUnderThermalPressure: thermal.isPressure || cpu > 0.80 || mem.usage > 0.85 || gpu > 0.85,
+            networkDownSpeed: net.down,
+            networkUpSpeed: net.up,
             topProcesses: top
         )
     }
 
     public func refreshMetricsAsync(includeProcesses: Bool = false) async {
         let cpu = readCPUUsage()
+        let gpu = readGPUUsage()
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
         let battery = readBatteryInfo()
         let thermal = readThermalState()
+        let net = readNetworkThroughput()
         let currentProcesses = await MainActor.run { self.metrics.topProcesses }
         let top = includeProcesses ? readTopProcessesNative() : (currentProcesses.isEmpty ? readTopProcessesNative() : currentProcesses)
 
         await MainActor.run {
             self.metrics = HardwareVitalsInfo(
                 cpuUsage: cpu,
+                gpuUsage: gpu,
                 memoryUsage: mem.usage,
                 memoryUsedGB: mem.usedGB,
                 memoryTotalGB: mem.totalGB,
@@ -141,7 +162,9 @@ public final class HardwareVitalsService: @unchecked Sendable {
                 isCharging: battery.isCharging,
                 powerSource: battery.source,
                 thermalStateDescription: thermal.description,
-                isUnderThermalPressure: thermal.isPressure || cpu > 0.80 || mem.usage > 0.85,
+                isUnderThermalPressure: thermal.isPressure || cpu > 0.80 || mem.usage > 0.85 || gpu > 0.85,
+                networkDownSpeed: net.down,
+                networkUpSpeed: net.up,
                 topProcesses: top
             )
         }
@@ -312,5 +335,88 @@ public final class HardwareVitalsService: @unchecked Sendable {
 
         items.sort { $0.memoryPercent > $1.memoryPercent }
         return Array(items.prefix(3))
+    }
+
+    // MARK: - Zero-Overhead GPU & Network Telemetry
+
+    public func readGPUUsage() -> Double {
+        var iterator: io_iterator_t = 0
+        let matchDict = IOServiceMatching("IOAccelerator")
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator)
+        guard result == kIOReturnSuccess, iterator != 0 else { return 0.0 }
+        defer { IOObjectRelease(iterator) }
+
+        var maxUsage: Double = 0.0
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            defer {
+                IOObjectRelease(service)
+                service = IOIteratorNext(iterator)
+            }
+
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == kIOReturnSuccess,
+               let dict = props?.takeRetainedValue() as? [String: Any],
+               let perfStats = dict["PerformanceStatistics"] as? [String: Any] {
+                if let devUtil = perfStats["Device Utilization %"] as? NSNumber {
+                    let util = devUtil.doubleValue / 100.0
+                    maxUsage = max(maxUsage, util)
+                } else if let devUtil = perfStats["Device Utilization %"] as? Int {
+                    let util = Double(devUtil) / 100.0
+                    maxUsage = max(maxUsage, util)
+                } else if let rendUtil = perfStats["Renderer Utilization %"] as? NSNumber {
+                    let util = rendUtil.doubleValue / 100.0
+                    maxUsage = max(maxUsage, util)
+                }
+            }
+        }
+        return min(max(maxUsage, 0.0), 1.0)
+    }
+
+    public func readNetworkThroughput() -> (down: Double, up: Double) {
+        var ifap: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifap) == 0, let first = ifap else {
+            return (0.0, 0.0)
+        }
+        defer { freeifaddrs(ifap) }
+
+        var totalIn: UInt64 = 0
+        var totalOut: UInt64 = 0
+        var ptr: UnsafeMutablePointer<ifaddrs>? = first
+
+        while let cur = ptr {
+            let flags = cur.pointee.ifa_flags
+            if (flags & UInt32(IFF_UP)) != 0 && (flags & UInt32(IFF_LOOPBACK)) == 0 {
+                let family = cur.pointee.ifa_addr.pointee.sa_family
+                if family == UInt8(AF_LINK), let data = cur.pointee.ifa_data {
+                    let ifData = data.assumingMemoryBound(to: if_data.self).pointee
+                    totalIn += UInt64(ifData.ifi_ibytes)
+                    totalOut += UInt64(ifData.ifi_obytes)
+                }
+            }
+            ptr = cur.pointee.ifa_next
+        }
+
+        let now = Date()
+        var downSpeed: Double = 0.0
+        var upSpeed: Double = 0.0
+
+        if let prevIn = previousNetworkInBytes,
+           let prevOut = previousNetworkOutBytes,
+           let prevTime = previousNetworkTimestamp {
+            let elapsed = now.timeIntervalSince(prevTime)
+            if elapsed > 0.05 {
+                let deltaIn = totalIn >= prevIn ? Double(totalIn - prevIn) : 0.0
+                let deltaOut = totalOut >= prevOut ? Double(totalOut - prevOut) : 0.0
+                downSpeed = deltaIn / elapsed
+                upSpeed = deltaOut / elapsed
+            }
+        }
+
+        previousNetworkInBytes = totalIn
+        previousNetworkOutBytes = totalOut
+        previousNetworkTimestamp = now
+
+        return (max(downSpeed, 0.0), max(upSpeed, 0.0))
     }
 }

@@ -549,10 +549,17 @@ public struct VitalsItemDrawerView: View {
         switch metric {
         case .cpu:
             return vitals.metrics.cpuUsage
+        case .gpu:
+            return vitals.metrics.gpuUsage
         case .ram:
             return vitals.metrics.memoryUsage
+        case .thermal:
+            return vitals.metrics.isUnderThermalPressure ? 0.90 : 0.25
         case .power:
             return Double(vitals.metrics.batteryLevel) / 100.0
+        case .network:
+            let totalSpeed = vitals.metrics.networkDownSpeed + vitals.metrics.networkUpSpeed
+            return min(totalSpeed / 10_000_000.0, 1.0)
         case .disk:
             let total = vitals.metrics.diskTotalGB
             let free = vitals.metrics.diskFreeGB
@@ -567,11 +574,20 @@ public struct VitalsItemDrawerView: View {
             if u > 0.80 { return palette.dangerAccent }
             if u > 0.50 { return palette.warningAccent }
             return podColor
+        case .gpu:
+            let u = vitals.metrics.gpuUsage
+            if u > 0.80 { return palette.dangerAccent }
+            if u > 0.50 { return palette.warningAccent }
+            return podColor
         case .ram:
             return vitals.metrics.memoryUsage > 0.85 ? palette.dangerAccent : podColor
+        case .thermal:
+            return vitals.metrics.isUnderThermalPressure ? palette.dangerAccent : podColor
         case .power:
             if vitals.metrics.isCharging { return .green }
             if vitals.metrics.batteryLevel < 20 { return palette.dangerAccent }
+            return podColor
+        case .network:
             return podColor
         case .disk:
             return telemetryRatio > 0.90 ? palette.dangerAccent : podColor
