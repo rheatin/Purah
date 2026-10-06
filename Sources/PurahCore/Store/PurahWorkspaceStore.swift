@@ -248,9 +248,9 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
 
     public func fillRail(podId: String) {
         guard pods.contains(where: { $0.id == podId }) else { return }
-        // 让当前 Pod 占满整条轨道的有效安全区间 (0.05 ~ 0.95)
-        let safeSpan = 0.90
-        let newRange = NormalizedRange(start: 0.05, length: safeSpan)
+        // 让当前 Pod 占满整条轨道的有效安全区间 (0.02 ~ 0.98)
+        let safeSpan = 0.96
+        let newRange = NormalizedRange(start: 0.02, length: safeSpan)
         updatePodRange(id: podId, newRange: newRange)
     }
 

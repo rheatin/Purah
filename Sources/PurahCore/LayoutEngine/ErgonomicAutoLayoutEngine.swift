@@ -2,8 +2,8 @@
 import Foundation
 
 public enum ErgonomicAutoLayoutEngine {
-    public static let defaultSafeBounds: ClosedRange<Double> = 0.12...0.88
-    public static let defaultGap: Double = 0.015
+    public static let defaultSafeBounds: ClosedRange<Double> = 0.02...0.98
+    public static let defaultGap: Double = 0.012
 
     /// 计算给定边缘的一组槽位模块的最优人机工学排布
     public static func layout(
