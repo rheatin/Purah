@@ -428,7 +428,7 @@ public struct VitalsPluginSettingsView: View {
             ))
             .font(.subheadline.weight(.semibold))
 
-            Text("Splits hardware monitoring into individual rail chips (CPU, RAM, Power, Disk) like Calendar and Todo.")
+            Text("Splits hardware monitoring into individual rail chips (CPU, GPU, RAM, Thermal, Power, Network, Disk) like Calendar and Todo.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -473,6 +473,251 @@ public struct VitalsPluginSettingsView: View {
 
             Divider()
 
+            // Dynamic Usage Color Thresholds Customization Section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Dynamic Usage Color Thresholds")
+                        .font(.caption.weight(.bold))
+                    Spacer()
+                    Button("Reset Thresholds to Defaults") {
+                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                            store.vitalsThresholds = VitalsColorThresholds()
+                            store.savePersistentState()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                }
+
+                // Visual 3-color legend/preview bar
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Color Progression (CPU Baseline)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("0% → \(Int(store.vitalsThresholds.cpuWarning * 100))% → \(Int(store.vitalsThresholds.cpuDanger * 100))% → 100%")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    GeometryReader { geo in
+                        let totalWidth = geo.size.width
+                        let warnRatio = max(min(CGFloat(store.vitalsThresholds.cpuWarning), 1.0), 0.0)
+                        let dangerRatio = max(min(CGFloat(store.vitalsThresholds.cpuDanger), 1.0), warnRatio)
+                        let wGreen = warnRatio * totalWidth
+                        let wAmber = max((dangerRatio - warnRatio) * totalWidth, 0)
+                        let wRed = max(totalWidth - wGreen - wAmber, 0)
+
+                        HStack(spacing: 0) {
+                            Rectangle()
+                                .fill(VitalsColorResolver.healthyGreen)
+                                .frame(width: wGreen)
+                            Rectangle()
+                                .fill(VitalsColorResolver.warningYellow)
+                                .frame(width: wAmber)
+                            Rectangle()
+                                .fill(VitalsColorResolver.dangerRed)
+                                .frame(width: wRed)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    .frame(height: 10)
+
+                    HStack {
+                        HStack(spacing: 4) {
+                            Circle().fill(VitalsColorResolver.healthyGreen).frame(width: 8, height: 8)
+                            Text("Green (< \(Int(store.vitalsThresholds.cpuWarning * 100))%)")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Circle().fill(VitalsColorResolver.warningYellow).frame(width: 8, height: 8)
+                            Text("Amber (\(Int(store.vitalsThresholds.cpuWarning * 100))% ~ \(Int(store.vitalsThresholds.cpuDanger * 100))%)")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Circle().fill(VitalsColorResolver.dangerRed).frame(width: 8, height: 8)
+                            Text("Red (> \(Int(store.vitalsThresholds.cpuDanger * 100))%)")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(Color.primary.opacity(0.03))
+                .cornerRadius(6)
+
+                // Sliders
+                VStack(spacing: 8) {
+                    // CPU Warning % (10% ~ 90%) & Danger % (50% ~ 99%)
+                    thresholdRow(
+                        title: "CPU Load",
+                        warningLabel: "\(Int(store.vitalsThresholds.cpuWarning * 100))%",
+                        warningValue: Binding(
+                            get: { store.vitalsThresholds.cpuWarning * 100.0 },
+                            set: { newVal in
+                                let val = newVal / 100.0
+                                store.vitalsThresholds.cpuWarning = min(val, store.vitalsThresholds.cpuDanger - 0.05)
+                                store.savePersistentState()
+                            }
+                        ),
+                        warningRange: 10...90,
+                        dangerLabel: "\(Int(store.vitalsThresholds.cpuDanger * 100))%",
+                        dangerValue: Binding(
+                            get: { store.vitalsThresholds.cpuDanger * 100.0 },
+                            set: { newVal in
+                                let val = newVal / 100.0
+                                store.vitalsThresholds.cpuDanger = max(val, store.vitalsThresholds.cpuWarning + 0.05)
+                                store.savePersistentState()
+                            }
+                        ),
+                        dangerRange: 50...99
+                    )
+
+                    // GPU Warning % (10% ~ 90%) & Danger % (50% ~ 99%)
+                    thresholdRow(
+                        title: "GPU Activity",
+                        warningLabel: "\(Int(store.vitalsThresholds.gpuWarning * 100))%",
+                        warningValue: Binding(
+                            get: { store.vitalsThresholds.gpuWarning * 100.0 },
+                            set: { newVal in
+                                let val = newVal / 100.0
+                                store.vitalsThresholds.gpuWarning = min(val, store.vitalsThresholds.gpuDanger - 0.05)
+                                store.savePersistentState()
+                            }
+                        ),
+                        warningRange: 10...90,
+                        dangerLabel: "\(Int(store.vitalsThresholds.gpuDanger * 100))%",
+                        dangerValue: Binding(
+                            get: { store.vitalsThresholds.gpuDanger * 100.0 },
+                            set: { newVal in
+                                let val = newVal / 100.0
+                                store.vitalsThresholds.gpuDanger = max(val, store.vitalsThresholds.gpuWarning + 0.05)
+                                store.savePersistentState()
+                            }
+                        ),
+                        dangerRange: 50...99
+                    )
+
+                    // RAM Warning % (20% ~ 90%) & Danger % (60% ~ 99%)
+                    thresholdRow(
+                        title: "Memory (RAM)",
+                        warningLabel: "\(Int(store.vitalsThresholds.ramWarning * 100))%",
+                        warningValue: Binding(
+                            get: { store.vitalsThresholds.ramWarning * 100.0 },
+                            set: { newVal in
+                                let val = newVal / 100.0
+                                store.vitalsThresholds.ramWarning = min(val, store.vitalsThresholds.ramDanger - 0.05)
+                                store.savePersistentState()
+                            }
+                        ),
+                        warningRange: 20...90,
+                        dangerLabel: "\(Int(store.vitalsThresholds.ramDanger * 100))%",
+                        dangerValue: Binding(
+                            get: { store.vitalsThresholds.ramDanger * 100.0 },
+                            set: { newVal in
+                                let val = newVal / 100.0
+                                store.vitalsThresholds.ramDanger = max(val, store.vitalsThresholds.ramWarning + 0.05)
+                                store.savePersistentState()
+                            }
+                        ),
+                        dangerRange: 60...99
+                    )
+
+                    // Battery Low Warning % (5% ~ 50%)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Battery Low Warning")
+                                .font(.caption.weight(.medium))
+                            Spacer()
+                            Text("\(Int(store.vitalsThresholds.batteryLow * 100))%")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(VitalsColorResolver.warningYellow)
+                        }
+
+                        HStack(spacing: 8) {
+                            Text("Level")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, alignment: .leading)
+                            Slider(
+                                value: Binding(
+                                    get: { store.vitalsThresholds.batteryLow * 100.0 },
+                                    set: {
+                                        store.vitalsThresholds.batteryLow = $0 / 100.0
+                                        store.savePersistentState()
+                                    }
+                                ),
+                                in: 5...50,
+                                step: 1
+                            )
+                        }
+                    }
+
+                    // Network Warning MB/s (1 ~ 100 MB/s)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Network Throughput")
+                                .font(.caption.weight(.medium))
+                            Spacer()
+                            Text("Warn: \(Int(store.vitalsThresholds.networkWarningMB)) MB/s")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(VitalsColorResolver.warningYellow)
+                            Text("•")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text("Danger: \(Int(store.vitalsThresholds.networkDangerMB)) MB/s")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(VitalsColorResolver.dangerRed)
+                        }
+
+                        HStack(spacing: 8) {
+                            Text("Warn")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, alignment: .leading)
+                            Slider(
+                                value: Binding(
+                                    get: { store.vitalsThresholds.networkWarningMB },
+                                    set: {
+                                        store.vitalsThresholds.networkWarningMB = min($0, store.vitalsThresholds.networkDangerMB - 1.0)
+                                        store.savePersistentState()
+                                    }
+                                ),
+                                in: 1...100,
+                                step: 1
+                            )
+
+                            Text("Danger")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .frame(width: 42, alignment: .leading)
+                            Slider(
+                                value: Binding(
+                                    get: { store.vitalsThresholds.networkDangerMB },
+                                    set: {
+                                        store.vitalsThresholds.networkDangerMB = max($0, store.vitalsThresholds.networkWarningMB + 1.0)
+                                        store.savePersistentState()
+                                    }
+                                ),
+                                in: 10...200,
+                                step: 1
+                            )
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(8)
+            }
+
+            Divider()
+
             HStack(spacing: 12) {
                 Text("CPU: \(Int(vitals.cpuUsage * 100))%")
                     .font(.caption.monospaced())
@@ -491,6 +736,48 @@ public struct VitalsPluginSettingsView: View {
             .foregroundColor(.secondary)
         }
     }
+
+    @ViewBuilder
+    private func thresholdRow(
+        title: String,
+        warningLabel: String,
+        warningValue: Binding<Double>,
+        warningRange: ClosedRange<Double>,
+        dangerLabel: String,
+        dangerValue: Binding<Double>,
+        dangerRange: ClosedRange<Double>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                Spacer()
+                Text("Warn: \(warningLabel)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(VitalsColorResolver.warningYellow)
+                Text("•")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Text("Danger: \(dangerLabel)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(VitalsColorResolver.dangerRed)
+            }
+
+            HStack(spacing: 8) {
+                Text("Warn")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .frame(width: 32, alignment: .leading)
+                Slider(value: warningValue, in: warningRange, step: 1)
+
+                Text("Danger")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                Slider(value: dangerValue, in: dangerRange, step: 1)
+            }
+        }
+    }
 }
 
 public struct ScriptsPluginSettingsView: View {
@@ -504,12 +791,86 @@ public struct ScriptsPluginSettingsView: View {
     @State private var newDescription: String = ""
     @State private var isAddingAction: Bool = false
 
+    @State private var editingActionId: String? = nil
+    @State private var editActionName: String = ""
+    @State private var editCommandType: ScriptCommandType = .shortcut
+    @State private var editScriptContent: String = ""
+    @State private var editSystemIcon: String = "bolt.fill"
+    @State private var editDescription: String = ""
+
     public init(store: PurahWorkspaceStore) {
         self.store = store
     }
 
+    private var effectiveEnabledActionIds: [String] {
+        if store.scriptsEnabledActionIds.isEmpty {
+            return runway.actions.map(\.id)
+        }
+        return store.scriptsEnabledActionIds
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Toggle("Decompose into Stepped Script Rail Chips", isOn: Binding(
+                get: { store.isScriptsDecomposed },
+                set: {
+                    store.isScriptsDecomposed = $0
+                    store.savePersistentState()
+                }
+            ))
+            .font(.subheadline.weight(.semibold))
+
+            Text("Splits script runway into individual interactive rail chips for rapid one-click execution.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if store.isScriptsDecomposed {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Visible Stepped Action Chips")
+                        .font(.caption.weight(.bold))
+
+                    let currentEnabled = effectiveEnabledActionIds
+
+                    ForEach(runway.actions) { action in
+                        let isIncluded = currentEnabled.contains(action.id)
+                        Button {
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                var updated = currentEnabled
+                                if isIncluded {
+                                    if updated.count > 1 {
+                                        updated.removeAll { $0 == action.id }
+                                        store.scriptsEnabledActionIds = updated
+                                        store.savePersistentState()
+                                    }
+                                } else {
+                                    updated.append(action.id)
+                                    store.scriptsEnabledActionIds = updated
+                                    store.savePersistentState()
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: isIncluded ? "checkmark.square.fill" : "square")
+                                    .foregroundColor(isIncluded ? .accentColor : .secondary)
+                                Image(systemName: action.systemIcon)
+                                    .font(.caption)
+                                    .frame(width: 16)
+                                Text(action.name)
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(8)
+            }
+
+            Divider()
+
             HStack {
                 Text("Actions & Shortcuts (\(runway.actions.count))")
                     .font(.caption.weight(.semibold))
@@ -518,6 +879,9 @@ public struct ScriptsPluginSettingsView: View {
                 Button {
                     withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
                         isAddingAction.toggle()
+                        if isAddingAction {
+                            editingActionId = nil
+                        }
                     }
                 } label: {
                     Label(isAddingAction ? "Cancel" : "Add Action", systemImage: isAddingAction ? "xmark" : "plus")
@@ -528,6 +892,9 @@ public struct ScriptsPluginSettingsView: View {
                 Button("Reset Defaults") {
                     withAnimation {
                         runway.resetToDefaults()
+                        editingActionId = nil
+                        store.scriptsEnabledActionIds = runway.actions.map(\.id)
+                        store.savePersistentState()
                     }
                 }
                 .buttonStyle(.plain)
@@ -575,14 +942,18 @@ public struct ScriptsPluginSettingsView: View {
                                   !newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                             let item = ScriptActionItem(
                                 id: UUID().uuidString,
-                                name: newActionName,
-                                systemIcon: newSystemIcon.isEmpty ? "bolt.fill" : newSystemIcon,
+                                name: newActionName.trimmingCharacters(in: .whitespaces),
+                                systemIcon: newSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : newSystemIcon.trimmingCharacters(in: .whitespaces),
                                 commandType: newCommandType,
-                                scriptContent: newScriptContent,
-                                description: newDescription
+                                scriptContent: newScriptContent.trimmingCharacters(in: .whitespaces),
+                                description: newDescription.trimmingCharacters(in: .whitespaces)
                             )
                             withAnimation {
                                 runway.addAction(item)
+                                if !store.scriptsEnabledActionIds.isEmpty {
+                                    store.scriptsEnabledActionIds.append(item.id)
+                                    store.savePersistentState()
+                                }
                                 newActionName = ""
                                 newScriptContent = ""
                                 newDescription = ""
@@ -591,7 +962,7 @@ public struct ScriptsPluginSettingsView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .font(.caption)
-                        .disabled(newActionName.isEmpty || newScriptContent.isEmpty)
+                        .disabled(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
                 .padding(10)
@@ -601,42 +972,148 @@ public struct ScriptsPluginSettingsView: View {
 
             VStack(spacing: 6) {
                 ForEach(runway.actions) { action in
-                    HStack(spacing: 8) {
-                        Image(systemName: action.systemIcon)
-                            .font(.caption)
-                            .foregroundColor(.accentColor)
-                            .frame(width: 16)
+                    VStack(spacing: 0) {
+                        HStack(spacing: 8) {
+                            Image(systemName: action.systemIcon)
+                                .font(.caption)
+                                .foregroundColor(.accentColor)
+                                .frame(width: 16)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(action.name)
-                                .font(.caption.weight(.semibold))
-                            Text(action.scriptContent)
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-
-                        Text(typeBadge(action.commandType))
-                            .font(.system(size: 8, weight: .bold))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.primary.opacity(0.08))
-                            .cornerRadius(4)
-
-                        Button {
-                            withAnimation {
-                                runway.removeAction(id: action.id)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(action.name)
+                                    .font(.caption.weight(.semibold))
+                                Text(action.scriptContent)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
                             }
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
+
+                            Spacer()
+
+                            Text(typeBadge(action.commandType))
+                                .font(.system(size: 8, weight: .bold))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.08))
+                                .cornerRadius(4)
+
+                            Button {
+                                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                                    if editingActionId == action.id {
+                                        editingActionId = nil
+                                    } else {
+                                        editingActionId = action.id
+                                        editActionName = action.name
+                                        editCommandType = action.commandType
+                                        editScriptContent = action.scriptContent
+                                        editSystemIcon = action.systemIcon
+                                        editDescription = action.description
+                                        isAddingAction = false
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .font(.caption2)
+                                    .foregroundColor(editingActionId == action.id ? .accentColor : .secondary)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                withAnimation {
+                                    if editingActionId == action.id {
+                                        editingActionId = nil
+                                    }
+                                    runway.removeAction(id: action.id)
+                                    if store.scriptsEnabledActionIds.contains(action.id) {
+                                        store.scriptsEnabledActionIds.removeAll { $0 == action.id }
+                                        store.savePersistentState()
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(8)
+
+                        if editingActionId == action.id {
+                            Divider()
+                                .padding(.horizontal, 8)
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Edit Action")
+                                    .font(.caption.weight(.bold))
+
+                                HStack(spacing: 8) {
+                                    TextField("Action Name", text: $editActionName)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.caption)
+
+                                    Picker("Type", selection: $editCommandType) {
+                                        Text("Shortcuts").tag(ScriptCommandType.shortcut)
+                                        Text("Shell (Zsh)").tag(ScriptCommandType.shell)
+                                        Text("AppleScript").tag(ScriptCommandType.appleScript)
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(width: 220)
+                                }
+
+                                TextField(editCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $editScriptContent)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.caption.monospaced())
+
+                                HStack(spacing: 8) {
+                                    TextField("SF Symbol (e.g. bolt.fill)", text: $editSystemIcon)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.caption)
+                                        .frame(width: 160)
+
+                                    TextField("Description", text: $editDescription)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.caption)
+                                }
+
+                                HStack {
+                                    Spacer()
+
+                                    Button("Cancel") {
+                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                            editingActionId = nil
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+
+                                    Button("Save Changes") {
+                                        let trimmedName = editActionName.trimmingCharacters(in: .whitespaces)
+                                        let trimmedContent = editScriptContent.trimmingCharacters(in: .whitespaces)
+                                        guard !trimmedName.isEmpty, !trimmedContent.isEmpty else { return }
+
+                                        let updated = ScriptActionItem(
+                                            id: action.id,
+                                            name: trimmedName,
+                                            systemIcon: editSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : editSystemIcon.trimmingCharacters(in: .whitespaces),
+                                            commandType: editCommandType,
+                                            scriptContent: trimmedContent,
+                                            description: editDescription.trimmingCharacters(in: .whitespaces)
+                                        )
+                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                            ScriptRunwayService.shared.updateAction(updated)
+                                            editingActionId = nil
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .font(.caption)
+                                    .disabled(editActionName.trimmingCharacters(in: .whitespaces).isEmpty || editScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
+                                }
+                            }
+                            .padding(10)
+                            .background(Color.primary.opacity(0.02))
+                        }
                     }
-                    .padding(8)
                     .background(Color.primary.opacity(0.03))
                     .cornerRadius(6)
                 }
