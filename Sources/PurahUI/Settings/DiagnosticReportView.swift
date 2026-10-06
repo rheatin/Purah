@@ -229,7 +229,7 @@ public struct DiagnosticReportView: View {
         let report = logger.generateReport(store: store)
         let savePanel = NSSavePanel()
         savePanel.title = "Export Purah Diagnostic Report"
-        savePanel.nameFieldStringValue = "Purah-Diagnostic-Report-\(formattedDate()).log"
+        savePanel.nameFieldStringValue = "Purah-Diagnostic-Report-\(Date().ISO8601Format()).log"
         savePanel.allowedContentTypes = [.plainText]
 
         savePanel.begin { result in
@@ -237,11 +237,5 @@ public struct DiagnosticReportView: View {
                 try? report.write(to: url, atomically: true, encoding: .utf8)
             }
         }
-    }
-
-    private func formattedDate() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-        return formatter.string(from: Date())
     }
 }

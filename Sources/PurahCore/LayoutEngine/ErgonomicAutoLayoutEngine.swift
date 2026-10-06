@@ -16,13 +16,8 @@ public enum ErgonomicAutoLayoutEngine {
         guard !activePods.isEmpty else { return [] }
 
         // 1. 按照人机工学舒适区与权重排序
-        let sortedPods = activePods.sorted { p1, p2 in
-            let z1 = zoneRank(p1.preferredZone)
-            let z2 = zoneRank(p2.preferredZone)
-            if z1 != z2 {
-                return z1 < z2
-            }
-            return p1.ergonomicWeight > p2.ergonomicWeight
+        let sortedPods = activePods.sorted {
+            ($0.preferredZone, -$0.ergonomicWeight) < ($1.preferredZone, -$1.ergonomicWeight)
         }
 
         // 2. 计算可分配的净空间
@@ -57,13 +52,5 @@ public enum ErgonomicAutoLayoutEngine {
         }
 
         return resolvedPods
-    }
-
-    private static func zoneRank(_ zone: ZoneType) -> Int {
-        switch zone {
-        case .glance: return 0
-        case .goldenAction: return 1
-        case .quickFlick: return 2
-        }
     }
 }

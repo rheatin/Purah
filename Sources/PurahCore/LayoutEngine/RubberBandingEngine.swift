@@ -8,10 +8,7 @@ public enum RubberBandingEngine {
     /// (overshoot * dimension * constant) / (dimension + constant * abs(overshoot))
     public static func rubberband(offset: Double, dimension: Double, constant: Double = defaultConstant) -> Double {
         guard dimension > 0 else { return offset * constant }
-        let sign = offset >= 0 ? 1.0 : -1.0
-        let absOffset = abs(offset)
-        let damped = (absOffset * dimension * constant) / (dimension + constant * absOffset)
-        return sign * damped
+        return (offset * dimension * constant) / (dimension + constant * abs(offset))
     }
 
     /// Clamps a continuous value within bounds [min...max], applying progressive rubberband resistance when out-of-bounds

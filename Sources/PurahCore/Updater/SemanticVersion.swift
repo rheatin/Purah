@@ -20,12 +20,6 @@ public struct SemanticVersion: Comparable, Sendable, Equatable {
     }
 
     public static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
-        if lhs.major != rhs.major {
-            return lhs.major < rhs.major
-        }
-        if lhs.minor != rhs.minor {
-            return lhs.minor < rhs.minor
-        }
-        return lhs.patch < rhs.patch
+        (lhs.major, lhs.minor, lhs.patch) < (rhs.major, rhs.minor, rhs.patch)
     }
 }

@@ -558,24 +558,10 @@ public struct VitalsPluginSettingsView: View {
                     thresholdRow(
                         title: "CPU Load",
                         warningLabel: "\(Int(store.vitalsThresholds.cpuWarning * 100))%",
-                        warningValue: Binding(
-                            get: { store.vitalsThresholds.cpuWarning * 100.0 },
-                            set: { newVal in
-                                let val = newVal / 100.0
-                                store.vitalsThresholds.cpuWarning = min(val, store.vitalsThresholds.cpuDanger - 0.05)
-                                store.savePersistentState()
-                            }
-                        ),
+                        warningValue: percentageBinding(for: \.cpuWarning, cappedBy: \.cpuDanger, isWarning: true),
                         warningRange: 10...90,
                         dangerLabel: "\(Int(store.vitalsThresholds.cpuDanger * 100))%",
-                        dangerValue: Binding(
-                            get: { store.vitalsThresholds.cpuDanger * 100.0 },
-                            set: { newVal in
-                                let val = newVal / 100.0
-                                store.vitalsThresholds.cpuDanger = max(val, store.vitalsThresholds.cpuWarning + 0.05)
-                                store.savePersistentState()
-                            }
-                        ),
+                        dangerValue: percentageBinding(for: \.cpuDanger, cappedBy: \.cpuWarning, isWarning: false),
                         dangerRange: 50...99
                     )
 
@@ -583,24 +569,10 @@ public struct VitalsPluginSettingsView: View {
                     thresholdRow(
                         title: "GPU Activity",
                         warningLabel: "\(Int(store.vitalsThresholds.gpuWarning * 100))%",
-                        warningValue: Binding(
-                            get: { store.vitalsThresholds.gpuWarning * 100.0 },
-                            set: { newVal in
-                                let val = newVal / 100.0
-                                store.vitalsThresholds.gpuWarning = min(val, store.vitalsThresholds.gpuDanger - 0.05)
-                                store.savePersistentState()
-                            }
-                        ),
+                        warningValue: percentageBinding(for: \.gpuWarning, cappedBy: \.gpuDanger, isWarning: true),
                         warningRange: 10...90,
                         dangerLabel: "\(Int(store.vitalsThresholds.gpuDanger * 100))%",
-                        dangerValue: Binding(
-                            get: { store.vitalsThresholds.gpuDanger * 100.0 },
-                            set: { newVal in
-                                let val = newVal / 100.0
-                                store.vitalsThresholds.gpuDanger = max(val, store.vitalsThresholds.gpuWarning + 0.05)
-                                store.savePersistentState()
-                            }
-                        ),
+                        dangerValue: percentageBinding(for: \.gpuDanger, cappedBy: \.gpuWarning, isWarning: false),
                         dangerRange: 50...99
                     )
 
@@ -608,24 +580,10 @@ public struct VitalsPluginSettingsView: View {
                     thresholdRow(
                         title: "Memory (RAM)",
                         warningLabel: "\(Int(store.vitalsThresholds.ramWarning * 100))%",
-                        warningValue: Binding(
-                            get: { store.vitalsThresholds.ramWarning * 100.0 },
-                            set: { newVal in
-                                let val = newVal / 100.0
-                                store.vitalsThresholds.ramWarning = min(val, store.vitalsThresholds.ramDanger - 0.05)
-                                store.savePersistentState()
-                            }
-                        ),
+                        warningValue: percentageBinding(for: \.ramWarning, cappedBy: \.ramDanger, isWarning: true),
                         warningRange: 20...90,
                         dangerLabel: "\(Int(store.vitalsThresholds.ramDanger * 100))%",
-                        dangerValue: Binding(
-                            get: { store.vitalsThresholds.ramDanger * 100.0 },
-                            set: { newVal in
-                                let val = newVal / 100.0
-                                store.vitalsThresholds.ramDanger = max(val, store.vitalsThresholds.ramWarning + 0.05)
-                                store.savePersistentState()
-                            }
-                        ),
+                        dangerValue: percentageBinding(for: \.ramDanger, cappedBy: \.ramWarning, isWarning: false),
                         dangerRange: 60...99
                     )
 
@@ -735,6 +693,22 @@ public struct VitalsPluginSettingsView: View {
             }
             .foregroundColor(.secondary)
         }
+    }
+
+    private func percentageBinding(
+        for keyPath: WritableKeyPath<VitalsColorThresholds, Double>,
+        cappedBy limitKeyPath: KeyPath<VitalsColorThresholds, Double>,
+        isWarning: Bool
+    ) -> Binding<Double> {
+        Binding(
+            get: { store.vitalsThresholds[keyPath: keyPath] * 100.0 },
+            set: { newVal in
+                let val = newVal / 100.0
+                let limit = store.vitalsThresholds[keyPath: limitKeyPath]
+                store.vitalsThresholds[keyPath: keyPath] = isWarning ? min(val, limit - 0.05) : max(val, limit + 0.05)
+                store.savePersistentState()
+            }
+        )
     }
 
     @ViewBuilder
