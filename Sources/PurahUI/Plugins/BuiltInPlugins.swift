@@ -418,7 +418,61 @@ public struct VitalsPluginSettingsView: View {
 
     public var body: some View {
         let vitals = HardwareVitalsService.shared.metrics
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle("Decompose into Stepped Metric Rail Chips", isOn: Binding(
+                get: { store.isVitalsDecomposed },
+                set: {
+                    store.isVitalsDecomposed = $0
+                    store.savePersistentState()
+                }
+            ))
+            .font(.subheadline.weight(.semibold))
+
+            Text("Splits hardware monitoring into individual rail chips (CPU, RAM, Power, Disk) like Calendar and Todo.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            if store.isVitalsDecomposed {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Visible Sub-Metrics")
+                        .font(.caption.weight(.bold))
+
+                    ForEach(VitalsMetricType.allCases) { metric in
+                        let isIncluded = store.vitalsEnabledMetrics.contains(metric)
+                        Button {
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                if isIncluded {
+                                    if store.vitalsEnabledMetrics.count > 1 {
+                                        store.vitalsEnabledMetrics.removeAll { $0 == metric }
+                                    }
+                                } else {
+                                    store.vitalsEnabledMetrics.append(metric)
+                                }
+                                store.savePersistentState()
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: isIncluded ? "checkmark.square.fill" : "square")
+                                    .foregroundColor(isIncluded ? .accentColor : .secondary)
+                                Image(systemName: metric.systemIcon)
+                                    .font(.caption)
+                                    .frame(width: 16)
+                                Text(metric.displayName)
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(8)
+            }
+
+            Divider()
+
             HStack(spacing: 12) {
                 Text("CPU: \(Int(vitals.cpuUsage * 100))%")
                     .font(.caption.monospaced())
@@ -430,7 +484,7 @@ public struct VitalsPluginSettingsView: View {
                 Button("Refresh") {
                     HardwareVitalsService.shared.refreshMetrics(includeProcesses: true)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .font(.caption.weight(.medium))
                 .foregroundColor(.accentColor)
             }
@@ -441,16 +495,160 @@ public struct VitalsPluginSettingsView: View {
 
 public struct ScriptsPluginSettingsView: View {
     public let store: PurahWorkspaceStore
+    private var runway: ScriptRunwayService { ScriptRunwayService.shared }
+
+    @State private var newActionName: String = ""
+    @State private var newCommandType: ScriptCommandType = .shortcut
+    @State private var newScriptContent: String = ""
+    @State private var newSystemIcon: String = "bolt.fill"
+    @State private var newDescription: String = ""
+    @State private var isAddingAction: Bool = false
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Runway Actions: Flush DNS, Empty Trash, Toggle Dark Mode")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Actions & Shortcuts (\(runway.actions.count))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                        isAddingAction.toggle()
+                    }
+                } label: {
+                    Label(isAddingAction ? "Cancel" : "Add Action", systemImage: isAddingAction ? "xmark" : "plus")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.tactile)
+
+                Button("Reset Defaults") {
+                    withAnimation {
+                        runway.resetToDefaults()
+                    }
+                }
+                .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundColor(.secondary)
+            }
+
+            if isAddingAction {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Add New Action or Shortcut")
+                        .font(.caption.weight(.bold))
+
+                    HStack(spacing: 8) {
+                        TextField("Action Name (e.g. Meeting Mode)", text: $newActionName)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+
+                        Picker("Type", selection: $newCommandType) {
+                            Text("Shortcuts").tag(ScriptCommandType.shortcut)
+                            Text("Shell (Zsh)").tag(ScriptCommandType.shell)
+                            Text("AppleScript").tag(ScriptCommandType.appleScript)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 220)
+                    }
+
+                    TextField(newCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $newScriptContent)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption.monospaced())
+
+                    HStack(spacing: 8) {
+                        TextField("SF Symbol (e.g. bolt.fill, terminal.fill)", text: $newSystemIcon)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .frame(width: 200)
+
+                        TextField("Short Description", text: $newDescription)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+
+                        Spacer()
+
+                        Button("Save") {
+                            guard !newActionName.trimmingCharacters(in: .whitespaces).isEmpty,
+                                  !newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                            let item = ScriptActionItem(
+                                id: UUID().uuidString,
+                                name: newActionName,
+                                systemIcon: newSystemIcon.isEmpty ? "bolt.fill" : newSystemIcon,
+                                commandType: newCommandType,
+                                scriptContent: newScriptContent,
+                                description: newDescription
+                            )
+                            withAnimation {
+                                runway.addAction(item)
+                                newActionName = ""
+                                newScriptContent = ""
+                                newDescription = ""
+                                isAddingAction = false
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .font(.caption)
+                        .disabled(newActionName.isEmpty || newScriptContent.isEmpty)
+                    }
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(8)
+            }
+
+            VStack(spacing: 6) {
+                ForEach(runway.actions) { action in
+                    HStack(spacing: 8) {
+                        Image(systemName: action.systemIcon)
+                            .font(.caption)
+                            .foregroundColor(.accentColor)
+                            .frame(width: 16)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(action.name)
+                                .font(.caption.weight(.semibold))
+                            Text(action.scriptContent)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        Text(typeBadge(action.commandType))
+                            .font(.system(size: 8, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.primary.opacity(0.08))
+                            .cornerRadius(4)
+
+                        Button {
+                            withAnimation {
+                                runway.removeAction(id: action.id)
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(8)
+                    .background(Color.primary.opacity(0.03))
+                    .cornerRadius(6)
+                }
+            }
+        }
+    }
+
+    private func typeBadge(_ type: ScriptCommandType) -> String {
+        switch type {
+        case .shortcut: return "SHORTCUT"
+        case .shell: return "SHELL"
+        case .appleScript: return "APPLESCRIPT"
         }
     }
 }

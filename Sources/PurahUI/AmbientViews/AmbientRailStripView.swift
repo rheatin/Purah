@@ -41,6 +41,8 @@ public struct AmbientRailStripView: View {
                             todoPodItems(pod: pod, totalHeight: podHeight)
                         } else if pod.id == "calendar" {
                             calendarPodItems(pod: pod, totalHeight: podHeight)
+                        } else if pod.id == "vitals" && store.isVitalsDecomposed {
+                            decomposedVitalsPodItems(pod: pod, totalHeight: podHeight)
                         } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
                             renderPluginPod(plugin: plugin, pod: pod, totalHeight: podHeight)
                         } else {
@@ -157,6 +159,55 @@ public struct AmbientRailStripView: View {
                     if isHovered {
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                             store.activateDrawer(podId: pod.id, itemId: event.id)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
+                .frame(height: itemH)
+            }
+        }
+        .frame(height: totalHeight)
+    }
+
+    // MARK: - Vitals 可拆分多指标独立步进抽屉
+    @ViewBuilder
+    private func decomposedVitalsPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let metrics = store.vitalsEnabledMetrics
+        let count = max(metrics.count, 1)
+        let spacing: CGFloat = 2.5
+        let totalSpacing = spacing * CGFloat(count - 1)
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), 26.0)
+
+        VStack(spacing: spacing) {
+            ForEach(metrics) { metric in
+                let itemId = "vitals-\(metric.rawValue)"
+                let isPinned = store.isItemPinned(id: itemId)
+                let isActive = (itemId == store.activeDrawerItemId || isPinned)
+                let activeIdx = metrics.firstIndex(where: { "vitals-\($0.rawValue)" == (store.activeDrawerItemId ?? "") })
+                let thisIdx = metrics.firstIndex(where: { $0 == metric }) ?? -99
+                let isNeighbor = (activeIdx != nil && abs(thisIdx - activeIdx!) == 1)
+
+                let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+
+                VitalsItemDrawerView(
+                    metric: metric,
+                    edge: edge,
+                    state: state,
+                    isPinned: isPinned,
+                    height: itemH,
+                    store: store,
+                    onTogglePin: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                            store.togglePinItem(id: itemId)
+                        }
+                    }
+                )
+                .id(itemId)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            store.activateDrawer(podId: pod.id, itemId: itemId)
                         }
                     }
                 }

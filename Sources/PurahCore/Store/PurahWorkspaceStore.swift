@@ -61,11 +61,15 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
             if isItemPinned(id: pod.id) { return true }
             if pod.id == "todo" && todos.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "calendar" && calendarEvents.contains(where: { isItemPinned(id: $0.id) }) { return true }
+            if pod.id == "vitals" && vitalsEnabledMetrics.contains(where: { isItemPinned(id: "vitals-\($0.rawValue)") }) { return true }
         }
         return false
     }
 
     public func pod(forItemId id: String) -> SlotPod? {
+        if id.hasPrefix("vitals-") {
+            return pods.first(where: { $0.id == "vitals" })
+        }
         if let p = pods.first(where: { $0.id == id }) {
             return p
         }
@@ -83,6 +87,9 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
             return p
         }
         if let itemId = activeDrawerItemId {
+            if itemId.hasPrefix("vitals-") {
+                return pods.first(where: { $0.id == "vitals" })
+            }
             if todos.contains(where: { $0.id == itemId }) {
                 return pods.first(where: { $0.id == "todo" })
             }
@@ -95,6 +102,10 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         }
         return nil
     }
+
+    // Decomposable Hardware Vitals settings
+    public var isVitalsDecomposed: Bool = false
+    public var vitalsEnabledMetrics: [VitalsMetricType] = [.cpu, .ram, .power, .disk]
 
     // Real-time synchronization flags and scopes
     public var isUsingRealCalendar: Bool = false
@@ -213,6 +224,16 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
             let mods = UInt32(defaults.integer(forKey: "purah.hotkey.modifiers"))
             self.hotKeyShortcut = HotKeyShortcut(keyCode: code, modifiers: mods)
         }
+
+        if defaults.object(forKey: "purah.vitals.isDecomposed") != nil {
+            self.isVitalsDecomposed = defaults.bool(forKey: "purah.vitals.isDecomposed")
+        }
+        if let metricsArr = defaults.stringArray(forKey: "purah.vitals.enabledMetrics") {
+            let parsed = metricsArr.compactMap { VitalsMetricType(rawValue: $0) }
+            if !parsed.isEmpty {
+                self.vitalsEnabledMetrics = parsed
+            }
+        }
     }
 
     public func savePersistentState() {
@@ -226,6 +247,8 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
+        defaults.set(isVitalsDecomposed, forKey: "purah.vitals.isDecomposed")
+        defaults.set(vitalsEnabledMetrics.map { $0.rawValue }, forKey: "purah.vitals.enabledMetrics")
     }
 
     public func autoLayoutAll() {

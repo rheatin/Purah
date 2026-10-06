@@ -50,19 +50,29 @@ public struct DropShelfDrawerView: View {
                     VStack(spacing: 5) {
                         ForEach(store.shelfFiles) { file in
                             HStack(spacing: 8) {
-                                Image(systemName: iconForExtension(file.fileExtension))
-                                    .font(.system(size: 14))
-                                    .foregroundColor(shelfColor)
+                                Button {
+                                    if let path = file.filePath {
+                                        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: iconForExtension(file.fileExtension))
+                                            .font(.system(size: 14))
+                                            .foregroundColor(shelfColor)
 
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(file.name)
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                        .lineLimit(1)
-                                    Text(file.sizeDescription)
-                                        .font(.system(size: 8))
-                                        .foregroundColor(.gray)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(file.name)
+                                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                                .lineLimit(1)
+                                            Text(file.sizeDescription)
+                                                .font(.system(size: 8))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
                                 }
+                                .buttonStyle(.plain)
+                                .help("Click to open file")
 
                                 Spacer()
 

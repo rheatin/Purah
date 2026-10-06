@@ -38,4 +38,44 @@ struct VitalsAndScriptTests {
         #expect(service.actions.contains(where: { $0.id == "flush-dns" }))
         #expect(service.actions.contains(where: { $0.id == "empty-trash" }))
     }
+
+    @Test("Script Runway manages custom actions and shortcuts")
+    func testScriptRunwayCustomActionManagement() {
+        let service = ScriptRunwayService()
+        let customAction = ScriptActionItem(
+            id: "test-shortcut",
+            name: "Test Shortcut",
+            systemIcon: "bolt.fill",
+            commandType: .shortcut,
+            scriptContent: "Meeting Mode",
+            description: "Test description"
+        )
+        service.addAction(customAction)
+        #expect(service.actions.contains(where: { $0.id == "test-shortcut" }))
+
+        service.removeAction(id: "test-shortcut")
+        #expect(!service.actions.contains(where: { $0.id == "test-shortcut" }))
+    }
+
+    @Test("Vitals metric decomposition settings and sub-metric models")
+    @MainActor
+    func testVitalsMetricDecompositionSettings() {
+        let store = PurahWorkspaceStore()
+        #expect(VitalsMetricType.allCases.count == 4)
+        #expect(VitalsMetricType.cpu.displayName == "CPU Load")
+
+        store.isVitalsDecomposed = true
+        store.vitalsEnabledMetrics = [.cpu, .ram]
+        store.savePersistentState()
+
+        let reloaded = PurahWorkspaceStore()
+        #expect(reloaded.isVitalsDecomposed == true)
+        #expect(reloaded.vitalsEnabledMetrics.contains(.cpu))
+        #expect(reloaded.vitalsEnabledMetrics.contains(.ram))
+
+        // Reset
+        store.isVitalsDecomposed = false
+        store.vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
+        store.savePersistentState()
+    }
 }
