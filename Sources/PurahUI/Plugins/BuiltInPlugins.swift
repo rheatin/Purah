@@ -14,8 +14,8 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         description: "Real-time hardware performance, memory, and thermal monitoring",
         defaultEdge: .left,
         preferredZone: .glance,
-        ergonomicWeight: 30.0,
-        minLengthRatio: 0.10,
+        ergonomicWeight: 35.0,
+        minLengthRatio: 0.22,
         defaultColorHex: "#00E5A3"
     )
 
@@ -73,7 +73,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         defaultEdge: .left,
         preferredZone: .quickFlick,
         ergonomicWeight: 30.0,
-        minLengthRatio: 0.10,
+        minLengthRatio: 0.18,
         defaultColorHex: "#A78BFA"
     )
 
@@ -118,8 +118,8 @@ public struct QuickNotesPlugin: PurahPodPlugin {
         description: "Instant scratchpad for fleeting thoughts and code snippets",
         defaultEdge: .left,
         preferredZone: .quickFlick,
-        ergonomicWeight: 35.0,
-        minLengthRatio: 0.12,
+        ergonomicWeight: 30.0,
+        minLengthRatio: 0.16,
         defaultColorHex: "#FFD60A"
     )
 
@@ -158,7 +158,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
         defaultEdge: .left,
         preferredZone: .quickFlick,
         ergonomicWeight: 35.0,
-        minLengthRatio: 0.10,
+        minLengthRatio: 0.16,
         defaultColorHex: "#BF5AF2"
     )
 
@@ -197,7 +197,7 @@ public struct MusicPlugin: PurahPodPlugin {
         defaultEdge: .right,
         preferredZone: .goldenAction,
         ergonomicWeight: 25.0,
-        minLengthRatio: 0.10,
+        minLengthRatio: 0.14,
         defaultColorHex: "#FF375F"
     )
 

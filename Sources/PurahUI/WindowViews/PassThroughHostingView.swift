@@ -56,11 +56,12 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                                          (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let physicalCardH = max(pod.range.length * totalH, store.minimumDrawerHeight(for: pod.id))
+                // Physical Co-Planar Rule: drawer card height matches rail bar height exactly
+                let physicalCardH = max(pod.range.length * totalH, 36.0)
                 let cardTop = totalH * (1.0 - pod.range.start)
                 let cardBottom = cardTop - physicalCardH
-                let minY = max(cardBottom - 6.0, 0.0)
-                let maxY = min(cardTop + 6.0, totalH)
+                let minY = max(cardBottom - 4.0, 0.0)
+                let maxY = min(cardTop + 4.0, totalH)
 
                 let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
                 let inDrawerX: Bool

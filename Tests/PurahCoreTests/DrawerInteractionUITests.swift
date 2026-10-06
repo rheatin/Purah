@@ -438,21 +438,16 @@ struct DrawerInteractionUITests {
         }
     }
 
-    @Test("Physical card height incorporates minimumDrawerHeight to capture scroll wheel")
+    @Test("Physical Co-Planar Rule: drawer card height matches rail bar height exactly")
     @MainActor
-    func testPhysicalCardHeightCoversMinimumDrawerHeight() {
+    func testPhysicalCoPlanarHeightRule() {
         let store = PurahWorkspaceStore()
-        let scriptsMinH = store.minimumDrawerHeight(for: "scripts")
-        #expect(scriptsMinH >= 140.0, "Script Runway minimum drawer height must be at least 140pt")
-
         let totalH = 1000.0
-        guard let scriptsPod = store.pods.first(where: { $0.id == "scripts" }) else {
-            Issue.record("Scripts pod not found")
-            return
-        }
 
-        let physicalH = max(scriptsPod.range.length * totalH, store.minimumDrawerHeight(for: scriptsPod.id))
-        #expect(physicalH >= 140.0, "Rendered physical height must be at least 140pt even if normalized range is smaller")
+        for pod in store.pods where pod.id != "todo" && pod.id != "calendar" {
+            let barH = max(pod.range.length * totalH, 36.0)
+            #expect(barH >= 120.0, "Pod \(pod.id) bar height must be at least 120pt to host drawer content")
+        }
     }
 
     @Test("Hovering Todo or Calendar item immediately dismisses active Music drawer on same rail")

@@ -188,12 +188,13 @@ public final class EdgeMouseMonitor {
                                          (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let physicalCardH = max(pod.range.length * totalH, store.minimumDrawerHeight(for: pod.id))
+                // Physical Co-Planar Rule: drawer card height matches rail bar height exactly
+                let physicalCardH = max(pod.range.length * totalH, 36.0)
                 let topOfPodY = visibleRect.maxY - (pod.range.start * totalH)
                 let bottomOfPodY = topOfPodY - physicalCardH
 
-                let minY = bottomOfPodY - 6.0
-                let maxY = topOfPodY + 6.0
+                let minY = bottomOfPodY - 4.0
+                let maxY = topOfPodY + 4.0
 
                 let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
                 let inDrawerX: Bool
