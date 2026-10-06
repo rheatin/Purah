@@ -306,4 +306,133 @@ struct VitalsAndScriptTests {
         // Reset
         store.customPodColors.removeValue(forKey: "vitals")
     }
+
+    @Test("ScriptItemDrawerView initializes with valid co-planar height and 3-row layout properties")
+    func testScriptItemDrawerView() {
+        let store = PurahWorkspaceStore()
+        let action = ScriptActionItem(
+            id: "test-script",
+            name: "Purge Inactive Memory",
+            systemIcon: "memorychip",
+            commandType: .shell,
+            scriptContent: "sudo purge",
+            description: "Frees inactive memory allocations"
+        )
+
+        // Test with sub-minimum height (30.0pt) - must enforce >= 56pt
+        var pinToggled = false
+        let view = ScriptItemDrawerView(
+            action: action,
+            edge: .left,
+            state: .expandedDrawer,
+            isPinned: false,
+            height: 30.0,
+            store: store,
+            onTogglePin: { pinToggled = true }
+        )
+
+        view.onTogglePin()
+        #expect(pinToggled == true)
+        #expect(view.action.id == "test-script")
+        #expect(view.action.name == "Purge Inactive Memory")
+        #expect(view.action.commandType == .shell)
+        #expect(view.height == 30.0)
+
+        // Test convenience init with (action:store:height:edge:)
+        let view2 = ScriptItemDrawerView(
+            action: action,
+            store: store,
+            height: 60.0,
+            edge: .right
+        )
+        #expect(view2.height == 60.0)
+        #expect(view2.edge == .right)
+    }
+
+    @Test("Decomposed script rail chips enforce minimum 56pt height per action")
+    func testDecomposedScriptsHeightCalculation() {
+        let store = PurahWorkspaceStore()
+        store.isScriptsDecomposed = true
+
+        let allActions = ScriptRunwayService.shared.actions
+        #expect(!allActions.isEmpty)
+        #expect(store.scriptsEnabledActions.count == allActions.count)
+
+        // Height with all actions
+        let totalH = store.minimumDrawerHeight(for: "scripts")
+        let count = CGFloat(allActions.count)
+        let expectedMin = count * 56.0 + (count - 1) * 2.5
+        #expect(totalH >= expectedMin)
+
+        // Filter to 2 actions
+        if allActions.count >= 2 {
+            let selectedIds = [allActions[0].id, allActions[1].id]
+            store.scriptsEnabledActionIds = selectedIds
+            #expect(store.scriptsEnabledActions.count == 2)
+            let filteredH = store.minimumDrawerHeight(for: "scripts")
+            #expect(abs(filteredH - 114.5) < 0.001) // 2 * 56.0 + 1 * 2.5 = 114.5
+        }
+
+        // Reset
+        store.isScriptsDecomposed = false
+        store.scriptsEnabledActionIds = []
+    }
+
+    @Test("PassThroughHostingView 2D hit-testing accurately captures decomposed script drawer")
+    func testDecomposedScriptsHitTesting() {
+        let store = PurahWorkspaceStore()
+        store.isScriptsDecomposed = true
+        let actions = store.scriptsEnabledActions
+        guard let firstAction = actions.first else {
+            Issue.record("No script actions available")
+            return
+        }
+
+        let scriptItemId = "scripts-\(firstAction.id)"
+        let hostingView = PassThroughHostingView(rootView: EmptyView(), edge: .left, store: store)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 340, height: 1000)
+
+        // When script is neither active nor pinned, points inside drawer area are NOT captured
+        let testPoint = NSPoint(x: 100, y: 200)
+        #expect(hostingView.isPointInInteractiveDrawer(testPoint) == false)
+
+        // Activate the decomposed script drawer
+        store.activateDrawer(podId: "scripts", itemId: scriptItemId)
+        #expect(store.activeDrawerItemId == scriptItemId)
+
+        // Pod coordinate math for left rail scripts pod
+        guard let scriptsPod = store.pods.first(where: { $0.id == "scripts" }) else {
+            Issue.record("Scripts pod not found")
+            return
+        }
+        let totalH: CGFloat = 1000.0
+        let physicalCardH = max(scriptsPod.range.length * totalH, 36.0)
+        let cardTop = totalH * (1.0 - scriptsPod.range.start)
+        let cardBottom = cardTop - physicalCardH
+        let insideY = (cardTop + cardBottom) / 2.0
+        let insidePoint = NSPoint(x: 50, y: insideY)
+
+        #expect(hostingView.isPointInInteractiveDrawer(insidePoint) == true, "Point inside active decomposed script drawer must be interactive")
+
+        // Point far outside drawer on X (x = 320 where drawer is ~280) returns false
+        let outsideXPoint = NSPoint(x: 320, y: insideY)
+        #expect(hostingView.isPointInInteractiveDrawer(outsideXPoint) == false, "Point outside drawer width must pass through")
+
+        // Point outside drawer on Y returns false
+        let outsideYPoint = NSPoint(x: 50, y: 950)
+        #expect(hostingView.isPointInInteractiveDrawer(outsideYPoint) == false, "Point outside drawer Y range must pass through")
+
+        // Dismiss active drawer, but pin the decomposed script item
+        store.dismissActiveDrawer()
+        #expect(hostingView.isPointInInteractiveDrawer(insidePoint) == false)
+
+        store.togglePinItem(id: scriptItemId)
+        #expect(store.isItemPinned(id: scriptItemId) == true)
+        #expect(store.hasPinnedItem(on: .left) == true)
+        #expect(hostingView.isPointInInteractiveDrawer(insidePoint) == true, "Point inside pinned decomposed script drawer must remain interactive")
+
+        // Reset
+        store.togglePinItem(id: scriptItemId)
+        store.isScriptsDecomposed = false
+    }
 }

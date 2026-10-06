@@ -684,3 +684,297 @@ public struct VitalsItemDrawerView: View {
         .help(isPinned ? "Pinned (click to unpin)" : "Pin metric card")
     }
 }
+
+// MARK: - Decomposed Scripts Item Stepped Drawer View
+public struct ScriptItemDrawerView: View {
+    public let action: ScriptActionItem
+    public let edge: MountEdge
+    public let state: ItemDrawerState
+    public let isPinned: Bool
+    public let height: CGFloat
+    public let store: PurahWorkspaceStore
+    public let onTogglePin: () -> Void
+
+    @State private var isHovered = false
+
+    private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var podColor: Color { palette.podColor(for: "scripts", store: store) }
+    private var runway: ScriptRunwayService { ScriptRunwayService.shared }
+
+    public init(
+        action: ScriptActionItem,
+        edge: MountEdge,
+        state: ItemDrawerState = .dockedFlush,
+        isPinned: Bool = false,
+        height: CGFloat,
+        store: PurahWorkspaceStore,
+        onTogglePin: @escaping () -> Void = {}
+    ) {
+        self.action = action
+        self.edge = edge
+        self.state = state
+        self.isPinned = isPinned
+        self.height = height
+        self.store = store
+        self.onTogglePin = onTogglePin
+    }
+
+    public init(
+        action: ScriptActionItem,
+        store: PurahWorkspaceStore,
+        height: CGFloat,
+        edge: MountEdge,
+        state: ItemDrawerState = .dockedFlush,
+        isPinned: Bool = false,
+        onTogglePin: @escaping () -> Void = {}
+    ) {
+        self.init(
+            action: action,
+            edge: edge,
+            state: state,
+            isPinned: isPinned,
+            height: height,
+            store: store,
+            onTogglePin: onTogglePin
+        )
+    }
+
+    public var body: some View {
+        let cardH = max(height, 56.0)
+        let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
+        let barW = CGFloat(store.railBarWidth)
+        let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
+
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            // 导轨贴边基座色条（微缩图标、运行状态指示与触觉反馈）
+            ZStack(alignment: .center) {
+                RoundedRectangle(cornerRadius: barRadius)
+                    .fill(podColor.opacity(isHovered ? 1.0 : (isRunning ? 0.95 : 0.85)))
+                    .frame(width: barW, height: cardH)
+                    .shadow(color: isRunning ? podColor.opacity(0.85) : (isHovered ? podColor.opacity(0.4) : .clear), radius: isRunning ? 4 : 2)
+
+                if isRunning {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: min(max(barW - 2, 3), 5), height: min(max(barW - 2, 3), 5))
+                } else if barW >= 10 {
+                    Image(systemName: action.systemIcon)
+                        .font(.system(size: min(barW - 2, 8)))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+            }
+            .frame(width: barW, height: cardH)
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+
+            if state == .expandedDrawer {
+                expandedCard(cardH: cardH)
+                    .transition(itemDrawerTransition)
+            } else if state == .neighborPeek {
+                neighborPeekCard(cardH: cardH)
+                    .transition(neighborPeekTransition)
+            }
+        }
+        .frame(height: cardH)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+    }
+
+    private var itemDrawerTransition: AnyTransition {
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
+        return .asymmetric(
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
+        )
+    }
+
+    private var neighborPeekTransition: AnyTransition {
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
+        return .asymmetric(
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
+        )
+    }
+
+    @ViewBuilder
+    private func expandedCard(cardH: CGFloat) -> some View {
+        let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0)
+
+        VStack(alignment: .leading, spacing: 2) {
+            // Row 1: SF Symbol + Name (semibold) + Type Badge
+            HStack(spacing: 6) {
+                Image(systemName: action.systemIcon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(podColor)
+                    .frame(width: 14)
+
+                Text(action.name)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Text(badgeText(for: action.commandType))
+                    .font(.system(size: 7, weight: .bold))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(podColor.opacity(0.18))
+                    .foregroundColor(podColor)
+                    .cornerRadius(3)
+            }
+
+            // Row 2: Description or script content in monospaced font (cleanly truncated)
+            let preview = !action.description.isEmpty ? action.description : action.scriptContent
+            Text(preview)
+                .font(.system(size: 8.5, design: .monospaced))
+                .foregroundColor(.gray)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 0)
+
+            // Row 3: Run button (with running spinner) + Pin button
+            let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
+            HStack(spacing: 6) {
+                if let output = runway.lastOutput, runway.lastExecutedActionId == action.id {
+                    Text(output)
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                } else {
+                    Text(action.commandType.rawValue.capitalized)
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer(minLength: 4)
+
+                Button {
+                    Task {
+                        _ = await runway.executeAction(action)
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        if isRunning {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .scaleEffect(0.6)
+                                .frame(width: 8, height: 8)
+                        }
+                        Text(isRunning ? "Running" : "Run")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2.5)
+                    .background(podColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(4)
+                }
+                .buttonStyle(.tactile)
+                .disabled(runway.isRunning)
+
+                pinButton
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .frame(width: effectiveW, height: cardH)
+        .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
+    }
+
+    @ViewBuilder
+    private func neighborPeekCard(cardH: CGFloat) -> some View {
+        let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
+        HStack(spacing: 0) {
+            if edge == .right {
+                Group {
+                    if isRunning {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.55)
+                    } else {
+                        Image(systemName: action.systemIcon)
+                            .font(.system(size: 8))
+                            .foregroundColor(podColor)
+                    }
+                }
+                .padding(.leading, 6)
+                Spacer()
+            } else {
+                Spacer()
+                Group {
+                    if isRunning {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.55)
+                    } else {
+                        Image(systemName: action.systemIcon)
+                            .font(.system(size: 8))
+                            .foregroundColor(podColor)
+                    }
+                }
+                .padding(.trailing, 6)
+            }
+        }
+        .frame(width: 28, height: cardH)
+        .background(drawerShape.fill(.ultraThinMaterial))
+        .clipShape(drawerShape)
+        .overlay(drawerShape.stroke(podColor.opacity(0.75), lineWidth: 1))
+    }
+
+    private var drawerShape: UnevenRoundedRectangle {
+        if edge == .right {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 8,
+                bottomLeadingRadius: 8,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+        } else {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 8,
+                topTrailingRadius: 8,
+                style: .continuous
+            )
+        }
+    }
+
+    private var pinButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                onTogglePin()
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
+                    .frame(width: 20, height: 20)
+
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .foregroundColor(isPinned ? podColor : .secondary)
+                    .font(.system(size: 9, weight: .semibold))
+                    .rotationEffect(.degrees(isPinned ? -25 : 0))
+                    .scaleEffect(isPinned ? 1.15 : 1.0)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.tactile)
+        .help(isPinned ? "Pinned (click to unpin)" : "Pin script card")
+    }
+
+    private func badgeText(for type: ScriptCommandType) -> String {
+        switch type {
+        case .shortcut: return "SHORTCUT"
+        case .shell: return "SHELL"
+        case .appleScript: return "APPLESCRIPT"
+        }
+    }
+}

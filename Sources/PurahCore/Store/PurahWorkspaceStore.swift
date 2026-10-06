@@ -63,7 +63,7 @@ public final class PurahWorkspaceStore {
             if pod.id == "todo" && todos.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "calendar" && calendarEvents.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "vitals" && vitalsEnabledMetrics.contains(where: { isItemPinned(id: "vitals-\($0.rawValue)") }) { return true }
-            if pod.id == "scripts" && scriptsEnabledActionIds.contains(where: { isItemPinned(id: "scripts-\($0)") }) { return true }
+            if pod.id == "scripts" && scriptsEnabledActions.contains(where: { isItemPinned(id: "scripts-\($0.id)") }) { return true }
         }
         return false
     }
@@ -120,6 +120,15 @@ public final class PurahWorkspaceStore {
     public var isScriptsDecomposed: Bool = false
     public var scriptsEnabledActionIds: [String] = []
 
+    public var scriptsEnabledActions: [ScriptActionItem] {
+        let all = ScriptRunwayService.shared.actions
+        if scriptsEnabledActionIds.isEmpty {
+            return all
+        }
+        let filtered = all.filter { scriptsEnabledActionIds.contains($0.id) }
+        return filtered.isEmpty ? all : filtered
+    }
+
     // Multi-display behavior
     public var displayTargetMode: DisplayTargetMode = .followCursor
 
@@ -157,7 +166,7 @@ public final class PurahWorkspaceStore {
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         if podId == "scripts" && isScriptsDecomposed {
-            let count = max(scriptsEnabledActionIds.isEmpty ? ScriptRunwayService.shared.actions.count : scriptsEnabledActionIds.count, 1)
+            let count = max(scriptsEnabledActions.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         switch podId {
@@ -393,8 +402,8 @@ public final class PurahWorkspaceStore {
         let d3 = cal.date(bySettingHour: 14, minute: 0, second: 0, of: today) ?? today
         let d4 = cal.date(bySettingHour: 15, minute: 0, second: 0, of: today) ?? today
         return [
-            CalendarEventItem(title: "Architecture Review", location: "Central Workshop", startTime: d1, endTime: d2),
-            CalendarEventItem(title: "Environmental Monitoring", location: "Observation Station", startTime: d3, endTime: d4)
+            CalendarEventItem(id: "default-event-1", title: "Architecture Review", location: "Central Workshop", startTime: d1, endTime: d2),
+            CalendarEventItem(id: "default-event-2", title: "Environmental Monitoring", location: "Observation Station", startTime: d3, endTime: d4)
         ]
     }
 

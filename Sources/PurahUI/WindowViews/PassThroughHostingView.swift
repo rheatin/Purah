@@ -54,7 +54,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
             let hasActiveOrPinnedChild = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
                                          (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
-                                         (pod.id == "vitals" && store.isVitalsDecomposed && store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") || "vitals-\($0.rawValue)" == store.activeDrawerItemId })
+                                         (pod.id == "vitals" && store.isVitalsDecomposed && store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") || "vitals-\($0.rawValue)" == store.activeDrawerItemId }) ||
+                                         (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
                 // Physical Co-Planar Rule: drawer card height matches rail bar height exactly
