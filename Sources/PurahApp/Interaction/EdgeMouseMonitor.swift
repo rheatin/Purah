@@ -85,7 +85,7 @@ public final class EdgeMouseMonitor {
         } else {
             if leftExitGraceTask == nil {
                 leftExitGraceTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    try? await Task.sleep(nanoseconds: 280_000_000)
                     guard !Task.isCancelled, let self = self else { return }
                     self.coordinator?.dismissDrawer(for: .left)
                     self.leftExitGraceTask = nil
@@ -101,7 +101,7 @@ public final class EdgeMouseMonitor {
         } else {
             if rightExitGraceTask == nil {
                 rightExitGraceTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    try? await Task.sleep(nanoseconds: 280_000_000)
                     guard !Task.isCancelled, let self = self else { return }
                     self.coordinator?.dismissDrawer(for: .right)
                     self.rightExitGraceTask = nil
@@ -238,15 +238,30 @@ public final class EdgeMouseMonitor {
                                          (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                // Physical Co-Planar Rule: drawer card height matches rail bar height exactly
-                let physicalCardH = max(pod.range.length * totalH, 36.0)
-                let topOfPodY = visibleRect.maxY - (pod.range.start * totalH)
-                let bottomOfPodY = topOfPodY - physicalCardH
+                let podHeight = max(pod.range.length * totalH, 36.0)
+                let spanH: CGFloat
+                if pod.id == "scripts" && store.isScriptsDecomposed {
+                    let count = max(store.scriptsEnabledActions.count, 1)
+                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+                } else if pod.id == "vitals" && store.isVitalsDecomposed {
+                    let count = max(store.vitalsEnabledMetrics.count, 1)
+                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+                } else {
+                    spanH = podHeight
+                }
 
-                let minY = bottomOfPodY - 4.0
-                let maxY = topOfPodY + 4.0
+                let startY = pod.range.start * totalH
+                let safeBottomY = totalH - 8.0
+                let clampedStartY = (startY + spanH > safeBottomY) ? max(safeBottomY - spanH, 8.0) : startY
 
-                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
+                // In AppKit coordinates (bottom is visibleRect.minY, top is visibleRect.maxY)
+                let topOfPodY = visibleRect.maxY - clampedStartY
+                let bottomOfPodY = topOfPodY - spanH
+
+                let minY = max(bottomOfPodY - 16.0, visibleRect.minY)
+                let maxY = min(topOfPodY + 16.0, visibleRect.maxY)
+
+                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 16.0
                 let inDrawerX: Bool
                 if edge == .right {
                     inDrawerX = point.x >= (visibleRect.maxX - drawerW)

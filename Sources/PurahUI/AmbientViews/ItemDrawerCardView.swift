@@ -803,7 +803,7 @@ public struct ScriptItemDrawerView: View {
         let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0)
 
         VStack(alignment: .leading, spacing: 2) {
-            // Row 1: SF Symbol + Name (semibold) + Type Badge
+            // Row 1: SF Symbol + Name (bold) + Type Badge + Top-Right Pin Button
             HStack(spacing: 6) {
                 Image(systemName: action.systemIcon)
                     .font(.system(size: 11, weight: .semibold))
@@ -811,11 +811,9 @@ public struct ScriptItemDrawerView: View {
                     .frame(width: 14)
 
                 Text(action.name)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
-
-                Spacer(minLength: 4)
 
                 Text(badgeText(for: action.commandType))
                     .font(.system(size: 7, weight: .bold))
@@ -824,27 +822,36 @@ public struct ScriptItemDrawerView: View {
                     .background(podColor.opacity(0.18))
                     .foregroundColor(podColor)
                     .cornerRadius(3)
+
+                Spacer(minLength: 4)
+
+                pinButton
             }
 
             // Row 2: Description or script content in monospaced font (cleanly truncated)
             let preview = !action.description.isEmpty ? action.description : action.scriptContent
             Text(preview)
                 .font(.system(size: 8.5, design: .monospaced))
-                .foregroundColor(.gray)
+                .foregroundColor(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Spacer(minLength: 0)
 
-            // Row 3: Run button (with running spinner) + Pin button
+            // Row 3: Prominent Run Action Button (with running spinner) + output status
             let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
             HStack(spacing: 6) {
                 if let output = runway.lastOutput, runway.lastExecutedActionId == action.id {
-                    Text(output)
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(.green)
+                        Text(output)
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 } else {
                     Text(action.commandType.rawValue.capitalized)
                         .font(.system(size: 8))
@@ -858,26 +865,27 @@ public struct ScriptItemDrawerView: View {
                         _ = await runway.executeAction(action)
                     }
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         if isRunning {
                             ProgressView()
                                 .controlSize(.mini)
                                 .scaleEffect(0.6)
                                 .frame(width: 8, height: 8)
+                        } else {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 7))
                         }
-                        Text(isRunning ? "Running" : "Run")
-                            .font(.system(size: 8, weight: .bold))
+                        Text(isRunning ? "Running..." : "Run Action")
+                            .font(.system(size: 9, weight: .bold))
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2.5)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
                     .background(podColor)
                     .foregroundColor(.white)
                     .cornerRadius(4)
                 }
                 .buttonStyle(.tactile)
                 .disabled(runway.isRunning)
-
-                pinButton
             }
         }
         .padding(.horizontal, 10)

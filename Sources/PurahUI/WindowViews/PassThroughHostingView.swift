@@ -58,14 +58,29 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                                          (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                // Physical Co-Planar Rule: drawer card height matches rail bar height exactly
-                let physicalCardH = max(pod.range.length * totalH, 36.0)
-                let cardTop = totalH * (1.0 - pod.range.start)
-                let cardBottom = cardTop - physicalCardH
-                let minY = max(cardBottom - 4.0, 0.0)
-                let maxY = min(cardTop + 4.0, totalH)
+                let podHeight = max(pod.range.length * totalH, 36.0)
+                let spanH: CGFloat
+                if pod.id == "scripts" && store.isScriptsDecomposed {
+                    let count = max(store.scriptsEnabledActions.count, 1)
+                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+                } else if pod.id == "vitals" && store.isVitalsDecomposed {
+                    let count = max(store.vitalsEnabledMetrics.count, 1)
+                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+                } else {
+                    spanH = podHeight
+                }
 
-                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 8.0
+                let startY = pod.range.start * totalH
+                let safeBottomY = totalH - 8.0
+                let clampedStartY = (startY + spanH > safeBottomY) ? max(safeBottomY - spanH, 8.0) : startY
+
+                // In AppKit coordinates (bottom is 0, top is totalH)
+                let topOfPodY = totalH - clampedStartY
+                let bottomOfPodY = topOfPodY - spanH
+                let minY = max(bottomOfPodY - 16.0, 0.0)
+                let maxY = min(topOfPodY + 16.0, totalH)
+
+                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 16.0
                 let inDrawerX: Bool
                 if edge == .right {
                     inDrawerX = (point.x >= bounds.maxX - drawerW)
@@ -115,10 +130,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
 
-        // When mouse steps outside, use 150ms Exit Grace Window before retracting
+        // When mouse steps outside, use 280ms Exit Grace Window before retracting
         if exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 150_000_000)
+                try? await Task.sleep(nanoseconds: 280_000_000)
                 guard !Task.isCancelled else { return }
                 guard let self = self else { return }
 
@@ -159,7 +174,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
         if exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 150_000_000)
+                try? await Task.sleep(nanoseconds: 280_000_000)
                 guard !Task.isCancelled else { return }
                 guard let self = self else { return }
 

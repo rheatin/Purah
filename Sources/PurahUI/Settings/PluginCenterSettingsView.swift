@@ -249,6 +249,32 @@ public struct PluginCenterSettingsView: View {
                                 .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
                         )
 
+                        // Capacity Overload Alert
+                        let currentEdge = store.pods.first(where: { $0.id == podId })?.edge ?? activePlugin.manifest.defaultEdge
+                        if store.isRailOverloaded(edge: currentEdge) {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.caption)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Rail Capacity Overload (\(currentEdge.rawValue.capitalized) Rail)")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(.orange)
+                                    Text("Required: \(Int(store.totalRequiredHeight(for: currentEdge)))pt (Available: \(Int(store.availableScreenHeight(for: currentEdge)))pt · \(Int(store.capacityRatio(for: currentEdge) * 100))% used). Bottom chips may be crowded. Consider reducing decomposed items or assigning pods to the other rail.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(Color.orange.opacity(0.12))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+                            )
+                        }
+
                         // Dedicated Isolated Plugin Settings View
                         if let customSettings = activePlugin.makeSettingsView(store: store) {
                             VStack(alignment: .leading, spacing: 10) {
