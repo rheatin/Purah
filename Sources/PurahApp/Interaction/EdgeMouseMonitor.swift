@@ -17,6 +17,7 @@ public final class EdgeMouseMonitor {
     private var rightExitGraceTask: Task<Void, Never>?
     private var lastCandidatePodId: String?
     private var candidateHoverStartTime: Date?
+    public private(set) var isFrozen: Bool = false
 
     public init(store: PurahWorkspaceStore, coordinator: ScreenEdgeCoordinator? = nil) {
         self.store = store
@@ -25,6 +26,17 @@ public final class EdgeMouseMonitor {
 
     public func setCoordinator(_ coordinator: ScreenEdgeCoordinator) {
         self.coordinator = coordinator
+    }
+
+    public func setFrozen(_ isFrozen: Bool) {
+        self.isFrozen = isFrozen
+        if isFrozen {
+            leftExitGraceTask?.cancel()
+            leftExitGraceTask = nil
+            rightExitGraceTask?.cancel()
+            rightExitGraceTask = nil
+            dwellTracker.reset()
+        }
     }
 
     public func start() {
@@ -45,6 +57,7 @@ public final class EdgeMouseMonitor {
     }
 
     private func handleMouse(event: NSEvent) {
+        guard !isFrozen, !store.isRailsFrozen else { return }
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let point = NSEvent.mouseLocation
         let now = Date()

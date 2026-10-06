@@ -9,6 +9,7 @@ public final class ScreenEdgeCoordinator {
     private let store: PurahWorkspaceStore
     private var leftRailWindow: AmbientRailWindow?
     private var rightRailWindow: AmbientRailWindow?
+    public private(set) var isFrozen: Bool = false
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
@@ -39,6 +40,31 @@ public final class ScreenEdgeCoordinator {
 
         rightRailWindow = AmbientRailWindow(edge: .right, screen: screen, store: store)
         rightRailWindow?.orderFront(nil)
+
+        if isFrozen {
+            leftRailWindow?.alphaValue = 0.0
+            rightRailWindow?.alphaValue = 0.0
+            leftRailWindow?.ignoresMouseEvents = true
+            rightRailWindow?.ignoresMouseEvents = true
+        }
+    }
+
+    public func setFrozen(_ isFrozen: Bool) {
+        self.isFrozen = isFrozen
+        if isFrozen {
+            dismissDrawer(for: nil)
+            leftRailWindow?.animator().alphaValue = 0.0
+            rightRailWindow?.animator().alphaValue = 0.0
+            leftRailWindow?.ignoresMouseEvents = true
+            rightRailWindow?.ignoresMouseEvents = true
+        } else {
+            leftRailWindow?.animator().alphaValue = 1.0
+            rightRailWindow?.animator().alphaValue = 1.0
+            let hasLeft = store.hasPinnedItem(on: .left)
+            let hasRight = store.hasPinnedItem(on: .right)
+            leftRailWindow?.ignoresMouseEvents = !hasLeft
+            rightRailWindow?.ignoresMouseEvents = !hasRight
+        }
     }
 
     public func updateRailWidths() {
@@ -47,6 +73,7 @@ public final class ScreenEdgeCoordinator {
     }
 
     public func setInteractive(_ interactive: Bool, for edge: MountEdge) {
+        guard !isFrozen else { return }
         if edge == .left {
             leftRailWindow?.setInteractive(interactive)
         } else {
@@ -56,6 +83,7 @@ public final class ScreenEdgeCoordinator {
 
     /// Synchronizes drawer presentation on the unified rail window canvas
     public func syncDrawer(for edge: MountEdge? = nil) {
+        guard !isFrozen else { return }
         if let edge = edge {
             setInteractive(true, for: edge)
         }

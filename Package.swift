@@ -42,7 +42,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PurahCoreTests",
-            dependencies: ["PurahCore", "PurahUI"]
+            dependencies: ["PurahCore", "PurahUI", "PurahApp"]
         )
     ]
 )

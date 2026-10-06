@@ -45,6 +45,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     }
 
     public func isPointInInteractiveDrawer(_ point: NSPoint) -> Bool {
+        guard !store.isRailsFrozen else { return false }
         let totalH = bounds.height
 
         for pod in store.pods where pod.edge == edge && pod.isEnabled {
@@ -78,6 +79,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     }
 
     public override func scrollWheel(with event: NSEvent) {
+        guard !store.isRailsFrozen else {
+            super.scrollWheel(with: event)
+            return
+        }
         let winPoint = event.locationInWindow
         if isPointInInteractiveDrawer(winPoint) {
             if let panel = self.window as? NSPanel {
@@ -89,6 +94,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
     public override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
+        guard !store.isRailsFrozen else { return }
 
         let winPoint = event.locationInWindow
         let barW: CGFloat = CGFloat(store.railBarWidth)
@@ -175,6 +181,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     }
 
     public override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !store.isRailsFrozen else { return nil }
         let bounds = self.bounds
         let barW: CGFloat = CGFloat(store.railBarWidth)
 
