@@ -129,7 +129,7 @@ public struct PodCapsuleView: View {
             )
             .help("Drag to resize rail height")
         }
-        .frame(width: 146, height: capsuleHeight, alignment: .top)
+        .frame(width: 175, height: capsuleHeight, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(palette.surfaceBackground)

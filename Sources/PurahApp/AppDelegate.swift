@@ -174,12 +174,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if preferencesWindow == nil {
             let prefView = PreferencesView(store: store, initialTab: initialTab)
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 680),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
-            window.minSize = NSSize(width: 600, height: 500)
+            window.minSize = NSSize(width: 700, height: 620)
             window.title = "Purah Pad - " + "simulator.title".localized
             window.center()
             window.hidesOnDeactivate = false

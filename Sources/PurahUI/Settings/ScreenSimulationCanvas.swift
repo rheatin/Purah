@@ -4,11 +4,11 @@ import PurahCore
 
 public struct ScreenSimulationCanvas: View {
     public let store: PurahWorkspaceStore
-    public let canvasWidth: Double = 540
-    public let canvasHeight: Double = 270
+    public let canvasWidth: Double = 640
+    public let canvasHeight: Double = 340
 
-    public let menuBarHeight: Double = 18
-    public let dockHeight: Double = 26
+    public let menuBarHeight: Double = 20
+    public let dockHeight: Double = 28
 
     public var workableHeight: Double {
         canvasHeight - menuBarHeight - dockHeight
@@ -89,7 +89,7 @@ public struct ScreenSimulationCanvas: View {
                         // Left rail background slot
                         RoundedRectangle(cornerRadius: 6)
                             .fill(Color.black.opacity(0.18))
-                            .frame(width: 154, height: workableHeight)
+                            .frame(width: 185, height: workableHeight)
 
                         ForEach(store.pods.filter { $0.edge == .left && $0.isEnabled }) { pod in
                             let topY = pod.range.start * workableHeight
@@ -113,7 +113,7 @@ public struct ScreenSimulationCanvas: View {
                             .offset(x: 4, y: topY)
                         }
                     }
-                    .frame(width: 154, height: workableHeight, alignment: .topLeading)
+                    .frame(width: 185, height: workableHeight, alignment: .topLeading)
                     .clipped()
 
                     Spacer()
@@ -123,7 +123,7 @@ public struct ScreenSimulationCanvas: View {
                         // Right rail background slot
                         RoundedRectangle(cornerRadius: 6)
                             .fill(Color.black.opacity(0.18))
-                            .frame(width: 154, height: workableHeight)
+                            .frame(width: 185, height: workableHeight)
 
                         ForEach(store.pods.filter { $0.edge == .right && $0.isEnabled }) { pod in
                             let topY = pod.range.start * workableHeight
@@ -147,7 +147,7 @@ public struct ScreenSimulationCanvas: View {
                             .offset(x: -4, y: topY)
                         }
                     }
-                    .frame(width: 154, height: workableHeight, alignment: .topTrailing)
+                    .frame(width: 185, height: workableHeight, alignment: .topTrailing)
                     .clipped()
                 }
                 .padding(.horizontal, 8)

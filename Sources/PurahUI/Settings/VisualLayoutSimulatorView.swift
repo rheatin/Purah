@@ -271,7 +271,7 @@ public struct VisualLayoutSimulatorView: View {
                 }
             }
             .padding(24)
-            .frame(width: 600)
+            .frame(width: 680)
         }
         .frame(minHeight: 560)
     }
