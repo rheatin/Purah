@@ -25,7 +25,7 @@ public struct ThemePalette: Sendable {
 
     @MainActor
     public func podColor(for podId: String, store: PurahWorkspaceStore? = nil) -> Color {
-        if let store = store, let customHex = store.customPodColors[podId] {
+        if podId != "vitals", let store = store, let customHex = store.customPodColors[podId] {
             return Color(hex: customHex)
         }
         switch podId {
@@ -40,15 +40,13 @@ public struct ThemePalette: Sendable {
         case "notes":
             return Color(red: 1.0, green: 0.82, blue: 0.15) // Warm Gold
         case "vitals":
-            // Hardware Vitals: Dynamic Green -> Orange -> Red based on CPU load
-            let cpu = HardwareVitalsService.shared.metrics.cpuUsage
-            if cpu > 0.80 {
-                return Color(red: 1.0, green: 0.23, blue: 0.19) // High Load Red
-            } else if cpu > 0.50 {
-                return Color(red: 1.0, green: 0.58, blue: 0.0) // Medium Load Orange
-            } else {
-                return Color(red: 0.20, green: 0.78, blue: 0.35) // Healthy Green
-            }
+            // Hardware Vitals: Dynamic color resolved via VitalsColorResolver
+            let thresholds = store?.vitalsThresholds ?? VitalsColorThresholds()
+            return VitalsColorResolver.overallVitalsColor(
+                vitals: HardwareVitalsService.shared.metrics,
+                thresholds: thresholds,
+                palette: self
+            )
         case "scripts":
             return Color(red: 0.42, green: 0.36, blue: 0.91) // Obsidian Purple
         default:

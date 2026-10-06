@@ -17,7 +17,11 @@ public struct HardwareVitalsDrawerView: View {
 
     public var body: some View {
         let metrics = vitals.metrics
-        let cpuColor = palette.podColor(for: "vitals", store: store)
+        let cpuColor = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let thermalColor = VitalsColorResolver.color(for: .thermal, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
 
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 8) {
@@ -32,14 +36,14 @@ public struct HardwareVitalsDrawerView: View {
                             Spacer()
                             Text("\(Int(metrics.cpuUsage * 100))%")
                                 .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(metrics.cpuUsage > 0.80 ? palette.dangerAccent : cpuColor)
+                                .foregroundColor(cpuColor)
                         }
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 Capsule()
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
-                                    .fill(metrics.cpuUsage > 0.80 ? palette.dangerAccent : cpuColor)
+                                    .fill(cpuColor)
                                     .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 4))
                             }
                         }
@@ -58,14 +62,14 @@ public struct HardwareVitalsDrawerView: View {
                             Spacer()
                             Text("\(Int(metrics.memoryUsage * 100))%")
                                 .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(metrics.memoryUsage > 0.85 ? palette.dangerAccent : palette.primaryAccent)
+                                .foregroundColor(ramColor)
                         }
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 Capsule()
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
-                                    .fill(metrics.memoryUsage > 0.85 ? palette.dangerAccent : palette.primaryAccent)
+                                    .fill(ramColor)
                                     .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 4))
                             }
                         }
@@ -91,7 +95,7 @@ public struct HardwareVitalsDrawerView: View {
                             Spacer()
                             Text("\(Int(metrics.diskFreeGB))G")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .foregroundColor(.primary)
+                                .foregroundColor(diskColor)
                         }
                         let usedDiskRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
                         GeometryReader { geo in
@@ -99,7 +103,7 @@ public struct HardwareVitalsDrawerView: View {
                                 Capsule()
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
-                                    .fill(usedDiskRatio > 0.90 ? palette.dangerAccent : Color.blue.opacity(0.85))
+                                    .fill(diskColor)
                                     .frame(width: max(geo.size.width * CGFloat(usedDiskRatio), 4))
                             }
                         }
@@ -118,18 +122,18 @@ public struct HardwareVitalsDrawerView: View {
                         HStack {
                             Label("Power", systemImage: batteryIcon(level: metrics.batteryLevel, isCharging: metrics.isCharging))
                                 .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .foregroundColor(metrics.isCharging ? .green : .secondary)
+                                .foregroundColor(powerColor)
                             Spacer()
                             Text("\(metrics.batteryLevel)%")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .foregroundColor(metrics.batteryLevel < 20 && !metrics.isCharging ? palette.dangerAccent : .primary)
+                                .foregroundColor(powerColor)
                         }
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 Capsule()
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
-                                    .fill(metrics.isCharging ? Color.green : (metrics.batteryLevel < 20 ? palette.dangerAccent : Color.accentColor))
+                                    .fill(powerColor)
                                     .frame(width: max(geo.size.width * CGFloat(Double(metrics.batteryLevel) / 100.0), 4))
                             }
                         }
@@ -149,7 +153,7 @@ public struct HardwareVitalsDrawerView: View {
                 HStack {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(metrics.isUnderThermalPressure ? palette.dangerAccent : Color.green)
+                            .fill(thermalColor)
                             .frame(width: 6, height: 6)
                         Text("Thermal: \(metrics.thermalStateDescription)")
                             .font(.system(size: 9, weight: .medium, design: .rounded))
@@ -249,7 +253,6 @@ public struct VitalsFocusedDrawerView: View {
     public let store: PurahWorkspaceStore
     private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
     private var palette: ThemePalette { ThemeManager.shared.palette }
-    private var accentColor: Color { palette.podColor(for: "vitals", store: store) }
 
     public init(metric: VitalsMetricType, store: PurahWorkspaceStore) {
         self.metric = metric
@@ -263,14 +266,18 @@ public struct VitalsFocusedDrawerView: View {
             switch metric {
             case .cpu:
                 cpuFocusedView(metrics: metrics)
+            case .gpu:
+                gpuFocusedView(metrics: metrics)
             case .ram:
                 ramFocusedView(metrics: metrics)
+            case .thermal:
+                thermalFocusedView(metrics: metrics)
             case .power:
                 powerFocusedView(metrics: metrics)
+            case .network:
+                networkFocusedView(metrics: metrics)
             case .disk:
                 diskFocusedView(metrics: metrics)
-            case .gpu, .thermal, .network:
-                EmptyView()
             }
         }
         .onAppear {
@@ -283,6 +290,7 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("CPU Activity", systemImage: "cpu")
@@ -290,14 +298,14 @@ public struct VitalsFocusedDrawerView: View {
                 Spacer()
                 Text("\(Int(metrics.cpuUsage * 100))%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
-                    .foregroundColor(metrics.cpuUsage > 0.80 ? palette.dangerAccent : accentColor)
+                    .foregroundColor(color)
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(metrics.cpuUsage > 0.80 ? palette.dangerAccent : accentColor)
+                        .fill(color)
                         .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 4))
                 }
             }
@@ -331,7 +339,46 @@ public struct VitalsFocusedDrawerView: View {
     }
 
     @ViewBuilder
+    private func gpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let gpuRatio = max(min(metrics.gpuUsage, 1.0), 0.0)
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label("GPU Activity", systemImage: "display")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(Int(gpuRatio * 100))%")
+                    .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                    .foregroundColor(color)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(geo.size.width * CGFloat(gpuRatio), 4))
+                }
+            }
+            .frame(height: 4)
+
+            HStack {
+                Text(gpuRatio > 0.10 ? "Metal / Apple Silicon GPU" : "Low Power / Idle Engine")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Text(gpuRatio > 0.80 ? "High Utilization" : "Unified Memory")
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("Memory (RAM)", systemImage: "memorychip")
@@ -339,14 +386,14 @@ public struct VitalsFocusedDrawerView: View {
                 Spacer()
                 Text("\(Int(metrics.memoryUsage * 100))%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
-                    .foregroundColor(metrics.memoryUsage > 0.85 ? palette.dangerAccent : palette.primaryAccent)
+                    .foregroundColor(color)
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(metrics.memoryUsage > 0.85 ? palette.dangerAccent : palette.primaryAccent)
+                        .fill(color)
                         .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 4))
                 }
             }
@@ -368,7 +415,59 @@ public struct VitalsFocusedDrawerView: View {
     }
 
     @ViewBuilder
+    private func thermalFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .thermal, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let thermalRatio: Double = {
+            switch metrics.thermalStateDescription {
+            case "Critical": return 0.95
+            case "Serious": return 0.75
+            case "Fair": return 0.50
+            case "Nominal": return 0.25
+            default: return metrics.isUnderThermalPressure ? 0.85 : 0.25
+            }
+        }()
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label("Thermal State", systemImage: "thermometer.medium")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text(metrics.thermalStateDescription)
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                    .foregroundColor(color)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(geo.size.width * CGFloat(thermalRatio), 4))
+                }
+            }
+            .frame(height: 4)
+
+            HStack {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 4, height: 4)
+                    Text(metrics.isUnderThermalPressure ? "Thermal Throttling Active" : "No Pressure Throttling")
+                        .font(.system(size: 8, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(metrics.isUnderThermalPressure ? "Cooling" : "Nominal")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(color)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("Battery & Power", systemImage: "bolt.batteryblock.fill")
@@ -376,14 +475,14 @@ public struct VitalsFocusedDrawerView: View {
                 Spacer()
                 Text("\(metrics.batteryLevel)%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
-                    .foregroundColor(metrics.batteryLevel < 20 && !metrics.isCharging ? palette.dangerAccent : .green)
+                    .foregroundColor(color)
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(metrics.isCharging ? Color.green : (metrics.batteryLevel < 20 ? palette.dangerAccent : Color.accentColor))
+                        .fill(color)
                         .frame(width: max(geo.size.width * CGFloat(Double(metrics.batteryLevel) / 100.0), 4))
                 }
             }
@@ -407,7 +506,56 @@ public struct VitalsFocusedDrawerView: View {
     }
 
     @ViewBuilder
+    private func networkFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let totalSpeed = metrics.networkDownSpeed + metrics.networkUpSpeed
+        let totalMB = totalSpeed / 1_048_576.0
+        let dangerMB = max(store.vitalsThresholds.networkDangerMB, 1.0)
+        let networkRatio = min(totalMB / dangerMB, 1.0)
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label("Network I/O", systemImage: "network")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text(formatSpeed(bytesPerSec: totalSpeed))
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                    .foregroundColor(color)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(geo.size.width * CGFloat(networkRatio), 4))
+                }
+            }
+            .frame(height: 4)
+
+            HStack {
+                Text("↓ \(formatSpeed(bytesPerSec: metrics.networkDownSpeed))  ·  ↑ \(formatSpeed(bytesPerSec: metrics.networkUpSpeed))")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer()
+            }
+        }
+    }
+
+    private func formatSpeed(bytesPerSec: Double) -> String {
+        if bytesPerSec >= 1_048_576.0 {
+            return String(format: "%.1f MB/s", bytesPerSec / 1_048_576.0)
+        } else if bytesPerSec >= 1024.0 {
+            return String(format: "%.0f KB/s", bytesPerSec / 1024.0)
+        } else {
+            return String(format: "%.0f B/s", bytesPerSec)
+        }
+    }
+
+    @ViewBuilder
     private func diskFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let color = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
 
         VStack(alignment: .leading, spacing: 4) {
@@ -417,13 +565,14 @@ public struct VitalsFocusedDrawerView: View {
                 Spacer()
                 Text("\(Int(metrics.diskFreeGB))GB Free")
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
+                    .foregroundColor(color)
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(usedRatio > 0.90 ? palette.dangerAccent : Color.blue)
+                        .fill(color)
                         .frame(width: max(geo.size.width * CGFloat(usedRatio), 4))
                 }
             }

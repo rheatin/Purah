@@ -43,6 +43,8 @@ public struct AmbientRailStripView: View {
                             calendarPodItems(pod: pod, totalHeight: podHeight)
                         } else if pod.id == "vitals" && store.isVitalsDecomposed {
                             decomposedVitalsPodItems(pod: pod, totalHeight: podHeight)
+                        } else if pod.id == "vitals" {
+                            vitalsRailBar(pod: pod, totalHeight: podHeight)
                         } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
                             renderPluginPod(plugin: plugin, pod: pod, totalHeight: podHeight)
                         } else {
@@ -460,7 +462,11 @@ public struct AmbientRailStripView: View {
         let isPinned = store.isItemPinned(id: pod.id)
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let cpu = HardwareVitalsService.shared.metrics.cpuUsage
-        let color = palette.podColor(for: "vitals", store: store)
+        let color = VitalsColorResolver.overallVitalsColor(
+            vitals: HardwareVitalsService.shared.metrics,
+            thresholds: store.vitalsThresholds,
+            palette: palette
+        )
         let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
 
         let slotH = max(totalHeight, 145.0)
@@ -610,7 +616,11 @@ public struct AmbientRailStripView: View {
     private func renderPluginPod(plugin: any PurahPodPlugin, pod: SlotPod, totalHeight: CGFloat) -> some View {
         let isPinned = store.isItemPinned(id: pod.id)
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
-        let color = palette.podColor(for: pod.id, store: store)
+        let color = (pod.id == "vitals") ? VitalsColorResolver.overallVitalsColor(
+            vitals: HardwareVitalsService.shared.metrics,
+            thresholds: store.vitalsThresholds,
+            palette: palette
+        ) : palette.podColor(for: pod.id, store: store)
         let slotH = max(totalHeight, 36.0)
 
         let context = PurahPluginContext(

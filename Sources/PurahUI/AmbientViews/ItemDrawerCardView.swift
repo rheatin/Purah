@@ -554,12 +554,20 @@ public struct VitalsItemDrawerView: View {
         case .ram:
             return vitals.metrics.memoryUsage
         case .thermal:
-            return vitals.metrics.isUnderThermalPressure ? 0.90 : 0.25
+            switch vitals.metrics.thermalStateDescription {
+            case "Critical": return 0.95
+            case "Serious": return 0.75
+            case "Fair": return 0.50
+            case "Nominal": return 0.25
+            default: return vitals.metrics.isUnderThermalPressure ? 0.85 : 0.25
+            }
         case .power:
             return Double(vitals.metrics.batteryLevel) / 100.0
         case .network:
             let totalSpeed = vitals.metrics.networkDownSpeed + vitals.metrics.networkUpSpeed
-            return min(totalSpeed / 10_000_000.0, 1.0)
+            let totalMB = totalSpeed / 1_048_576.0
+            let dangerMB = max(store.vitalsThresholds.networkDangerMB, 1.0)
+            return min(totalMB / dangerMB, 1.0)
         case .disk:
             let total = vitals.metrics.diskTotalGB
             let free = vitals.metrics.diskFreeGB
@@ -568,30 +576,12 @@ public struct VitalsItemDrawerView: View {
     }
 
     private var telemetryColor: Color {
-        switch metric {
-        case .cpu:
-            let u = vitals.metrics.cpuUsage
-            if u > 0.80 { return palette.dangerAccent }
-            if u > 0.50 { return palette.warningAccent }
-            return podColor
-        case .gpu:
-            let u = vitals.metrics.gpuUsage
-            if u > 0.80 { return palette.dangerAccent }
-            if u > 0.50 { return palette.warningAccent }
-            return podColor
-        case .ram:
-            return vitals.metrics.memoryUsage > 0.85 ? palette.dangerAccent : podColor
-        case .thermal:
-            return vitals.metrics.isUnderThermalPressure ? palette.dangerAccent : podColor
-        case .power:
-            if vitals.metrics.isCharging { return .green }
-            if vitals.metrics.batteryLevel < 20 { return palette.dangerAccent }
-            return podColor
-        case .network:
-            return podColor
-        case .disk:
-            return telemetryRatio > 0.90 ? palette.dangerAccent : podColor
-        }
+        VitalsColorResolver.color(
+            for: metric,
+            vitals: vitals.metrics,
+            thresholds: store.vitalsThresholds,
+            palette: palette
+        )
     }
 
     private var itemDrawerTransition: AnyTransition {
@@ -624,7 +614,7 @@ public struct VitalsItemDrawerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
-        .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
+        .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
     }
 
     @ViewBuilder
@@ -633,21 +623,21 @@ public struct VitalsItemDrawerView: View {
             if edge == .right {
                 Image(systemName: metric.systemIcon)
                     .font(.system(size: 8))
-                    .foregroundColor(podColor)
+                    .foregroundColor(telemetryColor)
                     .padding(.leading, 6)
                 Spacer()
             } else {
                 Spacer()
                 Image(systemName: metric.systemIcon)
                     .font(.system(size: 8))
-                    .foregroundColor(podColor)
+                    .foregroundColor(telemetryColor)
                     .padding(.trailing, 6)
             }
         }
         .frame(width: 28, height: cardH)
         .background(drawerShape.fill(.ultraThinMaterial))
         .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(podColor.opacity(0.75), lineWidth: 1))
+        .overlay(drawerShape.stroke(telemetryColor.opacity(0.75), lineWidth: 1))
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -678,11 +668,11 @@ public struct VitalsItemDrawerView: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
+                    .fill(isPinned ? telemetryColor.opacity(0.18) : Color.primary.opacity(0.06))
                     .frame(width: 22, height: 22)
 
                 Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundColor(isPinned ? podColor : .secondary)
+                    .foregroundColor(isPinned ? telemetryColor : .secondary)
                     .font(.system(size: 10, weight: .semibold))
                     .rotationEffect(.degrees(isPinned ? -25 : 0))
                     .scaleEffect(isPinned ? 1.15 : 1.0)
