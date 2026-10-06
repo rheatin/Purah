@@ -246,29 +246,10 @@ public struct CalendarItemDrawerView: View {
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条（圆角与左侧完全对称统一，到时间/进行中呼吸光晕）
-            if isAlerting {
-                TimelineView(.animation) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    let breath = (sin(time * 3.6) + 1.0) / 2.0
-                    let alpha = 0.60 + breath * 0.40
-                    let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
-                    ZStack {
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(podColor.opacity(alpha * 0.5))
-                            .frame(width: CGFloat(store.railBarWidth) + 4, height: cardH + 2)
-                            .blur(radius: 2)
-
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(podColor.opacity(alpha))
-                            .frame(width: CGFloat(store.railBarWidth), height: cardH)
-                    }
-                }
-            } else {
-                RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                    .fill(podColor.opacity(isPast ? 0.35 : 0.85))
-                    .frame(width: CGFloat(store.railBarWidth), height: cardH)
-            }
+            // 贴边基座色条（圆角与同轨所有 Bar 严格共面齐平，绝不凸出）
+            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
+                .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
+                .frame(width: CGFloat(store.railBarWidth), height: cardH)
 
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting)
@@ -405,17 +386,6 @@ public struct CalendarItemDrawerView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: effectiveW, height: cardH)
-        .background(
-            ZStack {
-                if isOngoing {
-                    LinearGradient(
-                        colors: [podColor.opacity(0.18), podColor.opacity(0.04), Color.clear],
-                        startPoint: edge == .right ? .trailing : .leading,
-                        endPoint: edge == .right ? .leading : .trailing
-                    )
-                }
-            }
-        )
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.9))
