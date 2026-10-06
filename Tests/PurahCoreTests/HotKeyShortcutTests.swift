@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import PurahCore
 
-@Suite("HotKey Shortcut & Freeze State Tests")
+@Suite("HotKey Shortcut & Freeze State Tests", .serialized)
 struct HotKeyShortcutTests {
     @Test("Default shortcut formats as Option-Tab")
     func testDefaultShortcutFormat() {
@@ -46,6 +46,12 @@ struct HotKeyShortcutTests {
 
         let space = HotKeyShortcut(keyCode: 49, modifiers: 0x0100) // ⌘Space
         #expect(space.displayString == "⌘Space")
+    }
+
+    @Test("Custom shortcut formats with multiple modifiers")
+    func testCustomShortcutFormatting() {
+        let custom = HotKeyShortcut(keyCode: 4, modifiers: 0x0100 | 0x0800 | 0x1000) // ⌃⌥⌘H
+        #expect(custom.displayString == "⌃⌥⌘H")
     }
 
     @Test("HotKeyShortcut Codable roundtrip")
