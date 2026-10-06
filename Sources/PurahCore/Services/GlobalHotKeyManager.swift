@@ -1,6 +1,5 @@
 import AppKit
 import Carbon
-import PurahCore
 
 private struct CarbonRefs: @unchecked Sendable {
     var hotKeyRef: EventHotKeyRef?
@@ -13,14 +12,17 @@ public final class GlobalHotKeyManager: Sendable {
 
     private var refs = CarbonRefs()
     private var triggerAction: (() -> Void)?
+    public private(set) var currentShortcut: HotKeyShortcut?
 
     private init() {
         installCarbonEventHandler()
     }
 
-    public func register(shortcut: HotKeyShortcut, onTrigger: @escaping () -> Void) {
+    public func register(shortcut: HotKeyShortcut, onTrigger: (() -> Void)? = nil) {
+        let action = onTrigger ?? self.triggerAction
         unregister()
-        self.triggerAction = onTrigger
+        self.triggerAction = action
+        self.currentShortcut = shortcut
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x50555248), id: 1) // 'PURH'
         var gMyHotKeyRef: EventHotKeyRef?
@@ -45,6 +47,7 @@ public final class GlobalHotKeyManager: Sendable {
             refs.hotKeyRef = nil
         }
         triggerAction = nil
+        currentShortcut = nil
     }
 
     private func installCarbonEventHandler() {

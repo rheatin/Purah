@@ -6,7 +6,7 @@ import SwiftUI
 @testable import PurahCore
 @testable import PurahUI
 
-@Suite("Drawer Interaction & UI Hit-Test Simulation Tests")
+@Suite("Drawer Interaction & UI Hit-Test Simulation Tests", .serialized)
 struct DrawerInteractionUITests {
     @Test("Canonical window coordinate math covers all 7 pods on default rails")
     @MainActor
@@ -485,5 +485,139 @@ struct DrawerInteractionUITests {
         let store = PurahWorkspaceStore()
         let vitalsMinH = store.minimumDrawerHeight(for: "vitals")
         #expect(vitalsMinH >= 300.0, "Hardware Vitals minimum drawer height must be at least 300pt to prevent scroll cutoff")
+    }
+
+    @Test("KeyboardShortcutRecorderView Carbon modifier mapping and function key detection")
+    @MainActor
+    func testKeyboardShortcutRecorderModifierMapping() {
+        #expect(KeyboardShortcutRecorderView.carbonModifiers(from: .command) == 0x0100)
+        #expect(KeyboardShortcutRecorderView.carbonModifiers(from: .option) == 0x0800)
+        #expect(KeyboardShortcutRecorderView.carbonModifiers(from: .shift) == 0x0200)
+        #expect(KeyboardShortcutRecorderView.carbonModifiers(from: .control) == 0x1000)
+        #expect(KeyboardShortcutRecorderView.carbonModifiers(from: [.command, .option]) == (0x0100 | 0x0800))
+        #expect(KeyboardShortcutRecorderView.carbonModifiers(from: [.control, .shift, .command]) == (0x1000 | 0x0200 | 0x0100))
+
+        #expect(KeyboardShortcutRecorderView.isFunctionKey(keyCode: 122) == true) // F1
+        #expect(KeyboardShortcutRecorderView.isFunctionKey(keyCode: 96) == true)  // F5
+        #expect(KeyboardShortcutRecorderView.isFunctionKey(keyCode: 111) == true) // F12
+        #expect(KeyboardShortcutRecorderView.isFunctionKey(keyCode: 0) == false)   // A
+    }
+
+    @Test("KeyboardShortcutRecorderView applyShortcut and resetToDefault update store and re-register hotkey")
+    @MainActor
+    func testKeyboardShortcutRecorderApplyAndReset() {
+        let store = PurahWorkspaceStore()
+        let view = KeyboardShortcutRecorderView(store: store)
+
+        let custom = HotKeyShortcut(keyCode: 9, modifiers: 0x0100) // ⌘V
+        view.applyShortcut(custom)
+        #expect(store.hotKeyShortcut == custom)
+        #expect(GlobalHotKeyManager.shared.currentShortcut == custom)
+
+        view.resetToDefault()
+        #expect(store.hotKeyShortcut == .defaultShortcut)
+        #expect(GlobalHotKeyManager.shared.currentShortcut == .defaultShortcut)
+    }
+
+    @Test("KeyboardShortcutRecorderView captures valid key combination and dismisses recording mode")
+    @MainActor
+    func testKeyboardShortcutRecorderKeyDownCapture() {
+        let store = PurahWorkspaceStore()
+        let view = KeyboardShortcutRecorderView(store: store)
+        view.startRecording()
+        #expect(view.isRecording == true)
+
+        // Simulate ⌘K (keyCode 40, modifier .command)
+        let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "k",
+            charactersIgnoringModifiers: "k",
+            isARepeat: false,
+            keyCode: 40
+        )!
+
+        let result = view.handleKeyDown(event)
+        #expect(result == nil, "Captured hotkey event should be consumed")
+        #expect(view.isRecording == false, "Recording should stop after valid key capture")
+        #expect(store.hotKeyShortcut.keyCode == 40)
+        #expect(store.hotKeyShortcut.modifiers == 0x0100)
+        #expect(GlobalHotKeyManager.shared.currentShortcut == store.hotKeyShortcut)
+
+        // Reset back to default
+        view.resetToDefault()
+    }
+
+    @Test("KeyboardShortcutRecorderView cancels recording on Escape without modifying shortcut")
+    @MainActor
+    func testKeyboardShortcutRecorderEscapeCancels() {
+        let store = PurahWorkspaceStore()
+        let initial = store.hotKeyShortcut
+        let view = KeyboardShortcutRecorderView(store: store)
+        view.startRecording()
+        #expect(view.isRecording == true)
+
+        // Simulate Escape (keyCode 53)
+        let escEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "\u{1b}",
+            charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false,
+            keyCode: 53
+        )!
+
+        let result = view.handleKeyDown(escEvent)
+        #expect(result == nil)
+        #expect(view.isRecording == false)
+        #expect(store.hotKeyShortcut == initial, "Shortcut must remain unchanged after Escape")
+    }
+
+    @Test("KeyboardShortcutRecorderView ignores bare key press without modifiers")
+    @MainActor
+    func testKeyboardShortcutRecorderIgnoresBareKey() {
+        let store = PurahWorkspaceStore()
+        let initial = store.hotKeyShortcut
+        let view = KeyboardShortcutRecorderView(store: store)
+        view.startRecording()
+        #expect(view.isRecording == true)
+
+        // Simulate bare 'a' key (keyCode 0, no modifiers)
+        let bareEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "a",
+            charactersIgnoringModifiers: "a",
+            isARepeat: false,
+            keyCode: 0
+        )!
+
+        let result = view.handleKeyDown(bareEvent)
+        #expect(result == nil)
+        #expect(view.isRecording == true, "Bare key press without modifier must not end recording")
+        #expect(store.hotKeyShortcut == initial, "Shortcut must not be updated by bare key press")
+
+        view.stopRecording()
+        #expect(view.isRecording == false)
+    }
+
+    @Test("VisualLayoutSimulatorView initializes with KeyboardShortcutRecorderView and hotkey card")
+    @MainActor
+    func testVisualLayoutSimulatorViewHotkeysCard() {
+        let store = PurahWorkspaceStore()
+        let view = VisualLayoutSimulatorView(store: store)
+        #expect(view.store.hotKeyShortcut == .defaultShortcut)
     }
 }
