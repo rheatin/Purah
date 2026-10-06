@@ -135,4 +135,26 @@ struct VitalsAndScriptTests {
         store.scriptsEnabledActionIds = ScriptRunwayService.shared.actions.map(\.id)
         store.savePersistentState()
     }
+
+    @Test("VitalsColorThresholds defaults and store serialization")
+    func testVitalsColorThresholds() {
+        var thresholds = VitalsColorThresholds()
+        #expect(thresholds.cpuWarning == 0.50)
+        #expect(thresholds.cpuDanger == 0.80)
+        #expect(thresholds.ramWarning == 0.70)
+        #expect(thresholds.ramDanger == 0.85)
+
+        thresholds.cpuWarning = 0.60
+        let store = PurahWorkspaceStore()
+        store.vitalsThresholds = thresholds
+        store.savePersistentState()
+        #expect(store.vitalsThresholds.cpuWarning == 0.60)
+
+        let reloaded = PurahWorkspaceStore()
+        #expect(reloaded.vitalsThresholds.cpuWarning == 0.60)
+
+        // Reset
+        store.vitalsThresholds = VitalsColorThresholds()
+        store.savePersistentState()
+    }
 }
