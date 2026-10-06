@@ -24,6 +24,12 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
     public var pinnedDrawerItemIds: Set<String> = []
     public var currentPreset: PodPreset = .balanced
     public var animationStyle: AnimationStyle = .magneticCascade
+    public var isRailsFrozen: Bool = false
+    public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
+
+    public func toggleFreezeRails() {
+        isRailsFrozen.toggle()
+    }
 
     public func togglePinItem(id: String) {
         if pinnedDrawerItemIds.contains(id) {
@@ -201,6 +207,12 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
            let preset = PodPreset(rawValue: presetStr) {
             self.currentPreset = preset
         }
+
+        if defaults.object(forKey: "purah.hotkey.keyCode") != nil {
+            let code = UInt32(defaults.integer(forKey: "purah.hotkey.keyCode"))
+            let mods = UInt32(defaults.integer(forKey: "purah.hotkey.modifiers"))
+            self.hotKeyShortcut = HotKeyShortcut(keyCode: code, modifiers: mods)
+        }
     }
 
     public func savePersistentState() {
@@ -212,6 +224,8 @@ public final class PurahWorkspaceStore: @unchecked Sendable {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
+        defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
+        defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
     }
 
     public func autoLayoutAll() {
