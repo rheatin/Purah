@@ -147,6 +147,36 @@ public struct VisualLayoutSimulatorView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+
+                        Divider()
+                            .background(palette.borderColor.opacity(0.3))
+
+                        // Multi-Display Target Mode
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Multi-Display Target")
+                                        .font(.subheadline.weight(.medium))
+                                    Text("Choose which display hosts edge rails in multi-monitor setups")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Picker("", selection: Binding(
+                                    get: { store.displayTargetMode },
+                                    set: {
+                                        store.displayTargetMode = $0
+                                        store.savePersistentState()
+                                    }
+                                )) {
+                                    ForEach(DisplayTargetMode.allCases) { mode in
+                                        Text(mode.displayName).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 240)
+                            }
+                        }
                     }
                 }
 

@@ -9,6 +9,7 @@ public final class ScreenEdgeCoordinator {
     private let store: PurahWorkspaceStore
     private var leftRailWindow: AmbientRailWindow?
     private var rightRailWindow: AmbientRailWindow?
+    public private(set) var activeScreen: NSScreen?
     public private(set) var isFrozen: Bool = false
 
     public init(store: PurahWorkspaceStore) {
@@ -29,9 +30,40 @@ public final class ScreenEdgeCoordinator {
         }
     }
 
+    public func targetScreen(for point: NSPoint? = nil) -> NSScreen? {
+        let all = NSScreen.screens
+        guard !all.isEmpty else { return nil }
+
+        switch store.displayTargetMode {
+        case .followCursor:
+            if let point = point {
+                return all.first { $0.frame.contains(point) } ?? activeScreen ?? NSScreen.main ?? all.first
+            } else {
+                let loc = NSEvent.mouseLocation
+                return all.first { $0.frame.contains(loc) } ?? activeScreen ?? NSScreen.main ?? all.first
+            }
+        case .primaryOnly:
+            return all.first
+        case .externalOnly:
+            return all.count > 1 ? all[1] : all.first
+        }
+    }
+
+    public func updateActiveScreenIfNeeded(for point: NSPoint) {
+        guard store.displayTargetMode == .followCursor else { return }
+        guard let newScreen = targetScreen(for: point), newScreen != activeScreen else { return }
+        relocateToScreen(newScreen)
+    }
+
+    public func relocateToScreen(_ screen: NSScreen) {
+        self.activeScreen = screen
+        leftRailWindow?.relocate(to: screen)
+        rightRailWindow?.relocate(to: screen)
+    }
+
     public func rebuildWindows() {
-        // Prefer current active screen NSScreen.main
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        guard let screen = targetScreen() ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        self.activeScreen = screen
         leftRailWindow?.close()
         rightRailWindow?.close()
 

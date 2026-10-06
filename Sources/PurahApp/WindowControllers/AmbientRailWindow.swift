@@ -16,7 +16,7 @@ public final class AmbientRailWindow: NSPanel {
     }
 
     private let edge: MountEdge
-    private let targetScreen: NSScreen
+    private var targetScreen: NSScreen
     private let store: PurahWorkspaceStore
 
     public init(edge: MountEdge, screen: NSScreen, store: PurahWorkspaceStore) {
@@ -103,5 +103,15 @@ public final class AmbientRailWindow: NSPanel {
 
     public func updateWidth() {
         // Redrawn reactively via workspace store
+    }
+
+    public func relocate(to screen: NSScreen) {
+        self.targetScreen = screen
+        let screenRect = screen.frame
+        let visibleRect = screen.visibleFrame
+        let maxCanvasWidth: CGFloat = 340.0
+        let x = (edge == .left) ? screenRect.minX : (screenRect.maxX - maxCanvasWidth)
+        let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
+        self.setFrame(frame, display: true)
     }
 }

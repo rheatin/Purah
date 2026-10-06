@@ -108,6 +108,9 @@ public final class PurahWorkspaceStore {
     public var isVitalsDecomposed: Bool = false
     public var vitalsEnabledMetrics: [VitalsMetricType] = [.cpu, .ram, .power, .disk]
 
+    // Multi-display behavior
+    public var displayTargetMode: DisplayTargetMode = .followCursor
+
     // Real-time synchronization flags and scopes
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false
@@ -235,6 +238,11 @@ public final class PurahWorkspaceStore {
                 self.vitalsEnabledMetrics = parsed
             }
         }
+
+        if let dispModeStr = defaults.string(forKey: "purah.displayTargetMode"),
+           let dispMode = DisplayTargetMode(rawValue: dispModeStr) {
+            self.displayTargetMode = dispMode
+        }
     }
 
     public func savePersistentState() {
@@ -250,6 +258,7 @@ public final class PurahWorkspaceStore {
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(isVitalsDecomposed, forKey: "purah.vitals.isDecomposed")
         defaults.set(vitalsEnabledMetrics.map { $0.rawValue }, forKey: "purah.vitals.enabledMetrics")
+        defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
     }
 
     public func autoLayoutAll() {
