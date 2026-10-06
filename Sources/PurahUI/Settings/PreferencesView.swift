@@ -6,6 +6,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
     case layout
     case plugins
     case permissions
+    case diagnostics
 
     public var id: String { rawValue }
 
@@ -14,6 +15,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
         case .layout: return "Layout & Rails"
         case .plugins: return "Plugins"
         case .permissions: return "Permissions & Access"
+        case .diagnostics: return "Diagnostics & Health"
         }
     }
 
@@ -22,6 +24,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
         case .layout: return "slider.horizontal.2.square"
         case .plugins: return "puzzlepiece.extension.fill"
         case .permissions: return "lock.shield"
+        case .diagnostics: return "stethoscope"
         }
     }
 }
@@ -84,6 +87,8 @@ public struct PreferencesView: View {
                     PluginCenterSettingsView(store: store)
                 case .permissions:
                     SystemAccessSettingsView(store: store)
+                case .diagnostics:
+                    DiagnosticReportView(store: store)
                 }
             }
         }
