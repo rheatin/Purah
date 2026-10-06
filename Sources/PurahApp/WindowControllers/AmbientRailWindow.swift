@@ -25,12 +25,11 @@ public final class AmbientRailWindow: NSPanel {
         self.store = store
 
         // Coordinate positioning:
-        // 1. Horizontal X coordinates anchor strictly to physical screen boundaries (0 gap).
+        // 1. Horizontal X coordinates anchor strictly to visible screen boundaries (0 gap).
         // 2. Vertical Y coordinates use screen.visibleFrame to avoid dock and menu bar.
-        let screenRect = screen.frame
         let visibleRect = screen.visibleFrame
         let maxCanvasWidth: CGFloat = 340.0
-        let x = (edge == .left) ? screenRect.minX : (screenRect.maxX - maxCanvasWidth)
+        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
         let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
 
         super.init(
@@ -107,10 +106,9 @@ public final class AmbientRailWindow: NSPanel {
 
     public func relocate(to screen: NSScreen) {
         self.targetScreen = screen
-        let screenRect = screen.frame
         let visibleRect = screen.visibleFrame
         let maxCanvasWidth: CGFloat = 340.0
-        let x = (edge == .left) ? screenRect.minX : (screenRect.maxX - maxCanvasWidth)
+        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
         let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
         self.setFrame(frame, display: true)
     }

@@ -95,10 +95,21 @@ public final class SystemCalendarSyncService {
             )
         }
 
+        // Deduplicate events by (normalized title + start timestamp) so synced accounts/invitations don't produce duplicate chips
+        var seenKeys = Set<String>()
+        var deduplicated: [CalendarEventItem] = []
+        for event in mapped.sorted(by: { $0.startTime < $1.startTime }) {
+            let key = "\(event.title.trimmingCharacters(in: .whitespacesAndNewlines))_\(Int(event.startTime.timeIntervalSince1970))"
+            if !seenKeys.contains(key) {
+                seenKeys.insert(key)
+                deduplicated.append(event)
+            }
+        }
+
         if let targetStore = targetStore {
             targetStore.calendarScope = targetScope
             targetStore.isUsingRealCalendar = true
-            targetStore.calendarEvents = mapped.sorted { $0.startTime < $1.startTime }
+            targetStore.calendarEvents = deduplicated
         }
         lastSyncDate = Date()
         isSyncing = false

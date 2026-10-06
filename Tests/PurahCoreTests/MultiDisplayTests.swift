@@ -32,8 +32,13 @@ struct MultiDisplayTests {
         let coordinator = ScreenEdgeCoordinator(store: store)
 
         let target = coordinator.targetScreen()
-        #expect(target != nil)
-        #expect(coordinator.activeScreen != nil)
+        if !NSScreen.screens.isEmpty {
+            #expect(target != nil)
+            #expect(coordinator.activeScreen != nil)
+        } else {
+            // Headless CLI execution without WindowServer returns nil safely
+            #expect(target == nil)
+        }
     }
 
     @Test("EdgeMouseMonitor isSeam evaluates safely on single and multi screens")
