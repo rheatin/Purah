@@ -108,7 +108,8 @@ public final class ScriptRunwayService {
     }
 
     private func runShell(command: String) async -> (success: Bool, message: String) {
-        await Task.detached(priority: .userInitiated) {
+        DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command: \(command.prefix(40))...")
+        return await Task.detached(priority: .userInitiated) {
             let task = Process()
             task.launchPath = "/bin/zsh"
             task.arguments = ["-c", command]
@@ -119,30 +120,61 @@ public final class ScriptRunwayService {
 
             do {
                 try task.run()
-                task.waitUntilExit()
+
+                // 15-second timeout guard to prevent UI or process hangs
+                let didTimeout = await withTaskGroup(of: Bool.self) { group in
+                    group.addTask {
+                        task.waitUntilExit()
+                        return false
+                    }
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 15_000_000_000)
+                        if task.isRunning {
+                            task.terminate()
+                            return true
+                        }
+                        return false
+                    }
+                    let first = await group.next() ?? false
+                    group.cancelAll()
+                    return first
+                }
+
+                if didTimeout {
+                    DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after 15s: \(command.prefix(40))")
+                    return (false, "Execution timed out after 15s")
+                }
 
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 let output = String(data: data, encoding: .utf8) ?? ""
                 let success = (task.terminationStatus == 0)
                 let msg = success ? (output.isEmpty ? "Success" : output) : "Failed (exit code \(task.terminationStatus))"
+                DiagnosticLogger.shared.info("ScriptRunway", "Shell command result: \(success ? "Success" : "Failed")")
                 return (success, msg)
             } catch {
+                DiagnosticLogger.shared.error("ScriptRunway", "Process error: \(error.localizedDescription)")
                 return (false, "Process error: \(error.localizedDescription)")
             }
         }.value
     }
 
     private func runAppleScript(script: String) async -> (success: Bool, message: String) {
-        guard let appleScript = NSAppleScript(source: script) else {
-            return (false, "AppleScript syntax error")
-        }
-        var errorDict: NSDictionary?
-        appleScript.executeAndReturnError(&errorDict)
-        if let err = errorDict {
-            let msg = err[NSAppleScript.errorMessage] as? String ?? "Execution failed"
-            return (false, msg)
-        }
-        return (true, "AppleScript executed successfully")
+        DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript: \(script.prefix(40))...")
+        return await Task.detached(priority: .userInitiated) {
+            guard let appleScript = NSAppleScript(source: script) else {
+                DiagnosticLogger.shared.error("ScriptRunway", "AppleScript syntax error")
+                return (false, "AppleScript syntax error")
+            }
+            var errorDict: NSDictionary?
+            appleScript.executeAndReturnError(&errorDict)
+            if let err = errorDict {
+                let msg = err[NSAppleScript.errorMessage] as? String ?? "Execution failed"
+                DiagnosticLogger.shared.warn("ScriptRunway", "AppleScript error: \(msg)")
+                return (false, msg)
+            }
+            DiagnosticLogger.shared.info("ScriptRunway", "AppleScript completed successfully")
+            return (true, "AppleScript executed successfully")
+        }.value
     }
 
     private func runShortcut(name: String) async -> (success: Bool, message: String) {

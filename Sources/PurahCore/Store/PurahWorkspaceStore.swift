@@ -1,5 +1,6 @@
 // Sources/PurahCore/Store/PurahWorkspaceStore.swift
 import Foundation
+import AppKit
 import Observation
 
 public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
@@ -182,6 +183,36 @@ public final class PurahWorkspaceStore {
         case "todo": return 160.0
         default: return 140.0
         }
+    }
+
+    // MARK: - Rail Capacity & Ergonomic Height Budget
+    public func totalRequiredHeight(for edge: MountEdge) -> CGFloat {
+        let edgePods = pods.filter { $0.edge == edge && $0.isEnabled }
+        guard !edgePods.isEmpty else { return 0 }
+        let gap: CGFloat = 10.0
+        var total: CGFloat = CGFloat(edgePods.count - 1) * gap
+        for pod in edgePods {
+            total += minimumDrawerHeight(for: pod.id)
+        }
+        return total
+    }
+
+    public func availableScreenHeight(for edge: MountEdge) -> CGFloat {
+        let screens = NSScreen.screens
+        let mainScreen = NSScreen.main ?? screens.first
+        guard let screen = mainScreen else { return 850.0 }
+        return max(screen.visibleFrame.height - 30.0, 400.0)
+    }
+
+    public func capacityRatio(for edge: MountEdge) -> Double {
+        let avail = availableScreenHeight(for: edge)
+        guard avail > 0 else { return 0.0 }
+        let required = totalRequiredHeight(for: edge)
+        return Double(required / avail)
+    }
+
+    public func isRailOverloaded(edge: MountEdge) -> Bool {
+        capacityRatio(for: edge) > 1.0
     }
 
     public func defaultColorHex(for podId: String) -> String {
