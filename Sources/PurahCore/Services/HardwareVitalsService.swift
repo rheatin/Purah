@@ -387,8 +387,9 @@ public final class HardwareVitalsService: @unchecked Sendable {
         while let cur = ptr {
             let flags = cur.pointee.ifa_flags
             if (flags & UInt32(IFF_UP)) != 0 && (flags & UInt32(IFF_LOOPBACK)) == 0 {
-                let family = cur.pointee.ifa_addr.pointee.sa_family
-                if family == UInt8(AF_LINK), let data = cur.pointee.ifa_data {
+                if let addr = cur.pointee.ifa_addr,
+                   addr.pointee.sa_family == UInt8(AF_LINK),
+                   let data = cur.pointee.ifa_data {
                     let ifData = data.assumingMemoryBound(to: if_data.self).pointee
                     totalIn += UInt64(ifData.ifi_ibytes)
                     totalOut += UInt64(ifData.ifi_obytes)
