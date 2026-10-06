@@ -176,17 +176,6 @@ public struct CalendarDrawerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack {
-                if isOngoing {
-                    LinearGradient(
-                        colors: [podColor.opacity(0.18), podColor.opacity(0.04), Color.clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                }
-            }
-        )
         .liquidCardBackground(
             cornerRadius: 8,
             strokeColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8))

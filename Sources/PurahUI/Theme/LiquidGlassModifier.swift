@@ -15,39 +15,20 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .background(
-                ZStack {
-                    // 1. Crystal translucent base tint
-                    shape
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(colorScheme == .dark ? 0.30 : 0.45))
-                    // 2. High-translucency native ultra-thin material
-                    shape
-                        .fill(.ultraThinMaterial.opacity(0.82))
-                    // 3. Top-down meniscus specular light reflection
-                    shape
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.12 : 0.24),
-                                    Color.white.opacity(colorScheme == .dark ? 0.02 : 0.06),
-                                    Color.clear
-                                ],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
-                        )
-                }
+                shape
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.75) // 纯净提升透光率，无额外浊色涂层
             )
             .clipShape(shape)
             .contentShape(shape)
             .overlay(
-                // Liquid Specular Highlight Rim + Accent Stroke
                 shape
                     .strokeBorder(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.38 : 0.65), location: 0.0),
+                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.25 : 0.50), location: 0.0),
                                 .init(color: accentColor.opacity(0.45), location: 0.35),
-                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.12 : 0.22), location: 1.0)
+                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.18), location: 1.0)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -56,10 +37,10 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
                     )
             )
             .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12),
-                radius: 16,
+                color: Color.black.opacity(colorScheme == .dark ? 0.40 : 0.16),
+                radius: 12,
                 x: 0,
-                y: 5
+                y: 4
             )
             .compositingGroup()
     }
@@ -79,23 +60,9 @@ public struct LiquidCardBackgroundModifier: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
             .background(
-                ZStack {
-                    shape
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(colorScheme == .dark ? 0.25 : 0.40))
-                    shape
-                        .fill(.ultraThinMaterial.opacity(0.85))
-                    shape
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.10 : 0.20),
-                                    Color.clear
-                                ],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
-                        )
-                }
+                shape
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.75) // 纯净提升透光率
             )
             .clipShape(shape)
             .overlay(
@@ -103,9 +70,9 @@ public struct LiquidCardBackgroundModifier: ViewModifier {
                     .strokeBorder(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.30 : 0.55), location: 0.0),
-                                .init(color: (strokeColor ?? Color(nsColor: .separatorColor)).opacity(0.40), location: 0.5),
-                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.16), location: 1.0)
+                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.22 : 0.45), location: 0.0),
+                                .init(color: (strokeColor ?? Color(nsColor: .separatorColor)).opacity(0.35), location: 0.5),
+                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.12), location: 1.0)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
