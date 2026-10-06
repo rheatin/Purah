@@ -132,6 +132,9 @@ public final class PurahWorkspaceStore {
     // Multi-display behavior
     public var displayTargetMode: DisplayTargetMode = .followCursor
 
+    // Edge Trigger Intentionality Sensitivity
+    public var edgeTriggerSensitivity: EdgeTriggerSensitivity = .balanced
+
     // Real-time synchronization flags and scopes
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false
@@ -283,6 +286,11 @@ public final class PurahWorkspaceStore {
            let dispMode = DisplayTargetMode(rawValue: dispModeStr) {
             self.displayTargetMode = dispMode
         }
+
+        if let sensStr = defaults.string(forKey: "purah.edgeTriggerSensitivity"),
+           let sens = EdgeTriggerSensitivity(rawValue: sensStr) {
+            self.edgeTriggerSensitivity = sens
+        }
     }
 
     public func savePersistentState() {
@@ -304,6 +312,7 @@ public final class PurahWorkspaceStore {
         defaults.set(isScriptsDecomposed, forKey: "purah.scripts.isDecomposed")
         defaults.set(scriptsEnabledActionIds, forKey: "purah.scripts.enabledActionIds")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
+        defaults.set(edgeTriggerSensitivity.rawValue, forKey: "purah.edgeTriggerSensitivity")
     }
 
     public func autoLayoutAll() {

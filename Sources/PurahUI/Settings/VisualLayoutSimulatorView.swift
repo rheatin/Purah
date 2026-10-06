@@ -177,6 +177,36 @@ public struct VisualLayoutSimulatorView: View {
                                 .frame(width: 240)
                             }
                         }
+
+                        Divider()
+                            .background(palette.borderColor.opacity(0.3))
+
+                        // Edge Trigger Intentionality Sensitivity
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Edge Trigger Sensitivity")
+                                        .font(.subheadline.weight(.medium))
+                                    Text("Requires deliberate dwell or deep bezel push to eliminate accidental popups")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Picker("", selection: Binding(
+                                    get: { store.edgeTriggerSensitivity },
+                                    set: {
+                                        store.edgeTriggerSensitivity = $0
+                                        store.savePersistentState()
+                                    }
+                                )) {
+                                    ForEach(EdgeTriggerSensitivity.allCases, id: \.self) { sens in
+                                        Text(sens.displayName).tag(sens)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 240)
+                            }
+                        }
                     }
                 }
 
