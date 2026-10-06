@@ -4,6 +4,7 @@ import Foundation
 @testable import PurahCore
 
 @Suite("Hardware Vitals and Script Runway Tests")
+@MainActor
 struct VitalsAndScriptTests {
     @Test("Hardware Vitals reads CPU, Memory, Disk, Power and Thermal accurately")
     func testHardwareVitals() {

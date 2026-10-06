@@ -33,7 +33,7 @@ struct FlingIntentDetectorTests {
 
     @Test("Dwell timer triggers only after exceeding threshold")
     func testDwellTiming() {
-        let tracker = DwellTracker(threshold: 0.16) // 160ms
+        var tracker = DwellTracker(threshold: 0.16) // 160ms
         let now = Date()
 
         // 刚进入时处于 dwelling 状态

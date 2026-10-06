@@ -11,7 +11,8 @@ public enum UpdateCheckState: Sendable, Equatable {
 }
 
 @Observable
-public final class AppUpdaterManager: @unchecked Sendable {
+@MainActor
+public final class AppUpdaterManager {
     public static let shared = AppUpdaterManager()
 
     public let currentVersion: String

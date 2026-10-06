@@ -7,7 +7,7 @@ public enum DwellState: Sendable, Equatable {
     case triggered(podId: String)
 }
 
-public final class DwellTracker: @unchecked Sendable {
+public struct DwellTracker: Sendable {
     public let threshold: TimeInterval
     private var currentPodId: String?
     private var dwellStartTime: Date?
@@ -17,7 +17,7 @@ public final class DwellTracker: @unchecked Sendable {
         self.threshold = threshold
     }
 
-    public func update(podId: String?, intent: FlingIntent, timestamp: Date = Date()) -> DwellState {
+    public mutating func update(podId: String?, intent: FlingIntent, timestamp: Date = Date()) -> DwellState {
         guard let podId = podId, intent == .candidateDwell else {
             reset()
             return .idle
@@ -49,7 +49,7 @@ public final class DwellTracker: @unchecked Sendable {
         }
     }
 
-    public func reset() {
+    public mutating func reset() {
         currentPodId = nil
         dwellStartTime = nil
         isTriggered = false

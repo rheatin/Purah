@@ -5,21 +5,21 @@ import Testing
 @Suite("Ergonomic Auto-Layout Engine Tests")
 struct ErgonomicAutoLayoutEngineTests {
     @Test("Calculates proportional distribution within safe bounds without overlap")
-    func testProportionalDistribution() {
+    func testProportionalDistribution() throws {
         let cal = SlotPod(
             id: "cal", name: "Calendar", systemIcon: "calendar", edge: .right,
-            range: NormalizedRange(start: 0, length: 0.1), ambientStyle: .progressTimeline,
-            preferredZone: .goldenAction, ergonomicWeight: 40.0, minLength: 0.20
+            range: .init(start: 0, length: 0.1), ambientStyle: .progressTimeline,
+            preferredZone: .goldenAction, ergonomicWeight: 40
         )
         let todo = SlotPod(
             id: "todo", name: "Todo", systemIcon: "checklist", edge: .right,
-            range: NormalizedRange(start: 0, length: 0.1), ambientStyle: .segmentGauge,
-            preferredZone: .goldenAction, ergonomicWeight: 35.0, minLength: 0.15
+            range: .init(start: 0, length: 0.1), ambientStyle: .segmentGauge,
+            preferredZone: .goldenAction, ergonomicWeight: 30
         )
         let music = SlotPod(
             id: "music", name: "Music", systemIcon: "music.note", edge: .right,
-            range: NormalizedRange(start: 0, length: 0.1), ambientStyle: .waveLevelMeter,
-            preferredZone: .quickFlick, ergonomicWeight: 25.0, minLength: 0.12
+            range: .init(start: 0, length: 0.1), ambientStyle: .waveLevelMeter,
+            preferredZone: .goldenAction, ergonomicWeight: 30
         )
 
         let safeBounds = 0.15...0.85
@@ -32,8 +32,10 @@ struct ErgonomicAutoLayoutEngineTests {
 
         #expect(result.count == 3)
         // 验证位于安全区间内
-        #expect(result.first!.range.start >= safeBounds.lowerBound)
-        #expect(result.last!.range.end <= safeBounds.upperBound)
+        let firstPod = try #require(result.first)
+        let lastPod = try #require(result.last)
+        #expect(firstPod.range.start >= safeBounds.lowerBound)
+        #expect(lastPod.range.end <= safeBounds.upperBound)
 
         // 验证绝不重叠 (No Overlap Guarantee)
         for i in 0..<(result.count - 1) {

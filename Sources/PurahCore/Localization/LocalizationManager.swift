@@ -19,7 +19,8 @@ public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
 }
 
 @Observable
-public final class LocalizationManager: @unchecked Sendable {
+@MainActor
+public final class LocalizationManager {
     public static let shared = LocalizationManager()
 
     public var currentLanguage: AppLanguage = .system
@@ -133,6 +134,7 @@ public final class LocalizationManager: @unchecked Sendable {
 }
 
 public extension String {
+    @MainActor
     var localized: String {
         LocalizationManager.shared.localized(self)
     }

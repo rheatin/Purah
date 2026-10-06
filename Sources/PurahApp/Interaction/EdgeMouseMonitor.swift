@@ -9,9 +9,9 @@ import PurahCore
 public final class EdgeMouseMonitor {
     private let store: PurahWorkspaceStore
     private weak var coordinator: ScreenEdgeCoordinator?
-    private let velocityTracker = VelocityTracker()
+    private var velocityTracker = VelocityTracker()
     private let flingDetector = FlingIntentDetector()
-    private let dwellTracker = DwellTracker(threshold: 0.16)
+    private var dwellTracker = DwellTracker(threshold: 0.16)
     private var globalMonitor: Any?
     private var leftExitGraceTask: Task<Void, Never>?
     private var rightExitGraceTask: Task<Void, Never>?

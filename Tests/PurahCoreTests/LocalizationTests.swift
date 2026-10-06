@@ -3,8 +3,10 @@ import Testing
 @testable import PurahCore
 
 @Suite("Localization Engine Tests")
+@MainActor
 struct LocalizationTests {
     @Test("Translates keys to English and Chinese correctly")
+    @MainActor
     func testTranslation() {
         let loc = LocalizationManager()
 
@@ -20,6 +22,7 @@ struct LocalizationTests {
     }
 
     @Test("Fallbacks to key when missing")
+    @MainActor
     func testFallback() {
         let loc = LocalizationManager()
         #expect(loc.localized("unknown.key") == "unknown.key")

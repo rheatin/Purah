@@ -4,7 +4,8 @@ import EventKit
 import Observation
 
 @Observable
-public final class SystemCalendarSyncService: @unchecked Sendable {
+@MainActor
+public final class SystemCalendarSyncService {
     public static let shared = SystemCalendarSyncService()
 
     private var eventStore = EKEventStore()

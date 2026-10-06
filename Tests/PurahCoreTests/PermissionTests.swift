@@ -4,6 +4,7 @@ import EventKit
 @testable import PurahCore
 
 @Suite("Permission and System Access Tests")
+@MainActor
 struct PermissionTests {
     @Test("PermissionManager converts EKAuthorizationStatus correctly")
     func testStatusConversion() {
