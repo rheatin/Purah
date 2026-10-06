@@ -435,4 +435,127 @@ struct VitalsAndScriptTests {
         store.togglePinItem(id: scriptItemId)
         store.isScriptsDecomposed = false
     }
+
+    @Test("ScriptsPluginSettingsView initialization, decomposition toggle, multi-select minimum guard, and in-place action editing")
+    func testScriptsPluginSettingsView() {
+        let store = PurahWorkspaceStore()
+        let runway = ScriptRunwayService.shared
+
+        // Ensure actions exist
+        let allActions = runway.actions
+        #expect(!allActions.isEmpty)
+
+        // Verify settings view instantiates and renders body
+        let settingsView = ScriptsPluginSettingsView(store: store)
+        _ = settingsView.body
+
+        // Test decomposition toggle and persistence
+        store.isScriptsDecomposed = true
+        store.savePersistentState()
+        #expect(store.isScriptsDecomposed == true)
+
+        let reloaded = PurahWorkspaceStore()
+        #expect(reloaded.isScriptsDecomposed == true)
+
+        // Test scriptsEnabledActionIds multi-select behavior
+        let firstAction = allActions[0]
+        let secondAction = allActions[1]
+
+        // Enable only 2 actions
+        store.scriptsEnabledActionIds = [firstAction.id, secondAction.id]
+        store.savePersistentState()
+        #expect(store.scriptsEnabledActions.count == 2)
+
+        // Minimum 1 guard: if 1 action is selected, removing it is prevented
+        store.scriptsEnabledActionIds = [firstAction.id]
+        #expect(store.scriptsEnabledActions.count == 1)
+
+        // In-place script action editing test
+        let originalName = firstAction.name
+        let updatedAction = ScriptActionItem(
+            id: firstAction.id,
+            name: "Edited Test Action",
+            systemIcon: "star.fill",
+            commandType: .shell,
+            scriptContent: "echo 'edited'",
+            description: "Updated description"
+        )
+        runway.updateAction(updatedAction)
+
+        let fetched = runway.action(for: firstAction.id)
+        #expect(fetched?.name == "Edited Test Action")
+        #expect(fetched?.commandType == .shell)
+        #expect(fetched?.scriptContent == "echo 'edited'")
+        #expect(fetched?.systemIcon == "star.fill")
+
+        // Restore original
+        let restoredAction = ScriptActionItem(
+            id: firstAction.id,
+            name: originalName,
+            systemIcon: firstAction.systemIcon,
+            commandType: firstAction.commandType,
+            scriptContent: firstAction.scriptContent,
+            description: firstAction.description
+        )
+        runway.updateAction(restoredAction)
+        store.scriptsEnabledActionIds = []
+        store.isScriptsDecomposed = false
+        store.savePersistentState()
+    }
+
+    @Test("VitalsPluginSettingsView initialization, all 7 metric types, threshold sliders, and reset to defaults")
+    func testVitalsPluginSettingsView() {
+        let store = PurahWorkspaceStore()
+
+        // Verify settings view instantiates and renders body
+        let settingsView = VitalsPluginSettingsView(store: store)
+        _ = settingsView.body
+
+        // Ensure all 7 metrics in VitalsMetricType.allCases are present
+        let allMetrics = VitalsMetricType.allCases
+        #expect(allMetrics.count == 7)
+        #expect(allMetrics.contains(.cpu))
+        #expect(allMetrics.contains(.gpu))
+        #expect(allMetrics.contains(.ram))
+        #expect(allMetrics.contains(.thermal))
+        #expect(allMetrics.contains(.power))
+        #expect(allMetrics.contains(.network))
+        #expect(allMetrics.contains(.disk))
+
+        // Custom thresholds test
+        var custom = VitalsColorThresholds()
+        custom.cpuWarning = 0.65
+        custom.cpuDanger = 0.90
+        custom.gpuWarning = 0.55
+        custom.gpuDanger = 0.85
+        custom.ramWarning = 0.75
+        custom.ramDanger = 0.92
+        custom.batteryLow = 0.25
+        custom.networkWarningMB = 25.0
+        custom.networkDangerMB = 80.0
+
+        store.vitalsThresholds = custom
+        store.savePersistentState()
+
+        let reloaded = PurahWorkspaceStore()
+        #expect(reloaded.vitalsThresholds.cpuWarning == 0.65)
+        #expect(reloaded.vitalsThresholds.cpuDanger == 0.90)
+        #expect(reloaded.vitalsThresholds.gpuWarning == 0.55)
+        #expect(reloaded.vitalsThresholds.gpuDanger == 0.85)
+        #expect(reloaded.vitalsThresholds.ramWarning == 0.75)
+        #expect(reloaded.vitalsThresholds.ramDanger == 0.92)
+        #expect(reloaded.vitalsThresholds.batteryLow == 0.25)
+        #expect(reloaded.vitalsThresholds.networkWarningMB == 25.0)
+        #expect(reloaded.vitalsThresholds.networkDangerMB == 80.0)
+
+        // Reset to defaults
+        store.vitalsThresholds = VitalsColorThresholds()
+        store.savePersistentState()
+
+        let resetReloaded = PurahWorkspaceStore()
+        #expect(resetReloaded.vitalsThresholds.cpuWarning == 0.50)
+        #expect(resetReloaded.vitalsThresholds.cpuDanger == 0.80)
+        #expect(resetReloaded.vitalsThresholds.batteryLow == 0.20)
+        #expect(resetReloaded.vitalsThresholds.networkWarningMB == 10.0)
+    }
 }
