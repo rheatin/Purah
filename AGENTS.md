@@ -100,6 +100,15 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
    - To guarantee proper visual space and ergonomics for drawer content, configure min/max height bounds on the pod (`minLength` / `maxLength` in the layout engine), rather than allowing the drawer card to vertically overflow or detach from its rail bar.
    - Exception: Multi-item stepped pods (`Calendar` & `Todo`), where individual task/event chips step out from their respective sub-slots.
 
+### 5. Physical Ergonomic Minimum Height & Dynamic Rail Capacity Rule (Mandatory)
+1. **Pixel-Perfect Sub-Item Minimum**:
+   - Every independently interactive rail chip (split hardware metric, script runway action, calendar event, todo task) **MUST enforce a strict minimum visual height of $\ge 56\text{pt}$**.
+   - Full-pod composite drawers (Music, Shelf, Notes) **MUST enforce $\ge 120\text{pt}$**.
+   - Infinite downward compression that squashes typography, clips buttons, or shrinks click hitboxes is strictly forbidden.
+2. **Dynamic Height Budgeting**:
+   - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts.
+   - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at $\ge 56\text{pt}$.
+
 ---
 
 ## 5. System Services & Low-Level Darwin Rules
