@@ -246,10 +246,12 @@ public struct CalendarItemDrawerView: View {
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条（圆角与同轨所有 Bar 严格共面齐平，绝不凸出）
+            // 贴边基座色条（尺寸严格共面齐平，高亮时呈现清澈光学辉光）
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
+                .shadow(color: isAlerting ? podColor.opacity(0.90) : .clear, radius: 3)
+                .shadow(color: isAlerting ? podColor.opacity(0.55) : .clear, radius: 7)
 
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting)
