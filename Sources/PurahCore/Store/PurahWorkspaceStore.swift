@@ -63,6 +63,7 @@ public final class PurahWorkspaceStore {
             if pod.id == "todo" && todos.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "calendar" && calendarEvents.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "vitals" && vitalsEnabledMetrics.contains(where: { isItemPinned(id: "vitals-\($0.rawValue)") }) { return true }
+            if pod.id == "scripts" && scriptsEnabledActionIds.contains(where: { isItemPinned(id: "scripts-\($0)") }) { return true }
         }
         return false
     }
@@ -70,6 +71,9 @@ public final class PurahWorkspaceStore {
     public func pod(forItemId id: String) -> SlotPod? {
         if id.hasPrefix("vitals-") {
             return pods.first(where: { $0.id == "vitals" })
+        }
+        if id.hasPrefix("scripts-") {
+            return pods.first(where: { $0.id == "scripts" })
         }
         if let p = pods.first(where: { $0.id == id }) {
             return p
@@ -91,6 +95,9 @@ public final class PurahWorkspaceStore {
             if itemId.hasPrefix("vitals-") {
                 return pods.first(where: { $0.id == "vitals" })
             }
+            if itemId.hasPrefix("scripts-") {
+                return pods.first(where: { $0.id == "scripts" })
+            }
             if todos.contains(where: { $0.id == itemId }) {
                 return pods.first(where: { $0.id == "todo" })
             }
@@ -107,6 +114,10 @@ public final class PurahWorkspaceStore {
     // Decomposable Hardware Vitals settings
     public var isVitalsDecomposed: Bool = false
     public var vitalsEnabledMetrics: [VitalsMetricType] = [.cpu, .ram, .power, .disk]
+
+    // Decomposable Scripts Runway settings
+    public var isScriptsDecomposed: Bool = false
+    public var scriptsEnabledActionIds: [String] = []
 
     // Multi-display behavior
     public var displayTargetMode: DisplayTargetMode = .followCursor
@@ -142,6 +153,10 @@ public final class PurahWorkspaceStore {
     public func minimumDrawerHeight(for podId: String) -> CGFloat {
         if podId == "vitals" && isVitalsDecomposed {
             let count = max(vitalsEnabledMetrics.count, 1)
+            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        }
+        if podId == "scripts" && isScriptsDecomposed {
+            let count = max(scriptsEnabledActionIds.isEmpty ? ScriptRunwayService.shared.actions.count : scriptsEnabledActionIds.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         switch podId {
@@ -243,6 +258,13 @@ public final class PurahWorkspaceStore {
             }
         }
 
+        self.isScriptsDecomposed = defaults.bool(forKey: "purah.scripts.isDecomposed")
+        if let actions = defaults.stringArray(forKey: "purah.scripts.enabledActionIds") {
+            self.scriptsEnabledActionIds = actions
+        } else {
+            self.scriptsEnabledActionIds = ScriptRunwayService.shared.actions.map(\.id)
+        }
+
         if let dispModeStr = defaults.string(forKey: "purah.displayTargetMode"),
            let dispMode = DisplayTargetMode(rawValue: dispModeStr) {
             self.displayTargetMode = dispMode
@@ -262,6 +284,8 @@ public final class PurahWorkspaceStore {
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(isVitalsDecomposed, forKey: "purah.vitals.isDecomposed")
         defaults.set(vitalsEnabledMetrics.map { $0.rawValue }, forKey: "purah.vitals.enabledMetrics")
+        defaults.set(isScriptsDecomposed, forKey: "purah.scripts.isDecomposed")
+        defaults.set(scriptsEnabledActionIds, forKey: "purah.scripts.enabledActionIds")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
     }
 
