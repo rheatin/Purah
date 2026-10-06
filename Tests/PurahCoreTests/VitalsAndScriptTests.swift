@@ -58,6 +58,39 @@ struct VitalsAndScriptTests {
         #expect(!service.actions.contains(where: { $0.id == "test-shortcut" }))
     }
 
+    @Test("ScriptRunwayService updateAction mutates existing action in-place")
+    func testUpdateAction() {
+        let service = ScriptRunwayService()
+        let initialAction = ScriptActionItem(
+            id: "test-action-1",
+            name: "Old Name",
+            systemIcon: "bolt",
+            commandType: .shell,
+            scriptContent: "echo old",
+            description: "Old Desc"
+        )
+        service.addAction(initialAction)
+
+        let updated = ScriptActionItem(
+            id: "test-action-1",
+            name: "New Name",
+            systemIcon: "terminal.fill",
+            commandType: .shortcut,
+            scriptContent: "Run Shortcut",
+            description: "New Desc"
+        )
+        service.updateAction(updated)
+
+        let fetched = service.action(for: "test-action-1")
+        #expect(fetched?.name == "New Name")
+        #expect(fetched?.systemIcon == "terminal.fill")
+        #expect(fetched?.commandType == .shortcut)
+        #expect(fetched?.scriptContent == "Run Shortcut")
+        #expect(fetched?.description == "New Desc")
+
+        service.removeAction(id: "test-action-1")
+    }
+
     @Test("Vitals metric decomposition settings and sub-metric models")
     @MainActor
     func testVitalsMetricDecompositionSettings() {
