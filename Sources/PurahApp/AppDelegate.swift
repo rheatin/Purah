@@ -7,9 +7,10 @@ import PurahUI
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     public let store = PurahWorkspaceStore()
-    private var coordinator: ScreenEdgeCoordinator?
-    private var mouseMonitor: EdgeMouseMonitor?
-    private var statusItem: NSStatusItem?
+    var coordinator: ScreenEdgeCoordinator?
+    var mouseMonitor: EdgeMouseMonitor?
+    var statusItem: NSStatusItem?
+    var statusMenu: NSMenu?
     private var preferencesWindow: NSWindow?
     private var updaterWindow: NSWindow?
 
@@ -23,6 +24,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         self.mouseMonitor = monitor
         monitor.start()
 
+        // 注册全局冻结/激活快捷键
+        GlobalHotKeyManager.shared.register(shortcut: store.hotKeyShortcut) { [weak self] in
+            self?.toggleFreezeMode()
+        }
+
         // 启动后台原生服务同步
         SystemCalendarSyncService.shared.syncEvents(into: store)
         Task {
@@ -33,17 +39,38 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
     }
 
-    private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    @objc public func toggleFreezeMode() {
+        store.toggleFreezeRails()
+        let frozen = store.isRailsFrozen
+        coordinator?.setFrozen(frozen)
+        mouseMonitor?.setFrozen(frozen)
+        TransientHUDController.shared.show(isFrozen: frozen)
+        updateStatusItemForFreeze()
+    }
+
+    public func updateStatusItemForFreeze() {
+        let frozen = store.isRailsFrozen
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "circle.grid.2x1.fill", accessibilityDescription: "Purah Pad")
+            let iconName = frozen ? "eye.slash.fill" : "circle.grid.2x1.fill"
+            button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Purah Pad")
             button.image?.isTemplate = true
         }
-
         rebuildMenu()
     }
 
+    private func setupStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        updateStatusItemForFreeze()
+    }
+
     public func rebuildMenu() {
+        let frozen = store.isRailsFrozen
+        if let button = statusItem?.button {
+            let iconName = frozen ? "eye.slash.fill" : "circle.grid.2x1.fill"
+            button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Purah Pad")
+            button.image?.isTemplate = true
+        }
+
         let menu = NSMenu()
 
         // App Title Item
@@ -66,6 +93,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let autoItem = NSMenuItem(title: "menu.autoLayout".localized, action: #selector(autoLayout), keyEquivalent: "e")
         autoItem.target = self
         menu.addItem(autoItem)
+
+        // Freeze / Unfreeze Rails
+        let freezeTitle = frozen ? "Unfreeze Rails (\(store.hotKeyShortcut.displayString))" : "Freeze Rails (\(store.hotKeyShortcut.displayString))"
+        let freezeItem = NSMenuItem(title: freezeTitle, action: #selector(toggleFreezeMode), keyEquivalent: "")
+        freezeItem.target = self
+        menu.addItem(freezeItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -125,6 +158,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let quitItem = NSMenuItem(title: "menu.quit".localized, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
 
+        self.statusMenu = menu
         statusItem?.menu = menu
     }
 
