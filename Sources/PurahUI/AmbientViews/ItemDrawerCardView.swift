@@ -127,15 +127,7 @@ public struct TodoItemDrawerView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .contentShape(drawerShape)
-        .overlay(
-            drawerShape
-                .stroke(podColor.opacity(isDone ? 0.35 : 1.0), lineWidth: 1.5)
-        )
-        .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-        .compositingGroup() // Offload shadows & layers to Metal GPU texture cache
+        .liquidDrawerBackground(shape: drawerShape, accentColor: podColor.opacity(isDone ? 0.35 : 1.0))
     }
 
     @ViewBuilder
@@ -156,7 +148,7 @@ public struct TodoItemDrawerView: View {
             }
         }
         .frame(width: 28, height: cardH)
-        .background(palette.solidDrawerBackground)
+        .background(drawerShape.fill(.ultraThinMaterial))
         .clipShape(drawerShape)
         .overlay(
             drawerShape
@@ -166,20 +158,22 @@ public struct TodoItemDrawerView: View {
 
     private var drawerShape: UnevenRoundedRectangle {
         if edge == .right {
-            // Right rail: 6px radius on left, 0px flush against right bezel
+            // Right rail: 8px continuous radius on left, 0px flush against right bezel
             return UnevenRoundedRectangle(
-                topLeadingRadius: 6,
-                bottomLeadingRadius: 6,
+                topLeadingRadius: 8,
+                bottomLeadingRadius: 8,
                 bottomTrailingRadius: 0,
-                topTrailingRadius: 0
+                topTrailingRadius: 0,
+                style: .continuous
             )
         } else {
-            // Left rail: 6px radius on right, 0px flush against left bezel
+            // Left rail: 8px continuous radius on right, 0px flush against left bezel
             return UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
-                bottomTrailingRadius: 6,
-                topTrailingRadius: 6
+                bottomTrailingRadius: 8,
+                topTrailingRadius: 8,
+                style: .continuous
             )
         }
     }
@@ -362,19 +356,10 @@ public struct CalendarItemDrawerView: View {
         }
         .padding(.horizontal, 10)
         .frame(width: effectiveW, height: cardH)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .contentShape(drawerShape)
-        .overlay(
-            drawerShape
-                .stroke(
-                    podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.3 : 0.85)),
-                    lineWidth: isAlerting ? 2.0 : 1.5
-                )
+        .liquidDrawerBackground(
+            shape: drawerShape,
+            accentColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.9))
         )
-        .modifier(OptionalGlow(color: podColor, enabled: isAlerting))
-        .shadow(color: Color.black.opacity(0.35), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-        .compositingGroup() // Offload shadows & layers to Metal GPU texture cache
     }
 
     @ViewBuilder
@@ -395,7 +380,7 @@ public struct CalendarItemDrawerView: View {
             }
         }
         .frame(width: 28, height: cardH)
-        .background(palette.solidDrawerBackground)
+        .background(drawerShape.fill(.ultraThinMaterial))
         .clipShape(drawerShape)
         .overlay(
             drawerShape
@@ -406,17 +391,19 @@ public struct CalendarItemDrawerView: View {
     private var drawerShape: UnevenRoundedRectangle {
         if edge == .right {
             return UnevenRoundedRectangle(
-                topLeadingRadius: 6,
-                bottomLeadingRadius: 6,
+                topLeadingRadius: 8,
+                bottomLeadingRadius: 8,
                 bottomTrailingRadius: 0,
-                topTrailingRadius: 0
+                topTrailingRadius: 0,
+                style: .continuous
             )
         } else {
             return UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
-                bottomTrailingRadius: 6,
-                topTrailingRadius: 6
+                bottomTrailingRadius: 8,
+                topTrailingRadius: 8,
+                style: .continuous
             )
         }
     }

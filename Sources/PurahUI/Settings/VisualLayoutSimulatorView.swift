@@ -57,31 +57,17 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
-                // 1. Appearance & Motion Card
-                settingsCard(title: "Appearance & Motion", icon: "paintpalette.fill") {
+                // 1. Motion & Dynamics Card
+                settingsCard(title: "Motion & Dynamics", icon: "waveform.path") {
                     VStack(spacing: 12) {
                         HStack {
-                            Text("Theme Style")
-                                .font(.subheadline.weight(.medium))
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { theme.currentStyle },
-                                set: { theme.currentStyle = $0 }
-                            )) {
-                                ForEach(AppThemeStyle.allCases) { style in
-                                    Text(style.displayName).tag(style)
-                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Motion Dynamics")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Liquid continuous bezier springs and tactile edge feedback")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
-                            .pickerStyle(.segmented)
-                            .frame(width: 260)
-                        }
-
-                        Divider()
-                            .background(palette.borderColor.opacity(0.3))
-
-                        HStack {
-                            Text("Motion Dynamics")
-                                .font(.subheadline.weight(.medium))
                             Spacer()
                             Picker("", selection: Binding(
                                 get: { store.animationStyle },

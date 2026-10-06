@@ -29,23 +29,10 @@ public struct DrawerContainerView<Content: View>: View {
     }
 
     public var body: some View {
-        let palette = theme.palette
-
         // 纯粹内容小窗：零杂乱头部与分割线，100% 空间留给 Pin 针与核心内容
         content()
             .frame(width: CGFloat(pod.drawerWidth))
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(palette.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: palette.cornerRadius)
-                    .stroke(podColor.opacity(0.85), lineWidth: 1.5)
-            )
-            .shadow(
-                color: Color.black.opacity(0.38),
-                radius: 10,
-                x: -3,
-                y: 4
-            )
+            .liquidCardBackground(cornerRadius: 12, strokeColor: podColor.opacity(0.85))
     }
 }
 

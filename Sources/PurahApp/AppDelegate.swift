@@ -102,21 +102,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Theme submenu
-        let themeMenu = NSMenu()
-        for style in AppThemeStyle.allCases {
-            let item = NSMenuItem(title: style.displayName, action: #selector(selectTheme(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = style
-            if ThemeManager.shared.currentStyle == style {
-                item.state = .on
-            }
-            themeMenu.addItem(item)
-        }
-        let themeParent = NSMenuItem(title: "Theme Style", action: nil, keyEquivalent: "")
-        themeParent.submenu = themeMenu
-        menu.addItem(themeParent)
-
         // Presets submenu
         let presetMenu = NSMenu()
         for preset in PodPreset.allCases {
@@ -226,13 +211,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func selectPreset(_ sender: NSMenuItem) {
         guard let preset = sender.representedObject as? PodPreset else { return }
         store.applyPreset(preset)
-        coordinator?.rebuildWindows()
-        rebuildMenu()
-    }
-
-    @objc private func selectTheme(_ sender: NSMenuItem) {
-        guard let style = sender.representedObject as? AppThemeStyle else { return }
-        ThemeManager.shared.currentStyle = style
         coordinator?.rebuildWindows()
         rebuildMenu()
     }

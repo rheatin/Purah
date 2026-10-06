@@ -209,11 +209,7 @@ public struct AmbientRailStripView: View {
         MusicDrawerView(store: store)
             .padding(8)
             .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: totalHeight)
-            .background(palette.solidDrawerBackground)
-            .clipShape(drawerShape)
-            .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-            .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-            .compositingGroup()
+            .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     // MARK: - Shelf 单项抽屉 (全高长条，支持访达拖拽置入)
@@ -406,11 +402,7 @@ public struct AmbientRailStripView: View {
         }
         .padding(8)
         .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 3)
-        .compositingGroup()
+        .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     // MARK: - Vitals 性能脉搏长条
@@ -535,29 +527,27 @@ public struct AmbientRailStripView: View {
         }
         .padding(8)
         .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-        .compositingGroup()
+        .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     private var drawerShape: UnevenRoundedRectangle {
         if edge == .right {
-            // Right rail: 6px pill radius on the left, 0px flush against right bezel
+            // Right rail: 10px continuous radius on the left, 0px flush against right bezel
             return UnevenRoundedRectangle(
-                topLeadingRadius: 6,
-                bottomLeadingRadius: 6,
+                topLeadingRadius: 10,
+                bottomLeadingRadius: 10,
                 bottomTrailingRadius: 0,
-                topTrailingRadius: 0
+                topTrailingRadius: 0,
+                style: .continuous
             )
         } else {
-            // Left rail: 6px pill radius on the right, 0px flush against left bezel
+            // Left rail: 10px continuous radius on the right, 0px flush against left bezel
             return UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
-                bottomTrailingRadius: 6,
-                topTrailingRadius: 6
+                bottomTrailingRadius: 10,
+                topTrailingRadius: 10,
+                style: .continuous
             )
         }
     }
@@ -657,12 +647,8 @@ public struct AmbientRailStripView: View {
             plugin.makeDrawerView(context: context)
         }
         .padding(8)
-        .frame(width: context.drawerWidth, height: totalHeight)
-        .background(palette.solidDrawerBackground)
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(color, lineWidth: 1.5))
-        .shadow(color: Color.black.opacity(0.4), radius: 8, x: edge == .right ? -4 : 4, y: 2)
-        .compositingGroup()
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
+        .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     @ViewBuilder

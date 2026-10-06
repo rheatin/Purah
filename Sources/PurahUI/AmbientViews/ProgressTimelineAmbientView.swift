@@ -18,7 +18,7 @@ public struct ProgressTimelineAmbientView: View {
             ZStack(alignment: .top) {
                 // 背景未流逝区域
                 Rectangle()
-                    .fill(palette.style == .native ? Color.gray.opacity(0.2) : PurahTheme.mutedBorder)
+                    .fill(Color(nsColor: .separatorColor).opacity(0.3))
                 // 已流逝区域
                 Rectangle()
                     .fill(Color.gray.opacity(0.45))

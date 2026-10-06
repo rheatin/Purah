@@ -54,11 +54,11 @@ public final class AppUpdaterManager: @unchecked Sendable {
         let newRelease = AppReleaseInfo(
             version: "2.1.0",
             releaseNotes: """
-            ## Purah Pad v2.1.0 更新日志 (Ancient Zonai Upgrade)
-            - [新增] 左纳乌能源监控微光柱 (Battery Indicator Pod)
+            ## Purah v2.1.0 更新日志 (macOS Liquid Native Release)
+            - [升级] 全面拥抱 macOS 原生 Liquid Ultra-Thin 玻璃拟态与流体边缘
             - [优化] 进一步提升 Fling 意图识别算法，完全杜绝关闭窗口时的误触
             - [优化] 增加对超宽带曲面多显示器边缘的动态自适应
-            - [修复] 修复待办事项分段清除时的微光呼吸动画抖动
+            - [优化] 快捷键一键防遮挡与全系统 100% 免权限冻结避让模式
             """,
             downloadURL: URL(string: "https://github.com/purah/releases/tag/v2.1.0")!
         )
