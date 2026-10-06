@@ -10,8 +10,10 @@ public struct PodCapsuleView: View {
     public let onTransferEdge: () -> Void
     public let onFillRail: () -> Void
 
-    @State private var dragOffset: CGFloat = 0
-    @State private var resizeDelta: CGFloat = 0
+    @State private var dragInitialStart: Double? = nil
+    @State private var resizeInitialLength: Double? = nil
+    @State private var isResizeHovered: Bool = false
+    @State private var isHeaderHovered: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -38,11 +40,10 @@ public struct PodCapsuleView: View {
     }
 
     public var body: some View {
-        let currentLength = max(pod.range.length + Double(resizeDelta / canvasHeight), pod.minLength)
-        let capsuleHeight = max(currentLength * canvasHeight, 36.0)
+        let capsuleHeight = max(pod.range.length * canvasHeight, 36.0)
 
         VStack(spacing: 0) {
-            // Capsule Header & Content
+            // 1. Move Header (Drag to move pod vertically)
             HStack(spacing: 6) {
                 Image(systemName: pod.systemIcon)
                     .font(.system(size: 11))
@@ -61,7 +62,7 @@ public struct PodCapsuleView: View {
                         .font(.system(size: 9))
                         .foregroundColor(podColor.opacity(0.85))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .help("Expand to fill available rail")
 
                 // Transfer edge button
@@ -70,36 +71,60 @@ public struct PodCapsuleView: View {
                         .font(.system(size: 11))
                         .foregroundColor(palette.warningAccent)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tactile)
                 .help(pod.edge == .left ? "Move to Right Rail" : "Move to Left Rail")
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
             .padding(.bottom, 4)
+            .contentShape(Rectangle())
+            // Header-driven anchor-based move gesture (no runaway compounding)
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        if dragInitialStart == nil {
+                            dragInitialStart = pod.range.start
+                        }
+                        let deltaYRatio = Double(value.translation.height / canvasHeight)
+                        let targetStart = (dragInitialStart ?? pod.range.start) + deltaYRatio
+                        onMove(targetStart)
+                    }
+                    .onEnded { _ in
+                        dragInitialStart = nil
+                    }
+            )
 
             Spacer()
 
-            // Resize Handle
+            // 2. High-Affinity Bottom Resize Handle (Real-time 60FPS spring push)
             ZStack {
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(height: 12)
+                    .frame(height: 20)
 
                 Capsule()
-                    .fill(podColor.opacity(0.75))
-                    .frame(width: 28, height: 3)
+                    .fill(isResizeHovered ? podColor : podColor.opacity(0.75))
+                    .frame(width: isResizeHovered ? 36 : 28, height: isResizeHovered ? 4.5 : 3.5)
+                    .modifier(OptionalGlow(color: podColor, enabled: isResizeHovered && palette.useGlow))
+                    .animation(.spring(response: 0.16, dampingFraction: 0.70), value: isResizeHovered)
             }
             .contentShape(Rectangle())
+            .onHover { isHovered in
+                isResizeHovered = isHovered
+            }
+            // Real-time anchor-based resize gesture
             .gesture(
-                DragGesture()
+                DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        resizeDelta = value.translation.height
-                    }
-                    .onEnded { value in
+                        if resizeInitialLength == nil {
+                            resizeInitialLength = pod.range.length
+                        }
                         let deltaRatio = Double(value.translation.height / canvasHeight)
-                        let targetLength = max(pod.minLength, pod.range.length + deltaRatio)
-                        resizeDelta = 0
+                        let targetLength = max(pod.minLength, (resizeInitialLength ?? pod.range.length) + deltaRatio)
                         onResize(targetLength)
+                    }
+                    .onEnded { _ in
+                        resizeInitialLength = nil
                     }
             )
             .help("Drag to resize rail height")
@@ -118,14 +143,6 @@ public struct PodCapsuleView: View {
             radius: 4,
             x: 0,
             y: 2
-        )
-        // 拖拽整个模块主体进行上下位置移动
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    let deltaYRatio = Double(value.translation.height / canvasHeight)
-                    onMove(pod.range.start + deltaYRatio)
-                }
         )
     }
 }
