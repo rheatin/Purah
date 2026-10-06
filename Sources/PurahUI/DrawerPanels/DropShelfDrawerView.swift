@@ -30,11 +30,11 @@ public struct DropShelfDrawerView: View {
                         .modifier(OptionalGlow(color: shelfColor, enabled: isTargeted))
 
                     Text("Drag and drop files from Finder to stash")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .purahBody(size: 11, weight: .medium, design: .rounded)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
                     Text("Supports images, documents, and code")
-                        .font(.system(size: 9))
+                        .purahCaption(size: 9)
                         .foregroundColor(.gray)
                     Spacer()
                 }
@@ -62,11 +62,11 @@ public struct DropShelfDrawerView: View {
 
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text(file.name)
-                                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                                .purahBody(size: 11, weight: .medium, design: .rounded)
                                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                                 .lineLimit(1)
                                             Text(file.sizeDescription)
-                                                .font(.system(size: 8))
+                                                .purahCaption(size: 8)
                                                 .foregroundColor(.gray)
                                         }
                                     }

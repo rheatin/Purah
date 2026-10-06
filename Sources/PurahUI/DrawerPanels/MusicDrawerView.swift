@@ -46,12 +46,12 @@ public struct MusicDrawerView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(store.musicTrack.title)
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .purahTitle(size: 12, weight: .bold, design: .rounded)
                                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                                     .lineLimit(1)
 
                                 Text(store.musicTrack.artist)
-                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .purahBody(size: 10, weight: .medium, design: .rounded)
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                             }
@@ -106,13 +106,11 @@ public struct MusicDrawerView: View {
                     // Time Labels
                     HStack {
                         Text(timeString(for: displaySec))
-                            .font(palette.fontMono)
-                            .font(.system(size: 8))
+                            .purahCaption(size: 8, weight: .medium, design: .monospaced)
                             .foregroundColor(.secondary)
                         Spacer()
                         Text(timeString(for: store.musicTrack.durationSeconds))
-                            .font(palette.fontMono)
-                            .font(.system(size: 8))
+                            .purahCaption(size: 8, weight: .medium, design: .monospaced)
                             .foregroundColor(.secondary)
                     }
                 }
