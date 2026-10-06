@@ -189,25 +189,42 @@ public struct PluginCenterSettingsView: View {
 
                                 Spacer()
 
-                                ColorPicker("", selection: Binding(
-                                    get: { podColor },
-                                    set: { newColor in
-                                        if let hex = newColor.toHex() {
-                                            store.setPodColorHex(podId: podId, hex: hex)
+                                if podId == "vitals" {
+                                    HStack(spacing: 6) {
+                                        HStack(spacing: 3) {
+                                            Circle().fill(Color(red: 0.0, green: 0.90, blue: 0.60)).frame(width: 5, height: 5)
+                                            Circle().fill(Color(red: 1.0, green: 0.72, blue: 0.15)).frame(width: 5, height: 5)
+                                            Circle().fill(Color(red: 1.0, green: 0.28, blue: 0.38)).frame(width: 5, height: 5)
                                         }
+                                        Text("Adaptive Telemetry Mode (Auto color based on load thresholds)")
+                                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                                            .foregroundColor(.secondary)
                                     }
-                                ))
-                                .labelsHidden()
-                                .scaleEffect(0.85)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.primary.opacity(0.04))
+                                    .cornerRadius(6)
+                                } else {
+                                    ColorPicker("", selection: Binding(
+                                        get: { podColor },
+                                        set: { newColor in
+                                            if let hex = newColor.toHex() {
+                                                store.setPodColorHex(podId: podId, hex: hex)
+                                            }
+                                        }
+                                    ))
+                                    .labelsHidden()
+                                    .scaleEffect(0.85)
 
-                                if store.customPodColors[podId] != nil {
-                                    Button("Reset") {
-                                        store.customPodColors.removeValue(forKey: podId)
-                                        store.savePersistentState()
+                                    if store.customPodColors[podId] != nil {
+                                        Button("Reset") {
+                                            store.customPodColors.removeValue(forKey: podId)
+                                            store.savePersistentState()
+                                        }
+                                        .buttonStyle(.tactile)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(palette.primaryAccent)
                                     }
-                                    .buttonStyle(.tactile)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(palette.primaryAccent)
                                 }
                             }
 
