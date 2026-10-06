@@ -29,9 +29,21 @@ public struct ScriptRunwayDrawerView: View {
                                 .frame(width: 14)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(action.name)
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                HStack(spacing: 4) {
+                                    Text(action.name)
+                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                                    if action.commandType == .shortcut {
+                                        Text("SHORTCUT")
+                                            .font(.system(size: 7, weight: .bold))
+                                            .padding(.horizontal, 3)
+                                            .padding(.vertical, 1)
+                                            .background(scriptColor.opacity(0.20))
+                                            .foregroundColor(scriptColor)
+                                            .cornerRadius(3)
+                                    }
+                                }
                                 Text(action.description)
                                     .font(.system(size: 8))
                                     .foregroundColor(.gray)

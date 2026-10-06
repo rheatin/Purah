@@ -37,20 +37,28 @@ public struct MusicDrawerView: View {
             VStack(spacing: 10) {
                 // MARK: - Header: Album Art & Audio Source Badge & Track Info & Pin
                 HStack(spacing: 10) {
-                    // Album Art with Atoll-style Source Badge
-                    albumArtWithSourceBadge
+                    // Album Art with Atoll-style Source Badge (Click to open player)
+                    Button {
+                        activateMusicPlayerApp()
+                    } label: {
+                        HStack(spacing: 10) {
+                            albumArtWithSourceBadge
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(store.musicTrack.title)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.musicTrack.title)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
 
-                        Text(store.musicTrack.artist)
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                                Text(store.musicTrack.artist)
+                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .help("Open \(store.musicTrack.sourceApp)")
 
                     Spacer(minLength: 4)
 
@@ -235,6 +243,16 @@ public struct MusicDrawerView: View {
             return "globe"
         } else {
             return "apple.logo"
+        }
+    }
+
+    private func activateMusicPlayerApp() {
+        let source = store.musicTrack.sourceApp.lowercased()
+        let bundleId = source.contains("spotify") ? "com.spotify.client" : "com.apple.Music"
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
         }
     }
 

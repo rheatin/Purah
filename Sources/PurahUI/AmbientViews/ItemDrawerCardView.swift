@@ -309,36 +309,42 @@ public struct CalendarItemDrawerView: View {
             }
 
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 4) {
-                    Text(event.title)
-                        .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                        .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
-                        .lineLimit(1)
+                Button {
+                    openInSystemCalendar(event: event)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(event.title)
+                            .font(.system(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded))
+                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                            .lineLimit(1)
 
-                    if isOngoing {
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 3.5, height: 3.5)
-                            Text("NOW")
-                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        if isOngoing {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 3.5, height: 3.5)
+                                Text("NOW")
+                                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(podColor))
+                            .foregroundColor(.white)
+                            .shadow(color: podColor.opacity(0.6), radius: 3)
+                        } else if isImminent {
+                            HStack(spacing: 3) {
+                                Text("SOON")
+                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(podColor.opacity(0.25)))
+                            .foregroundColor(podColor)
                         }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(podColor))
-                        .foregroundColor(.white)
-                        .shadow(color: podColor.opacity(0.6), radius: 3)
-                    } else if isImminent {
-                        HStack(spacing: 3) {
-                            Text("SOON")
-                                .font(.system(size: 8, weight: .bold, design: .rounded))
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(Capsule().fill(podColor.opacity(0.25)))
-                        .foregroundColor(podColor)
                     }
                 }
+                .buttonStyle(.plain)
+                .help("Open in Apple Calendar")
 
                 Text("\(formattedTime(event: event)) · \(event.location)")
                     .font(palette.fontMono)
@@ -464,8 +470,182 @@ public struct CalendarItemDrawerView: View {
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 
+    private func openInSystemCalendar(event: CalendarEventItem) {
+        let timestamp = event.startTime.timeIntervalSinceReferenceDate
+        if let url = URL(string: "calshow:\(timestamp)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     private func formattedTime(event: CalendarEventItem) -> String {
         if event.isAllDay { return "All Day" }
         return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+// MARK: - Decomposed Vitals Item Stepped Drawer View
+public struct VitalsItemDrawerView: View {
+    public let metric: VitalsMetricType
+    public let edge: MountEdge
+    public let state: ItemDrawerState
+    public let isPinned: Bool
+    public let height: CGFloat
+    public let store: PurahWorkspaceStore
+    public let onTogglePin: () -> Void
+
+    private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var podColor: Color { palette.podColor(for: "vitals", store: store) }
+    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
+
+    public init(
+        metric: VitalsMetricType,
+        edge: MountEdge,
+        state: ItemDrawerState,
+        isPinned: Bool,
+        height: CGFloat,
+        store: PurahWorkspaceStore,
+        onTogglePin: @escaping () -> Void
+    ) {
+        self.metric = metric
+        self.edge = edge
+        self.state = state
+        self.isPinned = isPinned
+        self.height = height
+        self.store = store
+        self.onTogglePin = onTogglePin
+    }
+
+    public var body: some View {
+        let cardH = max(height, 32.0)
+
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            // 贴边基座色条
+            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
+                .fill(podColor.opacity(metricOpacity))
+                .frame(width: CGFloat(store.railBarWidth), height: cardH)
+
+            if state == .expandedDrawer {
+                expandedCard(cardH: cardH)
+                    .transition(itemDrawerTransition)
+            } else if state == .neighborPeek {
+                neighborPeekCard(cardH: cardH)
+                    .transition(neighborPeekTransition)
+            }
+        }
+        .frame(height: cardH)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+    }
+
+    private var metricOpacity: Double {
+        switch metric {
+        case .cpu:
+            return vitals.metrics.cpuUsage > 0.80 ? 1.0 : 0.85
+        case .ram:
+            return vitals.metrics.memoryUsage > 0.85 ? 1.0 : 0.85
+        case .power:
+            return vitals.metrics.batteryLevel < 20 ? 1.0 : 0.85
+        case .disk:
+            return 0.85
+        }
+    }
+
+    private var itemDrawerTransition: AnyTransition {
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
+        return .asymmetric(
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
+        )
+    }
+
+    private var neighborPeekTransition: AnyTransition {
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
+        return .asymmetric(
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
+        )
+    }
+
+    @ViewBuilder
+    private func expandedCard(cardH: CGFloat) -> some View {
+        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
+
+        HStack(spacing: 8) {
+            VitalsFocusedDrawerView(metric: metric, store: store)
+
+            Spacer(minLength: 2)
+
+            pinButton
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(width: effectiveW, height: max(cardH, 130.0))
+        .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
+    }
+
+    @ViewBuilder
+    private func neighborPeekCard(cardH: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            if edge == .right {
+                Image(systemName: metric.systemIcon)
+                    .font(.system(size: 8))
+                    .foregroundColor(podColor)
+                    .padding(.leading, 6)
+                Spacer()
+            } else {
+                Spacer()
+                Image(systemName: metric.systemIcon)
+                    .font(.system(size: 8))
+                    .foregroundColor(podColor)
+                    .padding(.trailing, 6)
+            }
+        }
+        .frame(width: 28, height: cardH)
+        .background(drawerShape.fill(.ultraThinMaterial))
+        .clipShape(drawerShape)
+        .overlay(drawerShape.stroke(podColor.opacity(0.75), lineWidth: 1))
+    }
+
+    private var drawerShape: UnevenRoundedRectangle {
+        if edge == .right {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 8,
+                bottomLeadingRadius: 8,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+        } else {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 8,
+                topTrailingRadius: 8,
+                style: .continuous
+            )
+        }
+    }
+
+    private var pinButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                onTogglePin()
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
+                    .frame(width: 22, height: 22)
+
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .foregroundColor(isPinned ? podColor : .secondary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isPinned ? -25 : 0))
+                    .scaleEffect(isPinned ? 1.15 : 1.0)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.tactile)
+        .help(isPinned ? "Pinned (click to unpin)" : "Pin metric card")
     }
 }

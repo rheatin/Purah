@@ -44,6 +44,37 @@ public final class ScriptRunwayService: @unchecked Sendable {
 
     public init() {
         self.actions = Self.defaultActions()
+        loadActions()
+    }
+
+    public func addAction(_ action: ScriptActionItem) {
+        actions.append(action)
+        saveActions()
+    }
+
+    public func removeAction(id: String) {
+        actions.removeAll { $0.id == id }
+        saveActions()
+    }
+
+    public func resetToDefaults() {
+        actions = Self.defaultActions()
+        saveActions()
+    }
+
+    public func loadActions() {
+        guard let data = UserDefaults.standard.data(forKey: "purah.runway.actions"),
+              let saved = try? JSONDecoder().decode([ScriptActionItem].self, from: data),
+              !saved.isEmpty else {
+            return
+        }
+        self.actions = saved
+    }
+
+    public func saveActions() {
+        if let data = try? JSONEncoder().encode(actions) {
+            UserDefaults.standard.set(data, forKey: "purah.runway.actions")
+        }
     }
 
     public func executeAction(_ action: ScriptActionItem) async -> (success: Bool, message: String) {

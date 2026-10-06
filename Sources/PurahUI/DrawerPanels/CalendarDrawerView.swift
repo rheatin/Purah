@@ -85,10 +85,16 @@ public struct CalendarDrawerView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(event.title)
-                        .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                        .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
-                        .lineLimit(1)
+                    Button {
+                        openInSystemCalendar(event: event)
+                    } label: {
+                        Text(event.title)
+                            .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
+                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open in Apple Calendar")
 
                     if isOngoing {
                         HStack(spacing: 3) {
@@ -288,6 +294,13 @@ public struct CalendarDrawerView: View {
         }
         .buttonStyle(.tactile)
         .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
+    }
+
+    private func openInSystemCalendar(event: CalendarEventItem) {
+        let timestamp = event.startTime.timeIntervalSinceReferenceDate
+        if let url = URL(string: "calshow:\(timestamp)") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {

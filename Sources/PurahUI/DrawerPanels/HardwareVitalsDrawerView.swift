@@ -242,3 +242,221 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 }
+
+// MARK: - Focused Decomposed Vitals Drawer View
+public struct VitalsFocusedDrawerView: View {
+    public let metric: VitalsMetricType
+    public let store: PurahWorkspaceStore
+    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
+    private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var accentColor: Color { palette.podColor(for: "vitals", store: store) }
+
+    public init(metric: VitalsMetricType, store: PurahWorkspaceStore) {
+        self.metric = metric
+        self.store = store
+    }
+
+    public var body: some View {
+        let metrics = vitals.metrics
+
+        VStack(alignment: .leading, spacing: 8) {
+            switch metric {
+            case .cpu:
+                cpuFocusedView(metrics: metrics)
+            case .ram:
+                ramFocusedView(metrics: metrics)
+            case .power:
+                powerFocusedView(metrics: metrics)
+            case .disk:
+                diskFocusedView(metrics: metrics)
+            }
+        }
+        .padding(.vertical, 2)
+        .onAppear {
+            vitals.startMonitoring()
+            Task {
+                await vitals.refreshMetricsAsync(includeProcesses: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("CPU Activity", systemImage: "cpu")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(Int(metrics.cpuUsage * 100))%")
+                    .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                    .foregroundColor(metrics.cpuUsage > 0.80 ? palette.dangerAccent : accentColor)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(metrics.cpuUsage > 0.80 ? palette.dangerAccent : accentColor)
+                        .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 4))
+                }
+            }
+            .frame(height: 6)
+
+            Text("Top CPU Processes")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 4) {
+                ForEach(metrics.topProcesses.prefix(2)) { proc in
+                    HStack {
+                        Text(proc.name)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(String(format: "%.1f", proc.cpuPercent))%")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Button("Kill") {
+                            vitals.killProcess(pid: proc.id)
+                        }
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(palette.dangerAccent.opacity(0.15))
+                        .foregroundColor(palette.dangerAccent)
+                        .cornerRadius(3)
+                        .buttonStyle(.tactile)
+                    }
+                    .padding(6)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(6)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Memory (RAM)", systemImage: "memorychip")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(Int(metrics.memoryUsage * 100))%")
+                    .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                    .foregroundColor(metrics.memoryUsage > 0.85 ? palette.dangerAccent : palette.primaryAccent)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(metrics.memoryUsage > 0.85 ? palette.dangerAccent : palette.primaryAccent)
+                        .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 4))
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text("Used: \(String(format: "%.1f", metrics.memoryUsedGB)) GB")
+                    .font(.system(size: 9, design: .monospaced))
+                Spacer()
+                Text("Total: \(String(format: "%.0f", metrics.memoryTotalGB)) GB")
+                    .font(.system(size: 9, design: .monospaced))
+            }
+            .foregroundColor(.secondary)
+
+            Text("Top RAM Processes")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 4) {
+                ForEach(metrics.topProcesses.prefix(2)) { proc in
+                    HStack {
+                        Text(proc.name)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(String(format: "%.1f", proc.memoryPercent))%")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(6)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(6)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Power & Battery", systemImage: "bolt.batteryblock.fill")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(metrics.batteryLevel)%")
+                    .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                    .foregroundColor(metrics.batteryLevel < 20 && !metrics.isCharging ? palette.dangerAccent : .green)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(metrics.isCharging ? Color.green : (metrics.batteryLevel < 20 ? palette.dangerAccent : Color.accentColor))
+                        .frame(width: max(geo.size.width * CGFloat(Double(metrics.batteryLevel) / 100.0), 4))
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text(metrics.isCharging ? "Charging (\(metrics.powerSource))" : metrics.powerSource)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Spacer()
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(metrics.isUnderThermalPressure ? palette.dangerAccent : Color.green)
+                        .frame(width: 5, height: 5)
+                    Text("Thermal: \(metrics.thermalStateDescription)")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func diskFocusedView(metrics: HardwareVitalsInfo) -> some View {
+        let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Disk Storage", systemImage: "internaldrive")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(Int(metrics.diskFreeGB))GB Free")
+                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(usedRatio > 0.90 ? palette.dangerAccent : Color.blue)
+                        .frame(width: max(geo.size.width * CGFloat(usedRatio), 4))
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text("\(Int(metrics.diskTotalGB - metrics.diskFreeGB)) GB used of \(Int(metrics.diskTotalGB)) GB")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+        }
+    }
+}
