@@ -58,11 +58,12 @@ public final class EdgeMouseMonitor {
 
     private func handleMouse(event: NSEvent) {
         guard !isFrozen, !store.isRailsFrozen else { return }
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let point = NSEvent.mouseLocation
         let now = Date()
         velocityTracker.add(point: point, timestamp: now)
 
+        coordinator?.updateActiveScreenIfNeeded(for: point)
+        guard let screen = coordinator?.targetScreen(for: point) ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let visibleRect = screen.visibleFrame
 
         // Check if point is near the 14px trigger rail on either side
@@ -126,6 +127,10 @@ public final class EdgeMouseMonitor {
         guard speed < 900.0 else { return }
 
         let edge: MountEdge = isAtLeftEdge ? .left : .right
+        let isSeam = Self.isSeam(edge: edge, on: screen, point: point)
+        // Multi-monitor inter-screen seam suppression: pass-through swipes across monitors (>220 px/s) are ignored
+        if isSeam && speed >= 220.0 { return }
+
         let normalizedY = 1.0 - ((point.y - visibleRect.minY) / visibleRect.height)
 
         let candidatePod = store.pods.first { pod in
@@ -219,6 +224,32 @@ public final class EdgeMouseMonitor {
                 let inDrawerY = (point.y >= minY && point.y <= maxY)
 
                 if inDrawerX && inDrawerY {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /// 检测给定边缘是否与其他外接屏幕直接相邻拼接 (Inter-Screen Seam)
+    public static func isSeam(edge: MountEdge, on screen: NSScreen, point: NSPoint) -> Bool {
+        let screens = NSScreen.screens
+        guard screens.count > 1 else { return false }
+        let currentFrame = screen.frame
+
+        for other in screens where other != screen {
+            let otherFrame = other.frame
+            // 垂直方向有视口重叠
+            guard point.y >= otherFrame.minY - 15 && point.y <= otherFrame.maxY + 15 else { continue }
+
+            if edge == .right {
+                // 另一块显示器紧贴在当前显示器右侧 (左右拼接缝隙 <= 20px)
+                if abs(otherFrame.minX - currentFrame.maxX) <= 20 {
+                    return true
+                }
+            } else {
+                // 另一块显示器紧贴在当前显示器左侧 (左右拼接缝隙 <= 20px)
+                if abs(currentFrame.minX - otherFrame.maxX) <= 20 {
                     return true
                 }
             }
