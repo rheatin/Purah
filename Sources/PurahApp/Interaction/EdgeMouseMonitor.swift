@@ -148,8 +148,27 @@ public final class EdgeMouseMonitor {
         }
 
         let hoverDuration = now.timeIntervalSince(candidateHoverStartTime ?? now)
-        // Instant trigger on slow movement (<300 px/s), or after 80ms dwell on normal movement
-        guard hoverDuration >= 0.08 || speed < 300.0 || store.activeDrawerPodId == candidate.id else { return }
+
+        // Two-Stage Intentionality Gate:
+        // 1. When waking from completely docked state (activeDrawerPodId == nil):
+        //    Require either deliberate hover dwell (>= initialDwellSeconds, default 150ms)
+        //    OR firm physical edge push (distance <= 3px from bezel for >= deepEdgeDwellSeconds, default 60ms).
+        // 2. When already active and browsing between pods/sub-items:
+        //    Allow fast, fluid switching (>= 40ms or active candidate).
+        let isFromDockedState = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
+        let isDeepEdgePush = isAtLeftEdge ? (point.x <= visibleRect.minX + 3.0) : (point.x >= visibleRect.maxX - 3.0)
+
+        let initialDwellReq = store.edgeTriggerSensitivity.initialDwellSeconds
+        let deepEdgeDwellReq = store.edgeTriggerSensitivity.deepEdgeDwellSeconds
+
+        if isFromDockedState {
+            let qualifiesByDwell = (hoverDuration >= initialDwellReq)
+            let qualifiesByPush = (isDeepEdgePush && hoverDuration >= deepEdgeDwellReq)
+            guard qualifiesByDwell || qualifiesByPush else { return }
+        } else {
+            // Already active on rail: fast responsive switching between items
+            guard hoverDuration >= 0.04 || store.activeDrawerPodId == candidate.id else { return }
+        }
 
         if candidate.id == "todo" && !store.todos.isEmpty {
             let count = max(store.todos.count, 1)

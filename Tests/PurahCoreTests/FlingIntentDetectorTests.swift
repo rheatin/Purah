@@ -53,4 +53,29 @@ struct FlingIntentDetectorTests {
         let state3 = tracker.update(podId: "cal", intent: .candidateDwell, timestamp: now.addingTimeInterval(0.17))
         #expect(state3 == .triggered(podId: "cal"))
     }
+
+    @Test("EdgeTriggerSensitivity presets and dwell threshold values")
+    @MainActor
+    func testEdgeTriggerSensitivity() {
+        let agile = EdgeTriggerSensitivity.agile
+        let balanced = EdgeTriggerSensitivity.balanced
+        let cautious = EdgeTriggerSensitivity.cautious
+
+        #expect(agile.initialDwellSeconds == 0.08)
+        #expect(balanced.initialDwellSeconds == 0.15)
+        #expect(cautious.initialDwellSeconds == 0.25)
+
+        #expect(agile.deepEdgeDwellSeconds < balanced.deepEdgeDwellSeconds)
+        #expect(balanced.deepEdgeDwellSeconds < cautious.deepEdgeDwellSeconds)
+
+        let store = PurahWorkspaceStore()
+        store.edgeTriggerSensitivity = .cautious
+        store.savePersistentState()
+
+        let reloaded = PurahWorkspaceStore()
+        #expect(reloaded.edgeTriggerSensitivity == .cautious)
+
+        // Teardown cleanup
+        UserDefaults.standard.removeObject(forKey: "purah.edgeTriggerSensitivity")
+    }
 }
