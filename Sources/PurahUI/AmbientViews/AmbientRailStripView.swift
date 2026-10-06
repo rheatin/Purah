@@ -208,7 +208,7 @@ public struct AmbientRailStripView: View {
     private func musicDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         MusicDrawerView(store: store)
             .padding(8)
-            .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: max(totalHeight, 136.0))
+            .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: totalHeight)
             .background(palette.solidDrawerBackground)
             .clipShape(drawerShape)
             .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -253,7 +253,6 @@ public struct AmbientRailStripView: View {
 
     @ViewBuilder
     private func shelfDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
-        let cardH = max(totalHeight, store.minimumDrawerHeight(for: pod.id))
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "tray.fill")
@@ -327,7 +326,7 @@ public struct AmbientRailStripView: View {
             }
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: cardH)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -369,7 +368,6 @@ public struct AmbientRailStripView: View {
 
     @ViewBuilder
     private func notesDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
-        let cardH = max(totalHeight, store.minimumDrawerHeight(for: pod.id))
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "note.text")
@@ -407,7 +405,7 @@ public struct AmbientRailStripView: View {
             .foregroundColor(palette.style == .native ? Color.primary : .white)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: cardH)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -462,7 +460,6 @@ public struct AmbientRailStripView: View {
 
     @ViewBuilder
     private func vitalsDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
-        let cardH = max(totalHeight, store.minimumDrawerHeight(for: pod.id))
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "waveform.path.ecg")
@@ -477,7 +474,7 @@ public struct AmbientRailStripView: View {
             HardwareVitalsDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: cardH)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -523,7 +520,6 @@ public struct AmbientRailStripView: View {
 
     @ViewBuilder
     private func scriptsDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
-        let cardH = max(totalHeight, store.minimumDrawerHeight(for: pod.id))
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "terminal.fill")
@@ -538,7 +534,7 @@ public struct AmbientRailStripView: View {
             ScriptRunwayDrawerView(store: store)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: cardH)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
@@ -647,7 +643,6 @@ public struct AmbientRailStripView: View {
     private func pluginDrawerCard(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext, totalHeight: CGFloat) -> some View {
         let color = context.accentColor
         let isPinned = context.isPinned
-        let drawerH = max(totalHeight, store.minimumDrawerHeight(for: pod.id))
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: plugin.manifest.systemIcon)
@@ -662,7 +657,7 @@ public struct AmbientRailStripView: View {
             plugin.makeDrawerView(context: context)
         }
         .padding(8)
-        .frame(width: context.drawerWidth, height: drawerH)
+        .frame(width: context.drawerWidth, height: totalHeight)
         .background(palette.solidDrawerBackground)
         .clipShape(drawerShape)
         .overlay(drawerShape.stroke(color, lineWidth: 1.5))
