@@ -185,6 +185,18 @@ public final class EdgeMouseMonitor {
                     store.activeDrawerPodId = candidate.id
                 }
             }
+        } else if candidate.id == "scripts" && store.isScriptsDecomposed && !store.scriptsEnabledActions.isEmpty {
+            let count = max(store.scriptsEnabledActions.count, 1)
+            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
+            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+            let action = store.scriptsEnabledActions[itemIdx]
+            let itemId = "scripts-\(action.id)"
+            if store.activeDrawerItemId != itemId {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                    store.activeDrawerItemId = itemId
+                    store.activeDrawerPodId = candidate.id
+                }
+            }
         } else {
             if store.activeDrawerPodId != candidate.id {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
@@ -203,7 +215,8 @@ public final class EdgeMouseMonitor {
             let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
             let hasActiveOrPinnedChild = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
                                          (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
-                                         (pod.id == "vitals" && store.isVitalsDecomposed && store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") || "vitals-\($0.rawValue)" == store.activeDrawerItemId })
+                                         (pod.id == "vitals" && store.isVitalsDecomposed && store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") || "vitals-\($0.rawValue)" == store.activeDrawerItemId }) ||
+                                         (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
                 // Physical Co-Planar Rule: drawer card height matches rail bar height exactly

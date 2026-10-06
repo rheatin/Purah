@@ -43,6 +43,8 @@ public struct AmbientRailStripView: View {
                             calendarPodItems(pod: pod, totalHeight: podHeight)
                         } else if pod.id == "vitals" && store.isVitalsDecomposed {
                             decomposedVitalsPodItems(pod: pod, totalHeight: podHeight)
+                        } else if pod.id == "scripts" && store.isScriptsDecomposed {
+                            decomposedScriptsPodItems(pod: pod, totalHeight: podHeight)
                         } else if pod.id == "vitals" {
                             vitalsRailBar(pod: pod, totalHeight: podHeight)
                         } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
@@ -70,6 +72,7 @@ public struct AmbientRailStripView: View {
                     .zIndex(isThisPodActive ? 100 : 1)
                 }
             }
+            .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .left ? .leading : .trailing)
         .ignoresSafeArea()
@@ -116,10 +119,16 @@ public struct AmbientRailStripView: View {
                         }
                     }
                 }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                        store.activateDrawer(podId: pod.id, itemId: todo.id)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
             }
         }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
     }
 
@@ -164,10 +173,16 @@ public struct AmbientRailStripView: View {
                         }
                     }
                 }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                        store.activateDrawer(podId: pod.id, itemId: event.id)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
             }
         }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalHeight)
     }
 
@@ -215,10 +230,73 @@ public struct AmbientRailStripView: View {
                         }
                     }
                 }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                        store.activateDrawer(podId: pod.id, itemId: itemId)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: itemH)
             }
         }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
+        .frame(height: totalSpanH)
+    }
+
+    // MARK: - Scripts 可拆分多指令独立步进抽屉
+    @ViewBuilder
+    private func decomposedScriptsPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
+        let actions = store.scriptsEnabledActions
+        let count = max(actions.count, 1)
+        let spacing: CGFloat = 2.5
+        let totalSpacing = spacing * CGFloat(count - 1)
+        let minBarH: CGFloat = 56.0
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minBarH)
+        let totalSpanH = max(totalHeight, CGFloat(count) * minBarH + totalSpacing)
+
+        VStack(spacing: spacing) {
+            ForEach(actions) { action in
+                let itemId = "scripts-\(action.id)"
+                let isPinned = store.isItemPinned(id: itemId)
+                let isActive = (itemId == store.activeDrawerItemId || isPinned)
+                let activeIdx = actions.firstIndex(where: { "scripts-\($0.id)" == (store.activeDrawerItemId ?? "") })
+                let thisIdx = actions.firstIndex(where: { $0.id == action.id }) ?? -99
+                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
+
+                let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+
+                ScriptItemDrawerView(
+                    action: action,
+                    edge: edge,
+                    state: state,
+                    isPinned: isPinned,
+                    height: itemH,
+                    store: store,
+                    onTogglePin: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                            store.togglePinItem(id: itemId)
+                        }
+                    }
+                )
+                .id(itemId)
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    if isHovered {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            store.activateDrawer(podId: pod.id, itemId: itemId)
+                        }
+                    }
+                }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                        store.activateDrawer(podId: pod.id, itemId: itemId)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
+                .frame(height: itemH)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: totalSpanH)
     }
 
