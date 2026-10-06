@@ -46,7 +46,7 @@ public struct HardwareVitalsDrawerView: View {
                         .frame(height: 5)
                     }
                     .padding(7)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                    .background(Color.primary.opacity(0.04))
                     .cornerRadius(8)
 
                     // Memory Metric Card
@@ -76,7 +76,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(7)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                    .background(Color.primary.opacity(0.04))
                     .cornerRadius(8)
                 }
 
@@ -110,7 +110,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(7)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                    .background(Color.primary.opacity(0.04))
                     .cornerRadius(8)
 
                     // Battery / Power Metric Card
@@ -141,7 +141,7 @@ public struct HardwareVitalsDrawerView: View {
                             .lineLimit(1)
                     }
                     .padding(7)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                    .background(Color.primary.opacity(0.04))
                     .cornerRadius(8)
                 }
 
@@ -215,7 +215,7 @@ public struct HardwareVitalsDrawerView: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
-                            .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+                            .background(Color.primary.opacity(0.04))
                             .cornerRadius(6)
                         }
                     }
