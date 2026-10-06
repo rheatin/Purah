@@ -71,4 +71,48 @@ struct CalendarSyncTests {
         #expect(occurrence2.id != store.activeDrawerItemId, "Occurrence 2 must remain docked when occurrence 1 is popped out")
         #expect(occurrence3.id != store.activeDrawerItemId, "Occurrence 3 must remain docked when occurrence 1 is popped out")
     }
+
+    @Test("Deduplicates identical events across multiple calendar accounts")
+    func testEventDeduplication() {
+        let now = Date()
+        let eventA = CalendarEventItem(
+            id: "work-event-1",
+            title: "Architecture Review",
+            location: "Room 101",
+            calendarTitle: "Work",
+            startTime: now,
+            endTime: now.addingTimeInterval(3600)
+        )
+        // Same title and same start time from a synced personal / Google account
+        let eventB = CalendarEventItem(
+            id: "google-event-2",
+            title: "Architecture Review",
+            location: "Room 101",
+            calendarTitle: "Personal",
+            startTime: now,
+            endTime: now.addingTimeInterval(3600)
+        )
+        let eventC = CalendarEventItem(
+            id: "work-event-3",
+            title: "Sprint Planning",
+            location: "Room 102",
+            calendarTitle: "Work",
+            startTime: now.addingTimeInterval(7200),
+            endTime: now.addingTimeInterval(10800)
+        )
+
+        let all = [eventA, eventB, eventC]
+        var seenKeys = Set<String>()
+        var deduplicated: [CalendarEventItem] = []
+        for event in all {
+            let key = "\(event.title.trimmingCharacters(in: .whitespacesAndNewlines))_\(Int(event.startTime.timeIntervalSince1970))"
+            if !seenKeys.contains(key) {
+                seenKeys.insert(key)
+                deduplicated.append(event)
+            }
+        }
+
+        #expect(deduplicated.count == 2)
+        #expect(deduplicated.map(\.title) == ["Architecture Review", "Sprint Planning"])
+    }
 }
