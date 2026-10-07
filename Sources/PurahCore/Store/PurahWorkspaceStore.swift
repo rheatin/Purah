@@ -133,8 +133,37 @@ public final class PurahWorkspaceStore {
     // Multi-display behavior
     public var displayTargetMode: DisplayTargetMode = .followCursor
 
-    // Edge Trigger Intentionality Sensitivity
+    // Edge Trigger Intentionality Sensitivity & Calibration
     public var edgeTriggerSensitivity: EdgeTriggerSensitivity = .balanced
+    public var customInitialDwellMs: Double = 150.0
+    public var customExitGraceMs: Double = 280.0
+    public var customCatchCorridorPt: Double = 50.0
+
+    public var activeInitialDwellSeconds: Double {
+        edgeTriggerSensitivity == .custom ? (customInitialDwellMs / 1000.0) : edgeTriggerSensitivity.initialDwellSeconds
+    }
+
+    public var activeDeepEdgeDwellSeconds: Double {
+        edgeTriggerSensitivity == .custom ? min(customInitialDwellMs / 2000.0, 0.12) : edgeTriggerSensitivity.deepEdgeDwellSeconds
+    }
+
+    public var activeExitGraceSeconds: Double {
+        edgeTriggerSensitivity == .custom ? (customExitGraceMs / 1000.0) : edgeTriggerSensitivity.exitGraceDurationSeconds
+    }
+
+    public var activeCatchCorridor: Double {
+        edgeTriggerSensitivity == .custom ? customCatchCorridorPt : edgeTriggerSensitivity.overshootCatchCorridor
+    }
+
+    public func applySensitivityPreset(_ preset: EdgeTriggerSensitivity) {
+        edgeTriggerSensitivity = preset
+        if preset != .custom {
+            customInitialDwellMs = preset.initialDwellSeconds * 1000.0
+            customExitGraceMs = preset.exitGraceDurationSeconds * 1000.0
+            customCatchCorridorPt = preset.overshootCatchCorridor
+        }
+        savePersistentState()
+    }
 
     // Real-time synchronization flags and scopes
     public var isUsingRealCalendar: Bool = false
@@ -322,6 +351,12 @@ public final class PurahWorkspaceStore {
            let sens = EdgeTriggerSensitivity(rawValue: sensStr) {
             self.edgeTriggerSensitivity = sens
         }
+        let dwellMs = defaults.double(forKey: "purah.customInitialDwellMs")
+        if dwellMs > 0 { self.customInitialDwellMs = dwellMs }
+        let graceMs = defaults.double(forKey: "purah.customExitGraceMs")
+        if graceMs > 0 { self.customExitGraceMs = graceMs }
+        let corridorPt = defaults.double(forKey: "purah.customCatchCorridorPt")
+        if corridorPt > 0 { self.customCatchCorridorPt = corridorPt }
     }
 
     public func savePersistentState() {
@@ -344,6 +379,9 @@ public final class PurahWorkspaceStore {
         defaults.set(scriptsEnabledActionIds, forKey: "purah.scripts.enabledActionIds")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
         defaults.set(edgeTriggerSensitivity.rawValue, forKey: "purah.edgeTriggerSensitivity")
+        defaults.set(customInitialDwellMs, forKey: "purah.customInitialDwellMs")
+        defaults.set(customExitGraceMs, forKey: "purah.customExitGraceMs")
+        defaults.set(customCatchCorridorPt, forKey: "purah.customCatchCorridorPt")
     }
 
     public func autoLayoutAll() {

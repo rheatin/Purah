@@ -72,10 +72,32 @@ struct FlingIntentDetectorTests {
         store.edgeTriggerSensitivity = .cautious
         store.savePersistentState()
 
+        #expect(agile.exitGraceDurationSeconds == 0.18)
+        #expect(balanced.exitGraceDurationSeconds == 0.28)
+        #expect(cautious.exitGraceDurationSeconds == 0.40)
+
+        #expect(agile.overshootCatchCorridor == 35.0)
+        #expect(balanced.overshootCatchCorridor == 50.0)
+        #expect(cautious.overshootCatchCorridor == 65.0)
+
+        store.applySensitivityPreset(.cautious)
+        #expect(store.activeExitGraceSeconds == 0.40)
+        #expect(store.activeCatchCorridor == 65.0)
+
+        store.edgeTriggerSensitivity = .custom
+        store.customExitGraceMs = 350.0
+        store.customCatchCorridorPt = 55.0
+        #expect(store.activeExitGraceSeconds == 0.35)
+        #expect(store.activeCatchCorridor == 55.0)
+        store.savePersistentState()
+
         let reloaded = PurahWorkspaceStore()
-        #expect(reloaded.edgeTriggerSensitivity == .cautious)
+        #expect(reloaded.edgeTriggerSensitivity == .custom)
 
         // Teardown cleanup
         UserDefaults.standard.removeObject(forKey: "purah.edgeTriggerSensitivity")
+        UserDefaults.standard.removeObject(forKey: "purah.customInitialDwellMs")
+        UserDefaults.standard.removeObject(forKey: "purah.customExitGraceMs")
+        UserDefaults.standard.removeObject(forKey: "purah.customCatchCorridorPt")
     }
 }
