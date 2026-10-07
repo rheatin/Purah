@@ -25,6 +25,7 @@ public final class EdgeMouseMonitor {
     private var lastCandidatePodId: String?
     private var candidateHoverStartTime: Date?
     private var wasAtAbsoluteBezel: Bool = false
+    private var bezelArrivalTime: Date? = nil
     public private(set) var isFrozen: Bool = false
     public static weak var shared: EdgeMouseMonitor?
 
@@ -56,6 +57,7 @@ public final class EdgeMouseMonitor {
             dwellTracker.reset()
             pushAccumulator.reset()
             wasAtAbsoluteBezel = false
+            bezelArrivalTime = nil
         }
     }
 
@@ -70,6 +72,8 @@ public final class EdgeMouseMonitor {
         cancelInitialDwell()
         pushAccumulator.reset()
         wasAtAbsoluteBezel = false
+        bezelArrivalTime = nil
+        bezelArrivalTime = nil
         wasAtAbsoluteBezel = false
         lastCandidatePodId = nil
         candidateHoverStartTime = nil
@@ -148,7 +152,7 @@ public final class EdgeMouseMonitor {
         }
     }
 
-    public func handleHardwareRawMotion(point: CGPoint? = nil, rawDeltaX: Double) {
+    public func handleHardwareRawMotion(point: CGPoint? = nil, rawDeltaX: Double, now: Date = Date()) {
         guard !isFrozen, !store.isRailsFrozen else { return }
         guard store.edgeTriggerMode == .pushForce else { return }
         guard store.activeDrawerPodId == nil && store.activeDrawerItemId == nil else { return }
@@ -173,20 +177,28 @@ public final class EdgeMouseMonitor {
         let isAtAbsoluteBezel = (edge == .left) ? (mousePoint.x <= visibleRect.minX + 1.5) : (mousePoint.x >= visibleRect.maxX - 1.5)
         guard isAtAbsoluteBezel else {
             wasAtAbsoluteBezel = false
+            bezelArrivalTime = nil
             pushAccumulator.reset()
             return
         }
 
-        // 触边第一帧抑制：若刚触边，丢弃飞行位移
-        guard wasAtAbsoluteBezel else {
+        guard let arrivalTime = bezelArrivalTime else {
+            bezelArrivalTime = now
             wasAtAbsoluteBezel = true
+            pushAccumulator.reset()
+            return
+        }
+
+        // 触边静止稳定门禁 (Settle Gate: 50ms)：
+        // 从空中划向边框的前 50ms 内属于撞边惯性滑行期，强制不计入推力！
+        guard now.timeIntervalSince(arrivalTime) >= 0.05 else {
             pushAccumulator.reset()
             return
         }
 
         let breakthrough = pushAccumulator.push(
             outwardDelta: outwardDelta,
-            timestamp: Date(),
+            timestamp: now,
             threshold: store.activePushResistanceBarrier
         )
 
@@ -289,6 +301,7 @@ public final class EdgeMouseMonitor {
             dwellTracker.reset()
             pushAccumulator.reset()
             wasAtAbsoluteBezel = false
+            bezelArrivalTime = nil
             cancelInitialDwell()
             store.hoveredPodId = nil
             lastCandidatePodId = nil
@@ -299,6 +312,7 @@ public final class EdgeMouseMonitor {
         // Only trigger drawer expansion when physically on the trigger edge
         guard isAtLeftEdge || isAtRightEdge else {
             wasAtAbsoluteBezel = false
+            bezelArrivalTime = nil
             pushAccumulator.reset()
             cancelInitialDwell()
             return
@@ -343,36 +357,42 @@ public final class EdgeMouseMonitor {
         // 1. Calculate Edge Push Force (Barrier / Input Leap / Loop 相对位移累加器模型)
         // 核心铁律：
         // 1. 光标未完全到达物理边框 (<= 1.5pt) 之前，严禁提前蓄力，累加器强制清零！
-        // 2. 触边第一帧 (Arrival Frame) 携带的是空中的冲刺位移，必须彻底丢弃清零！
-        // 3. 只有到达边缘停住后 (wasAtAbsoluteBezel == true)，后续继续推边产生的位移才计入推力！
+        // 2. 触边静止稳定门禁 (Settle Gate: 50ms)：从空中划向边框的前 50ms 内属于撞边惯性滑行期，强制不计入推力！
+        // 3. 只有到达边缘停稳后，后续继续推边产生的位移才计入推力！
         let isPushForceBreakthrough: Bool
         if isAtAbsoluteBezel {
-            if wasAtAbsoluteBezel {
-                let outwardDelta: Double
-                if let ev = event {
-                    let rawDeltaX = Double(ev.deltaX)
-                    outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
-                } else if let customVel = customVelocity {
-                    let simDeltaX = Double(customVel.x) * 0.016
-                    outwardDelta = (edge == .left) ? -simDeltaX : simDeltaX
-                } else {
-                    let velX = Double(vel.x) * 0.016
-                    outwardDelta = (edge == .left) ? -velX : velX
-                }
+            if let arrivalTime = bezelArrivalTime {
+                if now.timeIntervalSince(arrivalTime) >= 0.05 {
+                    let outwardDelta: Double
+                    if let ev = event {
+                        let rawDeltaX = Double(ev.deltaX)
+                        outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
+                    } else if let customVel = customVelocity {
+                        let simDeltaX = Double(customVel.x) * 0.016
+                        outwardDelta = (edge == .left) ? -simDeltaX : simDeltaX
+                    } else {
+                        let velX = Double(vel.x) * 0.016
+                        outwardDelta = (edge == .left) ? -velX : velX
+                    }
 
-                let isAccumulatorBreakthrough = pushAccumulator.push(
-                    outwardDelta: outwardDelta,
-                    timestamp: now,
-                    threshold: store.activePushResistanceBarrier
-                )
-                isPushForceBreakthrough = !isSeam && isAccumulatorBreakthrough
+                    let isAccumulatorBreakthrough = pushAccumulator.push(
+                        outwardDelta: outwardDelta,
+                        timestamp: now,
+                        threshold: store.activePushResistanceBarrier
+                    )
+                    isPushForceBreakthrough = !isSeam && isAccumulatorBreakthrough
+                } else {
+                    pushAccumulator.reset()
+                    isPushForceBreakthrough = false
+                }
             } else {
-                // 触边到达第一帧：丢弃空中位移，标记已到达，累加器清零，绝对不弹！
+                bezelArrivalTime = now
                 wasAtAbsoluteBezel = true
                 pushAccumulator.reset()
                 isPushForceBreakthrough = false
             }
         } else {
+            bezelArrivalTime = nil
             wasAtAbsoluteBezel = false
             pushAccumulator.reset()
             isPushForceBreakthrough = false
