@@ -251,15 +251,18 @@ public final class EdgeMouseMonitor {
         let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer
         let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer
 
-        let isLeftDrawerOpen = (store.activePod?.edge == .left || store.hasPinnedItem(on: .left))
-        let isRightDrawerOpen = (store.activePod?.edge == .right || store.hasPinnedItem(on: .right))
+        let activeIdLeft = store.activeDrawerItemId ?? store.activeDrawerPodId
+        let isLeftActiveUnpinned = (store.activePod?.edge == .left) && (activeIdLeft != nil && !store.isItemPinned(id: activeIdLeft!))
+
+        let activeIdRight = store.activeDrawerItemId ?? store.activeDrawerPodId
+        let isRightActiveUnpinned = (store.activePod?.edge == .right) && (activeIdRight != nil && !store.isItemPinned(id: activeIdRight!))
 
         // 1. Manage Left Rail independence
         if shouldBeInteractiveLeft {
             leftExitGraceTask?.cancel()
             leftExitGraceTask = nil
             coordinator?.setInteractive(true, for: .left)
-        } else if isLeftDrawerOpen {
+        } else if isLeftActiveUnpinned {
             if leftExitGraceTask == nil {
                 leftExitGraceTask = Task { @MainActor [weak self] in
                     let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
@@ -280,7 +283,7 @@ public final class EdgeMouseMonitor {
             rightExitGraceTask?.cancel()
             rightExitGraceTask = nil
             coordinator?.setInteractive(true, for: .right)
-        } else if isRightDrawerOpen {
+        } else if isRightActiveUnpinned {
             if rightExitGraceTask == nil {
                 rightExitGraceTask = Task { @MainActor [weak self] in
                     let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
