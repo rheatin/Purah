@@ -55,10 +55,8 @@ public struct TodoDrawerView: View {
                 }
             }
         }
-        .onAppear {
-            Task {
-                await SystemRemindersSyncService.shared.syncReminders(into: store, scope: store.remindersScope)
-            }
+        .task {
+            await SystemRemindersSyncService.shared.syncReminders(into: store, scope: store.remindersScope)
         }
     }
 

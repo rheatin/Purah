@@ -72,42 +72,49 @@ public struct HardwareVitalsInfo: Sendable {
     }
 }
 
+private final class CpuTelemetryBuffer: @unchecked Sendable {
+    var previousCpuInfo: processor_info_array_t?
+    var previousCpuInfoCount: mach_msg_type_number_t = 0
+    var previousNetworkInBytes: UInt64?
+    var previousNetworkOutBytes: UInt64?
+    var previousNetworkTimestamp: Date?
+
+    deinit {
+        if let prev = previousCpuInfo {
+            let byteSize = vm_size_t(previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), byteSize)
+        }
+    }
+}
+
 @Observable
-public final class HardwareVitalsService: @unchecked Sendable {
+@MainActor
+public final class HardwareVitalsService {
     public static let shared = HardwareVitalsService()
 
     public private(set) var metrics: HardwareVitalsInfo = .init()
-    @ObservationIgnored private var timer: Timer?
-
-    @ObservationIgnored private let cpuLock = NSLock()
-    @ObservationIgnored private var previousCpuInfo: processor_info_array_t?
-    @ObservationIgnored private var previousCpuInfoCount: mach_msg_type_number_t = 0
-    @ObservationIgnored private var previousNetworkInBytes: UInt64?
-    @ObservationIgnored private var previousNetworkOutBytes: UInt64?
-    @ObservationIgnored private var previousNetworkTimestamp: Date?
+    @ObservationIgnored private var monitorTask: Task<Void, Never>?
+    @ObservationIgnored private let buffer = CpuTelemetryBuffer()
 
     public init() {
-        Task.detached(priority: .utility) { [weak self] in
-            await self?.refreshMetricsAsync(includeProcesses: false)
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            await self?.refreshMetricsAsync(includeProcesses: false)
-        }
+        refreshMetrics(includeProcesses: false)
         startMonitoring(interval: 1.0)
     }
 
     public func startMonitoring(interval: TimeInterval = 1.0) {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task.detached(priority: .utility) { [weak self] in
-                // Lightweight periodic poll (CPU, RAM, Battery, Disk without process enumeration)
-                await self?.refreshMetricsAsync(includeProcesses: false)
+        monitorTask?.cancel()
+        monitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self = self else { break }
+                self.refreshMetrics(includeProcesses: false)
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
 
     public func stopMonitoring() {
-        timer?.invalidate()
-        timer = nil
+        monitorTask?.cancel()
+        monitorTask = nil
     }
 
     public func refreshMetrics(includeProcesses: Bool = true) {
@@ -140,35 +147,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
     }
 
     public func refreshMetricsAsync(includeProcesses: Bool = false) async {
-        let cpu = readCPUUsage()
-        let gpu = readGPUUsage()
-        let mem = readMemoryBreakdown()
-        let disk = readDiskSpace()
-        let battery = readBatteryInfo()
-        let thermal = readThermalState()
-        let net = readNetworkThroughput()
-        let currentProcesses = await MainActor.run { self.metrics.topProcesses }
-        let top = includeProcesses ? readTopProcessesNative() : (currentProcesses.isEmpty ? readTopProcessesNative() : currentProcesses)
-
-        await MainActor.run {
-            self.metrics = HardwareVitalsInfo(
-                cpuUsage: cpu,
-                gpuUsage: gpu,
-                memoryUsage: mem.usage,
-                memoryUsedGB: mem.usedGB,
-                memoryTotalGB: mem.totalGB,
-                diskFreeGB: disk.freeGB,
-                diskTotalGB: disk.totalGB,
-                batteryLevel: battery.level,
-                isCharging: battery.isCharging,
-                powerSource: battery.source,
-                thermalStateDescription: thermal.description,
-                isUnderThermalPressure: thermal.isPressure || cpu > 0.80 || mem.usage > 0.85 || gpu > 0.85,
-                networkDownSpeed: net.down,
-                networkUpSpeed: net.up,
-                topProcesses: top
-            )
-        }
+        refreshMetrics(includeProcesses: includeProcesses)
     }
 
     public func killProcess(pid: Int32) {
@@ -178,9 +157,10 @@ public final class HardwareVitalsService: @unchecked Sendable {
             kill(pid, SIGTERM)
         }
 
-        Task.detached(priority: .utility) { [weak self] in
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            await self?.refreshMetricsAsync(includeProcesses: true)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.refreshMetrics(includeProcesses: true)
         }
     }
 
@@ -267,10 +247,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
 
         var totalUsage: Double = 0.0
 
-        cpuLock.lock()
-        defer { cpuLock.unlock() }
-
-        if let prev = previousCpuInfo, previousCpuInfoCount == numCpuInfo {
+        if let prev = buffer.previousCpuInfo, buffer.previousCpuInfoCount == numCpuInfo {
             var inUse: Int64 = 0
             var total: Int64 = 0
 
@@ -296,26 +273,19 @@ public final class HardwareVitalsService: @unchecked Sendable {
             totalUsage = 0.15
         }
 
-        if let prev = previousCpuInfo {
-            let byteSize = vm_size_t(previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
+        if let prev = buffer.previousCpuInfo {
+            let byteSize = vm_size_t(buffer.previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), byteSize)
         }
 
-        previousCpuInfo = cpuInfo
-        previousCpuInfoCount = numCpuInfo
+        buffer.previousCpuInfo = cpuInfo
+        buffer.previousCpuInfoCount = numCpuInfo
 
         return min(max(totalUsage, 0.0), 1.0)
     }
 
     deinit {
-        timer?.invalidate()
-        cpuLock.lock()
-        if let prev = previousCpuInfo {
-            previousCpuInfo = nil
-            let byteSize = vm_size_t(previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), byteSize)
-        }
-        cpuLock.unlock()
+        monitorTask?.cancel()
     }
 
     // MARK: - Native Darwin proc_pidinfo & NSWorkspace collection
@@ -414,9 +384,9 @@ public final class HardwareVitalsService: @unchecked Sendable {
         var downSpeed: Double = 0.0
         var upSpeed: Double = 0.0
 
-        if let prevIn = previousNetworkInBytes,
-           let prevOut = previousNetworkOutBytes,
-           let prevTime = previousNetworkTimestamp {
+        if let prevIn = buffer.previousNetworkInBytes,
+           let prevOut = buffer.previousNetworkOutBytes,
+           let prevTime = buffer.previousNetworkTimestamp {
             let elapsed = now.timeIntervalSince(prevTime)
             if elapsed > 0.05 {
                 let deltaIn = totalIn >= prevIn ? Double(totalIn - prevIn) : 0.0
@@ -426,9 +396,9 @@ public final class HardwareVitalsService: @unchecked Sendable {
             }
         }
 
-        previousNetworkInBytes = totalIn
-        previousNetworkOutBytes = totalOut
-        previousNetworkTimestamp = now
+        buffer.previousNetworkInBytes = totalIn
+        buffer.previousNetworkOutBytes = totalOut
+        buffer.previousNetworkTimestamp = now
 
         return (max(downSpeed, 0.0), max(upSpeed, 0.0))
     }

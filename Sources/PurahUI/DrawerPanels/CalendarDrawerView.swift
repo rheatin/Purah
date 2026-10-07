@@ -6,6 +6,7 @@ import PurahCore
 public struct CalendarDrawerView: View {
     public let store: PurahWorkspaceStore
     @State private var activeIndex: Int = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -46,7 +47,7 @@ public struct CalendarDrawerView: View {
                 steppedEventList()
             }
         }
-        .onAppear {
+        .task {
             SystemCalendarSyncService.shared.syncEvents(into: store, scope: store.calendarScope)
         }
     }
@@ -61,21 +62,23 @@ public struct CalendarDrawerView: View {
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled && !isAcknowledged
 
         HStack(alignment: .top, spacing: 8) {
-            if isAlerting {
-                TimelineView(.animation) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    let pulse = (sin(time * 4.2) + 1.0) / 2.0
-                    ZStack {
-                        Circle()
-                            .stroke(podColor.opacity(0.6 * (1.0 - pulse)), lineWidth: 1.2)
-                            .frame(width: 7 + pulse * 6, height: 7 + pulse * 6)
-                        Circle()
-                            .fill(podColor)
-                            .frame(width: 7, height: 7)
-                            .shadow(color: podColor.opacity(0.8), radius: 3)
-                    }
-                    .frame(width: 14, height: 14)
+            if isAlerting && !reduceMotion {
+                ZStack {
+                    Circle()
+                        .stroke(podColor, lineWidth: 1.2)
+                        .phaseAnimator([0.0, 1.0]) { view, phase in
+                            view
+                                .scaleEffect(1.0 + phase * 0.85)
+                                .opacity(0.65 * (1.0 - phase))
+                        } animation: { _ in
+                            .easeInOut(duration: 1.4).repeatForever(autoreverses: false)
+                        }
+                    Circle()
+                        .fill(podColor)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: podColor.opacity(0.8), radius: 3)
                 }
+                .frame(width: 14, height: 14)
                 .padding(.top, 2)
             } else {
                 Circle()
