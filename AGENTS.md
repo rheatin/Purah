@@ -109,6 +109,23 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
    - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts.
    - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at $\ge 56\text{pt}$.
 
+### 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
+1. **Unified Card Anatomy**:
+   - Every plugin drawer card adheres to the standard 3-row golden structure:
+     - **Row 1 (Header)**: Primary Icon + Name (bold) + Subtype Badge (monospaced) + Standardized Pin Button (`PurahPinButton`).
+     - **Row 2 (Body)**: Core content, monospaced command preview, live metric graph, or text preview.
+     - **Row 3 (Action)**: Auxiliary status/timestamp + Tactile Primary Action Button.
+2. **Rail-Aware Safe Inset Margin (18pt ~ 22pt Floating Edge Inset)**:
+   - Interactive buttons (Pin, Run, Toggle, Actions) **MUST NEVER hug the outer floating boundary**.
+   - All drawer cards enforce an `18pt ~ 22pt` inset padding on the floating edge (`trailing` on Left Rail, `leading` on Right Rail).
+   - This prevents natural cursor momentum from accidentally overshooting past the card and prematurely collapsing the drawer.
+3. **Dual-Rail Symmetric Catch Corridor (+50pt Invisible Buffer)**:
+   - `PassThroughHostingView` and `EdgeMouseMonitor` expand the interactive hit-test bounding box by `+50pt` beyond the outer floating edge of the card, and $\pm 18\text{pt}$ vertically.
+   - Mouse overshoots within this 50pt corridor remain interactive and preserve drawer state.
+4. **Comprehensive Edge Sensitivity & Calibration Model**:
+   - `EdgeTriggerSensitivity` governs both the **Initial Dwell Window (首次悬停延时)**, the **Exit Grace Window (离开抽屉容差时间)**, and the **Overshoot Catch Corridor Width**.
+   - Presets (Agile, Balanced, Cautious) provide 1-click convenience, complemented by a fine-grained calibration instrument (sliders/steppers) in Preferences for millisecond precision tuning.
+
 ---
 
 ## 5. System Services & Low-Level Darwin Rules
