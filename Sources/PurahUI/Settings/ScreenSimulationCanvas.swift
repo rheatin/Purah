@@ -91,10 +91,12 @@ public struct ScreenSimulationCanvas: View {
                             .fill(Color.black.opacity(0.18))
                             .frame(width: 185, height: workableHeight)
 
-                        let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: Double(workableHeight))
+                        let realScreenH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
+                        let leftScale = workableHeight / realScreenH
+                        let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: realScreenH)
                         ForEach(leftLayout) { item in
-                            let topY = CGFloat(item.startY)
-                            let podSpan = CGFloat(item.spanH)
+                            let topY = CGFloat(item.startY * leftScale)
+                            let podSpan = CGFloat(item.spanH * leftScale)
 
                             PodCapsuleView(
                                 pod: item.pod,
@@ -128,10 +130,12 @@ public struct ScreenSimulationCanvas: View {
                             .fill(Color.black.opacity(0.18))
                             .frame(width: 185, height: workableHeight)
 
-                        let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: Double(workableHeight))
+                        let realScreenRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
+                        let rightScale = workableHeight / realScreenRightH
+                        let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: realScreenRightH)
                         ForEach(rightLayout) { item in
-                            let topY = CGFloat(item.startY)
-                            let podSpan = CGFloat(item.spanH)
+                            let topY = CGFloat(item.startY * rightScale)
+                            let podSpan = CGFloat(item.spanH * rightScale)
 
                             PodCapsuleView(
                                 pod: item.pod,

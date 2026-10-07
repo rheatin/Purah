@@ -38,51 +38,53 @@ public final class SystemRemindersSyncService {
         return await withCheckedContinuation { continuation in
             let predicate = eventStore.predicateForReminders(in: nil)
             eventStore.fetchReminders(matching: predicate) { ekReminders in
-                guard let ekReminders = ekReminders else {
-                    continuation.resume(returning: [])
-                    return
-                }
-
-                let cal = Calendar.current
-                let today = Date()
-                let startOfToday = cal.startOfDay(for: today)
-                let endOfToday = cal.date(byAdding: .day, value: 1, to: startOfToday) ?? today
-                let endOfWeek = cal.date(byAdding: .day, value: 7, to: startOfToday) ?? today
-
-                let filtered = ekReminders.filter { rem in
-                    switch scope {
-                    case .allIncomplete:
-                        return !rem.isCompleted
-                    case .completed:
-                        return rem.isCompleted
-                    case .dueToday:
-                        guard !rem.isCompleted, let dueComp = rem.dueDateComponents, let dueDate = cal.date(from: dueComp) else {
-                            return false
-                        }
-                        return dueDate >= startOfToday && dueDate <= endOfToday
-                    case .dueThisWeek:
-                        guard !rem.isCompleted, let dueComp = rem.dueDateComponents, let dueDate = cal.date(from: dueComp) else {
-                            return false
-                        }
-                        return dueDate >= startOfToday && dueDate <= endOfWeek
+                Task { @MainActor in
+                    guard let ekReminders = ekReminders else {
+                        continuation.resume(returning: [])
+                        return
                     }
-                }
 
-                let mapped = filtered.map { rem in
-                    let dueDate = rem.dueDateComponents.flatMap { cal.date(from: $0) }
-                    let baseId = rem.calendarItemIdentifier
-                    let dueTimestamp = dueDate.map { Int($0.timeIntervalSince1970) } ?? 0
-                    let uniqueId = dueTimestamp > 0 ? "\(baseId)_\(dueTimestamp)" : baseId
+                    let cal = Calendar.current
+                    let today = Date()
+                    let startOfToday = cal.startOfDay(for: today)
+                    let endOfToday = cal.date(byAdding: .day, value: 1, to: startOfToday) ?? today
+                    let endOfWeek = cal.date(byAdding: .day, value: 7, to: startOfToday) ?? today
 
-                    return TodoItem(
-                        id: uniqueId,
-                        title: rem.title ?? "Untitled Reminder",
-                        listTitle: rem.calendar?.title ?? "Reminders",
-                        dueDate: dueDate,
-                        isCompleted: rem.isCompleted
-                    )
+                    let filtered = ekReminders.filter { rem in
+                        switch scope {
+                        case .allIncomplete:
+                            return !rem.isCompleted
+                        case .completed:
+                            return rem.isCompleted
+                        case .dueToday:
+                            guard !rem.isCompleted, let dueComp = rem.dueDateComponents, let dueDate = cal.date(from: dueComp) else {
+                                return false
+                            }
+                            return dueDate >= startOfToday && dueDate <= endOfToday
+                        case .dueThisWeek:
+                            guard !rem.isCompleted, let dueComp = rem.dueDateComponents, let dueDate = cal.date(from: dueComp) else {
+                                return false
+                            }
+                            return dueDate >= startOfToday && dueDate <= endOfWeek
+                        }
+                    }
+
+                    let mapped = filtered.map { rem in
+                        let dueDate = rem.dueDateComponents.flatMap { cal.date(from: $0) }
+                        let baseId = rem.calendarItemIdentifier
+                        let dueTimestamp = dueDate.map { Int($0.timeIntervalSince1970) } ?? 0
+                        let uniqueId = dueTimestamp > 0 ? "\(baseId)_\(dueTimestamp)" : baseId
+
+                        return TodoItem(
+                            id: uniqueId,
+                            title: rem.title ?? "Untitled Reminder",
+                            listTitle: rem.calendar?.title ?? "Reminders",
+                            dueDate: dueDate,
+                            isCompleted: rem.isCompleted
+                        )
+                    }
+                    continuation.resume(returning: mapped)
                 }
-                continuation.resume(returning: mapped)
             }
         }
     }

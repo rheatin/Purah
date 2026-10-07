@@ -79,6 +79,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
     public private(set) var metrics: HardwareVitalsInfo = .init()
     @ObservationIgnored private var timer: Timer?
 
+    @ObservationIgnored private let cpuLock = os_unfair_lock_t.allocate(capacity: 1)
     @ObservationIgnored private var previousCpuInfo: processor_info_array_t?
     @ObservationIgnored private var previousCpuInfoCount: mach_msg_type_number_t = 0
     @ObservationIgnored private var previousNetworkInBytes: UInt64?
@@ -86,6 +87,7 @@ public final class HardwareVitalsService: @unchecked Sendable {
     @ObservationIgnored private var previousNetworkTimestamp: Date?
 
     public init() {
+        cpuLock.initialize(to: os_unfair_lock())
         Task.detached(priority: .utility) { [weak self] in
             await self?.refreshMetricsAsync(includeProcesses: false)
             try? await Task.sleep(nanoseconds: 200_000_000)
@@ -266,15 +268,23 @@ public final class HardwareVitalsService: @unchecked Sendable {
 
         var totalUsage: Double = 0.0
 
-        if let prev = previousCpuInfo {
-            var inUse: Int32 = 0
-            var total: Int32 = 0
+        os_unfair_lock_lock(cpuLock)
+        defer { os_unfair_lock_unlock(cpuLock) }
 
-            for i in 0..<Int32(numProcessors) {
-                let u = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_USER)] - prev[Int(CPU_STATE_MAX * i + CPU_STATE_USER)]
-                let s = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)] - prev[Int(CPU_STATE_MAX * i + CPU_STATE_SYSTEM)]
-                let n = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)] - prev[Int(CPU_STATE_MAX * i + CPU_STATE_NICE)]
-                let id = cpuInfo[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)] - prev[Int(CPU_STATE_MAX * i + CPU_STATE_IDLE)]
+        if let prev = previousCpuInfo, previousCpuInfoCount == numCpuInfo {
+            var inUse: Int64 = 0
+            var total: Int64 = 0
+
+            for i in 0..<Int(numProcessors) {
+                let userIdx = Int(CPU_STATE_MAX) * i + Int(CPU_STATE_USER)
+                let sysIdx = Int(CPU_STATE_MAX) * i + Int(CPU_STATE_SYSTEM)
+                let niceIdx = Int(CPU_STATE_MAX) * i + Int(CPU_STATE_NICE)
+                let idleIdx = Int(CPU_STATE_MAX) * i + Int(CPU_STATE_IDLE)
+
+                let u = max(Int64(cpuInfo[userIdx]) - Int64(prev[userIdx]), 0)
+                let s = max(Int64(cpuInfo[sysIdx]) - Int64(prev[sysIdx]), 0)
+                let n = max(Int64(cpuInfo[niceIdx]) - Int64(prev[niceIdx]), 0)
+                let id = max(Int64(cpuInfo[idleIdx]) - Int64(prev[idleIdx]), 0)
 
                 inUse += (u + s + n)
                 total += (u + s + n + id)
@@ -300,10 +310,15 @@ public final class HardwareVitalsService: @unchecked Sendable {
 
     deinit {
         timer?.invalidate()
+        os_unfair_lock_lock(cpuLock)
         if let prev = previousCpuInfo {
+            previousCpuInfo = nil
             let byteSize = vm_size_t(previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride))
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), byteSize)
         }
+        os_unfair_lock_unlock(cpuLock)
+        cpuLock.deinitialize(count: 1)
+        cpuLock.deallocate()
     }
 
     // MARK: - Native Darwin proc_pidinfo & NSWorkspace collection
