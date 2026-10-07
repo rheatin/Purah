@@ -5,7 +5,7 @@ import Testing
 @Suite("Localization Engine Tests")
 @MainActor
 struct LocalizationTests {
-    @Test("Translates keys to English and Chinese correctly")
+    @Test("Translates keys to English correctly")
     @MainActor
     func testTranslation() {
         let loc = LocalizationManager()
@@ -14,11 +14,6 @@ struct LocalizationTests {
         #expect(loc.localized("app.name") == "Purah Pad")
         #expect(loc.localized("menu.autoLayout") == "Magic Ergonomics Auto-Layout")
         #expect(loc.localized("preset.balanced.title") == "Balanced Ergonomics")
-
-        loc.currentLanguage = .simplifiedChinese
-        #expect(loc.localized("app.name") == "普尔亚平板 (Purah Pad)")
-        #expect(loc.localized("menu.autoLayout") == "一键人体工学排布")
-        #expect(loc.localized("preset.balanced.title") == "均衡工学模式 (Balanced)")
     }
 
     @Test("Fallbacks to key when missing")

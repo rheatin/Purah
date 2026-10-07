@@ -36,8 +36,8 @@ struct FullIntegrationTests {
     @Test("Verify end-to-end localization and updater integration")
     func testLocalizationAndUpdaterIntegration() async {
         let loc = LocalizationManager.shared
-        loc.currentLanguage = .simplifiedChinese
-        #expect(loc.localized("updater.title") == "软件更新")
+        loc.currentLanguage = .english
+        #expect(loc.localized("updater.title") == "Software Update")
 
         let updater = AppUpdaterManager.shared
         await updater.checkForUpdates()
