@@ -25,15 +25,14 @@ public struct AmbientRailStripView: View {
     public var body: some View {
         GeometryReader { geo in
             let totalHeight = geo.size.height
-            let edgePods = store.pods
-                .filter { $0.edge == edge && $0.isEnabled }
-                .sorted { $0.range.start < $1.range.start }
+            let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(totalHeight))
 
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
-                // Active slot pods mounted with modular drawer interactions
-                ForEach(edgePods) { pod in
-                    let spanH = effectivePodSpan(pod: pod, totalHeight: totalHeight)
-                    let startY = clampedPodStartY(pod: pod, totalHeight: totalHeight)
+                // Active slot pods mounted with strict non-overlapping physical positions
+                ForEach(layoutItems) { item in
+                    let pod = item.pod
+                    let spanH = CGFloat(item.spanH)
+                    let startY = CGFloat(item.startY)
                     let isThisPodActive = (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id))
 
                     VStack(spacing: 0) {
@@ -78,28 +77,7 @@ public struct AmbientRailStripView: View {
         .ignoresSafeArea()
     }
 
-    private func effectivePodSpan(pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
-        let podHeight = max(pod.range.length * totalHeight, 36.0)
-        if pod.id == "scripts" && store.isScriptsDecomposed {
-            let count = max(store.scriptsEnabledActions.count, 1)
-            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-        } else if pod.id == "vitals" && store.isVitalsDecomposed {
-            let count = max(store.vitalsEnabledMetrics.count, 1)
-            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-        } else {
-            return podHeight
-        }
-    }
 
-    private func clampedPodStartY(pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
-        let startY = pod.range.start * totalHeight
-        let span = effectivePodSpan(pod: pod, totalHeight: totalHeight)
-        let safeBottomY = totalHeight - 8.0
-        if startY + span > safeBottomY {
-            return max(safeBottomY - span, 8.0)
-        }
-        return startY
-    }
 
     // MARK: - Todo 单项抽屉与导轨联动 (高度与 Bar 100% 相同，隔壁项凸出 28pt)
     @ViewBuilder

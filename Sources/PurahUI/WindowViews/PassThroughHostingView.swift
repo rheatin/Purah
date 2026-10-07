@@ -47,8 +47,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public func isPointInInteractiveDrawer(_ point: NSPoint) -> Bool {
         guard !store.isRailsFrozen else { return false }
         let totalH = bounds.height
+        let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(totalH))
 
-        for pod in store.pods where pod.edge == edge && pod.isEnabled {
+        for item in layoutItems {
+            let pod = item.pod
             let isPodPinned = store.isItemPinned(id: pod.id)
             let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
 
@@ -58,24 +60,11 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                                          (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let podHeight = max(pod.range.length * totalH, 36.0)
-                let spanH: CGFloat
-                if pod.id == "scripts" && store.isScriptsDecomposed {
-                    let count = max(store.scriptsEnabledActions.count, 1)
-                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-                } else if pod.id == "vitals" && store.isVitalsDecomposed {
-                    let count = max(store.vitalsEnabledMetrics.count, 1)
-                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-                } else {
-                    spanH = podHeight
-                }
-
-                let startY = pod.range.start * totalH
-                let safeBottomY = totalH - 8.0
-                let clampedStartY = (startY + spanH > safeBottomY) ? max(safeBottomY - spanH, 8.0) : startY
+                let startY = CGFloat(item.startY)
+                let spanH = CGFloat(item.spanH)
 
                 // In AppKit coordinates (bottom is 0, top is totalH)
-                let topOfPodY = totalH - clampedStartY
+                let topOfPodY = totalH - startY
                 let bottomOfPodY = topOfPodY - spanH
                 let minY = max(bottomOfPodY - 18.0, 0.0)
                 let maxY = min(topOfPodY + 18.0, totalH)

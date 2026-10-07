@@ -745,88 +745,90 @@ public struct ScriptItemDrawerView: View {
     @ViewBuilder
     private func expandedCard(cardH: CGFloat) -> some View {
         let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0)
+        let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
 
-        VStack(alignment: .leading, spacing: 2) {
-            // Row 1: SF Symbol + Name (bold) + Type Badge + Top-Right Pin Button
-            HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            // Icon Squircle Tile
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(podColor.opacity(0.18))
+                    .frame(width: 26, height: 26)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(podColor.opacity(0.40), lineWidth: 1)
+                    )
+
                 Image(systemName: action.systemIcon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundColor(podColor)
-                    .frame(width: 14)
-
-                Text(action.name)
-                    .purahTitle(size: 11, weight: .bold, design: .rounded)
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-
-                Text(badgeText(for: action.commandType))
-                    .purahBadge(size: 7, weight: .bold)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1.5)
-                    .background(podColor.opacity(0.18))
-                    .foregroundColor(podColor)
-                    .cornerRadius(3)
-
-                Spacer(minLength: 4)
-
-                pinButton
             }
 
-            // Row 2: Description or script content in monospaced font (cleanly truncated)
-            let preview = !action.description.isEmpty ? action.description : action.scriptContent
-            Text(preview)
-                .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            // Title & Subtitle / Preview
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(action.name)
+                        .purahTitle(size: 11.5, weight: .bold, design: .rounded)
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
 
-            Spacer(minLength: 0)
+                    Text(badgeText(for: action.commandType))
+                        .purahBadge(size: 7, weight: .bold)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(podColor.opacity(0.16)))
+                        .foregroundColor(podColor)
+                }
 
-            // Row 3: Prominent Run Action Button (with running spinner) + output status
-            let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
-            HStack(spacing: 6) {
                 if let output = runway.lastOutput, runway.lastExecutedActionId == action.id {
                     HStack(spacing: 3) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 8))
                             .foregroundColor(.green)
                         Text(output)
-                            .purahCaption(size: 8, weight: .regular, design: .monospaced)
+                            .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 } else {
-                    Text(action.commandType.rawValue.capitalized)
-                        .purahCaption(size: 8, weight: .regular)
+                    let preview = !action.description.isEmpty ? action.description : (action.commandType == .shortcut ? "macOS Shortcut" : action.scriptContent)
+                    Text(preview)
+                        .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
+            }
 
-                Spacer(minLength: 4)
+            Spacer(minLength: 4)
+
+            // Right-Side Controls: Pin (top) & Apple Glass Capsule Run Button (bottom)
+            VStack(alignment: .trailing, spacing: 4) {
+                pinButton
 
                 Button {
                     Task {
                         _ = await runway.executeAction(action)
                     }
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3.5) {
                         if isRunning {
                             ProgressView()
                                 .controlSize(.mini)
-                                .scaleEffect(0.6)
+                                .scaleEffect(0.55)
                                 .frame(width: 8, height: 8)
                         } else {
                             Image(systemName: "play.fill")
-                                .font(.system(size: 7))
+                                .font(.system(size: 7, weight: .heavy))
                         }
-                        Text(isRunning ? "Running..." : "Run Action")
-                            .purahCaption(size: 9, weight: .bold, design: .rounded)
+                        Text(isRunning ? "Running" : "Run")
+                            .purahCaption(size: 8.5, weight: .bold, design: .rounded)
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(podColor)
-                    .foregroundColor(.white)
-                    .cornerRadius(4)
+                    .padding(.vertical, 2.5)
+                    .background(Capsule().fill(podColor.opacity(isRunning ? 0.35 : 0.18)))
+                    .overlay(Capsule().stroke(podColor.opacity(0.40), lineWidth: 1))
+                    .foregroundColor(podColor)
                 }
                 .buttonStyle(.tactile)
                 .disabled(runway.isRunning)

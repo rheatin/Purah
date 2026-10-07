@@ -133,15 +133,19 @@ public final class EdgeMouseMonitor {
         // Multi-monitor inter-screen seam suppression: pass-through swipes across monitors (>220 px/s) are ignored
         if isSeam && speed >= 220.0 { return }
 
-        let normalizedY = 1.0 - ((point.y - visibleRect.minY) / visibleRect.height)
-
-        let candidatePod = store.pods.first { pod in
-            pod.edge == edge && pod.isEnabled && pod.range.contains(normalizedY)
+        let currentWindowY = visibleRect.maxY - point.y
+        let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
+        let matchedItem = layoutItems.first { item in
+            let topY = CGFloat(item.startY)
+            let bottomY = topY + CGFloat(item.spanH)
+            return currentWindowY >= topY && currentWindowY <= bottomY
         }
-
-        store.hoveredPodId = candidatePod?.id
-
-        guard let candidate = candidatePod else { return }
+        guard let matched = matchedItem else {
+            store.hoveredPodId = nil
+            return
+        }
+        let candidate = matched.pod
+        store.hoveredPodId = candidate.id
 
         // Hover dwell hysteresis: when moving between pods, require deliberate intent
         if candidate.id != lastCandidatePodId {
@@ -172,9 +176,10 @@ public final class EdgeMouseMonitor {
             guard hoverDuration >= 0.04 || store.activeDrawerPodId == candidate.id else { return }
         }
 
+        let podRelativeY = min(max((currentWindowY - CGFloat(matched.startY)) / max(CGFloat(matched.spanH), 0.001), 0.0), 0.999)
+
         if candidate.id == "todo" && !store.todos.isEmpty {
             let count = max(store.todos.count, 1)
-            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
             let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
             let item = store.todos[itemIdx]
             if store.activeDrawerItemId != item.id {
@@ -185,8 +190,7 @@ public final class EdgeMouseMonitor {
             }
         } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
             let count = max(store.calendarEvents.count, 1)
-            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+                        let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
             let item = store.calendarEvents[itemIdx]
             if store.activeDrawerItemId != item.id {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
@@ -196,8 +200,7 @@ public final class EdgeMouseMonitor {
             }
         } else if candidate.id == "vitals" && store.isVitalsDecomposed && !store.vitalsEnabledMetrics.isEmpty {
             let count = max(store.vitalsEnabledMetrics.count, 1)
-            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+                        let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
             let metric = store.vitalsEnabledMetrics[itemIdx]
             let itemId = "vitals-\(metric.rawValue)"
             if store.activeDrawerItemId != itemId {
@@ -208,8 +211,7 @@ public final class EdgeMouseMonitor {
             }
         } else if candidate.id == "scripts" && store.isScriptsDecomposed && !store.scriptsEnabledActions.isEmpty {
             let count = max(store.scriptsEnabledActions.count, 1)
-            let podRelativeY = min(max((normalizedY - candidate.range.start) / candidate.range.length, 0.0), 0.999)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
+                        let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
             let action = store.scriptsEnabledActions[itemIdx]
             let itemId = "scripts-\(action.id)"
             if store.activeDrawerItemId != itemId {
@@ -230,8 +232,10 @@ public final class EdgeMouseMonitor {
 
     private func isPointInsideAnyDrawerCard(point: NSPoint, visibleRect: CGRect, edge: MountEdge) -> Bool {
         let totalH = visibleRect.height
+        let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(totalH))
 
-        for pod in store.pods where pod.edge == edge && pod.isEnabled {
+        for item in layoutItems {
+            let pod = item.pod
             let isPodPinned = store.isItemPinned(id: pod.id)
             let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
             let hasActiveOrPinnedChild = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
@@ -240,24 +244,11 @@ public final class EdgeMouseMonitor {
                                          (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let podHeight = max(pod.range.length * totalH, 36.0)
-                let spanH: CGFloat
-                if pod.id == "scripts" && store.isScriptsDecomposed {
-                    let count = max(store.scriptsEnabledActions.count, 1)
-                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-                } else if pod.id == "vitals" && store.isVitalsDecomposed {
-                    let count = max(store.vitalsEnabledMetrics.count, 1)
-                    spanH = max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-                } else {
-                    spanH = podHeight
-                }
-
-                let startY = pod.range.start * totalH
-                let safeBottomY = totalH - 8.0
-                let clampedStartY = (startY + spanH > safeBottomY) ? max(safeBottomY - spanH, 8.0) : startY
+                let startY = CGFloat(item.startY)
+                let spanH = CGFloat(item.spanH)
 
                 // In AppKit coordinates (bottom is visibleRect.minY, top is visibleRect.maxY)
-                let topOfPodY = visibleRect.maxY - clampedStartY
+                let topOfPodY = visibleRect.maxY - startY
                 let bottomOfPodY = topOfPodY - spanH
 
                 let minY = max(bottomOfPodY - 18.0, visibleRect.minY)

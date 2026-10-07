@@ -91,23 +91,26 @@ public struct ScreenSimulationCanvas: View {
                             .fill(Color.black.opacity(0.18))
                             .frame(width: 185, height: workableHeight)
 
-                        ForEach(store.pods.filter { $0.edge == .left && $0.isEnabled }) { pod in
-                            let topY = pod.range.start * workableHeight
+                        let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: Double(workableHeight))
+                        ForEach(leftLayout) { item in
+                            let topY = CGFloat(item.startY)
+                            let podSpan = CGFloat(item.spanH)
 
                             PodCapsuleView(
-                                pod: pod,
+                                pod: item.pod,
                                 canvasHeight: workableHeight,
+                                customHeight: Double(podSpan),
                                 onMove: { newStart in
-                                    store.updatePodRange(id: pod.id, newRange: .init(start: newStart, length: pod.range.length))
+                                    store.updatePodRange(id: item.pod.id, newRange: .init(start: newStart, length: item.pod.range.length))
                                 },
                                 onResize: { newLength in
-                                    store.updatePodRange(id: pod.id, newRange: .init(start: pod.range.start, length: newLength))
+                                    store.updatePodRange(id: item.pod.id, newRange: .init(start: item.pod.range.start, length: newLength))
                                 },
                                 onTransferEdge: {
-                                    store.movePod(id: pod.id, to: .right)
+                                    store.movePod(id: item.pod.id, to: .right)
                                 },
                                 onFillRail: {
-                                    store.fillRail(podId: pod.id)
+                                    store.fillRail(podId: item.pod.id)
                                 }
                             )
                             .offset(x: 4, y: topY)
@@ -125,23 +128,26 @@ public struct ScreenSimulationCanvas: View {
                             .fill(Color.black.opacity(0.18))
                             .frame(width: 185, height: workableHeight)
 
-                        ForEach(store.pods.filter { $0.edge == .right && $0.isEnabled }) { pod in
-                            let topY = pod.range.start * workableHeight
+                        let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: Double(workableHeight))
+                        ForEach(rightLayout) { item in
+                            let topY = CGFloat(item.startY)
+                            let podSpan = CGFloat(item.spanH)
 
                             PodCapsuleView(
-                                pod: pod,
+                                pod: item.pod,
                                 canvasHeight: workableHeight,
+                                customHeight: Double(podSpan),
                                 onMove: { newStart in
-                                    store.updatePodRange(id: pod.id, newRange: .init(start: newStart, length: pod.range.length))
+                                    store.updatePodRange(id: item.pod.id, newRange: .init(start: newStart, length: item.pod.range.length))
                                 },
                                 onResize: { newLength in
-                                    store.updatePodRange(id: pod.id, newRange: .init(start: pod.range.start, length: newLength))
+                                    store.updatePodRange(id: item.pod.id, newRange: .init(start: item.pod.range.start, length: newLength))
                                 },
                                 onTransferEdge: {
-                                    store.movePod(id: pod.id, to: .left)
+                                    store.movePod(id: item.pod.id, to: .left)
                                 },
                                 onFillRail: {
-                                    store.fillRail(podId: pod.id)
+                                    store.fillRail(podId: item.pod.id)
                                 }
                             )
                             .offset(x: -4, y: topY)
