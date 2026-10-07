@@ -77,10 +77,11 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                 // In AppKit coordinates (bottom is 0, top is totalH)
                 let topOfPodY = totalH - clampedStartY
                 let bottomOfPodY = topOfPodY - spanH
-                let minY = max(bottomOfPodY - 16.0, 0.0)
-                let maxY = min(topOfPodY + 16.0, totalH)
+                let minY = max(bottomOfPodY - 18.0, 0.0)
+                let maxY = min(topOfPodY + 18.0, totalH)
 
-                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 16.0
+                let corridor = CGFloat(store.activeCatchCorridor)
+                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor
                 let inDrawerX: Bool
                 if edge == .right {
                     inDrawerX = (point.x >= bounds.maxX - drawerW)
@@ -130,10 +131,11 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
 
-        // When mouse steps outside, use 280ms Exit Grace Window before retracting
+        // When mouse steps outside, use dynamic Exit Grace Window before retracting
         if exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 280_000_000)
+                let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
+                try? await Task.sleep(nanoseconds: UInt64(graceSec * 1_000_000_000))
                 guard !Task.isCancelled else { return }
                 guard let self = self else { return }
 
@@ -174,7 +176,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
         if exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 280_000_000)
+                let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
+                try? await Task.sleep(nanoseconds: UInt64(graceSec * 1_000_000_000))
                 guard !Task.isCancelled else { return }
                 guard let self = self else { return }
 

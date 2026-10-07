@@ -126,7 +126,9 @@ public struct TodoItemDrawerView: View {
 
             pinButton
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, edge == .left ? 10 : 20)
+        .padding(.trailing, edge == .left ? 20 : 10)
+        .padding(.vertical, 4)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor.opacity(isDone ? 0.35 : 1.0))
     }
@@ -180,29 +182,8 @@ public struct TodoItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        Button {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                onTogglePin()
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 22, height: 22)
-
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundColor(isPinned ? podColor : .secondary)
-                    .font(.system(size: 10, weight: .semibold))
-                    .rotationEffect(.degrees(isPinned ? -25 : 0))
-                    .scaleEffect(isPinned ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
-    }
-}
+        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
+    }}
 
 public struct CalendarItemDrawerView: View {
     public let event: CalendarEventItem
@@ -393,7 +374,9 @@ public struct CalendarItemDrawerView: View {
 
             pinButton
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, edge == .left ? 10 : 20)
+        .padding(.trailing, edge == .left ? 20 : 10)
+        .padding(.vertical, 4)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(
             shape: drawerShape,
@@ -448,27 +431,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        Button {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                onTogglePin()
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 22, height: 22)
-
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundColor(isPinned ? podColor : .secondary)
-                    .font(.system(size: 10, weight: .semibold))
-                    .rotationEffect(.degrees(isPinned ? -25 : 0))
-                    .scaleEffect(isPinned ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
+        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {
@@ -612,7 +575,8 @@ public struct VitalsItemDrawerView: View {
 
             pinButton
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, edge == .left ? 10 : 20)
+        .padding(.trailing, edge == .left ? 20 : 10)
         .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
@@ -662,29 +626,8 @@ public struct VitalsItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        Button {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                onTogglePin()
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isPinned ? telemetryColor.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 22, height: 22)
-
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundColor(isPinned ? telemetryColor : .secondary)
-                    .font(.system(size: 10, weight: .semibold))
-                    .rotationEffect(.degrees(isPinned ? -25 : 0))
-                    .scaleEffect(isPinned ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.tactile)
-        .help(isPinned ? "Pinned (click to unpin)" : "Pin metric card")
-    }
-}
+        PurahPinButton(isPinned: isPinned, tintColor: telemetryColor, action: onTogglePin)
+    }}
 
 // MARK: - Decomposed Scripts Item Stepped Drawer View
 public struct ScriptItemDrawerView: View {
@@ -889,7 +832,8 @@ public struct ScriptItemDrawerView: View {
                 .disabled(runway.isRunning)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, edge == .left ? 10 : 20)
+        .padding(.trailing, edge == .left ? 20 : 10)
         .padding(.vertical, 5)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
@@ -956,27 +900,7 @@ public struct ScriptItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        Button {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                onTogglePin()
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 20, height: 20)
-
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundColor(isPinned ? podColor : .secondary)
-                    .font(.system(size: 9, weight: .semibold))
-                    .rotationEffect(.degrees(isPinned ? -25 : 0))
-                    .scaleEffect(isPinned ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.tactile)
-        .help(isPinned ? "Pinned (click to unpin)" : "Pin script card")
+        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
     }
 
     private func badgeText(for type: ScriptCommandType) -> String {

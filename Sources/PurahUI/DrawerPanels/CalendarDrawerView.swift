@@ -273,27 +273,9 @@ public struct CalendarDrawerView: View {
     }
 
     private func pinButton(id: String, isPinned: Bool) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                store.togglePinItem(id: id)
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isPinned ? podColor.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 24, height: 24)
-
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .foregroundColor(isPinned ? podColor : .secondary)
-                    .font(.system(size: 11, weight: .semibold))
-                    .rotationEffect(.degrees(isPinned ? -25 : 0))
-                    .scaleEffect(isPinned ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
-            }
-            .contentShape(Rectangle())
+        PurahPinButton(isPinned: isPinned, tintColor: podColor) {
+            store.togglePinItem(id: id)
         }
-        .buttonStyle(.tactile)
-        .help(isPinned ? "Pinned (click to unpin)" : "Pin drawer")
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {
