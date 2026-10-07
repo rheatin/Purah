@@ -11,14 +11,14 @@ public final class GlobalHotKeyManager: Sendable {
     public static let shared = GlobalHotKeyManager()
 
     private var refs = CarbonRefs()
-    private var triggerAction: (() -> Void)?
+    private var triggerAction: (@MainActor () -> Void)?
     public private(set) var currentShortcut: HotKeyShortcut?
 
     private init() {
         installCarbonEventHandler()
     }
 
-    public func register(shortcut: HotKeyShortcut, onTrigger: (() -> Void)? = nil) {
+    public func register(shortcut: HotKeyShortcut, onTrigger: (@MainActor () -> Void)? = nil) {
         let action = onTrigger ?? self.triggerAction
         unregister()
         self.triggerAction = action
@@ -56,8 +56,16 @@ public final class GlobalHotKeyManager: Sendable {
         let callback: EventHandlerUPP = { _, inEvent, inUserData -> OSStatus in
             guard let inUserData = inUserData else { return noErr }
             let manager = Unmanaged<GlobalHotKeyManager>.fromOpaque(inUserData).takeUnretainedValue()
-            Task { @MainActor in
-                manager.triggerAction?()
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    manager.triggerAction?()
+                }
+            } else {
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        manager.triggerAction?()
+                    }
+                }
             }
             return noErr
         }

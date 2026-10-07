@@ -7,7 +7,6 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public let edge: MountEdge
     public let store: PurahWorkspaceStore
     private var trackingArea: NSTrackingArea?
-    private var exitGraceTask: Task<Void, Never>?
 
     // High-performance geometry snapshot cache to eliminate redundant layout solvers on hitTest
     private struct GeometrySnapshotCache {
@@ -132,7 +131,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         super.mouseMoved(with: event)
         guard !store.isRailsFrozen else { return }
 
-        // Forward to mouse monitor for unified hover-dwell and push-force evaluation
+        // Forward to mouse monitor for unified hover-dwell, push-force, and exit-grace evaluation
         store.onLocalMouseMove?(event)
 
         let winPoint = event.locationInWindow
@@ -140,47 +139,17 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
         let isInsideCard = isPointInInteractiveDrawer(winPoint)
 
-        if isOnRail || isInsideCard {
-            exitGraceTask?.cancel()
-            exitGraceTask = nil
-            if let panel = self.window as? NSPanel {
-                panel.ignoresMouseEvents = false
-            }
-            return
-        }
-
-        // 光标滑出卡片与导轨、来到透明空白区域时：
-        // 瞬间将窗口切为 ignoresMouseEvents = true，保证上下空白处的滚轮、右键、点击 100% 直达底层窗口！
         if let panel = self.window as? NSPanel {
-            panel.ignoresMouseEvents = true
-        }
-
-        // When mouse steps outside, use dynamic Exit Grace Window before retracting (only when an UNPINNED drawer is active!)
-        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
-        let isCurrentActivePinned = activeId.map { store.isItemPinned(id: $0) } ?? false
-        let hasActiveUnpinnedDrawer = (activeId != nil) && !isCurrentActivePinned
-
-        if hasActiveUnpinnedDrawer && exitGraceTask == nil {
-            exitGraceTask = Task { @MainActor [weak self] in
-                let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
-                try? await Task.sleep(for: .seconds(graceSec))
-                guard !Task.isCancelled else { return }
-                guard let self = self else { return }
-
-                if let panel = self.window as? NSPanel {
+            if isOnRail || isInsideCard {
+                if panel.ignoresMouseEvents {
+                    panel.ignoresMouseEvents = false
+                }
+            } else {
+                // 光标滑出卡片与导轨、来到透明空白区域时：
+                // 瞬间将窗口切为 ignoresMouseEvents = true，保证上下空白处的滚轮、右键、点击 100% 直达底层窗口！
+                if !panel.ignoresMouseEvents {
                     panel.ignoresMouseEvents = true
-                    panel.resignKey()
                 }
-
-                if let currentActive = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId,
-                   !self.store.isItemPinned(id: currentActive) {
-                    withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
-                        self.store.activeDrawerItemId = nil
-                        self.store.activeDrawerPodId = nil
-                        self.store.hoveredPodId = nil
-                    }
-                }
-                self.exitGraceTask = nil
             }
         }
     }
@@ -194,35 +163,13 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
             let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
             if isOnRail || isPointInInteractiveDrawer(winPoint) {
-                exitGraceTask?.cancel()
-                exitGraceTask = nil
                 return
             }
         }
 
-        if exitGraceTask == nil {
-            exitGraceTask = Task { @MainActor [weak self] in
-                let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
-                try? await Task.sleep(for: .seconds(graceSec))
-                guard !Task.isCancelled else { return }
-                guard let self = self else { return }
-
-                let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
-                if let active = activeId {
-                    let isCurrentActivePinned = self.store.isItemPinned(id: active)
-                    if !isCurrentActivePinned {
-                        withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
-                            self.store.activeDrawerItemId = nil
-                            self.store.activeDrawerPodId = nil
-                            self.store.hoveredPodId = nil
-                        }
-                        if let panel = self.window as? NSPanel {
-                            panel.ignoresMouseEvents = true
-                            panel.resignKey()
-                        }
-                    }
-                }
-                self.exitGraceTask = nil
+        if let panel = self.window as? NSPanel {
+            if !panel.ignoresMouseEvents {
+                panel.ignoresMouseEvents = true
             }
         }
     }

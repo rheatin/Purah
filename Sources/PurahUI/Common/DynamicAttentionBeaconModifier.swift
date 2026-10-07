@@ -32,15 +32,21 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
     public func body(content: Content) -> some View {
         if !isAlerting || alertStyle == .off {
             content
+        } else if reduceMotion {
+            content
+                .overlay(
+                    RoundedRectangle(cornerRadius: min(baseWidth / 2, 4))
+                        .strokeBorder(color.opacity(0.6), lineWidth: 1.5)
+                )
         } else {
-            TimelineView(.animation(paused: reduceMotion)) { timeline in
+            TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 let cycle = time.truncatingRemainder(dividingBy: 1.8) / 1.8 // 0.0 .. 1.0
                 let sinePulse = (sin(time * 3.49) + 1.0) / 2.0 // 0.0 .. 1.0 (frequency ~ 1.8s)
 
                 ZStack(alignment: edge == .right ? .trailing : .leading) {
                     // 1. Sonar Wave Ripple (expanding out from the edge)
-                    if alertStyle == .sonarWave && !reduceMotion {
+                    if alertStyle == .sonarWave {
                         let rippleProgress = CGFloat(cycle)
                         let rippleWidth = baseWidth + rippleProgress * 26.0
                         let rippleAlpha = Double((1.0 - rippleProgress) * 0.55)
@@ -51,7 +57,7 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                     }
 
                     // 2. Optical Breathing Aura for Subtle Glow
-                    if alertStyle == .subtleGlow && !reduceMotion {
+                    if alertStyle == .subtleGlow {
                         RoundedRectangle(cornerRadius: min(baseWidth / 2, 4) + 2)
                             .fill(color.opacity(0.35 + sinePulse * 0.45))
                             .frame(width: baseWidth + 6.0)
@@ -64,12 +70,11 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                     }
 
                     // 3. Base content with dynamic breathing extrusion
-                    let extraWidth: CGFloat = (alertStyle == .breathingBeacon && !reduceMotion) ? (CGFloat(sinePulse) * 10.0) : 0.0
+                    let extraWidth: CGFloat = (alertStyle == .breathingBeacon) ? (CGFloat(sinePulse) * 10.0) : 0.0
                     let effectiveBarWidth = baseWidth + extraWidth
 
                     HStack(spacing: 0) {
                         if edge == .right && alertStyle == .breathingBeacon && extraWidth > 2 {
-                            // Pulsing Beacon Eye Dot on floating tip
                             Circle()
                                 .fill(Color.white.opacity(0.85 + sinePulse * 0.15))
                                 .frame(width: 4, height: 4)
@@ -81,7 +86,6 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                             .frame(width: effectiveBarWidth)
 
                         if edge == .left && alertStyle == .breathingBeacon && extraWidth > 2 {
-                            // Pulsing Beacon Eye Dot on floating tip
                             Circle()
                                 .fill(Color.white.opacity(0.85 + sinePulse * 0.15))
                                 .frame(width: 4, height: 4)
@@ -89,8 +93,7 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                                 .padding(.leading, 2)
                         }
                     }
-                    .shadow(color: color.opacity(0.40 + sinePulse * 0.50), radius: 6)
-                    .shadow(color: color.opacity(0.20 + sinePulse * 0.40), radius: 12)
+                    .shadow(color: color.opacity(0.35 + sinePulse * 0.35), radius: 6)
                 }
                 .onHover { isHovered in
                     if isHovered && isAlerting {

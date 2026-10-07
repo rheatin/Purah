@@ -55,27 +55,43 @@ public final class SystemCalendarSyncService {
             return
         }
 
-        eventStore.refreshSourcesIfNecessary()
-
         isSyncing = true
         let targetScope = scope ?? targetStore?.calendarScope ?? .today
         let interval = targetScope.dateInterval(from: Date())
 
-        let allCalendars = eventStore.calendars(for: .event)
-        self.calendarCount = allCalendars.count
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let backgroundStore = EKEventStore()
+            backgroundStore.refreshSourcesIfNecessary()
 
-        let predicate = eventStore.predicateForEvents(
-            withStart: interval.start,
-            end: interval.end,
-            calendars: allCalendars.isEmpty ? nil : allCalendars
-        )
-        let events = eventStore.events(matching: predicate)
+            let allCalendars = backgroundStore.calendars(for: .event)
+            let predicate = backgroundStore.predicateForEvents(
+                withStart: interval.start,
+                end: interval.end,
+                calendars: allCalendars.isEmpty ? nil : allCalendars
+            )
+            let events = backgroundStore.events(matching: predicate)
+            let deduplicated = Self.processEvents(events)
 
+            await MainActor.run { [weak self] in
+                guard let self = self else { return }
+                if let targetStore = self.boundStore {
+                    targetStore.calendarScope = targetScope
+                    targetStore.isUsingRealCalendar = true
+                    targetStore.calendarEvents = deduplicated
+                }
+                self.calendarCount = allCalendars.count
+                self.lastSyncDate = Date()
+                self.isSyncing = false
+            }
+        }
+    }
+
+    nonisolated public static func processEvents(_ events: [EKEvent]) -> [CalendarEventItem] {
         let mapped = events.map { ekEvent in
             var extractedURL = ekEvent.url
             if extractedURL == nil {
                 let textToScan = "\(ekEvent.notes ?? "") \(ekEvent.location ?? "")"
-                extractedURL = Self.extractFirstURL(from: textToScan)
+                extractedURL = extractFirstURL(from: textToScan)
             }
 
             // Construct guaranteed unique ID per occurrence for recurring events
@@ -97,22 +113,14 @@ public final class SystemCalendarSyncService {
 
         // Deduplicate events by (normalized title + start timestamp) so synced accounts/invitations don't produce duplicate chips
         var seenKeys = Set<String>()
-        let deduplicated = mapped
+        return mapped
             .sorted(by: { $0.startTime < $1.startTime })
             .filter { event in
                 seenKeys.insert("\(event.title.trimmingCharacters(in: .whitespacesAndNewlines))_\(Int(event.startTime.timeIntervalSince1970))").inserted
             }
-
-        if let targetStore = targetStore {
-            targetStore.calendarScope = targetScope
-            targetStore.isUsingRealCalendar = true
-            targetStore.calendarEvents = deduplicated
-        }
-        lastSyncDate = Date()
-        isSyncing = false
     }
 
-    public static func extractFirstURL(from text: String) -> URL? {
+    nonisolated public static func extractFirstURL(from text: String) -> URL? {
         guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
             return nil
         }
