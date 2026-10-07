@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 import PurahCore
 
 @MainActor
-public protocol PurahPodPlugin: Identifiable, Sendable {
+public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendable {
     nonisolated var manifest: PurahPluginManifest { get }
 
     @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
@@ -40,6 +40,19 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
 
 public extension PurahPodPlugin {
     nonisolated var id: String { manifest.id }
+    var podId: String { manifest.id }
+    var isDecomposed: Bool { supportedDrawerModes.contains(.stepped) }
+
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 120.0 }
+    func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
+    func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { itemId.hasPrefix("\(manifest.id)-") }
+    func activeSubItemFrames(
+        item: ResolvedPodLayoutItem,
+        store: PurahWorkspaceStore,
+        totalHeight: Double,
+        windowWidth: Double,
+        corridor: Double
+    ) -> [CGRect]? { nil }
 
     func onMount(store: PurahWorkspaceStore) {}
     func onUnmount(store: PurahWorkspaceStore) {}

@@ -17,6 +17,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // 状态栏常驻 Accessory App，无 Dock 图标扰乱
 
+        PluginRegistry.shared.bindStore(store)
+
         let coord = ScreenEdgeCoordinator(store: store)
         self.coordinator = coord
 

@@ -65,6 +65,5 @@ public struct WaveMeterAmbientView: View {
                 .frame(width: 8, height: totalH)
             }
         }
-        .drawingGroup() // 开启 Metal GPU 离屏渲染加速
     }
 }

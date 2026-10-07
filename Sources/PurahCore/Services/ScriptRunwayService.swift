@@ -136,13 +136,20 @@ public final class ScriptRunwayService {
             task.standardOutput = pipe
             task.standardError = pipe
 
+            // Concurrently drain stdout/stderr pipe to prevent kernel pipe buffer deadlock
+            let outputTask = Task<Data, Never> {
+                pipe.fileHandleForReading.readDataToEndOfFile()
+            }
+
             do {
                 try task.run()
 
-                // 15-second timeout guard to prevent UI or process hangs
+                // 15-second non-blocking timeout guard
                 let didTimeout = await withTaskGroup(of: Bool.self) { group in
                     group.addTask {
-                        task.waitUntilExit()
+                        while task.isRunning {
+                            try? await Task.sleep(nanoseconds: 20_000_000)
+                        }
                         return false
                     }
                     group.addTask {
@@ -160,16 +167,18 @@ public final class ScriptRunwayService {
 
                 if didTimeout {
                     DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after 15s: \(command.prefix(40))")
+                    _ = await outputTask.value
                     return (false, "Execution timed out after 15s")
                 }
 
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let data = await outputTask.value
                 let output = String(data: data, encoding: .utf8) ?? ""
                 let success = (task.terminationStatus == 0)
                 let msg = success ? (output.isEmpty ? "Success" : output) : "Failed (exit code \(task.terminationStatus))"
                 DiagnosticLogger.shared.info("ScriptRunway", "Shell command result: \(success ? "Success" : "Failed")")
                 return (success, msg)
             } catch {
+                outputTask.cancel()
                 DiagnosticLogger.shared.error("ScriptRunway", "Process error: \(error.localizedDescription)")
                 return (false, "Process error: \(error.localizedDescription)")
             }

@@ -123,8 +123,17 @@ public final class EdgeMouseMonitor {
                 let monitor = Unmanaged<EdgeMouseMonitor>.fromOpaque(refcon).takeUnretainedValue()
                 let dx = event.getDoubleValueField(.mouseEventDeltaX)
                 let pt = event.location
-                Task { @MainActor in
-                    monitor.handleHardwareRawMotion(point: pt, rawDeltaX: dx)
+
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated {
+                        monitor.handleHardwareRawMotion(point: pt, rawDeltaX: dx)
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            monitor.handleHardwareRawMotion(point: pt, rawDeltaX: dx)
+                        }
+                    }
                 }
                 return Unmanaged.passUnretained(event)
             },

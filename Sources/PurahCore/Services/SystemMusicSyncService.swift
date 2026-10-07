@@ -21,7 +21,20 @@ public final class SystemMusicSyncService {
         startListening()
     }
 
+    public func stopListening() {
+        let center = DistributedNotificationCenter.default()
+        if let obs = musicObserver {
+            center.removeObserver(obs)
+            musicObserver = nil
+        }
+        if let obs = spotifyObserver {
+            center.removeObserver(obs)
+            spotifyObserver = nil
+        }
+    }
+
     public func startListening(into store: PurahWorkspaceStore? = nil) {
+        stopListening()
         let center = DistributedNotificationCenter.default()
 
         // 1. Apple Music observer

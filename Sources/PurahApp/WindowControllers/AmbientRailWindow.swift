@@ -1,7 +1,6 @@
 // Sources/PurahApp/WindowControllers/AmbientRailWindow.swift
 import AppKit
 import SwiftUI
-import ObjectiveC
 import PurahCore
 import PurahUI
 
@@ -54,35 +53,6 @@ public final class AmbientRailWindow: NSPanel {
         hostingView.layer?.drawsAsynchronously = true
         hostingView.layerContentsRedrawPolicy = .onSetNeedsDisplay
         self.contentView = hostingView
-
-        // Swizzle NSNextStepFrame to return nil when contentView returns nil for system-level pass-through
-        if let frameView = hostingView.superview {
-            Self.enablePassThroughOnFrameView(frameView)
-        }
-    }
-
-    private static var hasSwizzledFrameView = false
-
-    private static func enablePassThroughOnFrameView(_ frameView: NSView) {
-        guard !hasSwizzledFrameView else { return }
-        hasSwizzledFrameView = true
-
-        let frameClass: AnyClass = object_getClass(frameView)!
-        let originalSelector = #selector(NSView.hitTest(_:))
-
-        let block: @convention(block) (AnyObject, NSPoint) -> NSView? = { (selfObj, point) in
-            guard let view = selfObj as? NSView else { return nil }
-            // Intercept only when subviews (PassThroughHostingView) return a non-nil hit view
-            for sub in view.subviews.reversed() {
-                let subPoint = view.convert(point, to: sub)
-                if let hit = sub.hitTest(subPoint) {
-                    return hit
-                }
-            }
-            return nil
-        }
-        let imp = imp_implementationWithBlock(block)
-        class_replaceMethod(frameClass, originalSelector, imp, "@@:{CGPoint=dd}")
     }
 
     public func setInteractive(_ interactive: Bool) {

@@ -9,6 +9,18 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     private var trackingArea: NSTrackingArea?
     private var exitGraceTask: Task<Void, Never>?
 
+    // High-performance geometry snapshot cache to eliminate redundant layout solvers on hitTest
+    private struct GeometrySnapshotCache {
+        var boundsSize: CGSize = .zero
+        var activeDrawerItemId: String? = nil
+        var activeDrawerPodId: String? = nil
+        var pinnedItemIds: Set<String> = []
+        var cachedCardFrames: [CGRect] = []
+        var cachedLayoutItems: [ResolvedPodLayoutItem] = []
+        var timestamp: TimeInterval = 0
+    }
+    private var cache = GeometrySnapshotCache()
+
     public init(rootView: Content, edge: MountEdge, store: PurahWorkspaceStore) {
         self.edge = edge
         self.store = store
@@ -44,12 +56,41 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         self.trackingArea = area
     }
 
-    public func isPointInInteractiveDrawer(_ point: NSPoint) -> Bool {
-        guard !store.isRailsFrozen else { return false }
+    private func updateCacheIfNeeded() {
+        let now = CACurrentMediaTime()
+        let activeItemId = store.activeDrawerItemId
+        let activePodId = store.activeDrawerPodId
+        let pinned = store.pinnedDrawerItemIds
+
+        // If bounds and active/pinned state are unchanged, throttle layout re-evaluation to 35ms (approx 30Hz)
+        if cache.boundsSize == bounds.size,
+           cache.activeDrawerItemId == activeItemId,
+           cache.activeDrawerPodId == activePodId,
+           cache.pinnedItemIds == pinned,
+           (now - cache.timestamp) < 0.035 {
+            return
+        }
+
         let totalH = Double(bounds.height)
         let windowW = Double(bounds.width)
-        let cardFrames = store.activeDrawerCardFrames(for: edge, totalHeight: totalH, windowWidth: windowW)
-        return cardFrames.contains(where: { $0.contains(point) })
+        let frames = store.activeDrawerCardFrames(for: edge, totalHeight: totalH, windowWidth: windowW)
+        let layout = store.resolvedPhysicalLayout(for: edge, totalHeight: totalH)
+
+        cache = GeometrySnapshotCache(
+            boundsSize: bounds.size,
+            activeDrawerItemId: activeItemId,
+            activeDrawerPodId: activePodId,
+            pinnedItemIds: pinned,
+            cachedCardFrames: frames,
+            cachedLayoutItems: layout,
+            timestamp: now
+        )
+    }
+
+    public func isPointInInteractiveDrawer(_ point: NSPoint) -> Bool {
+        guard !store.isRailsFrozen else { return false }
+        updateCacheIfNeeded()
+        return cache.cachedCardFrames.contains(where: { $0.contains(point) })
     }
 
     public override func scrollWheel(with event: NSEvent) {
@@ -194,10 +235,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW) : (point.x <= bounds.minX + barW)
         if isOnRail {
             // Only capture if physically over an actual pod on the rail (not in empty margins or corners!)
+            updateCacheIfNeeded()
             let totalH = Double(bounds.height)
             let currentWindowY = totalH - Double(point.y)
-            let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: totalH)
-            let isOverPod = layoutItems.contains(where: {
+            let isOverPod = cache.cachedLayoutItems.contains(where: {
                 let topY = $0.startY
                 let bottomY = topY + $0.spanH
                 return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)

@@ -25,6 +25,14 @@ public final class PluginRegistry {
     public func register(_ plugin: any PurahPodPlugin, store: PurahWorkspaceStore? = nil) {
         registeredPlugins[plugin.manifest.id] = plugin
         if let store {
+            store.registerCapabilityProvider(plugin)
+            plugin.onMount(store: store)
+        }
+    }
+
+    public func bindStore(_ store: PurahWorkspaceStore) {
+        for plugin in registeredPlugins.values {
+            store.registerCapabilityProvider(plugin)
             plugin.onMount(store: store)
         }
     }
