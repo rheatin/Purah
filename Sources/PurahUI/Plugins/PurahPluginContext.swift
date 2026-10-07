@@ -1,5 +1,6 @@
 // Sources/PurahUI/Plugins/PurahPluginContext.swift
 import SwiftUI
+import AppKit
 import PurahCore
 
 @MainActor
@@ -19,6 +20,10 @@ public struct PurahPluginContext: Sendable {
     public let requestDismiss: @MainActor () -> Void
     public let togglePin: @MainActor () -> Void
 
+    public let showToast: @MainActor (String, String?) -> Void
+    public let showWarning: @MainActor (String) -> Void
+    public let performHaptic: @MainActor (PurahHapticType) -> Void
+
     public init(
         pod: SlotPod,
         edge: MountEdge,
@@ -32,7 +37,10 @@ public struct PurahPluginContext: Sendable {
         store: PurahWorkspaceStore,
         requestExpand: @escaping @MainActor () -> Void,
         requestDismiss: @escaping @MainActor () -> Void,
-        togglePin: @escaping @MainActor () -> Void
+        togglePin: @escaping @MainActor () -> Void,
+        showToast: (@MainActor (String, String?) -> Void)? = nil,
+        showWarning: (@MainActor (String) -> Void)? = nil,
+        performHaptic: (@MainActor (PurahHapticType) -> Void)? = nil
     ) {
         self.pod = pod
         self.edge = edge
@@ -47,5 +55,37 @@ public struct PurahPluginContext: Sendable {
         self.requestExpand = requestExpand
         self.requestDismiss = requestDismiss
         self.togglePin = togglePin
+
+        if let showToast {
+            self.showToast = showToast
+        } else {
+            self.showToast = { [weak store] msg, icon in
+                let text = (icon != nil) ? "\(icon!) \(msg)" : msg
+                store?.onCapacityWarningToast?(text)
+            }
+        }
+
+        if let showWarning {
+            self.showWarning = showWarning
+        } else {
+            self.showWarning = { [weak store] msg in
+                store?.onCapacityWarningToast?(msg)
+            }
+        }
+
+        if let performHaptic {
+            self.performHaptic = performHaptic
+        } else {
+            self.performHaptic = { type in
+                switch type {
+                case .alignment:
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                case .levelChange:
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                case .generic:
+                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
+                }
+            }
+        }
     }
 }

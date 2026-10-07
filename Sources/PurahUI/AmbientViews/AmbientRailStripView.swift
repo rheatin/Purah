@@ -36,33 +36,20 @@ public struct AmbientRailStripView: View {
                     let isThisPodActive = (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id))
 
                     VStack(spacing: 0) {
-                        if pod.id == "todo" {
-                            todoPodItems(pod: pod, totalHeight: spanH)
-                        } else if pod.id == "calendar" {
-                            calendarPodItems(pod: pod, totalHeight: spanH)
-                        } else if pod.id == "vitals" && store.isVitalsDecomposed {
-                            decomposedVitalsPodItems(pod: pod, totalHeight: spanH, startY: startY, windowHeight: totalHeight)
-                        } else if pod.id == "scripts" && store.isScriptsDecomposed {
-                            decomposedScriptsPodItems(pod: pod, totalHeight: spanH, startY: startY, windowHeight: totalHeight)
-                        } else if pod.id == "vitals" {
-                            vitalsRailBar(pod: pod, totalHeight: spanH)
+                        if store.isPodDecomposed(pod.id) {
+                            if pod.id == "todo" {
+                                todoPodItems(pod: pod, totalHeight: spanH)
+                            } else if pod.id == "calendar" {
+                                calendarPodItems(pod: pod, totalHeight: spanH)
+                            } else if pod.id == "vitals" {
+                                decomposedVitalsPodItems(pod: pod, totalHeight: spanH, startY: startY, windowHeight: totalHeight)
+                            } else if pod.id == "scripts" {
+                                decomposedScriptsPodItems(pod: pod, totalHeight: spanH, startY: startY, windowHeight: totalHeight)
+                            }
                         } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
                             renderPluginPod(plugin: plugin, pod: pod, totalHeight: spanH)
                         } else {
-                            switch pod.id {
-                            case "music":
-                                musicPodItem(pod: pod, totalHeight: spanH)
-                            case "shelf":
-                                shelfPodItem(pod: pod, totalHeight: spanH)
-                            case "notes":
-                                notesPodItem(pod: pod, totalHeight: spanH)
-                            case "vitals":
-                                vitalsRailBar(pod: pod, totalHeight: spanH)
-                            case "scripts":
-                                scriptsRailBar(pod: pod, totalHeight: spanH)
-                            default:
-                                genericRailBar(pod: pod, totalHeight: spanH)
-                            }
+                            genericRailBar(pod: pod, totalHeight: spanH)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
@@ -708,11 +695,12 @@ public struct AmbientRailStripView: View {
     private func renderPluginPod(plugin: any PurahPodPlugin, pod: SlotPod, totalHeight: CGFloat) -> some View {
         let isPinned = store.isItemPinned(id: pod.id)
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
-        let color = (pod.id == "vitals") ? VitalsColorResolver.overallVitalsColor(
-            vitals: HardwareVitalsService.shared.metrics,
-            thresholds: store.vitalsThresholds,
-            palette: palette
-        ) : palette.podColor(for: pod.id, store: store)
+        let color = plugin.dynamicBarColor(context: PurahPluginContext(
+            pod: pod, edge: edge, railWidth: barW, slotHeight: max(totalHeight, 36.0),
+            drawerWidth: store.effectiveDrawerWidth(baseWidth: 280.0), isExpanded: isActive,
+            isPinned: isPinned, accentColor: palette.podColor(for: pod.id, store: store),
+            palette: palette, store: store, requestExpand: {}, requestDismiss: {}, togglePin: {}
+        )) ?? palette.podColor(for: pod.id, store: store)
         let slotH = max(totalHeight, 36.0)
 
         let context = PurahPluginContext(
@@ -758,6 +746,9 @@ public struct AmbientRailStripView: View {
                     if isHovered {
                         context.requestExpand()
                     }
+                }
+                .onTapGesture {
+                    plugin.onRailBarTap(subItemId: nil, context: context)
                 }
 
             if isActive {

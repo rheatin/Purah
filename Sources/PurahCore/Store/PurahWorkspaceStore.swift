@@ -265,15 +265,33 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public func hasActiveOrPinnedChild(for podId: String) -> Bool {
+        if podId == "todo" {
+            return todos.contains { isItemPinned(id: $0.id) || $0.id == activeDrawerItemId }
+        }
+        if podId == "calendar" {
+            return calendarEvents.contains { isItemPinned(id: $0.id) || $0.id == activeDrawerItemId }
+        }
+        if podId == "vitals" && isVitalsDecomposed {
+            return vitalsEnabledMetrics.contains { isItemPinned(id: "vitals-\($0.rawValue)") || "vitals-\($0.rawValue)" == activeDrawerItemId }
+        }
+        if podId == "scripts" && isScriptsDecomposed {
+            return scriptsEnabledActions.contains { isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == activeDrawerItemId }
+        }
+        return false
+    }
+
+    public func isPodDecomposed(_ id: String) -> Bool {
+        if id == "vitals" { return isVitalsDecomposed }
+        if id == "scripts" { return isScriptsDecomposed }
+        if id == "calendar" || id == "todo" { return true }
+        return false
+    }
+
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
         let podHeight = max(pod.range.length * totalHeight, 36.0)
-        if pod.id == "scripts" && isScriptsDecomposed {
-            let count = max(scriptsEnabledActions.count, 1)
-            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
-        }
-        if pod.id == "vitals" && isVitalsDecomposed {
-            let count = max(vitalsEnabledMetrics.count, 1)
-            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+        if isPodDecomposed(pod.id) {
+            return max(podHeight, minimumDrawerHeight(for: pod.id))
         }
         return podHeight
     }
