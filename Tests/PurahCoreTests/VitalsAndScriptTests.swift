@@ -79,6 +79,38 @@ struct VitalsAndScriptTests {
         #expect(!service.actions.contains(where: { $0.id == "test-shortcut" }))
     }
 
+    @Test("ScriptActionItem showNotification toggle and Codable backward compatibility")
+    func testScriptActionItemNotificationSerialization() throws {
+        let actionWithNotification = ScriptActionItem(
+            id: "notify-test",
+            name: "Notify Action",
+            systemIcon: "bell",
+            commandType: .shell,
+            scriptContent: "echo 1",
+            description: "Test notification",
+            showNotification: false
+        )
+        #expect(actionWithNotification.showNotification == false)
+
+        let encoded = try JSONEncoder().encode(actionWithNotification)
+        let decoded = try JSONDecoder().decode(ScriptActionItem.self, from: encoded)
+        #expect(decoded.showNotification == false)
+
+        // Backward compatibility: JSON without showNotification key defaults to true
+        let legacyJSON = """
+        {
+            "id": "legacy-action",
+            "name": "Legacy",
+            "systemIcon": "terminal",
+            "commandType": "shell",
+            "scriptContent": "pwd",
+            "description": "Legacy action"
+        }
+        """.data(using: .utf8)!
+        let legacyDecoded = try JSONDecoder().decode(ScriptActionItem.self, from: legacyJSON)
+        #expect(legacyDecoded.showNotification == true)
+    }
+
     @Test("ScriptRunwayService updateAction mutates existing action in-place")
     func testUpdateAction() {
         let service = ScriptRunwayService()
@@ -401,21 +433,18 @@ struct VitalsAndScriptTests {
         #expect(store.activeDrawerItemId == scriptItemId)
 
         // Pod coordinate math for left rail scripts pod
-        guard let scriptsPod = store.pods.first(where: { $0.id == "scripts" }) else {
-            Issue.record("Scripts pod not found")
+        let totalH: CGFloat = 1000.0
+        let cardFrames = store.activeDrawerCardFrames(for: .left, totalHeight: Double(totalH), windowWidth: 340.0)
+        guard let activeRect = cardFrames.first else {
+            Issue.record("No active card frame found")
             return
         }
-        let totalH: CGFloat = 1000.0
-        let physicalCardH = max(scriptsPod.range.length * totalH, 36.0)
-        let cardTop = totalH * (1.0 - scriptsPod.range.start)
-        let cardBottom = cardTop - physicalCardH
-        let insideY = (cardTop + cardBottom) / 2.0
-        let insidePoint = NSPoint(x: 50, y: insideY)
+        let insidePoint = NSPoint(x: 50, y: activeRect.midY)
 
         #expect(hostingView.isPointInInteractiveDrawer(insidePoint) == true, "Point inside active decomposed script drawer must be interactive")
 
-        // Point far outside drawer on X (x = 320 where drawer is ~280) returns false
-        let outsideXPoint = NSPoint(x: 320, y: insideY)
+        // Point far outside drawer on X (x = 350 where drawer is 280 + 50 corridor = 330) returns false
+        let outsideXPoint = NSPoint(x: 350, y: insidePoint.y)
         #expect(hostingView.isPointInInteractiveDrawer(outsideXPoint) == false, "Point outside drawer width must pass through")
 
         // Point outside drawer on Y returns false
@@ -430,10 +459,44 @@ struct VitalsAndScriptTests {
         #expect(store.isItemPinned(id: scriptItemId) == true)
         #expect(store.hasPinnedItem(on: .left) == true)
         #expect(hostingView.isPointInInteractiveDrawer(insidePoint) == true, "Point inside pinned decomposed script drawer must remain interactive")
+    }
 
-        // Reset
-        store.togglePinItem(id: scriptItemId)
-        store.isScriptsDecomposed = false
+    @Test("Decomposed script drawer enables click-through on transparent areas of inactive sibling actions")
+    func testDecomposedScriptTransparentClickThrough() {
+        let store = PurahWorkspaceStore()
+        store.isScriptsDecomposed = true
+        let actions = store.scriptsEnabledActions
+        guard actions.count >= 2 else { return }
+
+        let targetAction = actions[1] // Toggle Dark Mode or second action
+        let targetItemId = "scripts-\(targetAction.id)"
+        store.activateDrawer(podId: "scripts", itemId: targetItemId)
+
+        let totalH: Double = 1000.0
+        let windowW: Double = 340.0
+        let hostingView = PassThroughHostingView(rootView: EmptyView(), edge: .left, store: store)
+        hostingView.frame = NSRect(x: 0, y: 0, width: windowW, height: totalH)
+
+        let cardFrames = store.activeDrawerCardFrames(for: .left, totalHeight: totalH, windowWidth: windowW)
+        // Only ONE card frame should exist for the active action!
+        #expect(cardFrames.count == 1)
+
+        guard let activeCardRect = cardFrames.first else {
+            Issue.record("Active card frame missing")
+            return
+        }
+
+        // Point inside the active second action card
+        let insidePoint = NSPoint(x: 100, y: activeCardRect.midY)
+        #expect(hostingView.isPointInInteractiveDrawer(insidePoint) == true)
+
+        // Point in transparent space ABOVE active card (e.g. at Y of action 0)
+        let abovePoint = NSPoint(x: 100, y: activeCardRect.maxY + 40.0)
+        #expect(hostingView.isPointInInteractiveDrawer(abovePoint) == false, "Transparent area above active sub-item card must allow click-through")
+
+        // Point in transparent space BELOW active card (e.g. at Y of action 3)
+        let belowPoint = NSPoint(x: 100, y: max(activeCardRect.minY - 40.0, 10.0))
+        #expect(hostingView.isPointInInteractiveDrawer(belowPoint) == false, "Transparent area below active sub-item card must allow click-through")
     }
 
     @Test("ScriptsPluginSettingsView initialization, decomposition toggle, multi-select minimum guard, and in-place action editing")

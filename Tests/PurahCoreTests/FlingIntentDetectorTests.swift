@@ -63,7 +63,7 @@ struct FlingIntentDetectorTests {
 
         #expect(agile.initialDwellSeconds == 0.08)
         #expect(balanced.initialDwellSeconds == 0.15)
-        #expect(cautious.initialDwellSeconds == 0.25)
+        #expect(cautious.initialDwellSeconds == 0.40)
 
         #expect(agile.deepEdgeDwellSeconds < balanced.deepEdgeDwellSeconds)
         #expect(balanced.deepEdgeDwellSeconds < cautious.deepEdgeDwellSeconds)

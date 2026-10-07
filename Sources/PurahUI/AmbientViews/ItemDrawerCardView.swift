@@ -225,15 +225,26 @@ public struct CalendarItemDrawerView: View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
-        let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
+        let isAcknowledged = store.isAlertAcknowledged(id: event.id)
+        let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled && !isAcknowledged
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条（尺寸严格共面齐平，高亮时呈现清澈光学辉光）
+            // 贴边基座色条（尺寸严格共面齐平，高亮时呈现动态信标呼吸）
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
-                .shadow(color: isAlerting ? podColor.opacity(0.90) : .clear, radius: 3)
-                .shadow(color: isAlerting ? podColor.opacity(0.55) : .clear, radius: 7)
+                .dynamicAttentionBeacon(
+                    isAlerting: isAlerting,
+                    edge: edge,
+                    baseWidth: CGFloat(store.railBarWidth),
+                    color: podColor,
+                    alertStyle: store.alertStyle,
+                    onHoverDismiss: {
+                        if store.dismissAlertOnHover {
+                            store.acknowledgeAlert(id: event.id)
+                        }
+                    }
+                )
 
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting)
@@ -245,6 +256,16 @@ public struct CalendarItemDrawerView: View {
         }
         .frame(height: cardH)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+        .onAppear {
+            if isAlerting {
+                store.notifyEventAlertIfNeeded(for: event)
+            }
+        }
+        .onChange(of: isAlerting) { _, alerting in
+            if alerting {
+                store.notifyEventAlertIfNeeded(for: event)
+            }
+        }
     }
 
     private var itemDrawerTransition: AnyTransition {
@@ -751,7 +772,11 @@ public struct ScriptItemDrawerView: View {
             // Entire card body is a tactile click-to-run button
             Button {
                 Task {
-                    _ = await runway.executeAction(action)
+                    let res = await runway.executeAction(action)
+                    if action.showNotification {
+                        let text = res.success ? "✨ Ran \(action.name)" : "⚠️ Failed: \(res.message)"
+                        store.onCapacityWarningToast?(text)
+                    }
                 }
             } label: {
                 HStack(spacing: 8) {

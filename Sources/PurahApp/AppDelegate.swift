@@ -84,58 +84,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
 
-        // Preferences Simulator
+        // Preferences / Settings
         let prefItem = NSMenuItem(title: "menu.openSimulator".localized, action: #selector(openPreferences), keyEquivalent: ",")
         prefItem.target = self
         menu.addItem(prefItem)
-
-        // System Access & Permissions
-        let accessItem = NSMenuItem(title: "Permissions & Access...", action: #selector(openPermissions), keyEquivalent: "p")
-        accessItem.target = self
-        menu.addItem(accessItem)
-
-        // Magic Ergonomics
-        let autoItem = NSMenuItem(title: "menu.autoLayout".localized, action: #selector(autoLayout), keyEquivalent: "e")
-        autoItem.target = self
-        menu.addItem(autoItem)
 
         // Freeze / Unfreeze Rails
         let freezeTitle = frozen ? "Unfreeze Rails (\(store.hotKeyShortcut.displayString))" : "Freeze Rails (\(store.hotKeyShortcut.displayString))"
         let freezeItem = NSMenuItem(title: freezeTitle, action: #selector(toggleFreezeMode), keyEquivalent: "")
         freezeItem.target = self
         menu.addItem(freezeItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Presets submenu
-        let presetMenu = NSMenu()
-        for preset in PodPreset.allCases {
-            let item = NSMenuItem(title: preset.defaultTitle, action: #selector(selectPreset(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = preset
-            if store.currentPreset == preset {
-                item.state = .on
-            }
-            presetMenu.addItem(item)
-        }
-        let presetsParent = NSMenuItem(title: "simulator.presets".localized, action: nil, keyEquivalent: "")
-        presetsParent.submenu = presetMenu
-        menu.addItem(presetsParent)
-
-        // Language submenu
-        let langMenu = NSMenu()
-        for lang in AppLanguage.allCases {
-            let item = NSMenuItem(title: lang.displayName, action: #selector(changeLanguage(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = lang
-            if LocalizationManager.shared.currentLanguage == lang {
-                item.state = .on
-            }
-            langMenu.addItem(item)
-        }
-        let langParent = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
-        langParent.submenu = langMenu
-        menu.addItem(langParent)
 
         // Check for updates
         let updateItem = NSMenuItem(title: "menu.checkUpdates".localized, action: #selector(openUpdater), keyEquivalent: "u")

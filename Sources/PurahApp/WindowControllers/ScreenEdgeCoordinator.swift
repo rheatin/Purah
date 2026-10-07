@@ -37,10 +37,10 @@ public final class ScreenEdgeCoordinator {
         switch store.displayTargetMode {
         case .followCursor:
             if let point = point {
-                return all.first { $0.frame.contains(point) } ?? activeScreen ?? NSScreen.main ?? all.first
+                return all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(point) } ?? activeScreen ?? NSScreen.main ?? all.first
             } else {
                 let loc = NSEvent.mouseLocation
-                return all.first { $0.frame.contains(loc) } ?? activeScreen ?? NSScreen.main ?? all.first
+                return all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(loc) } ?? activeScreen ?? NSScreen.main ?? all.first
             }
         case .primaryOnly:
             return all.first
@@ -123,10 +123,12 @@ public final class ScreenEdgeCoordinator {
 
     public func dismissDrawer(for edge: MountEdge? = nil) {
         if let edge = edge {
-            if let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId,
-               let pod = store.pod(forItemId: activeId),
-               pod.edge == edge,
-               !store.isItemPinned(id: activeId) {
+            let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
+            let pod = activeId.flatMap { store.pod(forItemId: $0) }
+            let isCurrentOnEdge = (pod?.edge == edge) || (store.activePod?.edge == edge) || (store.activeDrawerPodId != nil)
+            let isPinned = activeId.map { store.isItemPinned(id: $0) } ?? false
+
+            if isCurrentOnEdge && !isPinned {
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
                     store.activeDrawerItemId = nil
                     store.activeDrawerPodId = nil
@@ -135,6 +137,7 @@ public final class ScreenEdgeCoordinator {
             }
             let hasPinned = store.hasPinnedItem(on: edge)
             setInteractive(hasPinned, for: edge)
+            EdgeMouseMonitor.shared?.resetEdgeState()
         } else {
             withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
                 store.activeDrawerItemId = nil
@@ -145,6 +148,7 @@ public final class ScreenEdgeCoordinator {
             let hasRightPinned = store.hasPinnedItem(on: .right)
             setInteractive(hasLeftPinned, for: .left)
             setInteractive(hasRightPinned, for: .right)
+            EdgeMouseMonitor.shared?.resetEdgeState()
         }
     }
 }

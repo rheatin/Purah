@@ -122,9 +122,11 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
 3. **Dual-Rail Symmetric Catch Corridor (+50pt Invisible Buffer)**:
    - `PassThroughHostingView` and `EdgeMouseMonitor` expand the interactive hit-test bounding box by `+50pt` beyond the outer floating edge of the card, and $\pm 18\text{pt}$ vertically.
    - Mouse overshoots within this 50pt corridor remain interactive and preserve drawer state.
-4. **Comprehensive Edge Sensitivity & Calibration Model**:
-   - `EdgeTriggerSensitivity` governs both the **Initial Dwell Window (首次悬停延时)**, the **Exit Grace Window (离开抽屉容差时间)**, and the **Overshoot Catch Corridor Width**.
-   - Presets (Agile, Balanced, Cautious) provide 1-click convenience, complemented by a fine-grained calibration instrument (sliders/steppers) in Preferences for millisecond precision tuning.
+4. **Comprehensive Edge Sensitivity & Calibration Model (双模初次触发门禁)**:
+   - **Strict Edge Anti-Accidental Touch Band (12pt 极致防误触物理带宽)**: The rail trigger zone strictly adheres to `railBarWidth + 4.0` (8pt + 4pt = 12pt). Transparent desktop area beyond 12pt 100% returns `nil` in hitTest, ensuring zero interference with IDE scrollbars, browser sidebars, or window controls.
+   - **Initial Hover Dwell (抗微颤悬停驻留门禁 - SuperCorners 模型)**: When cursor lands on a pod within the 12pt rail band, dwell timer begins. Hand micro-jitters do not reset the timer; when dwell duration (e.g. 150ms balanced / 0ms agile) elapses, the drawer glides open smoothly.
+   - **Push Force Resistance Barrier (推力阻力结界模型 - Barrier/Input Leap/Loop 模型)**: Solves the macOS coordinate-clamping problem at screen borders by accumulating hardware relative motion deltas (`PushForceAccumulator`). Continuous pressing against the bezel (36px accumulated force) or rapid double-tap impulse strike (22px) shatters the resistance barrier and pops open the drawer with 0ms latency. Inward retreat immediately resets the accumulator.
+   - `EdgeTriggerSensitivity` governs the **Initial Dwell Window**, the **Push Resistance Barrier Threshold**, the **Exit Grace Window**, and the **Overshoot Catch Corridor Width**.
 
 ---
 

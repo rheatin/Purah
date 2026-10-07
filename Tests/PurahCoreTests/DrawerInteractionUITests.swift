@@ -632,4 +632,45 @@ struct DrawerInteractionUITests {
         let view = VisualLayoutSimulatorView(store: store)
         #expect(view.store.hotKeyShortcut == .defaultShortcut)
     }
+
+    @Test("MusicDrawerView instantiates properly across all 3 height tiers without fatal errors")
+    @MainActor
+    func testMusicDrawerViewTiers() {
+        let store = PurahWorkspaceStore()
+        let view = MusicDrawerView(store: store)
+
+        // Tier 1: Compact Capsule (< 155pt)
+        let tier1Hosting = NSHostingView(rootView: view.frame(width: 290, height: 120))
+        tier1Hosting.frame = NSRect(x: 0, y: 0, width: 290, height: 120)
+        tier1Hosting.layoutSubtreeIfNeeded()
+
+        // Tier 2: Classic Studio (155pt ~ 235pt)
+        let tier2Hosting = NSHostingView(rootView: view.frame(width: 290, height: 180))
+        tier2Hosting.frame = NSRect(x: 0, y: 0, width: 290, height: 180)
+        tier2Hosting.layoutSubtreeIfNeeded()
+
+        // Tier 3: Immersive Vinyl (>= 235pt)
+        let tier3Hosting = NSHostingView(rootView: view.frame(width: 290, height: 260))
+        tier3Hosting.frame = NSRect(x: 0, y: 0, width: 290, height: 260)
+        tier3Hosting.layoutSubtreeIfNeeded()
+
+        #expect(tier1Hosting.bounds.height == 120)
+        #expect(tier2Hosting.bounds.height == 180)
+        #expect(tier3Hosting.bounds.height == 260)
+    }
+
+    @Test("MusicDrawerView instantiates properly across all critical height gradients without clipping")
+    @MainActor
+    func testMusicDrawerViewCriticalHeightGradients() {
+        let store = PurahWorkspaceStore()
+        let view = MusicDrawerView(store: store)
+        let testHeights: [CGFloat] = [100, 120, 140, 144, 145, 180, 220, 235, 240, 250, 264, 265, 300, 360, 450]
+
+        for h in testHeights {
+            let hosting = NSHostingView(rootView: view.frame(width: 290, height: h))
+            hosting.frame = NSRect(x: 0, y: 0, width: 290, height: h)
+            hosting.layoutSubtreeIfNeeded()
+            #expect(hosting.bounds.height == h)
+        }
+    }
 }

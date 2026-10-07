@@ -98,93 +98,62 @@ public struct VisualLayoutSimulatorView: View {
                     )
                 }
 
-                // 1. Motion & Dynamics Card
-                settingsCard(title: "Motion & Dynamics", icon: "waveform.path") {
-                    VStack(spacing: 12) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Motion Dynamics")
-                                    .font(.subheadline.weight(.medium))
-                                Text("Liquid continuous bezier springs and tactile edge feedback")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { store.animationStyle },
-                                set: { store.animationStyle = $0 }
-                            )) {
-                                ForEach(AnimationStyle.allCases) { anim in
-                                    Text(anim.title).tag(anim)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 260)
-                        }
-                    }
-                }
-
-                // 2. Rail & Drawer Geometry Card
+                // 1. Rail & Drawer Geometry Card
                 settingsCard(title: "Rail & Drawer Geometry", icon: "ruler.fill") {
-                    VStack(spacing: 14) {
+                    VStack(spacing: 16) {
                         // Rail bar width
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Edge Rail Width")
-                                    .font(.subheadline.weight(.medium))
-                                Spacer()
-                                Text("\(Int(store.railBarWidth)) px")
-                                    .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                                    .foregroundColor(palette.primaryAccent)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(palette.primaryAccent.opacity(0.12))
-                                    .cornerRadius(6)
-                            }
-                            Slider(value: Binding(
+                        PurahThemedSliderRow(
+                            title: "Edge Rail Width",
+                            subtitle: "Physical trigger bezel thickness (4px ~ 16px)",
+                            value: Binding(
                                 get: { store.railBarWidth },
                                 set: { store.railBarWidth = $0 }
-                            ), in: 4.0...16.0, step: 1.0)
-                        }
+                            ),
+                            range: 4.0...16.0,
+                            step: 1.0,
+                            valueBadgeText: "\(Int(store.railBarWidth)) px"
+                        )
 
                         Divider()
                             .background(palette.borderColor.opacity(0.3))
 
                         // Drawer extrusion width mode
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 10) {
                             HStack {
-                                Text("Drawer Extrusion Width")
-                                    .font(.subheadline.weight(.medium))
-                                Spacer()
-                                Picker("", selection: Binding(
-                                    get: { store.drawerWidthMode },
-                                    set: { store.drawerWidthMode = $0 }
-                                )) {
-                                    ForEach(DrawerWidthMode.allCases, id: \.self) { mode in
-                                        Text(mode.displayName).tag(mode)
-                                    }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Drawer Extrusion Width")
+                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    Text("Fixed width or content-driven adaptive sizing")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
                                 }
-                                .pickerStyle(.segmented)
-                                .frame(width: 180)
+                                Spacer()
+                                PurahThemedSegmentedPicker(
+                                    options: DrawerWidthMode.allCases,
+                                    selection: Binding(
+                                        get: { store.drawerWidthMode },
+                                        set: { store.drawerWidthMode = $0 }
+                                    ),
+                                    titleForOption: { $0.displayName }
+                                )
+                                .frame(width: 170)
                             }
 
                             if store.drawerWidthMode == .fixed {
-                                HStack {
-                                    Text("Fixed Length")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Slider(value: Binding(
+                                PurahThemedSliderRow(
+                                    title: "Fixed Drawer Length",
+                                    value: Binding(
                                         get: { store.fixedDrawerWidth },
                                         set: { store.fixedDrawerWidth = $0 }
-                                    ), in: 220.0...330.0, step: 5.0)
-                                    Text("\(Int(store.fixedDrawerWidth)) px")
-                                        .font(.system(.caption, design: .monospaced).weight(.semibold))
-                                        .foregroundColor(palette.primaryAccent)
-                                        .frame(width: 50)
-                                }
+                                    ),
+                                    range: 220.0...330.0,
+                                    step: 5.0,
+                                    valueBadgeText: "\(Int(store.fixedDrawerWidth)) px"
+                                )
                             } else {
-                                Text("Automatically sizes drawer width based on content (230px ~ 330px)")
-                                    .font(.caption)
+                                Text("Automatically sizes drawer width based on content length (230px ~ 330px)")
+                                    .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -193,68 +162,87 @@ public struct VisualLayoutSimulatorView: View {
                             .background(palette.borderColor.opacity(0.3))
 
                         // Multi-Display Target Mode
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Multi-Display Target")
-                                        .font(.subheadline.weight(.medium))
-                                    Text("Choose which display hosts edge rails in multi-monitor setups")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Picker("", selection: Binding(
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Multi-Display Target")
+                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                Text("Choose which display hosts edge rails in multi-monitor setups")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            PurahThemedMenuPicker(
+                                options: DisplayTargetMode.allCases,
+                                selection: Binding(
                                     get: { store.displayTargetMode },
                                     set: {
                                         store.displayTargetMode = $0
                                         store.savePersistentState()
                                     }
-                                )) {
-                                    ForEach(DisplayTargetMode.allCases) { mode in
-                                        Text(mode.displayName).tag(mode)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(width: 240)
-                            }
+                                ),
+                                titleForOption: { $0.displayName }
+                            )
+                            .frame(width: 250)
                         }
 
                         Divider()
                             .background(palette.borderColor.opacity(0.3))
 
                         // Edge Trigger Intentionality Sensitivity & Calibration Instrument
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Mutually Exclusive Trigger Mode Selection (Hover Dwell vs Push Force)
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Edge Trigger Sensitivity & Calibration")
-                                        .font(.subheadline.weight(.medium))
-                                    Text("Governs dwell intent, exit grace hysteresis, and overshoot corridor width")
-                                        .font(.caption)
+                                    Text("Initial Trigger Mode")
+                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    Text(store.edgeTriggerMode.subtitle)
+                                        .font(.caption2)
                                         .foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                Picker("", selection: Binding(
-                                    get: { store.edgeTriggerSensitivity },
-                                    set: {
-                                        store.applySensitivityPreset($0)
-                                    }
-                                )) {
-                                    ForEach(EdgeTriggerSensitivity.allCases, id: \.self) { sens in
-                                        Text(sens.displayName).tag(sens)
-                                    }
+                                PurahThemedSegmentedPicker(
+                                    options: EdgeTriggerMode.allCases,
+                                    selection: Binding(
+                                        get: { store.edgeTriggerMode },
+                                        set: {
+                                            store.edgeTriggerMode = $0
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    titleForOption: { $0.displayName }
+                                )
+                                .frame(width: 210)
+                            }
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Sensitivity Preset")
+                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    Text("Governs dwell intent, push-force threshold, and overshoot corridor")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
                                 }
-                                .pickerStyle(.menu)
+                                Spacer()
+                                PurahThemedMenuPicker(
+                                    options: EdgeTriggerSensitivity.allCases,
+                                    selection: Binding(
+                                        get: { store.edgeTriggerSensitivity },
+                                        set: { store.applySensitivityPreset($0) }
+                                    ),
+                                    titleForOption: { $0.displayName }
+                                )
                                 .frame(width: 280)
                             }
 
                             // Detailed Calibration Gauge
-                            VStack(spacing: 6) {
-                                HStack {
-                                    Text("Initial Hover Dwell")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .frame(width: 140, alignment: .leading)
-                                    Slider(
+                            VStack(spacing: 8) {
+                                if store.edgeTriggerMode == .hoverDwell {
+                                    PurahThemedSliderRow(
+                                        title: "Initial Hover Dwell",
+                                        subtitle: "Duration required to rest on bar before drawer opens (up to 1000ms)",
                                         value: Binding(
                                             get: { store.customInitialDwellMs },
                                             set: {
@@ -263,64 +251,109 @@ public struct VisualLayoutSimulatorView: View {
                                                 store.savePersistentState()
                                             }
                                         ),
-                                        in: 50...400,
-                                        step: 10
+                                        range: 0...1000,
+                                        step: 25,
+                                        valueBadgeText: "\(Int(store.customInitialDwellMs)) ms"
                                     )
-                                    Text("\(Int(store.customInitialDwellMs)) ms")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.primary)
-                                        .frame(width: 50, alignment: .trailing)
-                                }
-
-                                HStack {
-                                    Text("Exit Grace Window")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .frame(width: 140, alignment: .leading)
-                                    Slider(
+                                } else {
+                                    PurahThemedSliderRow(
+                                        title: "Push Force Threshold",
+                                        subtitle: "Inward velocity required to pop drawer open instantly (0ms)",
                                         value: Binding(
-                                            get: { store.customExitGraceMs },
+                                            get: { store.customPushForceThreshold },
                                             set: {
-                                                store.customExitGraceMs = $0
+                                                store.customPushForceThreshold = $0
                                                 store.edgeTriggerSensitivity = .custom
                                                 store.savePersistentState()
                                             }
                                         ),
-                                        in: 100...600,
-                                        step: 20
+                                        range: 150...800,
+                                        step: 25,
+                                        valueBadgeText: "\(Int(store.customPushForceThreshold)) pt/s"
                                     )
-                                    Text("\(Int(store.customExitGraceMs)) ms")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.primary)
-                                        .frame(width: 50, alignment: .trailing)
                                 }
 
-                                HStack {
-                                    Text("Catch Corridor Buffer")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .frame(width: 140, alignment: .leading)
-                                    Slider(
-                                        value: Binding(
-                                            get: { store.customCatchCorridorPt },
-                                            set: {
-                                                store.customCatchCorridorPt = $0
-                                                store.edgeTriggerSensitivity = .custom
-                                                store.savePersistentState()
-                                            }
-                                        ),
-                                        in: 20...90,
-                                        step: 5
-                                    )
-                                    Text("+\(Int(store.customCatchCorridorPt)) pt")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.primary)
-                                        .frame(width: 50, alignment: .trailing)
-                                }
+                                PurahThemedSliderRow(
+                                    title: "Exit Grace Window",
+                                    subtitle: "Hysteresis window before unpinned drawer retracts",
+                                    value: Binding(
+                                        get: { store.customExitGraceMs },
+                                        set: {
+                                            store.customExitGraceMs = $0
+                                            store.edgeTriggerSensitivity = .custom
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    range: 100...600,
+                                    step: 20,
+                                    valueBadgeText: "\(Int(store.customExitGraceMs)) ms"
+                                )
+
+                                PurahThemedSliderRow(
+                                    title: "Catch Corridor Buffer",
+                                    subtitle: "Floating edge invisible hit-test padding to prevent mouse drop",
+                                    value: Binding(
+                                        get: { store.customCatchCorridorPt },
+                                        set: {
+                                            store.customCatchCorridorPt = $0
+                                            store.edgeTriggerSensitivity = .custom
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    range: 20...90,
+                                    step: 5,
+                                    valueBadgeText: "+\(Int(store.customCatchCorridorPt)) pt"
+                                )
                             }
-                            .padding(8)
-                            .background(Color.primary.opacity(0.03))
-                            .cornerRadius(8)
+                            .padding(10)
+                            .background(Color.primary.opacity(0.035))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(palette.borderColor.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+
+                        Divider()
+                            .background(palette.borderColor.opacity(0.3))
+
+                        // Dynamic Attention Alert System
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Attention Alert Dynamic")
+                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    Text(store.alertStyle.subtitle)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                PurahThemedMenuPicker(
+                                    options: PluginAlertStyle.allCases,
+                                    selection: Binding(
+                                        get: { store.alertStyle },
+                                        set: {
+                                            store.alertStyle = $0
+                                            store.isEventGlowAlertEnabled = ($0 != .off)
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    titleForOption: { $0.displayName }
+                                )
+                                .frame(width: 220)
+                            }
+
+                            if store.alertStyle != .off {
+                                Toggle("Dismiss dynamic alert animation on mouse hover", isOn: Binding(
+                                    get: { store.dismissAlertOnHover },
+                                    set: {
+                                        store.dismissAlertOnHover = $0
+                                        store.savePersistentState()
+                                    }
+                                ))
+                                .font(.caption)
+                            }
                         }
                     }
                 }

@@ -102,6 +102,7 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                             store.activateDrawer(podId: pod.id, itemId: todo.id)
                         }
@@ -156,6 +157,10 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        if store.dismissAlertOnHover && (event.isOngoing || event.isImminent) {
+                            store.acknowledgeAlert(id: event.id)
+                        }
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                             store.activateDrawer(podId: pod.id, itemId: event.id)
                         }
@@ -219,6 +224,7 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                             store.activateDrawer(podId: pod.id, itemId: itemId)
                         }
@@ -282,6 +288,7 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                             store.activateDrawer(podId: pod.id, itemId: itemId)
                         }
@@ -319,6 +326,7 @@ public struct AmbientRailStripView: View {
             .contentShape(Rectangle())
             .onHover { isHovered in
                 if isHovered {
+                    guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                         store.activeDrawerItemId = pod.id
                         store.activeDrawerPodId = pod.id
@@ -341,7 +349,6 @@ public struct AmbientRailStripView: View {
     @ViewBuilder
     private func musicDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
         MusicDrawerView(store: store)
-            .padding(8)
             .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: totalHeight)
             .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
@@ -359,6 +366,7 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                             store.activeDrawerItemId = pod.id
                             store.activeDrawerPodId = pod.id
@@ -473,6 +481,7 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                             store.activeDrawerItemId = pod.id
                             store.activeDrawerPodId = pod.id
@@ -565,6 +574,7 @@ public struct AmbientRailStripView: View {
             .contentShape(Rectangle())
             .onHover { isHovered in
                 if isHovered {
+                    guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                         store.activeDrawerItemId = pod.id
                         store.activeDrawerPodId = pod.id
@@ -617,10 +627,10 @@ public struct AmbientRailStripView: View {
             RoundedRectangle(cornerRadius: radius)
                 .fill(color.opacity(0.88))
                 .frame(width: barW, height: slotH)
-            .frame(width: barW, height: slotH)
             .contentShape(Rectangle())
             .onHover { isHovered in
                 if isHovered {
+                    guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                         store.activeDrawerItemId = pod.id
                         store.activeDrawerPodId = pod.id
@@ -744,6 +754,7 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
+                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
                         context.requestExpand()
                     }
                 }

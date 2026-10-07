@@ -57,7 +57,8 @@ public struct CalendarDrawerView: View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
-        let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled
+        let isAcknowledged = store.isAlertAcknowledged(id: event.id)
+        let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled && !isAcknowledged
 
         HStack(alignment: .top, spacing: 8) {
             if isAlerting {
@@ -186,6 +187,11 @@ public struct CalendarDrawerView: View {
             cornerRadius: 8,
             strokeColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8))
         )
+        .onAppear {
+            if (event.isOngoing || event.isImminent) && store.dismissAlertOnHover {
+                store.acknowledgeAlert(id: event.id)
+            }
+        }
     }
 
     // MARK: - 阶梯式抽屉列表

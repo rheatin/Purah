@@ -44,6 +44,7 @@ public final class AmbientRailWindow: NSPanel {
         self.backgroundColor = .clear
         self.hasShadow = false
         self.ignoresMouseEvents = true // Pass-through by default when docked
+        self.acceptsMouseMovedEvents = true // Enable local .mouseMoved event dispatch for edge tracking
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
         let rootView = AmbientRailStripView(edge: edge, store: store)
