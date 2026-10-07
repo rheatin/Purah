@@ -684,7 +684,7 @@ public struct ScriptItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, 56.0)
+        let cardH = height
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
         let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id

@@ -53,4 +53,26 @@ struct DiagnosticLoggerTests {
         let isOverloaded = store.isRailOverloaded(edge: .left)
         #expect(isOverloaded == (leftRatio > 1.0))
     }
+
+    @Test("Capacity warning toast callback triggers when rail is overloaded")
+    @MainActor
+    func testCapacityWarningToastCallback() {
+        let store = PurahWorkspaceStore()
+        var toastMessage: String? = nil
+        store.onCapacityWarningToast = { msg in
+            toastMessage = msg
+        }
+
+        store.isScriptsDecomposed = true
+        store.isVitalsDecomposed = true
+        store.notifyCapacityWarningIfNeeded()
+
+        if store.isRailOverloaded(edge: .left) {
+            #expect(toastMessage != nil)
+            #expect(toastMessage?.contains("左轨空间超载") == true)
+        }
+
+        store.isScriptsDecomposed = false
+        store.isVitalsDecomposed = false
+    }
 }
