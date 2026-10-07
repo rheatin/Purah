@@ -257,19 +257,19 @@ public struct VisualLayoutSimulatorView: View {
                                     )
                                 } else {
                                     PurahThemedSliderRow(
-                                        title: "Push Force Threshold",
-                                        subtitle: "Inward velocity required to pop drawer open instantly (0ms)",
+                                        title: "Push Resistance Barrier",
+                                        subtitle: "Physical push force required at bezel before drawer breaks through (15px ~ 120px)",
                                         value: Binding(
-                                            get: { store.customPushForceThreshold },
+                                            get: { store.customPushResistanceBarrier },
                                             set: {
-                                                store.customPushForceThreshold = $0
+                                                store.customPushResistanceBarrier = $0
                                                 store.edgeTriggerSensitivity = .custom
                                                 store.savePersistentState()
                                             }
                                         ),
-                                        range: 150...800,
-                                        step: 25,
-                                        valueBadgeText: "\(Int(store.customPushForceThreshold)) pt/s"
+                                        range: 15...120,
+                                        step: 5,
+                                        valueBadgeText: "\(Int(store.customPushResistanceBarrier)) px"
                                     )
                                 }
 
