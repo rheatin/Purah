@@ -65,13 +65,14 @@ struct EdgeTriggerIntentTests {
         let edgePoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
-        // Post-arrival push force exceeding 36px barrier threshold (Vx = -2400 pt/s -> 38.4px delta)
-        let pushVelocity = CGPoint(x: -2400.0, y: 20.0)
-        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: pushVelocity)
+        // 1. Arrival at bezel: arrival frame delta is strictly discarded!
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: CGPoint(x: -500.0, y: 0.0))
+        #expect(store.activeDrawerPodId == nil, "Arrival frame must not open drawer")
 
-        // Because push force (450 pt/s) exceeded activePushForceThreshold (380 pt/s),
-        // it must trigger immediately on the spot (0ms delay)!
-        #expect(store.activeDrawerPodId == firstItem.pod.id)
+        // 2. Post-arrival push force exceeding 36px barrier threshold (Vx = -2400 pt/s -> 38.4px delta)
+        let pushVelocity = CGPoint(x: -2400.0, y: 20.0)
+        monitor.processMouse(point: edgePoint, now: Date().addingTimeInterval(0.016), customVelocity: pushVelocity)
+        #expect(store.activeDrawerPodId == firstItem.pod.id, "Post-arrival push exceeding barrier threshold must open drawer")
     }
 
     @Test("Hover Dwell mode does not trigger on push force without dwelling")
@@ -387,9 +388,13 @@ struct EdgeTriggerIntentTests {
         let edgePoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
-        // High inward thrust exceeding barrier into bezel
+        // 1. Arrival frame at bezel
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: CGPoint(x: -200.0, y: 0.0))
+        #expect(store.activeDrawerPodId == nil, "Arrival frame must not trigger")
+
+        // 2. High inward post-arrival thrust exceeding barrier into bezel
         let thrustVelocity = CGPoint(x: -2400.0, y: 30.0)
-        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: thrustVelocity)
+        monitor.processMouse(point: edgePoint, now: Date().addingTimeInterval(0.016), customVelocity: thrustVelocity)
         #expect(store.activeDrawerPodId == firstItem.pod.id)
     }
 
@@ -799,10 +804,14 @@ struct EdgeTriggerIntentTests {
         // Must strictly remain closed: in-flight approach is NOT allowed to accumulate force!
         #expect(store.activeDrawerPodId == nil, "Inflight approach must strictly hold accumulator at 0")
 
-        // Only after physically pinning against bezel (x = 1.0) and pushing does it break through!
+        // 1. Arrival frame at bezel (x = 1.0) is recorded and held closed
         let bezelPoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = bezelPoint
+        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -10.0)
+        #expect(store.activeDrawerPodId == nil, "Arrival frame at bezel must not trigger")
+
+        // 2. Post-arrival hardware push against bezel breaks through!
         monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -40.0)
-        #expect(store.activeDrawerPodId == firstItem.pod.id, "Pushing after reaching bezel must break through")
+        #expect(store.activeDrawerPodId == firstItem.pod.id, "Post-arrival push at bezel must break through")
     }
 }
