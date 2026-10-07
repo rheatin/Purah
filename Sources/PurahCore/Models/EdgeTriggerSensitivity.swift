@@ -12,7 +12,7 @@ public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable {
         case .agile: return "Agile (80ms dwell · 180ms grace)"
         case .balanced: return "Balanced (150ms dwell · 280ms grace · Recommended)"
         case .cautious: return "Cautious (250ms dwell · 400ms grace)"
-        case .custom: return "Custom Calibration (自定义微调)"
+        case .custom: return "Custom Calibration"
         }
     }
 

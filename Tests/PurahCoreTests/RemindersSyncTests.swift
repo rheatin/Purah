@@ -12,10 +12,10 @@ struct RemindersSyncTests {
         let service = SystemRemindersSyncService()
         let initialCount = store.todos.count
 
-        let success = await service.addReminder(title: "海拉鲁矿石收集测试", into: store)
+        let success = await service.addReminder(title: "Hyrule Ore Gathering Test", into: store)
         #expect(success)
         #expect(store.todos.count == initialCount + 1)
-        #expect(store.todos.last?.title == "海拉鲁矿石收集测试")
+        #expect(store.todos.last?.title == "Hyrule Ore Gathering Test")
     }
 
     @Test("Toggle completion in-memory fallback works")

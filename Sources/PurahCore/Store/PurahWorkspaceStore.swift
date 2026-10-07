@@ -256,12 +256,12 @@ public final class PurahWorkspaceStore {
             lastCapacityAlertTime = now
             let req = Int(totalRequiredHeight(for: .left))
             let avail = Int(availableScreenHeight(for: .left))
-            onCapacityWarningToast?("⚠️ 左轨空间超载 (\(req)pt / 可用 \(avail)pt)，建议分配至右轨")
+            onCapacityWarningToast?("⚠️ Left rail capacity overload (\(req)pt / \(avail)pt available). Consider moving pods to the right rail.")
         } else if isRailOverloaded(edge: .right) {
             lastCapacityAlertTime = now
             let req = Int(totalRequiredHeight(for: .right))
             let avail = Int(availableScreenHeight(for: .right))
-            onCapacityWarningToast?("⚠️ 右轨空间超载 (\(req)pt / 可用 \(avail)pt)，建议分配至左轨")
+            onCapacityWarningToast?("⚠️ Right rail capacity overload (\(req)pt / \(avail)pt available). Consider moving pods to the left rail.")
         }
     }
 

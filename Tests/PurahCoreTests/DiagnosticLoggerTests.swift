@@ -69,7 +69,7 @@ struct DiagnosticLoggerTests {
 
         if store.isRailOverloaded(edge: .left) {
             #expect(toastMessage != nil)
-            #expect(toastMessage?.contains("左轨空间超载") == true)
+            #expect(toastMessage?.contains("Left rail capacity overload") == true)
         }
 
         store.isScriptsDecomposed = false
