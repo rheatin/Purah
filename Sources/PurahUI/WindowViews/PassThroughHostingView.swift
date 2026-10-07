@@ -62,8 +62,29 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             if let panel = self.window as? NSPanel {
                 panel.ignoresMouseEvents = false
             }
+            super.scrollWheel(with: event)
+        } else {
+            // 光标位于卡片外透明区域 (包括卡片上下方)：严禁吞噬滚轮事件，立即将窗口切为全穿透！
+            if let panel = self.window as? NSPanel {
+                panel.ignoresMouseEvents = true
+            }
         }
-        super.scrollWheel(with: event)
+    }
+
+    public override func rightMouseDown(with event: NSEvent) {
+        guard !store.isRailsFrozen else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let winPoint = event.locationInWindow
+        if isPointInInteractiveDrawer(winPoint) {
+            super.rightMouseDown(with: event)
+        } else {
+            // 光标位于卡片外透明区域 (包括卡片上下方)：严禁拦截右键菜单，立即将窗口切为全穿透！
+            if let panel = self.window as? NSPanel {
+                panel.ignoresMouseEvents = true
+            }
+        }
     }
 
     public override func mouseMoved(with event: NSEvent) {
@@ -76,8 +97,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let winPoint = event.locationInWindow
         let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
+        let isInsideCard = isPointInInteractiveDrawer(winPoint)
 
-        if isOnRail || isPointInInteractiveDrawer(winPoint) {
+        if isOnRail || isInsideCard {
             exitGraceTask?.cancel()
             exitGraceTask = nil
             if let panel = self.window as? NSPanel {
@@ -86,9 +108,18 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
 
-        // When mouse steps outside, use dynamic Exit Grace Window before retracting (only when a drawer is open!)
-        let hasOpenDrawer = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
-        if hasOpenDrawer && exitGraceTask == nil {
+        // 光标滑出卡片与导轨、来到透明空白区域时：
+        // 瞬间将窗口切为 ignoresMouseEvents = true，保证上下空白处的滚轮、右键、点击 100% 直达底层窗口！
+        if let panel = self.window as? NSPanel {
+            panel.ignoresMouseEvents = true
+        }
+
+        // When mouse steps outside, use dynamic Exit Grace Window before retracting (only when an UNPINNED drawer is active!)
+        let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
+        let isCurrentActivePinned = activeId.map { store.isItemPinned(id: $0) } ?? false
+        let hasActiveUnpinnedDrawer = (activeId != nil) && !isCurrentActivePinned
+
+        if hasActiveUnpinnedDrawer && exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
                 let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
                 try? await Task.sleep(for: .seconds(graceSec))
@@ -100,15 +131,12 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     panel.resignKey()
                 }
 
-                let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
-                if let active = activeId {
-                    let isCurrentActivePinned = self.store.isItemPinned(id: active)
-                    if !isCurrentActivePinned {
-                        withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
-                            self.store.activeDrawerItemId = nil
-                            self.store.activeDrawerPodId = nil
-                            self.store.hoveredPodId = nil
-                        }
+                if let currentActive = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId,
+                   !self.store.isItemPinned(id: currentActive) {
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                        self.store.activeDrawerItemId = nil
+                        self.store.activeDrawerPodId = nil
+                        self.store.hoveredPodId = nil
                     }
                 }
                 self.exitGraceTask = nil

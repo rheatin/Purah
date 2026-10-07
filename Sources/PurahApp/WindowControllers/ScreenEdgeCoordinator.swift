@@ -92,10 +92,9 @@ public final class ScreenEdgeCoordinator {
         } else {
             leftRailWindow?.animator().alphaValue = 1.0
             rightRailWindow?.animator().alphaValue = 1.0
-            let hasLeft = store.hasPinnedItem(on: .left)
-            let hasRight = store.hasPinnedItem(on: .right)
-            leftRailWindow?.ignoresMouseEvents = !hasLeft
-            rightRailWindow?.ignoresMouseEvents = !hasRight
+            // 默认窗口严格保持全透明穿透态 (ignoresMouseEvents = true)，仅由 2D 碰撞检测在卡片内开启交互
+            leftRailWindow?.ignoresMouseEvents = true
+            rightRailWindow?.ignoresMouseEvents = true
         }
     }
 
@@ -135,8 +134,8 @@ public final class ScreenEdgeCoordinator {
                     store.hoveredPodId = nil
                 }
             }
-            let hasPinned = store.hasPinnedItem(on: edge)
-            setInteractive(hasPinned, for: edge)
+            // 抽屉收回后默认将窗口置为全穿透态，光标在卡片外绝不截留鼠标事件
+            setInteractive(false, for: edge)
             EdgeMouseMonitor.shared?.resetEdgeState()
         } else {
             withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
@@ -144,10 +143,8 @@ public final class ScreenEdgeCoordinator {
                 store.activeDrawerPodId = nil
                 store.hoveredPodId = nil
             }
-            let hasLeftPinned = store.hasPinnedItem(on: .left)
-            let hasRightPinned = store.hasPinnedItem(on: .right)
-            setInteractive(hasLeftPinned, for: .left)
-            setInteractive(hasRightPinned, for: .right)
+            setInteractive(false, for: .left)
+            setInteractive(false, for: .right)
             EdgeMouseMonitor.shared?.resetEdgeState()
         }
     }

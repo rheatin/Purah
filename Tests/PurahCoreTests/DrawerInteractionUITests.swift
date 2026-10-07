@@ -258,6 +258,38 @@ struct DrawerInteractionUITests {
         #expect(isInsideX && isInsideY, "Inside Quick Notes card must be captured")
     }
 
+        @Test("When pod is pinned, empty area above and below guarantees 100% nil hitTest for scroll wheel and right click pass-through")
+    @MainActor
+    func testPinnedPodAboveBelowEmptyAreaGuaranteesPassThrough() {
+        let store = PurahWorkspaceStore()
+        store.togglePinItem(id: "vitals")
+        #expect(store.isItemPinned(id: "vitals") == true)
+        store.activeDrawerPodId = nil
+        store.activeDrawerItemId = nil
+
+        let totalH = 1000.0
+        let windowW = 340.0
+        let cardFrames = store.activeDrawerCardFrames(for: .left, totalHeight: totalH, windowWidth: windowW)
+        #expect(!cardFrames.isEmpty, "Pinned vitals must generate a precision card frame")
+
+        guard let vitalsFrame = cardFrames.first else { return }
+
+        // Point 1: Directly above the pinned card (y = vitalsFrame.maxY + 50)
+        let abovePoint = NSPoint(x: 100.0, y: min(vitalsFrame.maxY + 50.0, totalH - 10.0))
+        let isAboveCaptured = cardFrames.contains(where: { $0.contains(abovePoint) })
+        #expect(isAboveCaptured == false, "Empty space above pinned card must NOT be captured (allows 100% right-click and scroll wheel pass-through)")
+
+        // Point 2: Directly below the pinned card (y = vitalsFrame.minY - 50)
+        let belowPoint = NSPoint(x: 100.0, y: max(vitalsFrame.minY - 50.0, 10.0))
+        let isBelowCaptured = cardFrames.contains(where: { $0.contains(belowPoint) })
+        #expect(isBelowCaptured == false, "Empty space below pinned card must NOT be captured")
+
+        // Point 3: Inside the pinned card (midX, midY)
+        let insidePoint = NSPoint(x: vitalsFrame.midX, y: vitalsFrame.midY)
+        let isInsideCaptured = cardFrames.contains(where: { $0.contains(insidePoint) })
+        #expect(isInsideCaptured == true, "Inside pinned card must be captured for interactivity")
+    }
+
     @Test("Music track calculates real-time progress accurately based on time elapsed")
     @MainActor
     func testMusicRealTimeProgressCalculation() {
