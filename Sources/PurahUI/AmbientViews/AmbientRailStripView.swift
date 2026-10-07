@@ -41,9 +41,9 @@ public struct AmbientRailStripView: View {
                         } else if pod.id == "calendar" {
                             calendarPodItems(pod: pod, totalHeight: spanH)
                         } else if pod.id == "vitals" && store.isVitalsDecomposed {
-                            decomposedVitalsPodItems(pod: pod, totalHeight: spanH)
+                            decomposedVitalsPodItems(pod: pod, totalHeight: spanH, startY: startY, windowHeight: totalHeight)
                         } else if pod.id == "scripts" && store.isScriptsDecomposed {
-                            decomposedScriptsPodItems(pod: pod, totalHeight: spanH)
+                            decomposedScriptsPodItems(pod: pod, totalHeight: spanH, startY: startY, windowHeight: totalHeight)
                         } else if pod.id == "vitals" {
                             vitalsRailBar(pod: pod, totalHeight: spanH)
                         } else if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
@@ -189,25 +189,30 @@ public struct AmbientRailStripView: View {
 
     // MARK: - Vitals 可拆分多指标独立步进抽屉
     @ViewBuilder
-    private func decomposedVitalsPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
+    private func decomposedVitalsPodItems(pod: SlotPod, totalHeight: CGFloat, startY: CGFloat = 0, windowHeight: CGFloat = 850) -> some View {
         let metrics = store.vitalsEnabledMetrics
         let count = max(metrics.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let minBarH: CGFloat = 56.0
+        let minBarH: CGFloat = 46.0
         let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minBarH)
-        let totalSpanH = max(totalHeight, CGFloat(count) * minBarH + totalSpacing)
+        let totalSpanH = max(totalHeight, CGFloat(count) * itemH + totalSpacing)
 
         VStack(spacing: spacing) {
-            ForEach(metrics) { metric in
+            ForEach(Array(metrics.enumerated()), id: \.element.id) { (thisIdx, metric) in
                 let itemId = "vitals-\(metric.rawValue)"
                 let isPinned = store.isItemPinned(id: itemId)
                 let isActive = (itemId == store.activeDrawerItemId || isPinned)
                 let activeIdx = metrics.firstIndex(where: { "vitals-\($0.rawValue)" == (store.activeDrawerItemId ?? "") })
-                let thisIdx = metrics.firstIndex(where: { $0 == metric }) ?? -99
                 let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+
+                let cardActualH = max(itemH, 48.0)
+                let itemTopInWindow = startY + CGFloat(thisIdx) * (itemH + spacing)
+                let itemBottomInWindow = itemTopInWindow + cardActualH
+                let maxAllowedY = windowHeight - 12.0
+                let upwardShift = isActive ? max(itemBottomInWindow - maxAllowedY, 0.0) : 0.0
 
                 VitalsItemDrawerView(
                     metric: metric,
@@ -222,6 +227,7 @@ public struct AmbientRailStripView: View {
                         }
                     }
                 )
+                .offset(y: -upwardShift)
                 .id(itemId)
                 .contentShape(Rectangle())
                 .onHover { isHovered in
@@ -246,25 +252,30 @@ public struct AmbientRailStripView: View {
 
     // MARK: - Scripts 可拆分多指令独立步进抽屉
     @ViewBuilder
-    private func decomposedScriptsPodItems(pod: SlotPod, totalHeight: CGFloat) -> some View {
+    private func decomposedScriptsPodItems(pod: SlotPod, totalHeight: CGFloat, startY: CGFloat = 0, windowHeight: CGFloat = 850) -> some View {
         let actions = store.scriptsEnabledActions
         let count = max(actions.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let minBarH: CGFloat = 56.0
+        let minBarH: CGFloat = 46.0
         let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minBarH)
-        let totalSpanH = max(totalHeight, CGFloat(count) * minBarH + totalSpacing)
+        let totalSpanH = max(totalHeight, CGFloat(count) * itemH + totalSpacing)
 
         VStack(spacing: spacing) {
-            ForEach(actions) { action in
+            ForEach(Array(actions.enumerated()), id: \.element.id) { (thisIdx, action) in
                 let itemId = "scripts-\(action.id)"
                 let isPinned = store.isItemPinned(id: itemId)
                 let isActive = (itemId == store.activeDrawerItemId || isPinned)
                 let activeIdx = actions.firstIndex(where: { "scripts-\($0.id)" == (store.activeDrawerItemId ?? "") })
-                let thisIdx = actions.firstIndex(where: { $0.id == action.id }) ?? -99
                 let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
 
                 let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+
+                let cardActualH = max(itemH, 48.0)
+                let itemTopInWindow = startY + CGFloat(thisIdx) * (itemH + spacing)
+                let itemBottomInWindow = itemTopInWindow + cardActualH
+                let maxAllowedY = windowHeight - 12.0
+                let upwardShift = isActive ? max(itemBottomInWindow - maxAllowedY, 0.0) : 0.0
 
                 ScriptItemDrawerView(
                     action: action,
@@ -279,6 +290,7 @@ public struct AmbientRailStripView: View {
                         }
                     }
                 )
+                .offset(y: -upwardShift)
                 .id(itemId)
                 .contentShape(Rectangle())
                 .onHover { isHovered in
