@@ -169,7 +169,7 @@ public final class PurahWorkspaceStore {
     public var customExitGraceMs: Double = 280.0
     public var customCatchCorridorPt: Double = 50.0
     public var customPushForceThreshold: Double = 380.0
-    public var customPushResistanceBarrier: Double = 36.0
+    public var customPushResistanceBarrier: Double = 40.0
 
     public var activeInitialDwellSeconds: Double {
         edgeTriggerSensitivity == .custom ? (customInitialDwellMs / 1000.0) : edgeTriggerSensitivity.initialDwellSeconds
@@ -656,7 +656,11 @@ public final class PurahWorkspaceStore {
         let pushForce = defaults.double(forKey: "purah.customPushForceThreshold")
         if pushForce > 0 { self.customPushForceThreshold = pushForce }
         let barrier = defaults.double(forKey: "purah.customPushResistanceBarrier")
-        if barrier > 0 { self.customPushResistanceBarrier = barrier }
+        if barrier >= 15.0 && barrier <= 150.0 {
+            self.customPushResistanceBarrier = barrier
+        } else {
+            self.customPushResistanceBarrier = 40.0
+        }
     }
 
     public func savePersistentState() {

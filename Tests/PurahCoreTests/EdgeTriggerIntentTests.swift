@@ -69,9 +69,9 @@ struct EdgeTriggerIntentTests {
         monitor.processMouse(point: edgePoint, now: Date(), customVelocity: CGPoint(x: -500.0, y: 0.0))
         #expect(store.activeDrawerPodId == nil, "Arrival frame must not open drawer")
 
-        // 2. Post-arrival push force exceeding 36px barrier threshold (Vx = -2400 pt/s -> 38.4px delta)
+        // 2. Post-arrival push force exceeding 36px barrier threshold (Vx = -2400 pt/s -> 38.4px delta) past settle gate (0.06s)
         let pushVelocity = CGPoint(x: -2400.0, y: 20.0)
-        monitor.processMouse(point: edgePoint, now: Date().addingTimeInterval(0.016), customVelocity: pushVelocity)
+        monitor.processMouse(point: edgePoint, now: Date().addingTimeInterval(0.06), customVelocity: pushVelocity)
         #expect(store.activeDrawerPodId == firstItem.pod.id, "Post-arrival push exceeding barrier threshold must open drawer")
     }
 
@@ -392,9 +392,9 @@ struct EdgeTriggerIntentTests {
         monitor.processMouse(point: edgePoint, now: Date(), customVelocity: CGPoint(x: -200.0, y: 0.0))
         #expect(store.activeDrawerPodId == nil, "Arrival frame must not trigger")
 
-        // 2. High inward post-arrival thrust exceeding barrier into bezel
+        // 2. High inward post-arrival thrust exceeding barrier into bezel past settle gate (0.06s)
         let thrustVelocity = CGPoint(x: -2400.0, y: 30.0)
-        monitor.processMouse(point: edgePoint, now: Date().addingTimeInterval(0.016), customVelocity: thrustVelocity)
+        monitor.processMouse(point: edgePoint, now: Date().addingTimeInterval(0.06), customVelocity: thrustVelocity)
         #expect(store.activeDrawerPodId == firstItem.pod.id)
     }
 
@@ -572,18 +572,25 @@ struct EdgeTriggerIntentTests {
         #expect(accumulator.accumulatedForce == 0.0, "Deliberate inward retreat must immediately reset accumulator for anti-accidental safety")
     }
 
-    @Test("PushForceAccumulator triggers on double-tap strike impulse")
-    func testPushForceAccumulatorDoubleTapImpulse() {
+    @Test("PushForceAccumulator requires accumulating full threshold without impulse bypass")
+    func testPushForceAccumulatorRequiresFullThresholdAccumulation() {
         var accumulator = PushForceAccumulator()
         let now = Date()
 
-        // Strike 1: 24.0px impulse
+        // Push 1: 24.0px impulse
         let res1 = accumulator.push(outwardDelta: 24.0, timestamp: now, threshold: 50.0)
-        #expect(!res1, "First strike does not trigger")
+        #expect(!res1, "First 24px does not trigger 50px threshold")
+        #expect(accumulator.accumulatedForce == 24.0)
 
-        // Strike 2: 23.0px impulse within 200ms
+        // Push 2: 23.0px impulse within 150ms -> total = 47.0 < 50.0
         let res2 = accumulator.push(outwardDelta: 23.0, timestamp: now.addingTimeInterval(0.15), threshold: 50.0)
-        #expect(res2, "Double-tap strike impulse within 280ms must break through barrier")
+        #expect(!res2, "47px accumulated must NOT bypass the 50px barrier threshold")
+        #expect(accumulator.accumulatedForce == 47.0)
+
+        // Push 3: 10.0px impulse within 50ms -> total = 57.0 >= 50.0
+        let res3 = accumulator.push(outwardDelta: 10.0, timestamp: now.addingTimeInterval(0.20), threshold: 50.0)
+        #expect(res3, "Reaching 57px >= 50px must break through barrier")
+        #expect(accumulator.accumulatedForce == 0.0)
     }
 
     @Test("Event toast notification fires when event starts and deduplicates")
@@ -760,18 +767,21 @@ struct EdgeTriggerIntentTests {
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
 
-        // Step 1: Arrive at edge calmly without breakthrough
+        // Step 1: Arrive at edge calmly without breakthrough (sets arrival time)
+        let t0 = Date()
         let bezelPoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = bezelPoint
-        monitor.processMouse(point: bezelPoint, now: Date(), customVelocity: CGPoint(x: -80.0, y: 0.0))
+        monitor.processMouse(point: bezelPoint, now: t0, customVelocity: CGPoint(x: -80.0, y: 0.0))
         #expect(store.activeDrawerPodId == nil, "Merely arriving at edge without pushing must not open drawer")
 
-        // Step 2: Push outward against bezel with hardware delta
-        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -20.0)
+        // Step 2: Push outward against bezel with hardware delta past settle gate (t = 0.06s)
+        let t1 = t0.addingTimeInterval(0.06)
+        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -20.0, now: t1)
         #expect(store.activeDrawerPodId == nil, "First 20px push is below 36px barrier threshold")
 
-        // Step 3: Continue pushing outward (another 20px -> total 40px >= 36px threshold!)
-        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -20.0)
+        // Step 3: Continue pushing outward (another 20px at t = 0.08s -> total 40px >= 36px threshold!)
+        let t2 = t0.addingTimeInterval(0.08)
+        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -20.0, now: t2)
         #expect(store.activeDrawerPodId == firstItem.pod.id, "Pushing past 36px barrier threshold must break through and open drawer")
     }
     @Test("Inflight approach towards edge strictly holds pushAccumulator at 0 without premature triggering")
@@ -804,14 +814,16 @@ struct EdgeTriggerIntentTests {
         // Must strictly remain closed: in-flight approach is NOT allowed to accumulate force!
         #expect(store.activeDrawerPodId == nil, "Inflight approach must strictly hold accumulator at 0")
 
-        // 1. Arrival frame at bezel (x = 1.0) is recorded and held closed
+        // 1. Arrival frame at bezel (x = 1.0) at t = 0 is recorded and held closed
+        let t0 = Date()
         let bezelPoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = bezelPoint
-        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -10.0)
+        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -10.0, now: t0)
         #expect(store.activeDrawerPodId == nil, "Arrival frame at bezel must not trigger")
 
-        // 2. Post-arrival hardware push against bezel breaks through!
-        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -40.0)
+        // 2. Post-arrival hardware push against bezel after settle gate (t = 0.06s) breaks through!
+        let t1 = t0.addingTimeInterval(0.06)
+        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -40.0, now: t1)
         #expect(store.activeDrawerPodId == firstItem.pod.id, "Post-arrival push at bezel must break through")
     }
 }

@@ -11,15 +11,9 @@ public struct PushForceAccumulator: Sendable {
     public private(set) var accumulatedForce: Double = 0.0
     /// 最后一次有效向外推力时间戳
     public private(set) var lastPushTime: Date?
-    /// 最后一次冲撞时间戳 (双击冲撞检测)
-    public private(set) var lastImpulseTime: Date?
-    /// 连续冲撞次数
-    public private(set) var impulseCount: Int = 0
 
     /// 漏桶衰减超时：停止推边超过该时间后累积推力清零 (Barrier switchDelay 模型)
     public let decayTimeout: TimeInterval = 0.18
-    /// 冲撞双击时间窗口 (Barrier switchDoubleTap 模型)
-    public let doubleTapWindow: TimeInterval = 0.28
 
     public init() {}
 
@@ -58,29 +52,13 @@ public struct PushForceAccumulator: Sendable {
         // 2. 检查漏桶时效：若距上次推力已超过 decayTimeout，重新开始累积
         if let last = lastPushTime, timestamp.timeIntervalSince(last) > decayTimeout {
             accumulatedForce = 0.0
-            impulseCount = 0
         }
 
-        // 3. 累加物理推力
+        // 3. 累加物理推力 (唯一物理结界门禁，严格禁止任何旁路短路)
         accumulatedForce += outwardDelta
         lastPushTime = timestamp
 
-        // 4. 双击冲撞检测 (Barrier Double-Tap 冲击模型：单次冲击位移需达到 22px 以上的猛推)
-        if outwardDelta >= 22.0 {
-            if let lastImpulse = lastImpulseTime, timestamp.timeIntervalSince(lastImpulse) <= doubleTapWindow {
-                impulseCount += 1
-                if impulseCount >= 2 {
-                    // 快速双次猛推直接击穿阻力墙
-                    reset()
-                    return true
-                }
-            } else {
-                impulseCount = 1
-                lastImpulseTime = timestamp
-            }
-        }
-
-        // 5. 阻力墙击穿判定 (Resistance Barrier Threshold)
+        // 4. 阻力墙击穿判定 (Resistance Barrier Threshold)
         if accumulatedForce >= threshold {
             reset()
             return true
@@ -93,7 +71,5 @@ public struct PushForceAccumulator: Sendable {
     public mutating func reset() {
         accumulatedForce = 0.0
         lastPushTime = nil
-        lastImpulseTime = nil
-        impulseCount = 0
     }
 }

@@ -258,7 +258,7 @@ public struct VisualLayoutSimulatorView: View {
                                 } else {
                                     PurahThemedSliderRow(
                                         title: "Push Resistance Barrier",
-                                        subtitle: "Physical push force required at bezel before drawer breaks through (15px ~ 120px)",
+                                        subtitle: "Physical push force required at bezel before drawer breaks through (20px ~ 120px)",
                                         value: Binding(
                                             get: { store.customPushResistanceBarrier },
                                             set: {
@@ -267,8 +267,8 @@ public struct VisualLayoutSimulatorView: View {
                                                 store.savePersistentState()
                                             }
                                         ),
-                                        range: 1500...12000,
-                                        step: 500,
+                                        range: 20...120,
+                                        step: 5,
                                         valueBadgeText: "\(Int(store.customPushResistanceBarrier)) px"
                                     )
                                 }
