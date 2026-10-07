@@ -556,10 +556,15 @@ struct EdgeTriggerIntentTests {
         _ = accumulator.push(outwardDelta: 28.0, timestamp: now, threshold: 36.0)
         #expect(accumulator.accumulatedForce == 28.0)
 
-        // Cursor moves inward away from bezel (outwardDelta = -2.5)
-        let res = accumulator.push(outwardDelta: -2.5, timestamp: now.addingTimeInterval(0.02), threshold: 36.0)
-        #expect(!res)
-        #expect(accumulator.accumulatedForce == 0.0, "Retreating inward must immediately reset accumulator for anti-accidental safety")
+        // 1. Minor micro-rebound (-2.5px): naturally reduces force without wiping out to 0
+        let resMicro = accumulator.push(outwardDelta: -2.5, timestamp: now.addingTimeInterval(0.02), threshold: 36.0)
+        #expect(!resMicro)
+        #expect(accumulator.accumulatedForce == 25.5, "Minor micro-rebound should subtract rather than wipe out")
+
+        // 2. Deliberate inward retreat (-10.0px <= -8.0px): immediately resets to 0 for safety
+        let resRetreat = accumulator.push(outwardDelta: -10.0, timestamp: now.addingTimeInterval(0.04), threshold: 36.0)
+        #expect(!resRetreat)
+        #expect(accumulator.accumulatedForce == 0.0, "Deliberate inward retreat must immediately reset accumulator for anti-accidental safety")
     }
 
     @Test("PushForceAccumulator triggers on double-tap strike impulse")

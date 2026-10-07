@@ -144,27 +144,29 @@ public final class EdgeMouseMonitor {
         }
     }
 
-    public func handleHardwareRawMotion(point: CGPoint, rawDeltaX: Double) {
+    public func handleHardwareRawMotion(point: CGPoint? = nil, rawDeltaX: Double) {
         guard !isFrozen, !store.isRailsFrozen else { return }
         guard store.edgeTriggerMode == .pushForce else { return }
         guard store.activeDrawerPodId == nil && store.activeDrawerItemId == nil else { return }
 
-        let screen = coordinator?.targetScreen(for: point) ?? NSScreen.main ?? NSScreen.screens.first
+        // Use canonical AppKit coordinates where (0, 0) is at bottom-left, perfectly matching visibleRect!
+        let mousePoint = customCurrentMouseLocation ?? NSEvent.mouseLocation
+        let screen = coordinator?.targetScreen(for: mousePoint) ?? NSScreen.main ?? NSScreen.screens.first
         let visibleRect = customTargetVisibleRect ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
-        let isInVerticalBounds = (point.y >= visibleRect.minY && point.y <= visibleRect.maxY)
+        let isInVerticalBounds = (mousePoint.y >= visibleRect.minY && mousePoint.y <= visibleRect.maxY)
         guard isInVerticalBounds else { return }
 
         let triggerW = CGFloat(store.railBarWidth) + 4.0
-        let isAtLeftEdge = (point.x <= (visibleRect.minX + triggerW))
-        let isAtRightEdge = (point.x >= (visibleRect.maxX - triggerW))
+        let isAtLeftEdge = (mousePoint.x <= (visibleRect.minX + triggerW))
+        let isAtRightEdge = (mousePoint.x >= (visibleRect.maxX - triggerW))
         guard isAtLeftEdge || isAtRightEdge else { return }
 
         let edge: MountEdge = isAtLeftEdge ? .left : .right
         let outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
 
         // 仅在光标紧贴边框 (<= 4pt) 且持续施加推力时进行硬件级位移累加
-        let isPressingAgainstBezel = (edge == .left) ? (point.x <= visibleRect.minX + 4.0) : (point.x >= visibleRect.maxX - 4.0)
+        let isPressingAgainstBezel = (edge == .left) ? (mousePoint.x <= visibleRect.minX + 4.0) : (mousePoint.x >= visibleRect.maxX - 4.0)
         guard isPressingAgainstBezel else { return }
 
         let breakthrough = pushAccumulator.push(
@@ -174,7 +176,7 @@ public final class EdgeMouseMonitor {
         )
 
         if breakthrough {
-            let currentWindowY = visibleRect.maxY - point.y
+            let currentWindowY = visibleRect.maxY - mousePoint.y
             let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
             let matchedItem = layoutItems.first { item in
                 let topY = CGFloat(item.startY)

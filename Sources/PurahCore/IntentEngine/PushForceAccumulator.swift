@@ -34,14 +34,20 @@ public struct PushForceAccumulator: Sendable {
         timestamp: Date = Date(),
         threshold: Double = 36.0
     ) -> Bool {
-        // 1. 若向屏幕内侧反向回拉，立即重置累加器 (防误触保护)
-        if outwardDelta < -1.5 {
+        // 1. 若向屏幕内侧大幅明确回拉，立即重置累加器 (防误触保护)
+        if outwardDelta <= -8.0 {
             reset()
             return false
         }
 
-        // 仅处理向外推动的有效增量
-        guard outwardDelta > 0.2 else {
+        // 若有轻微生理微弹 (-8.0 < outwardDelta < 0)，自然扣减推力但不彻底归零
+        if outwardDelta < 0 {
+            accumulatedForce = max(accumulatedForce + outwardDelta, 0.0)
+            return false
+        }
+
+        // 仅处理向外推动的有效增量 (>= 0.2px)
+        guard outwardDelta >= 0.2 else {
             // 若长时间无推力，按漏桶机制清零
             if let last = lastPushTime, timestamp.timeIntervalSince(last) > decayTimeout {
                 reset()
