@@ -267,8 +267,8 @@ public struct VisualLayoutSimulatorView: View {
                                                 store.savePersistentState()
                                             }
                                         ),
-                                        range: 15...120,
-                                        step: 5,
+                                        range: 1500...12000,
+                                        step: 500,
                                         valueBadgeText: "\(Int(store.customPushResistanceBarrier)) px"
                                     )
                                 }
