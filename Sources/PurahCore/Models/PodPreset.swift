@@ -34,9 +34,9 @@ public enum PodPreset: String, Codable, Sendable, CaseIterable, Identifiable {
 
     public var defaultDescription: String {
         switch self {
-        case .balanced: return "Balanced distribution. Timeline on right, shelf and notes on left, music on bottom."
-        case .sprintProductivity: return "Dedicated left rail for stash and notes. Right rail focused on timeline and tasks."
-        case .immersiveMultimedia: return "Minimalist calendar on right, dynamic audio wave meter on left."
+        case .balanced: return "Balanced 7-module distribution. Vitals, shelf & notes on left; calendar, tasks, runway & music on right."
+        case .sprintProductivity: return "Focused sprint mode. Scripts, notes & shelf on left; tasks, timeline & vitals on right."
+        case .immersiveMultimedia: return "Audiovisual showcase. Expanded vinyl waveform & notes on left; timeline & vitals on right."
         }
     }
 }

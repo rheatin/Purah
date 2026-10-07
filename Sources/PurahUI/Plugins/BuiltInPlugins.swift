@@ -160,11 +160,15 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
             context.performHaptic(.levelChange)
             Task {
                 let res = await ScriptRunwayService.shared.executeAction(action)
-                if res.success {
+                if action.showNotification {
+                    if res.success {
+                        context.performHaptic(.alignment)
+                        context.showToast("Ran \(action.name)", "checkmark.circle.fill")
+                    } else {
+                        context.showWarning("Failed: \(res.message)")
+                    }
+                } else if res.success {
                     context.performHaptic(.alignment)
-                    context.showToast("Ran \(action.name)", "checkmark.circle.fill")
-                } else {
-                    context.showWarning("Failed: \(res.message)")
                 }
             }
         } else {
@@ -491,11 +495,42 @@ public struct CalendarPluginSettingsView: View {
                 .pickerStyle(.segmented)
             }
 
-            Toggle("Pulsing Glow for Imminent Events", isOn: Binding(
-                get: { store.isEventGlowAlertEnabled },
-                set: { store.isEventGlowAlertEnabled = $0 }
-            ))
-            .font(.subheadline)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Attention Alert Dynamic")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                PurahThemedSegmentedPicker(
+                    options: PluginAlertStyle.allCases,
+                    selection: Binding(
+                        get: { store.alertStyle },
+                        set: {
+                            store.alertStyle = $0
+                            store.isEventGlowAlertEnabled = ($0 != .off)
+                            store.savePersistentState()
+                        }
+                    ),
+                    titleForOption: { $0.displayName }
+                )
+
+                Toggle("Dismiss dynamic animation on mouse hover", isOn: Binding(
+                    get: { store.dismissAlertOnHover },
+                    set: {
+                        store.dismissAlertOnHover = $0
+                        store.savePersistentState()
+                    }
+                ))
+                .font(.caption)
+
+                Toggle("Show Toast notification when events start", isOn: Binding(
+                    get: { store.isEventToastAlertEnabled },
+                    set: {
+                        store.isEventToastAlertEnabled = $0
+                        store.savePersistentState()
+                    }
+                ))
+                .font(.caption)
+            }
         }
     }
 }
@@ -929,6 +964,7 @@ public struct ScriptsPluginSettingsView: View {
     @State private var newScriptContent: String = ""
     @State private var newSystemIcon: String = "bolt.fill"
     @State private var newDescription: String = ""
+    @State private var newShowNotification: Bool = true
     @State private var isAddingAction: Bool = false
 
     @State private var editingActionId: String? = nil
@@ -937,6 +973,7 @@ public struct ScriptsPluginSettingsView: View {
     @State private var editScriptContent: String = ""
     @State private var editSystemIcon: String = "bolt.fill"
     @State private var editDescription: String = ""
+    @State private var editShowNotification: Bool = true
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
@@ -1075,6 +1112,10 @@ public struct ScriptsPluginSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.caption)
 
+                        Toggle("Toast", isOn: $newShowNotification)
+                            .font(.caption)
+                            .help("Show HUD Toast notification upon script completion")
+
                         Spacer()
 
                         Button("Save") {
@@ -1086,7 +1127,8 @@ public struct ScriptsPluginSettingsView: View {
                                 systemIcon: newSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : newSystemIcon.trimmingCharacters(in: .whitespaces),
                                 commandType: newCommandType,
                                 scriptContent: newScriptContent.trimmingCharacters(in: .whitespaces),
-                                description: newDescription.trimmingCharacters(in: .whitespaces)
+                                description: newDescription.trimmingCharacters(in: .whitespaces),
+                                showNotification: newShowNotification
                             )
                             withAnimation {
                                 runway.addAction(item)
@@ -1097,6 +1139,7 @@ public struct ScriptsPluginSettingsView: View {
                                 newActionName = ""
                                 newScriptContent = ""
                                 newDescription = ""
+                                newShowNotification = true
                                 isAddingAction = false
                             }
                         }
@@ -1137,6 +1180,11 @@ public struct ScriptsPluginSettingsView: View {
                                 .background(Color.primary.opacity(0.08))
                                 .cornerRadius(4)
 
+                            Image(systemName: action.showNotification ? "bell.fill" : "bell.slash")
+                                .font(.system(size: 9))
+                                .foregroundColor(action.showNotification ? .secondary : .secondary.opacity(0.35))
+                                .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
+
                             Button {
                                 withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
                                     if editingActionId == action.id {
@@ -1148,6 +1196,7 @@ public struct ScriptsPluginSettingsView: View {
                                         editScriptContent = action.scriptContent
                                         editSystemIcon = action.systemIcon
                                         editDescription = action.description
+                                        editShowNotification = action.showNotification
                                         isAddingAction = false
                                     }
                                 }
@@ -1213,6 +1262,10 @@ public struct ScriptsPluginSettingsView: View {
                                     TextField("Description", text: $editDescription)
                                         .textFieldStyle(.roundedBorder)
                                         .font(.caption)
+
+                                    Toggle("Toast", isOn: $editShowNotification)
+                                        .font(.caption)
+                                        .help("Show HUD Toast notification upon script completion")
                                 }
 
                                 HStack {
@@ -1238,7 +1291,8 @@ public struct ScriptsPluginSettingsView: View {
                                             systemIcon: editSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : editSystemIcon.trimmingCharacters(in: .whitespaces),
                                             commandType: editCommandType,
                                             scriptContent: trimmedContent,
-                                            description: editDescription.trimmingCharacters(in: .whitespaces)
+                                            description: editDescription.trimmingCharacters(in: .whitespaces),
+                                            showNotification: editShowNotification
                                         )
                                         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                                             ScriptRunwayService.shared.updateAction(updated)

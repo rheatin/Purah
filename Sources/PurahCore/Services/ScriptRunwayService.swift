@@ -15,6 +15,7 @@ public struct ScriptActionItem: Identifiable, Codable, Sendable {
     public var commandType: ScriptCommandType
     public var scriptContent: String
     public var description: String
+    public var showNotification: Bool
 
     public init(
         id: String,
@@ -22,7 +23,8 @@ public struct ScriptActionItem: Identifiable, Codable, Sendable {
         systemIcon: String,
         commandType: ScriptCommandType,
         scriptContent: String,
-        description: String
+        description: String,
+        showNotification: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -30,6 +32,22 @@ public struct ScriptActionItem: Identifiable, Codable, Sendable {
         self.commandType = commandType
         self.scriptContent = scriptContent
         self.description = description
+        self.showNotification = showNotification
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, systemIcon, commandType, scriptContent, description, showNotification
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        systemIcon = try container.decode(String.self, forKey: .systemIcon)
+        commandType = try container.decode(ScriptCommandType.self, forKey: .commandType)
+        scriptContent = try container.decode(String.self, forKey: .scriptContent)
+        description = try container.decode(String.self, forKey: .description)
+        showNotification = try container.decodeIfPresent(Bool.self, forKey: .showNotification) ?? true
     }
 }
 

@@ -54,7 +54,11 @@ public struct ScriptRunwayDrawerView: View {
 
                             Button {
                                 Task {
-                                    _ = await runway.executeAction(action)
+                                    let res = await runway.executeAction(action)
+                                    if action.showNotification {
+                                        let text = res.success ? "✨ Ran \(action.name)" : "⚠️ Failed: \(res.message)"
+                                        store.onCapacityWarningToast?(text)
+                                    }
                                 }
                             } label: {
                                 Text(runway.isRunning && runway.lastExecutedActionId == action.id ? "..." : "Run")

@@ -34,202 +34,443 @@ public struct MusicDrawerView: View {
             let displayProgress = isScrubbing ? scrubbedProgress : liveProgress
             let displaySec = isScrubbing ? (scrubbedProgress * max(store.musicTrack.durationSeconds, 1.0)) : liveCurrentSec
 
-            VStack(spacing: 10) {
-                // MARK: - Header: Album Art & Audio Source Badge & Track Info & Pin
-                HStack(spacing: 10) {
-                    // Album Art with Atoll-style Source Badge (Click to open player)
-                    Button {
-                        activateMusicPlayerApp()
-                    } label: {
-                        HStack(spacing: 10) {
-                            albumArtWithSourceBadge
+            GeometryReader { geo in
+                let h = geo.size.height
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(store.musicTrack.title)
-                                    .purahTitle(size: 12, weight: .bold, design: .rounded)
-                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                    .lineLimit(1)
-
-                                Text(store.musicTrack.artist)
-                                    .purahBody(size: 10, weight: .medium, design: .rounded)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .help("Open \(store.musicTrack.sourceApp)")
-
-                    Spacer(minLength: 4)
-
-                    // Pin Button
-                    Button {
-                        withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                            store.togglePinItem(id: "music")
-                        }
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(store.isItemPinned(id: "music") ? musicColor.opacity(0.18) : Color.primary.opacity(0.06))
-                                .frame(width: 24, height: 24)
-
-                            Image(systemName: store.isItemPinned(id: "music") ? "pin.fill" : "pin")
-                                .foregroundColor(store.isItemPinned(id: "music") ? musicColor : .secondary)
-                                .font(.system(size: 11, weight: .semibold))
-                                .rotationEffect(.degrees(store.isItemPinned(id: "music") ? -25 : 0))
-                                .scaleEffect(store.isItemPinned(id: "music") ? 1.15 : 1.0)
-                                .animation(.spring(response: 0.26, dampingFraction: 0.55), value: store.isItemPinned(id: "music"))
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.tactile)
-                    .help(store.isItemPinned(id: "music") ? "Pinned" : "Pin music drawer")
+                if h < 145 {
+                    // Tier 1: Compact Capsule (Consolidated 2-row layout, 0-clipping)
+                    compactCapsuleView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying)
+                } else if h < 265 {
+                    // Tier 2: Classic Studio (Standard 3-row breathing layout)
+                    classicStudioView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying)
+                } else {
+                    // Tier 3: Immersive Vinyl (Large artwork showcase & ambient dynamic glow)
+                    immersiveVinylView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
                 }
-
-                // MARK: - Metal GPU 60/120FPS Fluid Waveform Scrubber
-                VStack(spacing: 4) {
-                    FluidWaveformScrubber(
-                        progress: displayProgress,
-                        isPlaying: isPlaying,
-                        color: musicColor,
-                        samples: store.musicTrack.waveformSamples,
-                        onScrubChange: { dragging, prog in
-                            isScrubbing = dragging
-                            scrubbedProgress = prog
-                        },
-                        onSeek: { newProg in
-                            isScrubbing = false
-                            SystemMusicSyncService.shared.seek(to: newProg, store: store)
-                        }
-                    )
-
-                    // Time Labels
-                    HStack {
-                        Text(timeString(for: displaySec))
-                            .purahCaption(size: 8, weight: .medium, design: .monospaced)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(timeString(for: store.musicTrack.durationSeconds))
-                            .purahCaption(size: 8, weight: .medium, design: .monospaced)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 4)
-
-                // MARK: - Floating Media Buttons with Reactive Spring Nudges
-                HStack(spacing: 28) {
-                    // Backward Button
-                    Button {
-                        SystemMusicSyncService.shared.previousTrack(store: store)
-                    } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 32, height: 28)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(isBackwardHovered ? Color.primary.opacity(0.10) : Color.clear)
-                            )
-                    }
-                    .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
-                    .onHover { isBackwardHovered = $0 }
-
-                    // Play / Pause Hero Button
-                    Button {
-                        SystemMusicSyncService.shared.togglePlayPause(store: store)
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(musicColor.opacity(0.18))
-                                .frame(width: 38, height: 38)
-                                .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
-
-                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(musicColor)
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                        .frame(width: 38, height: 38)
-                        .background(
-                            Circle()
-                                .fill(isPlayPauseHovered ? musicColor.opacity(0.12) : Color.clear)
-                        )
-                    }
-                    .buttonStyle(HeroPlayPauseButtonStyle())
-                    .onHover { isPlayPauseHovered = $0 }
-
-                    // Forward Button
-                    Button {
-                        SystemMusicSyncService.shared.nextTrack(store: store)
-                    } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 32, height: 28)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(isForwardHovered ? Color.primary.opacity(0.10) : Color.clear)
-                            )
-                    }
-                    .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 5))
-                    .onHover { isForwardHovered = $0 }
-                }
-                .frame(maxWidth: .infinity)
             }
-            .padding(8)
-            .frame(maxWidth: .infinity)
         }
         .onAppear {
             SystemMusicSyncService.shared.startListening(into: store)
         }
     }
 
-    // MARK: - Album Art View with Source Badge
+    // MARK: - Tier 1: Compact Capsule Layout (< 155pt)
     @ViewBuilder
-    private var albumArtWithSourceBadge: some View {
+    private func compactCapsuleView(displayProgress: Double, displaySec: Double, isPlaying: Bool) -> some View {
+        VStack(spacing: 8) {
+            // Row 1: Micro Artwork + Title/Artist + Pin
+            HStack(spacing: 8) {
+                Button {
+                    activateMusicPlayerApp()
+                } label: {
+                    HStack(spacing: 8) {
+                        artworkThumbnail(size: 32, cornerRadius: 6)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(store.musicTrack.title)
+                                .purahTitle(size: 11, weight: .bold, design: .rounded)
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
+
+                            Text(store.musicTrack.artist)
+                                .purahBody(size: 9.5, weight: .medium, design: .rounded)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 4)
+
+                PurahPinButton(
+                    isPinned: store.isItemPinned(id: "music"),
+                    tintColor: musicColor
+                ) {
+                    store.togglePinItem(id: "music")
+                }
+            }
+
+            // Row 2: Inline Mini Transport Controls + Scrubber + Time
+            HStack(spacing: 8) {
+                // Micro transport buttons
+                HStack(spacing: 4) {
+                    Button {
+                        SystemMusicSyncService.shared.previousTrack(store: store)
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        SystemMusicSyncService.shared.togglePlayPause(store: store)
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(musicColor.opacity(0.20))
+                                .frame(width: 26, height: 26)
+
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(musicColor)
+                        }
+                    }
+                    .buttonStyle(HeroPlayPauseButtonStyle())
+
+                    Button {
+                        SystemMusicSyncService.shared.nextTrack(store: store)
+                    } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Compact Waveform
+                FluidWaveformScrubber(
+                    progress: displayProgress,
+                    isPlaying: isPlaying,
+                    color: musicColor,
+                    samples: store.musicTrack.waveformSamples,
+                    barCount: 22,
+                    waveformHeight: 16,
+                    onScrubChange: { dragging, prog in
+                        isScrubbing = dragging
+                        scrubbedProgress = prog
+                    },
+                    onSeek: { newProg in
+                        isScrubbing = false
+                        SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                    }
+                )
+
+                // Time Indicator (Compact single-label)
+                Text("\(timeString(for: displaySec))/\(timeString(for: store.musicTrack.durationSeconds))")
+                    .purahCaption(size: 8, weight: .medium, design: .monospaced)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    // MARK: - Tier 2: Classic Studio Layout (155pt ~ 235pt)
+    @ViewBuilder
+    private func classicStudioView(displayProgress: Double, displaySec: Double, isPlaying: Bool) -> some View {
+        VStack(spacing: 8) {
+            // Row 1: Artwork + Title/Artist + Pin
+            HStack(spacing: 10) {
+                Button {
+                    activateMusicPlayerApp()
+                } label: {
+                    HStack(spacing: 10) {
+                        artworkThumbnail(size: 42, cornerRadius: 8)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(store.musicTrack.title)
+                                .purahTitle(size: 12.5, weight: .bold, design: .rounded)
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
+
+                            Text(store.musicTrack.artist)
+                                .purahBody(size: 10.5, weight: .medium, design: .rounded)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 4)
+
+                PurahPinButton(
+                    isPinned: store.isItemPinned(id: "music"),
+                    tintColor: musicColor
+                ) {
+                    store.togglePinItem(id: "music")
+                }
+            }
+
+            // Row 2: Waveform + Dual Time Labels
+            VStack(spacing: 3) {
+                FluidWaveformScrubber(
+                    progress: displayProgress,
+                    isPlaying: isPlaying,
+                    color: musicColor,
+                    samples: store.musicTrack.waveformSamples,
+                    barCount: 30,
+                    waveformHeight: 20,
+                    onScrubChange: { dragging, prog in
+                        isScrubbing = dragging
+                        scrubbedProgress = prog
+                    },
+                    onSeek: { newProg in
+                        isScrubbing = false
+                        SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                    }
+                )
+
+                HStack {
+                    Text(timeString(for: displaySec))
+                        .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(timeString(for: store.musicTrack.durationSeconds))
+                        .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 2)
+
+            // Row 3: Standard Transport Controls
+            HStack(spacing: 26) {
+                Button {
+                    SystemMusicSyncService.shared.previousTrack(store: store)
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .frame(width: 30, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isBackwardHovered ? Color.primary.opacity(0.10) : Color.clear)
+                        )
+                }
+                .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -4))
+                .onHover { isBackwardHovered = $0 }
+
+                Button {
+                    SystemMusicSyncService.shared.togglePlayPause(store: store)
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(musicColor.opacity(0.20))
+                            .frame(width: 36, height: 36)
+                            .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
+
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(musicColor)
+                    }
+                    .frame(width: 36, height: 36)
+                }
+                .buttonStyle(HeroPlayPauseButtonStyle())
+
+                Button {
+                    SystemMusicSyncService.shared.nextTrack(store: store)
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .frame(width: 30, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isForwardHovered ? Color.primary.opacity(0.10) : Color.clear)
+                        )
+                }
+                .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 4))
+                .onHover { isForwardHovered = $0 }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    // MARK: - Tier 3: Immersive Vinyl Showcase Layout (>= 265pt)
+    @ViewBuilder
+    private func immersiveVinylView(displayProgress: Double, displaySec: Double, isPlaying: Bool, availableHeight: CGFloat) -> some View {
+        let dynamicArtSize = min(max((availableHeight - 200) * 0.65, 52.0), 80.0)
+
+        VStack(spacing: 8) {
+            // Top Bar: Source Badge + Pin
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: sourceIconName(for: store.musicTrack.sourceApp))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(musicColor)
+                    Text(store.musicTrack.sourceApp)
+                        .purahCaption(size: 9, weight: .bold, design: .rounded)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(musicColor.opacity(0.12))
+                .cornerRadius(5)
+
+                Spacer()
+
+                PurahPinButton(
+                    isPinned: store.isItemPinned(id: "music"),
+                    tintColor: musicColor
+                ) {
+                    store.togglePinItem(id: "music")
+                }
+            }
+
+            Spacer(minLength: 2)
+
+            // Center Artwork & Ambient Glow Showcase
+            Button {
+                activateMusicPlayerApp()
+            } label: {
+                VStack(spacing: 6) {
+                    ZStack {
+                        // Ambient dynamic radial glow
+                        Circle()
+                            .fill(musicColor.opacity(isPlaying ? 0.32 : 0.12))
+                            .frame(width: dynamicArtSize + 8, height: dynamicArtSize + 8)
+                            .blur(radius: 12)
+
+                        artworkThumbnail(size: dynamicArtSize, cornerRadius: 10)
+                    }
+
+                    VStack(spacing: 2) {
+                        Text(store.musicTrack.title)
+                            .purahTitle(size: 13, weight: .bold, design: .rounded)
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+
+                        Text(store.musicTrack.artist)
+                            .purahBody(size: 10.5, weight: .medium, design: .rounded)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 2)
+
+            // High-density Waveform Scrubber
+            VStack(spacing: 3) {
+                FluidWaveformScrubber(
+                    progress: displayProgress,
+                    isPlaying: isPlaying,
+                    color: musicColor,
+                    samples: store.musicTrack.waveformSamples,
+                    barCount: 34,
+                    waveformHeight: 22,
+                    onScrubChange: { dragging, prog in
+                        isScrubbing = dragging
+                        scrubbedProgress = prog
+                    },
+                    onSeek: { newProg in
+                        isScrubbing = false
+                        SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                    }
+                )
+
+                HStack {
+                    Text(timeString(for: displaySec))
+                        .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(timeString(for: store.musicTrack.durationSeconds))
+                        .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 2)
+
+            // Prominent Transport Controls
+            HStack(spacing: 32) {
+                Button {
+                    SystemMusicSyncService.shared.previousTrack(store: store)
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .frame(width: 32, height: 28)
+                }
+                .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
+
+                Button {
+                    SystemMusicSyncService.shared.togglePlayPause(store: store)
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(musicColor.opacity(0.22))
+                            .frame(width: 40, height: 40)
+                            .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
+
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(musicColor)
+                    }
+                    .frame(width: 40, height: 40)
+                }
+                .buttonStyle(HeroPlayPauseButtonStyle())
+
+                Button {
+                    SystemMusicSyncService.shared.nextTrack(store: store)
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .frame(width: 32, height: 28)
+                }
+                .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 5))
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    // MARK: - Reusable Artwork Thumbnail
+    @ViewBuilder
+    private func artworkThumbnail(size: CGFloat, cornerRadius: CGFloat) -> some View {
         ZStack(alignment: .bottomTrailing) {
             if let data = store.musicTrack.artworkData, let nsImg = NSImage(data: data) {
                 Image(nsImage: nsImg)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                             .stroke(palette.borderColor.opacity(0.6), lineWidth: 1.0)
                     )
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(musicColor.opacity(0.15))
-                        .frame(width: 44, height: 44)
+                        .frame(width: size, height: size)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                 .stroke(musicColor.opacity(0.7), lineWidth: 1.2)
                         )
                         .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
 
                     Image(systemName: "music.note")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: size * 0.42, weight: .semibold))
                         .foregroundColor(musicColor)
                         .symbolEffect(.bounce, value: store.musicTrack.isPlaying)
                 }
             }
 
-            // Atoll-style Audio Source Badge at bottom-right corner
+            // Audio Source Badge
+            let badgeSize: CGFloat = max(size * 0.32, 12.0)
             ZStack {
                 Circle()
                     .fill(Color.black.opacity(0.85))
-                    .frame(width: 15, height: 15)
+                    .frame(width: badgeSize, height: badgeSize)
                     .overlay(
                         Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.5)
                     )
 
                 Image(systemName: sourceIconName(for: store.musicTrack.sourceApp))
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: badgeSize * 0.55, weight: .bold))
                     .foregroundColor(.white)
             }
-            .offset(x: 3, y: 3)
+            .offset(x: 2, y: 2)
         }
     }
 
@@ -294,6 +535,8 @@ public struct FluidWaveformScrubber: View {
     public let isPlaying: Bool
     public let color: Color
     public let samples: [Double]
+    public var barCount: Int = 30
+    public var waveformHeight: CGFloat = 20
     public let onScrubChange: (Bool, Double) -> Void
     public let onSeek: (Double) -> Void
 
@@ -301,15 +544,16 @@ public struct FluidWaveformScrubber: View {
     @State private var isScrubbing: Bool = false
     @State private var dragProgress: Double = 0.0
 
-    private let barCount = 30
     private let spacing: CGFloat = 2.5
-    private let minBarHeight: CGFloat = 4.0
+    private let minBarHeight: CGFloat = 3.0
 
     public init(
         progress: Double,
         isPlaying: Bool,
         color: Color,
         samples: [Double],
+        barCount: Int = 30,
+        waveformHeight: CGFloat = 20,
         onScrubChange: @escaping (Bool, Double) -> Void,
         onSeek: @escaping (Double) -> Void
     ) {
@@ -317,6 +561,8 @@ public struct FluidWaveformScrubber: View {
         self.isPlaying = isPlaying
         self.color = color
         self.samples = samples
+        self.barCount = barCount
+        self.waveformHeight = waveformHeight
         self.onScrubChange = onScrubChange
         self.onSeek = onSeek
     }
@@ -328,7 +574,7 @@ public struct FluidWaveformScrubber: View {
             let currentProg = isScrubbing ? dragProgress : progress
             let activeWidth = totalW * CGFloat(currentProg)
             let totalSpacing = CGFloat(barCount - 1) * spacing
-            let barW = max((totalW - totalSpacing) / CGFloat(barCount), 2.5)
+            let barW = max((totalW - totalSpacing) / CGFloat(barCount), 2.0)
 
             ZStack(alignment: .leading) {
                 // Metal GPU 60/120FPS Animation Canvas
@@ -340,18 +586,15 @@ public struct FluidWaveformScrubber: View {
                             let x = CGFloat(i) * (barW + spacing)
                             let isPlayed = (x + barW / 2.0) <= activeWidth
 
-                            // Continuous fluid traveling wave equation:
-                            // Superposition of fundamental wave + harmonic + traveling spatial phase
                             let phase = Double(i) * 0.38
                             let w1 = sin(time * 5.8 + phase)
                             let w2 = cos(time * 3.4 + phase * 0.70)
                             let w3 = sin(time * 1.6 + Double(i) * 0.15)
-                            let fluidFactor = (w1 * 0.45 + w2 * 0.35 + w3 * 0.20 + 1.0) / 2.0 // 0.0 .. 1.0
+                            let fluidFactor = (w1 * 0.45 + w2 * 0.35 + w3 * 0.20 + 1.0) / 2.0
 
                             let sampleIdx = i % max(samples.count, 1)
                             let rawSample = samples.isEmpty ? 0.35 : samples[sampleIdx]
 
-                            // Dynamic amplitude: resting breathing state when paused, alive fluid flow when playing
                             let amp = reduceMotion ? (rawSample * 0.50) : (isPlaying ? (rawSample * 0.25 + fluidFactor * 0.75) : (rawSample * 0.30))
                             let barH = max(minBarHeight, totalH * CGFloat(amp))
                             let y = (totalH - barH) / 2.0
@@ -375,7 +618,7 @@ public struct FluidWaveformScrubber: View {
                     }
                     .frame(width: totalW, height: totalH)
                 }
-                .drawingGroup() // Metal GPU hardware accelerated
+                .drawingGroup()
             }
             .contentShape(Rectangle())
             .gesture(
@@ -394,6 +637,6 @@ public struct FluidWaveformScrubber: View {
                     }
             )
         }
-        .frame(height: 24)
+        .frame(height: waveformHeight)
     }
 }

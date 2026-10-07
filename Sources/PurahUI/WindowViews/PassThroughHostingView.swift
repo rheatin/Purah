@@ -46,41 +46,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
     public func isPointInInteractiveDrawer(_ point: NSPoint) -> Bool {
         guard !store.isRailsFrozen else { return false }
-        let totalH = bounds.height
-        let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(totalH))
-
-        for item in layoutItems {
-            let pod = item.pod
-            let isPodPinned = store.isItemPinned(id: pod.id)
-            let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
-
-            let hasActiveOrPinnedChild = store.hasActiveOrPinnedChild(for: pod.id)
-
-            if isPodPinned || isPodActive || hasActiveOrPinnedChild {
-                let startY = CGFloat(item.startY)
-                let spanH = CGFloat(item.spanH)
-
-                // In AppKit coordinates (bottom is 0, top is totalH)
-                let topOfPodY = totalH - startY
-                let bottomOfPodY = topOfPodY - spanH
-                let minY = max(bottomOfPodY - 18.0, 0.0)
-                let maxY = min(topOfPodY + 18.0, totalH)
-
-                let corridor = CGFloat(store.activeCatchCorridor)
-                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor
-                let inDrawerX: Bool
-                if edge == .right {
-                    inDrawerX = (point.x >= bounds.maxX - drawerW)
-                } else {
-                    inDrawerX = (point.x <= bounds.minX + drawerW)
-                }
-                let inDrawerY = (point.y >= minY && point.y <= maxY)
-                if inDrawerX && inDrawerY {
-                    return true
-                }
-            }
-        }
-        return false
+        let totalH = Double(bounds.height)
+        let windowW = Double(bounds.width)
+        let cardFrames = store.activeDrawerCardFrames(for: edge, totalHeight: totalH, windowWidth: windowW)
+        return cardFrames.contains(where: { $0.contains(point) })
     }
 
     public override func scrollWheel(with event: NSEvent) {
@@ -101,32 +70,34 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         super.mouseMoved(with: event)
         guard !store.isRailsFrozen else { return }
 
+        // Forward to mouse monitor for unified hover-dwell and push-force evaluation
+        store.onLocalMouseMove?(event)
+
         let winPoint = event.locationInWindow
-        let barW: CGFloat = CGFloat(store.railBarWidth)
-        let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
+        let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
+        let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
 
         if isOnRail || isPointInInteractiveDrawer(winPoint) {
             exitGraceTask?.cancel()
             exitGraceTask = nil
             if let panel = self.window as? NSPanel {
                 panel.ignoresMouseEvents = false
-                if !panel.isKeyWindow {
-                    panel.makeKey()
-                }
             }
             return
         }
 
-        // When mouse steps outside, use dynamic Exit Grace Window before retracting
-        if exitGraceTask == nil {
+        // When mouse steps outside, use dynamic Exit Grace Window before retracting (only when a drawer is open!)
+        let hasOpenDrawer = (store.activeDrawerItemId != nil || store.activeDrawerPodId != nil)
+        if hasOpenDrawer && exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
                 let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
-                try? await Task.sleep(nanoseconds: UInt64(graceSec * 1_000_000_000))
+                try? await Task.sleep(for: .seconds(graceSec))
                 guard !Task.isCancelled else { return }
                 guard let self = self else { return }
 
                 if let panel = self.window as? NSPanel {
                     panel.ignoresMouseEvents = true
+                    panel.resignKey()
                 }
 
                 let activeId = self.store.activeDrawerItemId ?? self.store.activeDrawerPodId
@@ -151,8 +122,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let mouseLoc = NSEvent.mouseLocation
         if let win = self.window, win.frame.contains(mouseLoc) {
             let winPoint = win.convertPoint(fromScreen: mouseLoc)
-            let barW: CGFloat = CGFloat(store.railBarWidth)
-            let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW - 6) : (winPoint.x <= bounds.minX + barW + 6)
+            let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
+            let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
             if isOnRail || isPointInInteractiveDrawer(winPoint) {
                 exitGraceTask?.cancel()
                 exitGraceTask = nil
@@ -163,7 +134,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         if exitGraceTask == nil {
             exitGraceTask = Task { @MainActor [weak self] in
                 let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
-                try? await Task.sleep(nanoseconds: UInt64(graceSec * 1_000_000_000))
+                try? await Task.sleep(for: .seconds(graceSec))
                 guard !Task.isCancelled else { return }
                 guard let self = self else { return }
 
@@ -190,11 +161,22 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public override func hitTest(_ point: NSPoint) -> NSView? {
         guard !store.isRailsFrozen else { return nil }
         let bounds = self.bounds
-        let barW: CGFloat = CGFloat(store.railBarWidth)
+        let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
 
-        let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW - 6) : (point.x <= bounds.minX + barW + 6)
+        let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW) : (point.x <= bounds.minX + barW)
         if isOnRail {
-            return super.hitTest(point)
+            // Only capture if physically over an actual pod on the rail (not in empty margins or corners!)
+            let totalH = Double(bounds.height)
+            let currentWindowY = totalH - Double(point.y)
+            let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: totalH)
+            let isOverPod = layoutItems.contains(where: {
+                let topY = $0.startY
+                let bottomY = topY + $0.spanH
+                return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
+            })
+            if isOverPod {
+                return super.hitTest(point)
+            }
         }
 
         if isPointInInteractiveDrawer(point) {

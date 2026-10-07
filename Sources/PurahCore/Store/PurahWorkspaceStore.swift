@@ -25,6 +25,7 @@ public final class PurahWorkspaceStore {
     public var isDrawerPinned: Bool = false
     public var pinnedDrawerItemIds: Set<String> = []
     public var currentPreset: PodPreset = .balanced
+    @available(*, deprecated, message: "Use Emil Kowalski unified physics-driven spring animations instead")
     public var animationStyle: AnimationStyle = .magneticCascade
     public var isRailsFrozen: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
@@ -133,11 +134,42 @@ public final class PurahWorkspaceStore {
     // Multi-display behavior
     public var displayTargetMode: DisplayTargetMode = .followCursor
 
+    // Edge Trigger Mode (Hover Dwell vs Push Force - Mutually Exclusive)
+    public var edgeTriggerMode: EdgeTriggerMode = .hoverDwell
+
+    // Dynamic Attention Alert Settings
+    public var alertStyle: PluginAlertStyle = .breathingBeacon
+    public var dismissAlertOnHover: Bool = true
+    public var isEventToastAlertEnabled: Bool = true
+    public var acknowledgedAlertIds: Set<String> = []
+    public var notifiedToastEventIds: Set<String> = []
+
+    public func acknowledgeAlert(id: String) {
+        acknowledgedAlertIds.insert(id)
+    }
+
+    public func isAlertAcknowledged(id: String) -> Bool {
+        acknowledgedAlertIds.contains(id)
+    }
+
+    public func resetAlertAcknowledgment(id: String) {
+        acknowledgedAlertIds.remove(id)
+    }
+
+    public func notifyEventAlertIfNeeded(for event: CalendarEventItem) {
+        guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(event.id) else { return }
+        notifiedToastEventIds.insert(event.id)
+        let msg = "\(event.title) is starting now"
+        onCapacityWarningToast?("📅 \(msg)")
+    }
+
     // Edge Trigger Intentionality Sensitivity & Calibration
     public var edgeTriggerSensitivity: EdgeTriggerSensitivity = .balanced
     public var customInitialDwellMs: Double = 150.0
     public var customExitGraceMs: Double = 280.0
     public var customCatchCorridorPt: Double = 50.0
+    public var customPushForceThreshold: Double = 380.0
+    public var customPushResistanceBarrier: Double = 36.0
 
     public var activeInitialDwellSeconds: Double {
         edgeTriggerSensitivity == .custom ? (customInitialDwellMs / 1000.0) : edgeTriggerSensitivity.initialDwellSeconds
@@ -155,12 +187,22 @@ public final class PurahWorkspaceStore {
         edgeTriggerSensitivity == .custom ? customCatchCorridorPt : edgeTriggerSensitivity.overshootCatchCorridor
     }
 
+    public var activePushForceThreshold: Double {
+        edgeTriggerSensitivity == .custom ? customPushForceThreshold : edgeTriggerSensitivity.pushForceThreshold
+    }
+
+    public var activePushResistanceBarrier: Double {
+        edgeTriggerSensitivity == .custom ? customPushResistanceBarrier : edgeTriggerSensitivity.pushResistanceBarrier
+    }
+
     public func applySensitivityPreset(_ preset: EdgeTriggerSensitivity) {
         edgeTriggerSensitivity = preset
         if preset != .custom {
             customInitialDwellMs = preset.initialDwellSeconds * 1000.0
             customExitGraceMs = preset.exitGraceDurationSeconds * 1000.0
             customCatchCorridorPt = preset.overshootCatchCorridor
+            customPushForceThreshold = preset.pushForceThreshold
+            customPushResistanceBarrier = preset.pushResistanceBarrier
         }
         savePersistentState()
     }
@@ -203,14 +245,14 @@ public final class PurahWorkspaceStore {
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         switch podId {
-        case "vitals": return 320.0
-        case "scripts": return 220.0
-        case "shelf": return 180.0
-        case "notes": return 200.0
-        case "music": return 140.0
-        case "calendar": return 160.0
-        case "todo": return 160.0
-        default: return 140.0
+        case "vitals": return 300.0
+        case "scripts": return 160.0
+        case "shelf": return 130.0
+        case "notes": return 130.0
+        case "music": return 110.0
+        case "calendar": return 150.0
+        case "todo": return 150.0
+        default: return 120.0
         }
     }
 
@@ -245,6 +287,7 @@ public final class PurahWorkspaceStore {
     }
 
     public var onCapacityWarningToast: ((String) -> Void)?
+    public var onLocalMouseMove: (@MainActor (NSEvent) -> Void)?
     private var lastCapacityAlertTime: Date?
 
     public func notifyCapacityWarningIfNeeded() {
@@ -308,6 +351,178 @@ public final class PurahWorkspaceStore {
             guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
             return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
         }
+    }
+
+    public func activeDrawerCardFrames(for edge: MountEdge, totalHeight: Double, windowWidth: Double = 340.0) -> [CGRect] {
+        guard !isRailsFrozen else { return [] }
+        var frames: [CGRect] = []
+        let layoutItems = resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
+        let corridor = activeCatchCorridor
+
+        for item in layoutItems {
+            let pod = item.pod
+            let hasChild = hasActiveOrPinnedChild(for: pod.id)
+            let isPodActive = (activeDrawerItemId == pod.id || activeDrawerPodId == pod.id)
+            let isPodPinned = isItemPinned(id: pod.id)
+
+            // Case A: Decomposed Scripts (Precision sub-item bounding box)
+            if pod.id == "scripts" && isScriptsDecomposed {
+                let actions = scriptsEnabledActions
+                let count = max(actions.count, 1)
+                let spacing = 2.5
+                let totalSpacing = spacing * Double(count - 1)
+                let itemH = max((item.spanH - totalSpacing) / Double(count), 46.0)
+                let cardH = max(itemH, 48.0)
+
+                for (idx, action) in actions.enumerated() {
+                    let itemId = "scripts-\(action.id)"
+                    let itemActive = (activeDrawerItemId == itemId)
+                    let itemPinned = isItemPinned(id: itemId)
+                    if itemActive || itemPinned {
+                        let itemTop = item.startY + Double(idx) * (itemH + spacing)
+                        let itemBottom = itemTop + cardH
+                        let maxAllowedY = totalHeight - 12.0
+                        let shift = itemActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
+                        let effTop = itemTop - shift
+
+                        let appKitTop = totalHeight - effTop
+                        let appKitBottom = appKitTop - cardH
+                        let minY = max(appKitBottom - 6.0, 0.0)
+                        let maxY = min(appKitTop + 6.0, totalHeight)
+
+                        let drawerW = min(effectiveDrawerWidth(for: action.name, baseWidth: 280.0) + corridor, windowWidth)
+                        let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                        frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                    }
+                }
+                continue
+            }
+
+            // Case B: Decomposed Vitals (Precision sub-item bounding box)
+            if pod.id == "vitals" && isVitalsDecomposed {
+                let metrics = vitalsEnabledMetrics
+                let count = max(metrics.count, 1)
+                let spacing = 2.5
+                let totalSpacing = spacing * Double(count - 1)
+                let itemH = max((item.spanH - totalSpacing) / Double(count), 46.0)
+                let cardH = max(itemH, 48.0)
+
+                for (idx, metric) in metrics.enumerated() {
+                    let itemId = "vitals-\(metric.rawValue)"
+                    let itemActive = (activeDrawerItemId == itemId)
+                    let itemPinned = isItemPinned(id: itemId)
+                    if itemActive || itemPinned {
+                        let itemTop = item.startY + Double(idx) * (itemH + spacing)
+                        let itemBottom = itemTop + cardH
+                        let maxAllowedY = totalHeight - 12.0
+                        let shift = itemActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
+                        let effTop = itemTop - shift
+
+                        let appKitTop = totalHeight - effTop
+                        let appKitBottom = appKitTop - cardH
+                        let minY = max(appKitBottom - 6.0, 0.0)
+                        let maxY = min(appKitTop + 6.0, totalHeight)
+
+                        let drawerW = min(effectiveDrawerWidth(baseWidth: 280.0) + corridor, windowWidth)
+                        let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                        frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                    }
+                }
+                continue
+            }
+
+            // Case C: Stepped Calendar (Precision event bounding box)
+            if pod.id == "calendar" {
+                let events = calendarEvents
+                let count = max(events.count, 1)
+                let spacing = 2.5
+                let totalSpacing = spacing * Double(count - 1)
+                let itemH = max((item.spanH - totalSpacing) / Double(count), 26.0)
+                let cardH = max(itemH, 34.0)
+
+                var matchedSubItem = false
+                for (idx, event) in events.enumerated() {
+                    let itemActive = (activeDrawerItemId == event.id)
+                    let itemPinned = isItemPinned(id: event.id)
+                    if itemActive || itemPinned {
+                        matchedSubItem = true
+                        let itemTop = item.startY + Double(idx) * (itemH + spacing)
+                        let appKitTop = totalHeight - itemTop
+                        let appKitBottom = appKitTop - cardH
+                        let minY = max(appKitBottom - 6.0, 0.0)
+                        let maxY = min(appKitTop + 6.0, totalHeight)
+
+                        let baseW = event.url != nil ? 310.0 : 280.0
+                        let drawerW = min(effectiveDrawerWidth(for: event.title, baseWidth: baseW) + corridor, windowWidth)
+                        let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                        frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                    }
+                }
+
+                if !matchedSubItem && (isPodActive || isPodPinned || hasChild) {
+                    let topOfPodY = totalHeight - item.startY
+                    let bottomOfPodY = topOfPodY - item.spanH
+                    let minY = max(bottomOfPodY - 6.0, 0.0)
+                    let maxY = min(topOfPodY + 6.0, totalHeight)
+                    let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor, windowWidth)
+                    let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                    frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                }
+                continue
+            }
+
+            // Case D: Stepped Todo (Precision task bounding box)
+            if pod.id == "todo" {
+                let items = todos
+                let count = max(items.count, 1)
+                let spacing = 2.5
+                let totalSpacing = spacing * Double(count - 1)
+                let itemH = max((item.spanH - totalSpacing) / Double(count), 24.0)
+                let cardH = max(itemH, 30.0)
+
+                var matchedSubItem = false
+                for (idx, todo) in items.enumerated() {
+                    let itemActive = (activeDrawerItemId == todo.id)
+                    let itemPinned = isItemPinned(id: todo.id)
+                    if itemActive || itemPinned {
+                        matchedSubItem = true
+                        let itemTop = item.startY + Double(idx) * (itemH + spacing)
+                        let appKitTop = totalHeight - itemTop
+                        let appKitBottom = appKitTop - cardH
+                        let minY = max(appKitBottom - 6.0, 0.0)
+                        let maxY = min(appKitTop + 6.0, totalHeight)
+
+                        let drawerW = min(effectiveDrawerWidth(for: todo.title, baseWidth: 260.0) + corridor, windowWidth)
+                        let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                        frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                    }
+                }
+
+                if !matchedSubItem && (isPodActive || isPodPinned || hasChild) {
+                    let topOfPodY = totalHeight - item.startY
+                    let bottomOfPodY = topOfPodY - item.spanH
+                    let minY = max(bottomOfPodY - 6.0, 0.0)
+                    let maxY = min(topOfPodY + 6.0, totalHeight)
+                    let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor, windowWidth)
+                    let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                    frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                }
+                continue
+            }
+
+            // Case E: Full-pod Composite Drawers (Music, Shelf, Notes, and custom plugins)
+            if isPodPinned || isPodActive || hasChild {
+                let topOfPodY = totalHeight - item.startY
+                let bottomOfPodY = topOfPodY - item.spanH
+                let minY = max(bottomOfPodY - 6.0, 0.0)
+                let maxY = min(topOfPodY + 6.0, totalHeight)
+
+                let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor, windowWidth)
+                let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+            }
+        }
+        return frames
     }
 
     public func defaultColorHex(for podId: String) -> String {
@@ -408,6 +623,21 @@ public final class PurahWorkspaceStore {
             self.scriptsEnabledActionIds = ScriptRunwayService.shared.actions.map(\.id)
         }
 
+        if let modeStr = defaults.string(forKey: "purah.edgeTriggerMode"),
+           let mode = EdgeTriggerMode(rawValue: modeStr) {
+            self.edgeTriggerMode = mode
+        }
+        if let alertStr = defaults.string(forKey: "purah.alertStyle"),
+           let style = PluginAlertStyle(rawValue: alertStr) {
+            self.alertStyle = style
+        }
+        if defaults.object(forKey: "purah.dismissAlertOnHover") != nil {
+            self.dismissAlertOnHover = defaults.bool(forKey: "purah.dismissAlertOnHover")
+        }
+        if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
+            self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
+        }
+
         if let dispModeStr = defaults.string(forKey: "purah.displayTargetMode"),
            let dispMode = DisplayTargetMode(rawValue: dispModeStr) {
             self.displayTargetMode = dispMode
@@ -423,6 +653,10 @@ public final class PurahWorkspaceStore {
         if graceMs > 0 { self.customExitGraceMs = graceMs }
         let corridorPt = defaults.double(forKey: "purah.customCatchCorridorPt")
         if corridorPt > 0 { self.customCatchCorridorPt = corridorPt }
+        let pushForce = defaults.double(forKey: "purah.customPushForceThreshold")
+        if pushForce > 0 { self.customPushForceThreshold = pushForce }
+        let barrier = defaults.double(forKey: "purah.customPushResistanceBarrier")
+        if barrier > 0 { self.customPushResistanceBarrier = barrier }
     }
 
     public func savePersistentState() {
@@ -444,10 +678,16 @@ public final class PurahWorkspaceStore {
         defaults.set(isScriptsDecomposed, forKey: "purah.scripts.isDecomposed")
         defaults.set(scriptsEnabledActionIds, forKey: "purah.scripts.enabledActionIds")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
+        defaults.set(edgeTriggerMode.rawValue, forKey: "purah.edgeTriggerMode")
+        defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
+        defaults.set(dismissAlertOnHover, forKey: "purah.dismissAlertOnHover")
+        defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(edgeTriggerSensitivity.rawValue, forKey: "purah.edgeTriggerSensitivity")
         defaults.set(customInitialDwellMs, forKey: "purah.customInitialDwellMs")
         defaults.set(customExitGraceMs, forKey: "purah.customExitGraceMs")
         defaults.set(customCatchCorridorPt, forKey: "purah.customCatchCorridorPt")
+        defaults.set(customPushForceThreshold, forKey: "purah.customPushForceThreshold")
+        defaults.set(customPushResistanceBarrier, forKey: "purah.customPushResistanceBarrier")
         notifyCapacityWarningIfNeeded()
     }
 
@@ -477,23 +717,44 @@ public final class PurahWorkspaceStore {
         currentPreset = preset
         switch preset {
         case .balanced:
-            setPod(id: "shelf", edge: .left, zone: .goldenAction, weight: 35)
-            setPod(id: "notes", edge: .left, zone: .quickFlick, weight: 25)
-            setPod(id: "calendar", edge: .right, zone: .goldenAction, weight: 40)
-            setPod(id: "todo", edge: .right, zone: .goldenAction, weight: 35)
-            setPod(id: "music", edge: .right, zone: .quickFlick, weight: 25)
+            // Left Rail: Vitals, Shelf, Notes (~480pt budget)
+            setPod(id: "vitals", edge: .left, zone: .glance, weight: 30, isEnabled: true)
+            setPod(id: "shelf", edge: .left, zone: .goldenAction, weight: 35, isEnabled: true)
+            setPod(id: "notes", edge: .left, zone: .quickFlick, weight: 30, isEnabled: true)
+
+            // Right Rail: Calendar, Todo, Scripts, Music (~600pt budget)
+            setPod(id: "calendar", edge: .right, zone: .goldenAction, weight: 40, isEnabled: true)
+            setPod(id: "todo", edge: .right, zone: .goldenAction, weight: 35, isEnabled: true)
+            setPod(id: "scripts", edge: .right, zone: .quickFlick, weight: 25, isEnabled: true)
+            setPod(id: "music", edge: .right, zone: .quickFlick, weight: 20, isEnabled: true)
+
         case .sprintProductivity:
-            setPod(id: "shelf", edge: .left, zone: .goldenAction, weight: 50)
-            setPod(id: "notes", edge: .left, zone: .goldenAction, weight: 35)
-            setPod(id: "calendar", edge: .right, zone: .goldenAction, weight: 45)
-            setPod(id: "todo", edge: .right, zone: .goldenAction, weight: 45)
-            setPod(id: "music", edge: .right, zone: .quickFlick, weight: 15)
+            // Left Rail: Scripts Runway, Notes, Shelf (~440pt budget)
+            setPod(id: "scripts", edge: .left, zone: .goldenAction, weight: 45, isEnabled: true)
+            setPod(id: "notes", edge: .left, zone: .goldenAction, weight: 35, isEnabled: true)
+            setPod(id: "shelf", edge: .left, zone: .quickFlick, weight: 25, isEnabled: true)
+
+            // Right Rail: Tasks, Calendar, Vitals (~520pt budget)
+            setPod(id: "todo", edge: .right, zone: .goldenAction, weight: 45, isEnabled: true)
+            setPod(id: "calendar", edge: .right, zone: .goldenAction, weight: 40, isEnabled: true)
+            setPod(id: "vitals", edge: .right, zone: .glance, weight: 25, isEnabled: true)
+
+            // Mute music in sprint focus
+            setPod(id: "music", edge: .right, zone: .quickFlick, weight: 10, isEnabled: false)
+
         case .immersiveMultimedia:
-            setPod(id: "music", edge: .left, zone: .goldenAction, weight: 50)
-            setPod(id: "notes", edge: .left, zone: .quickFlick, weight: 30)
-            setPod(id: "shelf", edge: .left, zone: .quickFlick, weight: 20)
-            setPod(id: "calendar", edge: .right, zone: .glance, weight: 60)
-            setPod(id: "todo", edge: .right, zone: .quickFlick, weight: 30)
+            // Left Rail: Showcase Music & Notes (~250pt budget, large stage for vinyl)
+            setPod(id: "music", edge: .left, zone: .goldenAction, weight: 65, isEnabled: true)
+            setPod(id: "notes", edge: .left, zone: .quickFlick, weight: 25, isEnabled: true)
+            setPod(id: "shelf", edge: .left, zone: .quickFlick, weight: 10, isEnabled: false)
+
+            // Right Rail: Calendar & Vitals (~360pt budget)
+            setPod(id: "calendar", edge: .right, zone: .glance, weight: 50, isEnabled: true)
+            setPod(id: "vitals", edge: .right, zone: .glance, weight: 30, isEnabled: true)
+
+            // Disable distracting productivity tasks
+            setPod(id: "todo", edge: .right, zone: .quickFlick, weight: 10, isEnabled: false)
+            setPod(id: "scripts", edge: .right, zone: .quickFlick, weight: 10, isEnabled: false)
         }
         autoLayoutAll()
     }
@@ -514,12 +775,12 @@ public final class PurahWorkspaceStore {
         autoLayoutAll()
     }
 
-    private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double) {
+    private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double, isEnabled: Bool = true) {
         if let idx = pods.firstIndex(where: { $0.id == id }) {
             pods[idx].edge = edge
             pods[idx].preferredZone = zone
             pods[idx].ergonomicWeight = weight
-            pods[idx].isEnabled = true
+            pods[idx].isEnabled = isEnabled
         }
     }
 
