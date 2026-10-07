@@ -241,4 +241,66 @@ struct PluginArchitectureTests {
         context.performHaptic(.alignment)
         #expect(hapticPerformed == .alignment)
     }
+
+    @Test("Custom plugin registers capability provider and dynamically resolves height and subitems in store")
+    @MainActor
+    func testCustomPluginCapabilityProviderRegistrationAndDecoupling() {
+        @MainActor
+        final class DynamicPodPlugin: PurahPodPlugin {
+            nonisolated let manifest = PurahPluginManifest(
+                id: "com.test.dynamic-pod",
+                displayName: "Dynamic Pod",
+                systemIcon: "bolt.fill",
+                description: "Dynamic test pod",
+                defaultEdge: .right,
+                preferredZone: .goldenAction,
+                defaultColorHex: "#3388FF"
+            )
+
+            var customHeight: CGFloat = 210.0
+            var pinnedChildren: Set<String> = []
+
+            func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+                customHeight
+            }
+
+            func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+                !pinnedChildren.isEmpty
+            }
+
+            func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+                itemId.hasPrefix("dyn-")
+            }
+
+            func makeRailBarView(context: PurahPluginContext) -> AnyView { AnyView(EmptyView()) }
+            func makeDrawerView(context: PurahPluginContext) -> AnyView { AnyView(EmptyView()) }
+        }
+
+        let store = PurahWorkspaceStore()
+        let plugin = DynamicPodPlugin()
+        let dynamicPod = SlotPod(
+            id: "com.test.dynamic-pod",
+            name: "Dynamic Pod",
+            systemIcon: "bolt.fill",
+            edge: .right,
+            range: .init(start: 0.1, length: 0.2),
+            ambientStyle: .ghostDot,
+            preferredZone: .goldenAction,
+            ergonomicWeight: 30
+        )
+        store.pods.append(dynamicPod)
+
+        PluginRegistry.shared.register(plugin, store: store)
+
+        // Store resolves height dynamically through capability provider
+        #expect(store.minimumDrawerHeight(for: "com.test.dynamic-pod") == 210.0)
+
+        // Store resolves subitem ownership dynamically without hardcoded ID logic
+        #expect(store.pod(forItemId: "dyn-task-42")?.id == "com.test.dynamic-pod")
+
+        // Store checks pinned child dynamically
+        #expect(store.hasPinnedItem(on: .right) == false)
+        plugin.pinnedChildren.insert("dyn-task-42")
+        #expect(store.hasPinnedItem(on: .right) == true)
+    }
 }

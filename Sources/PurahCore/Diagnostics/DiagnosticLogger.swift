@@ -38,35 +38,35 @@ public struct DiagnosticLogEntry: Identifiable, Sendable, Codable {
     }
 }
 
-public final class DiagnosticLogger: @unchecked Sendable {
+public final class DiagnosticLogger: Sendable {
     public static let shared = DiagnosticLogger()
 
-    private let lock = os_unfair_lock_t.allocate(capacity: 1)
-    private var entries: [DiagnosticLogEntry] = []
+    private let storage: OSAllocatedUnfairLock<[DiagnosticLogEntry]>
+    private let stats: OSAllocatedUnfairLock<(stalls: Int, maxStallMs: Double)>
     private let maxEntries = 1000
 
-    public private(set) var mainThreadStallsCount: Int = 0
-    public private(set) var maxStallDurationMs: Double = 0.0
+    public var mainThreadStallsCount: Int {
+        stats.withLock { $0.stalls }
+    }
+    public var maxStallDurationMs: Double {
+        stats.withLock { $0.maxStallMs }
+    }
 
     public init() {
-        lock.initialize(to: os_unfair_lock())
+        self.storage = OSAllocatedUnfairLock(initialState: [])
+        self.stats = OSAllocatedUnfairLock(initialState: (stalls: 0, maxStallMs: 0.0))
         log(level: .info, category: "Kernel", message: "DiagnosticLogger initialized")
         startWatchdog()
     }
 
-    deinit {
-        lock.deinitialize(count: 1)
-        lock.deallocate()
-    }
-
     public func log(level: DiagnosticLogLevel, category: String, message: String) {
         let entry = DiagnosticLogEntry(level: level, category: category, message: message)
-        os_unfair_lock_lock(lock)
-        entries.append(entry)
-        if entries.count > maxEntries {
-            entries.removeFirst(entries.count - maxEntries)
+        storage.withLock { entries in
+            entries.append(entry)
+            if entries.count > maxEntries {
+                entries.removeFirst(entries.count - maxEntries)
+            }
         }
-        os_unfair_lock_unlock(lock)
     }
 
     public func debug(_ category: String, _ message: String) {
@@ -86,16 +86,16 @@ public final class DiagnosticLogger: @unchecked Sendable {
     }
 
     public func recentEntries(limit: Int = 100) -> [DiagnosticLogEntry] {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        let count = min(entries.count, limit)
-        return Array(entries.suffix(count))
+        storage.withLock { entries in
+            let count = min(entries.count, limit)
+            return Array(entries.suffix(count))
+        }
     }
 
     public func clear() {
-        os_unfair_lock_lock(lock)
-        entries.removeAll()
-        os_unfair_lock_unlock(lock)
+        storage.withLock { entries in
+            entries.removeAll()
+        }
     }
 
     // MARK: - Main Thread Watchdog
@@ -121,10 +121,10 @@ public final class DiagnosticLogger: @unchecked Sendable {
     }
 
     private func recordStall(durationMs: Double) {
-        os_unfair_lock_lock(lock)
-        mainThreadStallsCount += 1
-        maxStallDurationMs = max(maxStallDurationMs, durationMs)
-        os_unfair_lock_unlock(lock)
+        stats.withLock { current in
+            current.stalls += 1
+            current.maxStallMs = max(current.maxStallMs, durationMs)
+        }
 
         warn("Watchdog", "MainActor unresponsive stall detected: \(Int(durationMs))ms")
     }
@@ -143,10 +143,7 @@ public final class DiagnosticLogger: @unchecked Sendable {
         report += "Thermal State: \(HardwareVitalsService.shared.metrics.thermalStateDescription)\n\n"
 
         // 2. MainActor Watchdog
-        os_unfair_lock_lock(lock)
-        let stalls = mainThreadStallsCount
-        let maxStall = maxStallDurationMs
-        os_unfair_lock_unlock(lock)
+        let (stalls, maxStall) = stats.withLock { ($0.stalls, $0.maxStallMs) }
         report += "-- [MAIN THREAD HEALTH] --\n"
         report += "Total MainActor Stalls: \(stalls)\n"
         report += "Max Stall Duration: \(String(format: "%.1f", maxStall))ms\n"

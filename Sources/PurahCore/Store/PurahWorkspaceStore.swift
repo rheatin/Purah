@@ -30,6 +30,17 @@ public final class PurahWorkspaceStore {
     public var isRailsFrozen: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
 
+    @ObservationIgnored
+    private var capabilityProviders: [String: any PurahPodCapabilityProvider] = [:]
+
+    public func registerCapabilityProvider(_ provider: any PurahPodCapabilityProvider) {
+        capabilityProviders[provider.podId] = provider
+    }
+
+    public func capabilityProvider(for podId: String) -> (any PurahPodCapabilityProvider)? {
+        capabilityProviders[podId]
+    }
+
     public func toggleFreezeRails() {
         isRailsFrozen.toggle()
     }
@@ -62,6 +73,9 @@ public final class PurahWorkspaceStore {
         if isDrawerPinned { return true }
         for pod in pods where pod.edge == edge && pod.isEnabled {
             if isItemPinned(id: pod.id) { return true }
+            if let provider = capabilityProvider(for: pod.id), provider.hasPinnedChild(store: self) {
+                return true
+            }
             if pod.id == "todo" && todos.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "calendar" && calendarEvents.contains(where: { isItemPinned(id: $0.id) }) { return true }
             if pod.id == "vitals" && vitalsEnabledMetrics.contains(where: { isItemPinned(id: "vitals-\($0.rawValue)") }) { return true }
@@ -71,14 +85,19 @@ public final class PurahWorkspaceStore {
     }
 
     public func pod(forItemId id: String) -> SlotPod? {
+        if let p = pods.first(where: { $0.id == id }) {
+            return p
+        }
+        for (podId, provider) in capabilityProviders {
+            if provider.ownsSubItemId(id, store: self) {
+                return pods.first(where: { $0.id == podId })
+            }
+        }
         if id.hasPrefix("vitals-") {
             return pods.first(where: { $0.id == "vitals" })
         }
         if id.hasPrefix("scripts-") {
             return pods.first(where: { $0.id == "scripts" })
-        }
-        if let p = pods.first(where: { $0.id == id }) {
-            return p
         }
         if todos.contains(where: { $0.id == id }) {
             return pods.first(where: { $0.id == "todo" })
@@ -94,21 +113,7 @@ public final class PurahWorkspaceStore {
             return p
         }
         if let itemId = activeDrawerItemId {
-            if itemId.hasPrefix("vitals-") {
-                return pods.first(where: { $0.id == "vitals" })
-            }
-            if itemId.hasPrefix("scripts-") {
-                return pods.first(where: { $0.id == "scripts" })
-            }
-            if todos.contains(where: { $0.id == itemId }) {
-                return pods.first(where: { $0.id == "todo" })
-            }
-            if calendarEvents.contains(where: { $0.id == itemId }) {
-                return pods.first(where: { $0.id == "calendar" })
-            }
-            if let p = pods.first(where: { $0.id == itemId }) {
-                return p
-            }
+            return pod(forItemId: itemId)
         }
         return nil
     }
@@ -236,6 +241,9 @@ public final class PurahWorkspaceStore {
     }
 
     public func minimumDrawerHeight(for podId: String) -> CGFloat {
+        if let provider = capabilityProvider(for: podId) {
+            return provider.minimumDrawerHeight(store: self)
+        }
         if podId == "vitals" && isVitalsDecomposed {
             let count = max(vitalsEnabledMetrics.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
@@ -309,6 +317,9 @@ public final class PurahWorkspaceStore {
     }
 
     public func hasActiveOrPinnedChild(for podId: String) -> Bool {
+        if let provider = capabilityProvider(for: podId) {
+            return provider.hasPinnedChild(store: self) || (activeDrawerPodId == podId)
+        }
         if podId == "todo" {
             return todos.contains { isItemPinned(id: $0.id) || $0.id == activeDrawerItemId }
         }
@@ -325,6 +336,9 @@ public final class PurahWorkspaceStore {
     }
 
     public func isPodDecomposed(_ id: String) -> Bool {
+        if let provider = capabilityProvider(for: id) {
+            return provider.isDecomposed
+        }
         if id == "vitals" { return isVitalsDecomposed }
         if id == "scripts" { return isScriptsDecomposed }
         if id == "calendar" || id == "todo" { return true }
@@ -364,6 +378,18 @@ public final class PurahWorkspaceStore {
             let hasChild = hasActiveOrPinnedChild(for: pod.id)
             let isPodActive = (activeDrawerItemId == pod.id || activeDrawerPodId == pod.id)
             let isPodPinned = isItemPinned(id: pod.id)
+
+            if let provider = capabilityProvider(for: pod.id),
+               let subFrames = provider.activeSubItemFrames(
+                   item: item,
+                   store: self,
+                   totalHeight: totalHeight,
+                   windowWidth: windowWidth,
+                   corridor: corridor
+               ) {
+                frames.append(contentsOf: subFrames)
+                continue
+            }
 
             // Case A: Decomposed Scripts (Precision sub-item bounding box)
             if pod.id == "scripts" && isScriptsDecomposed {

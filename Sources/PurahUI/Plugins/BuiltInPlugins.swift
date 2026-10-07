@@ -36,6 +36,22 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if store.isVitalsDecomposed {
+            let count = max(store.vitalsEnabledMetrics.count, 1)
+            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        }
+        return 300.0
+    }
+
+    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
+    }
+
+    public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        itemId.hasPrefix("vitals-")
+    }
+
     public func dynamicBarColor(context: PurahPluginContext) -> Color? {
         VitalsColorResolver.overallVitalsColor(
             vitals: HardwareVitalsService.shared.metrics,
@@ -135,6 +151,22 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if store.isScriptsDecomposed {
+            let count = max(store.scriptsEnabledActions.count, 1)
+            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        }
+        return 160.0
+    }
+
+    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") }
+    }
+
+    public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        itemId.hasPrefix("scripts-")
+    }
+
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let runway = ScriptRunwayService.shared
         return context.store.scriptsEnabledActions.map { action in
@@ -229,6 +261,8 @@ public struct QuickNotesPlugin: PurahPodPlugin {
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(NotesPluginSettingsView(store: store))
     }
+
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
 }
 
 // MARK: - Drop Shelf Plugin
@@ -268,6 +302,8 @@ public struct DropShelfPlugin: PurahPodPlugin {
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(ShelfPluginSettingsView(store: store))
     }
+
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
 
     public var supportedDropTypes: [UTType] { [.fileURL] }
 
@@ -335,6 +371,8 @@ public struct MusicPlugin: PurahPodPlugin {
         AnyView(MusicPluginSettingsView(store: store))
     }
 
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 110.0 }
+
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         context.performHaptic(.alignment)
         SystemMusicSyncService.shared.togglePlayPause(store: context.store)
@@ -377,6 +415,16 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
+
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+
+    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        store.calendarEvents.contains { store.isItemPinned(id: $0.id) }
+    }
+
+    public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        store.calendarEvents.contains { $0.id == itemId }
+    }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         context.store.calendarEvents.map { event in
@@ -436,6 +484,16 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
+
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+
+    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        store.todos.contains { store.isItemPinned(id: $0.id) }
+    }
+
+    public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        store.todos.contains { $0.id == itemId }
+    }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         context.store.todos.map { todo in

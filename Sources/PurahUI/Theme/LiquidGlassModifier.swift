@@ -35,12 +35,22 @@ public struct NativeVisualEffectView: NSViewRepresentable {
 }
 
 // MARK: - Chromatic Harmony Color Helper
-public extension Color {
-    /// 计算基于 HSB 色域空间谐振偏移 (+35°) 的 Apple Music 极光次级渗透色
-    func harmonicSecondary() -> Color {
-        let nsColor = NSColor(self)
+private final class ColorHarmonicCache: @unchecked Sendable {
+    static let shared = ColorHarmonicCache()
+    private var cache: [Color: Color] = [:]
+    private let lock = NSLock()
+
+    func harmonic(for color: Color) -> Color {
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = cache[color] {
+            return existing
+        }
+        let nsColor = NSColor(color)
         guard let rgb = nsColor.usingColorSpace(.sRGB) else {
-            return self.opacity(0.85)
+            let fallback = color.opacity(0.85)
+            cache[color] = fallback
+            return fallback
         }
         var h: CGFloat = 0
         var s: CGFloat = 0
@@ -53,12 +63,21 @@ public extension Color {
         let adjustedSat = min(max(s * 0.90, 0.45), 0.95)
         let adjustedBri = min(max(b * 0.95, 0.55), 1.0)
 
-        return Color(
+        let result = Color(
             hue: Double(shiftedHue),
             saturation: Double(adjustedSat),
             brightness: Double(adjustedBri),
             opacity: Double(a)
         )
+        cache[color] = result
+        return result
+    }
+}
+
+public extension Color {
+    /// 计算基于 HSB 色域空间谐振偏移 (+35°) 的 Apple Music 极光次级渗透色 (带缓存极速路径)
+    func harmonicSecondary() -> Color {
+        ColorHarmonicCache.shared.harmonic(for: self)
     }
 }
 
