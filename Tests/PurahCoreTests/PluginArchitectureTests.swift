@@ -183,4 +183,62 @@ struct PluginArchitectureTests {
             _ = drawerView
         }
     }
+
+    @Test("Plugin capability models and default protocol extensions")
+    func testPluginCapabilities() {
+        let store = PurahWorkspaceStore()
+        let vitalsPlugin = HardwareVitalsPlugin()
+        let scriptsPlugin = ScriptRunwayPlugin()
+        let todoPlugin = TodoPlugin()
+        let calPlugin = CalendarPlugin()
+        let shelfPlugin = DropShelfPlugin()
+
+        #expect(vitalsPlugin.supportedDrawerModes.contains(.composite))
+        #expect(vitalsPlugin.supportedDrawerModes.contains(.stepped))
+        #expect(scriptsPlugin.supportedDrawerModes.contains(.stepped))
+        #expect(todoPlugin.supportedDrawerModes == [.stepped])
+        #expect(calPlugin.supportedDrawerModes == [.stepped])
+        #expect(shelfPlugin.supportedDropTypes.contains(.fileURL))
+
+        let pod = store.pods.first(where: { $0.id == "vitals" }) ?? SlotPod(
+            id: "vitals", name: "Hardware Vitals", systemIcon: "cpu",
+            edge: .left, range: .init(start: 0, length: 0.2),
+            ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35
+        )
+
+        var toastShown: String?
+        var warningShown: String?
+        var hapticPerformed: PurahHapticType?
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 160.0,
+            drawerWidth: 280.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .green,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {},
+            showToast: { msg, _ in toastShown = msg },
+            showWarning: { msg in warningShown = msg },
+            performHaptic: { hapticPerformed = $0 }
+        )
+
+        #expect(vitalsPlugin.dynamicBarColor(context: context) != nil)
+        #expect(!vitalsPlugin.steppedItems(context: context).isEmpty)
+
+        context.showToast("Test toast", nil)
+        #expect(toastShown == "Test toast")
+
+        context.showWarning("Test warning")
+        #expect(warningShown == "Test warning")
+
+        context.performHaptic(.alignment)
+        #expect(hapticPerformed == .alignment)
+    }
 }

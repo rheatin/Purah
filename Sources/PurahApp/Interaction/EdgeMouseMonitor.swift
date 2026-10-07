@@ -238,10 +238,7 @@ public final class EdgeMouseMonitor {
             let pod = item.pod
             let isPodPinned = store.isItemPinned(id: pod.id)
             let isPodActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id)
-            let hasActiveOrPinnedChild = (pod.id == "todo" && store.todos.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
-                                         (pod.id == "calendar" && store.calendarEvents.contains { store.isItemPinned(id: $0.id) || $0.id == store.activeDrawerItemId }) ||
-                                         (pod.id == "vitals" && store.isVitalsDecomposed && store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") || "vitals-\($0.rawValue)" == store.activeDrawerItemId }) ||
-                                         (pod.id == "scripts" && store.isScriptsDecomposed && store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") || "scripts-\($0.id)" == store.activeDrawerItemId })
+            let hasActiveOrPinnedChild = store.hasActiveOrPinnedChild(for: pod.id)
 
             if isPodPinned || isPodActive || hasActiveOrPinnedChild {
                 let startY = CGFloat(item.startY)

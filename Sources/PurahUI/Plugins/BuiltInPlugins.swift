@@ -2,6 +2,7 @@
 import SwiftUI
 import AppKit
 import PurahCore
+import UniformTypeIdentifiers
 
 // MARK: - Hardware Vitals Plugin
 public struct HardwareVitalsPlugin: PurahPodPlugin {
@@ -31,6 +32,47 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(VitalsPluginSettingsView(store: store))
+    }
+
+    public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
+
+    public func dynamicBarColor(context: PurahPluginContext) -> Color? {
+        VitalsColorResolver.overallVitalsColor(
+            vitals: HardwareVitalsService.shared.metrics,
+            thresholds: context.store.vitalsThresholds,
+            palette: context.palette
+        )
+    }
+
+    public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        let metrics = HardwareVitalsService.shared.metrics
+        return context.store.vitalsEnabledMetrics.map { metric in
+            let ratio: Double = {
+                switch metric {
+                case .cpu: return metrics.cpuUsage
+                case .gpu: return metrics.gpuUsage
+                case .ram: return metrics.memoryUsage
+                case .thermal: return metrics.isUnderThermalPressure ? 0.90 : 0.30
+                case .power: return Double(metrics.batteryLevel) / 100.0
+                case .network: return min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
+                case .disk:
+                    return metrics.diskTotalGB > 0 ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB : 0.5
+                }
+            }()
+            let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: context.store.vitalsThresholds, palette: context.palette)
+            let isAlerting = (metric == .thermal && metrics.isUnderThermalPressure) ||
+                             (metric == .cpu && metrics.cpuUsage > context.store.vitalsThresholds.cpuDanger)
+            return PurahPluginSubItem(
+                id: "vitals-\(metric.rawValue)",
+                title: metric.displayName,
+                systemIcon: metric.systemIcon,
+                state: isAlerting ? .alerting : .normal,
+                gaugeRatio: ratio,
+                gaugeStyle: .solid,
+                tintColorHex: color.toHex(),
+                isPinned: context.store.isItemPinned(id: "vitals-\(metric.rawValue)")
+            )
+        }
     }
 }
 
@@ -89,6 +131,45 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(ScriptsPluginSettingsView(store: store))
+    }
+
+    public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
+
+    public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        let runway = ScriptRunwayService.shared
+        return context.store.scriptsEnabledActions.map { action in
+            let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
+            return PurahPluginSubItem(
+                id: "scripts-\(action.id)",
+                title: action.name,
+                subtitle: action.description.isEmpty ? action.scriptContent : action.description,
+                systemIcon: action.systemIcon,
+                badge: action.commandType.rawValue.uppercased(),
+                state: isRunning ? .running : .normal,
+                gaugeRatio: nil,
+                gaugeStyle: .none,
+                tintColorHex: nil,
+                isPinned: context.store.isItemPinned(id: "scripts-\(action.id)")
+            )
+        }
+    }
+
+    public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
+        if let subId = subItemId?.replacingOccurrences(of: "scripts-", with: ""),
+           let action = ScriptRunwayService.shared.action(for: subId) {
+            context.performHaptic(.levelChange)
+            Task {
+                let res = await ScriptRunwayService.shared.executeAction(action)
+                if res.success {
+                    context.performHaptic(.alignment)
+                    context.showToast("Ran \(action.name)", "checkmark.circle.fill")
+                } else {
+                    context.showWarning("Failed: \(res.message)")
+                }
+            }
+        } else {
+            context.requestExpand()
+        }
     }
 }
 
@@ -183,6 +264,33 @@ public struct DropShelfPlugin: PurahPodPlugin {
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(ShelfPluginSettingsView(store: store))
     }
+
+    public var supportedDropTypes: [UTType] { [.fileURL] }
+
+    public func onDrop(providers: [NSItemProvider], context: PurahPluginContext) -> Bool {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url = url {
+                    Task { @MainActor in
+                        let name = url.lastPathComponent
+                        let ext = url.pathExtension
+                        let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
+                        let size = (attr?[.size] as? Int64) ?? 0
+                        let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+                        context.store.shelfFiles.append(ShelfFileItem(
+                            name: name,
+                            sizeDescription: sizeDesc,
+                            fileExtension: ext,
+                            filePath: url.path
+                        ))
+                        context.performHaptic(.alignment)
+                        context.showToast("Stashed \(name)", "tray.and.arrow.down.fill")
+                    }
+                }
+            }
+        }
+        return true
+    }
 }
 
 // MARK: - Music Plugin
@@ -222,6 +330,11 @@ public struct MusicPlugin: PurahPodPlugin {
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(MusicPluginSettingsView(store: store))
     }
+
+    public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
+        context.performHaptic(.alignment)
+        SystemMusicSyncService.shared.togglePlayPause(store: context.store)
+    }
 }
 
 // MARK: - Calendar Plugin
@@ -258,6 +371,29 @@ public struct CalendarPlugin: PurahPodPlugin {
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(CalendarPluginSettingsView(store: store))
     }
+
+    public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
+
+    public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        context.store.calendarEvents.map { event in
+            let isPast = event.endTime < Date()
+            let isOngoing = event.isOngoing
+            let isImminent = event.isImminent
+            let state: RailItemActivityState = isOngoing ? .ongoing : (isImminent ? .alerting : (isPast ? .inactive : .normal))
+            return PurahPluginSubItem(
+                id: event.id,
+                title: event.title,
+                subtitle: event.location,
+                systemIcon: "calendar",
+                badge: isOngoing ? "NOW" : (isImminent ? "SOON" : nil),
+                state: state,
+                gaugeRatio: nil,
+                gaugeStyle: .none,
+                tintColorHex: nil,
+                isPinned: context.store.isItemPinned(id: event.id)
+            )
+        }
+    }
 }
 
 // MARK: - Todo Plugin
@@ -293,6 +429,36 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(TodoPluginSettingsView(store: store))
+    }
+
+    public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
+
+    public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        context.store.todos.map { todo in
+            PurahPluginSubItem(
+                id: todo.id,
+                title: todo.title,
+                subtitle: todo.listTitle,
+                systemIcon: "checklist",
+                badge: nil,
+                state: todo.isCompleted ? .inactive : .normal,
+                gaugeRatio: nil,
+                gaugeStyle: .none,
+                tintColorHex: nil,
+                isPinned: context.store.isItemPinned(id: todo.id)
+            )
+        }
+    }
+
+    public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
+        if let id = subItemId {
+            context.performHaptic(.levelChange)
+            Task {
+                await SystemRemindersSyncService.shared.toggleCompletion(id: id, into: context.store)
+            }
+        } else {
+            context.requestExpand()
+        }
     }
 }
 
