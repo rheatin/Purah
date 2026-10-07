@@ -748,91 +748,84 @@ public struct ScriptItemDrawerView: View {
         let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
 
         HStack(spacing: 8) {
-            // Icon Squircle Tile
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(podColor.opacity(0.18))
-                    .frame(width: 26, height: 26)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(podColor.opacity(0.40), lineWidth: 1)
-                    )
-
-                Image(systemName: action.systemIcon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(podColor)
-            }
-
-            // Title & Subtitle / Preview
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(action.name)
-                        .purahTitle(size: 11.5, weight: .bold, design: .rounded)
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .lineLimit(1)
-
-                    Text(badgeText(for: action.commandType))
-                        .purahBadge(size: 7, weight: .bold)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(podColor.opacity(0.16)))
-                        .foregroundColor(podColor)
+            // Entire card body is a tactile click-to-run button
+            Button {
+                Task {
+                    _ = await runway.executeAction(action)
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    // Action Icon Tile (Animates when executing)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(podColor.opacity(isRunning ? 0.35 : 0.16))
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(podColor.opacity(0.35), lineWidth: 1)
+                            )
 
-                if let output = runway.lastOutput, runway.lastExecutedActionId == action.id {
-                    HStack(spacing: 3) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 8))
-                            .foregroundColor(.green)
-                        Text(output)
-                            .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                } else {
-                    let preview = !action.description.isEmpty ? action.description : (action.commandType == .shortcut ? "macOS Shortcut" : action.scriptContent)
-                    Text(preview)
-                        .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            // Right-Side Controls: Pin (top) & Apple Glass Capsule Run Button (bottom)
-            VStack(alignment: .trailing, spacing: 4) {
-                pinButton
-
-                Button {
-                    Task {
-                        _ = await runway.executeAction(action)
-                    }
-                } label: {
-                    HStack(spacing: 3.5) {
                         if isRunning {
                             ProgressView()
                                 .controlSize(.mini)
-                                .scaleEffect(0.55)
-                                .frame(width: 8, height: 8)
+                                .scaleEffect(0.6)
                         } else {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 7, weight: .heavy))
+                            Image(systemName: action.systemIcon)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(podColor)
                         }
-                        Text(isRunning ? "Running" : "Run")
-                            .purahCaption(size: 8.5, weight: .bold, design: .rounded)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2.5)
-                    .background(Capsule().fill(podColor.opacity(isRunning ? 0.35 : 0.18)))
-                    .overlay(Capsule().stroke(podColor.opacity(0.40), lineWidth: 1))
-                    .foregroundColor(podColor)
+
+                    // Name & Secondary subtitle
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
+                            Text(action.name)
+                                .purahTitle(size: 11.5, weight: .bold, design: .rounded)
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
+
+                            Text(badgeText(for: action.commandType))
+                                .purahBadge(size: 7, weight: .bold)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(podColor.opacity(0.16)))
+                                .foregroundColor(podColor)
+                        }
+
+                        if isRunning {
+                            Text("Executing command...")
+                                .purahCaption(size: 8.5, weight: .medium)
+                                .foregroundColor(podColor)
+                        } else if let output = runway.lastOutput, runway.lastExecutedActionId == action.id {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.green)
+                                Text(output)
+                                    .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                        } else {
+                            let preview = !action.description.isEmpty ? action.description : (action.commandType == .shortcut ? "Click to run shortcut" : action.scriptContent)
+                            Text(preview)
+                                .purahCaption(size: 8.5, weight: .regular, design: .monospaced)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+
+                    Spacer(minLength: 4)
                 }
-                .buttonStyle(.tactile)
-                .disabled(runway.isRunning)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.tactile)
+            .disabled(runway.isRunning)
+
+            // Pin button (Matches Hardware Vitals design)
+            pinButton
         }
         .padding(.leading, edge == .left ? 10 : 20)
         .padding(.trailing, edge == .left ? 20 : 10)
