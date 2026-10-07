@@ -62,11 +62,11 @@ struct EdgeTriggerIntentTests {
             return
         }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 2.0, y: targetY)
+        let edgePoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
-        // Push into the left edge with 450 pt/s velocity (Vx = -450 pt/s, Vy = 20 pt/s)
-        let pushVelocity = CGPoint(x: -450.0, y: 20.0)
+        // Post-arrival push force exceeding 36px barrier threshold (Vx = -2400 pt/s -> 38.4px delta)
+        let pushVelocity = CGPoint(x: -2400.0, y: 20.0)
         monitor.processMouse(point: edgePoint, now: Date(), customVelocity: pushVelocity)
 
         // Because push force (450 pt/s) exceeded activePushForceThreshold (380 pt/s),
@@ -384,11 +384,11 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 2.0, y: targetY)
+        let edgePoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
-        // High inward thrust of 1500 pt/s into bezel
-        let thrustVelocity = CGPoint(x: -1500.0, y: 30.0)
+        // High inward thrust exceeding barrier into bezel
+        let thrustVelocity = CGPoint(x: -2400.0, y: 30.0)
         monitor.processMouse(point: edgePoint, now: Date(), customVelocity: thrustVelocity)
         #expect(store.activeDrawerPodId == firstItem.pod.id)
     }
@@ -756,7 +756,7 @@ struct EdgeTriggerIntentTests {
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
 
         // Step 1: Arrive at edge calmly without breakthrough
-        let bezelPoint = NSPoint(x: 2.0, y: targetY)
+        let bezelPoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = bezelPoint
         monitor.processMouse(point: bezelPoint, now: Date(), customVelocity: CGPoint(x: -80.0, y: 0.0))
         #expect(store.activeDrawerPodId == nil, "Merely arriving at edge without pushing must not open drawer")
@@ -768,5 +768,41 @@ struct EdgeTriggerIntentTests {
         // Step 3: Continue pushing outward (another 20px -> total 40px >= 36px threshold!)
         monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -20.0)
         #expect(store.activeDrawerPodId == firstItem.pod.id, "Pushing past 36px barrier threshold must break through and open drawer")
+    }
+    @Test("Inflight approach towards edge strictly holds pushAccumulator at 0 without premature triggering")
+    @MainActor
+    func testInflightApproachDoesNotAccumulatePushForce() {
+        let store = PurahWorkspaceStore()
+        store.activeDrawerPodId = nil
+        store.activeDrawerItemId = nil
+        store.edgeTriggerMode = .pushForce
+        store.edgeTriggerSensitivity = .balanced
+
+        let coordinator = ScreenEdgeCoordinator(store: store)
+        let monitor = EdgeMouseMonitor(store: store, coordinator: coordinator)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        guard let firstItem = layoutItems.first else { return }
+        let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
+
+        // Point is at x = 8.0 (inside the 12pt trigger band, but NOT yet at the absolute bezel x <= 1.5)
+        let inflightPoint = NSPoint(x: 8.0, y: targetY)
+        monitor.customCurrentMouseLocation = inflightPoint
+
+        // Deliver multiple high inward deltas while inflight
+        for _ in 0..<5 {
+            monitor.processMouse(point: inflightPoint, now: Date(), customVelocity: CGPoint(x: -800.0, y: 0.0))
+        }
+
+        // Must strictly remain closed: in-flight approach is NOT allowed to accumulate force!
+        #expect(store.activeDrawerPodId == nil, "Inflight approach must strictly hold accumulator at 0")
+
+        // Only after physically pinning against bezel (x = 1.0) and pushing does it break through!
+        let bezelPoint = NSPoint(x: 1.0, y: targetY)
+        monitor.customCurrentMouseLocation = bezelPoint
+        monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -40.0)
+        #expect(store.activeDrawerPodId == firstItem.pod.id, "Pushing after reaching bezel must break through")
     }
 }

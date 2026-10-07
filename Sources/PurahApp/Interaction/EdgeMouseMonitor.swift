@@ -165,9 +165,12 @@ public final class EdgeMouseMonitor {
         let edge: MountEdge = isAtLeftEdge ? .left : .right
         let outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
 
-        // 仅在光标紧贴边框 (<= 4pt) 且持续施加推力时进行硬件级位移累加
-        let isPressingAgainstBezel = (edge == .left) ? (mousePoint.x <= visibleRect.minX + 4.0) : (mousePoint.x >= visibleRect.maxX - 4.0)
-        guard isPressingAgainstBezel else { return }
+        // 仅在光标紧贴绝对边框 (<= 1.5pt) 且持续施加推力时进行硬件级位移累加
+        let isAtAbsoluteBezel = (edge == .left) ? (mousePoint.x <= visibleRect.minX + 1.5) : (mousePoint.x >= visibleRect.maxX - 1.5)
+        guard isAtAbsoluteBezel else {
+            pushAccumulator.reset()
+            return
+        }
 
         let breakthrough = pushAccumulator.push(
             outwardDelta: outwardDelta,
@@ -321,34 +324,34 @@ public final class EdgeMouseMonitor {
         let hoverDuration = now.timeIntervalSince(candidateHoverStartTime ?? now)
 
         let isFromDockedState = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
-        let isPressingAgainstBezel = (edge == .left) ? (point.x <= visibleRect.minX + 4.0) : (point.x >= visibleRect.maxX - 4.0)
+        let isAtAbsoluteBezel = (edge == .left) ? (point.x <= visibleRect.minX + 1.5) : (point.x >= visibleRect.maxX - 1.5)
 
         // 1. Calculate Edge Push Force (Barrier / Input Leap / Loop 相对位移累加器模型)
-        let pushVelocity = (edge == .left) ? -vel.x : vel.x
-        let pushThreshold = store.activePushForceThreshold
-        let isHorizontalIntent = abs(vel.y) <= max(pushVelocity * 1.5, 300.0)
+        // 核心铁律：光标未完全到达物理边框 (<= 1.5pt) 之前，严禁提前蓄力，累加器强制清零！
+        let isPushForceBreakthrough: Bool
+        if isAtAbsoluteBezel {
+            let outwardDelta: Double
+            if let ev = event {
+                let rawDeltaX = Double(ev.deltaX)
+                outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
+            } else if let customVel = customVelocity {
+                let simDeltaX = Double(customVel.x) * 0.016
+                outwardDelta = (edge == .left) ? -simDeltaX : simDeltaX
+            } else {
+                let velX = Double(vel.x) * 0.016
+                outwardDelta = (edge == .left) ? -velX : velX
+            }
 
-        let outwardDelta: Double
-        if let ev = event {
-            let rawDeltaX = Double(ev.deltaX)
-            outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
-        } else if let customVel = customVelocity {
-            let simDeltaX = Double(customVel.x) * 0.016
-            outwardDelta = (edge == .left) ? -simDeltaX : simDeltaX
+            let isAccumulatorBreakthrough = pushAccumulator.push(
+                outwardDelta: outwardDelta,
+                timestamp: now,
+                threshold: store.activePushResistanceBarrier
+            )
+            isPushForceBreakthrough = !isSeam && isAccumulatorBreakthrough
         } else {
-            let velX = Double(vel.x) * 0.016
-            outwardDelta = (edge == .left) ? -velX : velX
+            pushAccumulator.reset()
+            isPushForceBreakthrough = false
         }
-
-        let isAccumulatorBreakthrough = pushAccumulator.push(
-            outwardDelta: outwardDelta,
-            timestamp: now,
-            threshold: store.activePushResistanceBarrier
-        )
-        // 速度破门仅在已经紧贴边框 (isPressingAgainstBezel) 且施加持续向外推力时有效，防止空中划过误判
-        let isBezelPush = isPressingAgainstBezel && (pushVelocity >= pushThreshold && isHorizontalIntent)
-
-        let isPushForceBreakthrough = !isSeam && (isAccumulatorBreakthrough || isBezelPush)
 
         // Velocity speed check: suppress wild vertical fling if not pushing inward
         if store.edgeTriggerMode == .hoverDwell {
