@@ -244,6 +244,33 @@ public final class PurahWorkspaceStore {
         capacityRatio(for: edge) > 1.0
     }
 
+    public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
+        let podHeight = max(pod.range.length * totalHeight, 36.0)
+        if pod.id == "scripts" && isScriptsDecomposed {
+            let count = max(scriptsEnabledActions.count, 1)
+            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+        }
+        if pod.id == "vitals" && isVitalsDecomposed {
+            let count = max(vitalsEnabledMetrics.count, 1)
+            return max(podHeight, CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5)
+        }
+        return podHeight
+    }
+
+    public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
+        ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
+            pods: pods,
+            on: edge,
+            totalHeight: totalHeight,
+            gap: 8.0,
+            safeTop: 16.0,
+            safeBottom: totalHeight - 16.0
+        ) { [weak self] pod in
+            guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
+            return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
+        }
+    }
+
     public func defaultColorHex(for podId: String) -> String {
         switch podId {
         case "calendar": return "#FF5A60" // Coral Red

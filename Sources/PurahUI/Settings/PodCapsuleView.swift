@@ -5,6 +5,7 @@ import PurahCore
 public struct PodCapsuleView: View {
     public let pod: SlotPod
     public let canvasHeight: Double
+    public let customHeight: Double?
     public let onMove: (Double) -> Void
     public let onResize: (Double) -> Void
     public let onTransferEdge: () -> Void
@@ -26,6 +27,7 @@ public struct PodCapsuleView: View {
     public init(
         pod: SlotPod,
         canvasHeight: Double,
+        customHeight: Double? = nil,
         onMove: @escaping (Double) -> Void,
         onResize: @escaping (Double) -> Void,
         onTransferEdge: @escaping () -> Void,
@@ -33,6 +35,7 @@ public struct PodCapsuleView: View {
     ) {
         self.pod = pod
         self.canvasHeight = canvasHeight
+        self.customHeight = customHeight
         self.onMove = onMove
         self.onResize = onResize
         self.onTransferEdge = onTransferEdge
@@ -40,7 +43,7 @@ public struct PodCapsuleView: View {
     }
 
     public var body: some View {
-        let capsuleHeight = max(pod.range.length * canvasHeight, 36.0)
+        let capsuleHeight = max(customHeight ?? (pod.range.length * canvasHeight), 36.0)
 
         VStack(spacing: 0) {
             // 1. Move Header (Drag to move pod vertically)
