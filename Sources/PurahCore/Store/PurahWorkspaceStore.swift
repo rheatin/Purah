@@ -244,6 +244,27 @@ public final class PurahWorkspaceStore {
         capacityRatio(for: edge) > 1.0
     }
 
+    public var onCapacityWarningToast: ((String) -> Void)?
+    private var lastCapacityAlertTime: Date?
+
+    public func notifyCapacityWarningIfNeeded() {
+        let now = Date()
+        if let last = lastCapacityAlertTime, now.timeIntervalSince(last) < 6.0 {
+            return
+        }
+        if isRailOverloaded(edge: .left) {
+            lastCapacityAlertTime = now
+            let req = Int(totalRequiredHeight(for: .left))
+            let avail = Int(availableScreenHeight(for: .left))
+            onCapacityWarningToast?("⚠️ 左轨空间超载 (\(req)pt / 可用 \(avail)pt)，建议分配至右轨")
+        } else if isRailOverloaded(edge: .right) {
+            lastCapacityAlertTime = now
+            let req = Int(totalRequiredHeight(for: .right))
+            let avail = Int(availableScreenHeight(for: .right))
+            onCapacityWarningToast?("⚠️ 右轨空间超载 (\(req)pt / 可用 \(avail)pt)，建议分配至左轨")
+        }
+    }
+
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
         let podHeight = max(pod.range.length * totalHeight, 36.0)
         if pod.id == "scripts" && isScriptsDecomposed {
@@ -409,6 +430,7 @@ public final class PurahWorkspaceStore {
         defaults.set(customInitialDwellMs, forKey: "purah.customInitialDwellMs")
         defaults.set(customExitGraceMs, forKey: "purah.customExitGraceMs")
         defaults.set(customCatchCorridorPt, forKey: "purah.customCatchCorridorPt")
+        notifyCapacityWarningIfNeeded()
     }
 
     public func autoLayoutAll() {
@@ -416,6 +438,7 @@ public final class PurahWorkspaceStore {
         let right = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .right)
         let map = Dictionary(uniqueKeysWithValues: (left + right).map { ($0.id, $0) })
         pods = pods.map { map[$0.id] ?? $0 }
+        notifyCapacityWarningIfNeeded()
     }
 
     public func togglePodEnabled(id: String) {

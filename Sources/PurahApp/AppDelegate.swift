@@ -24,6 +24,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         self.mouseMonitor = monitor
         monitor.start()
 
+        // 注册导轨容量超载 Toast 提示 (利用 TransientHUD)
+        store.onCapacityWarningToast = { message in
+            TransientHUDController.shared.showWarning(message: message)
+        }
+
         // 注册全局冻结/激活快捷键
         GlobalHotKeyManager.shared.register(shortcut: store.hotKeyShortcut) { [weak self] in
             self?.toggleFreezeMode()
