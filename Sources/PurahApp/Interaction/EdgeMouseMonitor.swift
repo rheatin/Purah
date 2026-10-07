@@ -85,7 +85,8 @@ public final class EdgeMouseMonitor {
         } else {
             if leftExitGraceTask == nil {
                 leftExitGraceTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 280_000_000)
+                    let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
+                    try? await Task.sleep(nanoseconds: UInt64(graceSec * 1_000_000_000))
                     guard !Task.isCancelled, let self = self else { return }
                     self.coordinator?.dismissDrawer(for: .left)
                     self.leftExitGraceTask = nil
@@ -101,7 +102,8 @@ public final class EdgeMouseMonitor {
         } else {
             if rightExitGraceTask == nil {
                 rightExitGraceTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 280_000_000)
+                    let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
+                    try? await Task.sleep(nanoseconds: UInt64(graceSec * 1_000_000_000))
                     guard !Task.isCancelled, let self = self else { return }
                     self.coordinator?.dismissDrawer(for: .right)
                     self.rightExitGraceTask = nil
@@ -158,8 +160,8 @@ public final class EdgeMouseMonitor {
         let isFromDockedState = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
         let isDeepEdgePush = isAtLeftEdge ? (point.x <= visibleRect.minX + 3.0) : (point.x >= visibleRect.maxX - 3.0)
 
-        let initialDwellReq = store.edgeTriggerSensitivity.initialDwellSeconds
-        let deepEdgeDwellReq = store.edgeTriggerSensitivity.deepEdgeDwellSeconds
+        let initialDwellReq = store.activeInitialDwellSeconds
+        let deepEdgeDwellReq = store.activeDeepEdgeDwellSeconds
 
         if isFromDockedState {
             let qualifiesByDwell = (hoverDuration >= initialDwellReq)
@@ -258,10 +260,11 @@ public final class EdgeMouseMonitor {
                 let topOfPodY = visibleRect.maxY - clampedStartY
                 let bottomOfPodY = topOfPodY - spanH
 
-                let minY = max(bottomOfPodY - 16.0, visibleRect.minY)
-                let maxY = min(topOfPodY + 16.0, visibleRect.maxY)
+                let minY = max(bottomOfPodY - 18.0, visibleRect.minY)
+                let maxY = min(topOfPodY + 18.0, visibleRect.maxY)
 
-                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + 16.0
+                let corridor = CGFloat(store.activeCatchCorridor)
+                let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor
                 let inDrawerX: Bool
                 if edge == .right {
                     inDrawerX = point.x >= (visibleRect.maxX - drawerW)

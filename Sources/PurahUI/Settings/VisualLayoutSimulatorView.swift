@@ -222,13 +222,13 @@ public struct VisualLayoutSimulatorView: View {
                         Divider()
                             .background(palette.borderColor.opacity(0.3))
 
-                        // Edge Trigger Intentionality Sensitivity
-                        VStack(alignment: .leading, spacing: 6) {
+                        // Edge Trigger Intentionality Sensitivity & Calibration Instrument
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Edge Trigger Sensitivity")
+                                    Text("Edge Trigger Sensitivity & Calibration")
                                         .font(.subheadline.weight(.medium))
-                                    Text("Requires deliberate dwell or deep bezel push to eliminate accidental popups")
+                                    Text("Governs dwell intent, exit grace hysteresis, and overshoot corridor width")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -236,8 +236,7 @@ public struct VisualLayoutSimulatorView: View {
                                 Picker("", selection: Binding(
                                     get: { store.edgeTriggerSensitivity },
                                     set: {
-                                        store.edgeTriggerSensitivity = $0
-                                        store.savePersistentState()
+                                        store.applySensitivityPreset($0)
                                     }
                                 )) {
                                     ForEach(EdgeTriggerSensitivity.allCases, id: \.self) { sens in
@@ -245,8 +244,83 @@ public struct VisualLayoutSimulatorView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .frame(width: 240)
+                                .frame(width: 280)
                             }
+
+                            // Detailed Calibration Gauge
+                            VStack(spacing: 6) {
+                                HStack {
+                                    Text("Initial Hover Dwell")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 140, alignment: .leading)
+                                    Slider(
+                                        value: Binding(
+                                            get: { store.customInitialDwellMs },
+                                            set: {
+                                                store.customInitialDwellMs = $0
+                                                store.edgeTriggerSensitivity = .custom
+                                                store.savePersistentState()
+                                            }
+                                        ),
+                                        in: 50...400,
+                                        step: 10
+                                    )
+                                    Text("\(Int(store.customInitialDwellMs)) ms")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                        .frame(width: 50, alignment: .trailing)
+                                }
+
+                                HStack {
+                                    Text("Exit Grace Window")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 140, alignment: .leading)
+                                    Slider(
+                                        value: Binding(
+                                            get: { store.customExitGraceMs },
+                                            set: {
+                                                store.customExitGraceMs = $0
+                                                store.edgeTriggerSensitivity = .custom
+                                                store.savePersistentState()
+                                            }
+                                        ),
+                                        in: 100...600,
+                                        step: 20
+                                    )
+                                    Text("\(Int(store.customExitGraceMs)) ms")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                        .frame(width: 50, alignment: .trailing)
+                                }
+
+                                HStack {
+                                    Text("Catch Corridor Buffer")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 140, alignment: .leading)
+                                    Slider(
+                                        value: Binding(
+                                            get: { store.customCatchCorridorPt },
+                                            set: {
+                                                store.customCatchCorridorPt = $0
+                                                store.edgeTriggerSensitivity = .custom
+                                                store.savePersistentState()
+                                            }
+                                        ),
+                                        in: 20...90,
+                                        step: 5
+                                    )
+                                    Text("+\(Int(store.customCatchCorridorPt)) pt")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                        .frame(width: 50, alignment: .trailing)
+                                }
+                            }
+                            .padding(8)
+                            .background(Color.primary.opacity(0.03))
+                            .cornerRadius(8)
                         }
                     }
                 }
