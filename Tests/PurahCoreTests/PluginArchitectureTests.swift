@@ -788,6 +788,11 @@ struct PluginArchitectureTests {
     @Test("PluginMarketManager community catalog installation and zero-footprint lifecycle")
     @MainActor
     func testCommunityPluginMarketplaceLifecycle() {
+        UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        }
+
         let store = PurahWorkspaceStore()
         let market = store.marketManager
 
@@ -821,5 +826,161 @@ struct PluginArchitectureTests {
 
         let prefView = PreferencesView(store: store, initialTab: .plugins)
         #expect(prefView.selectedTab == .plugins)
+    }
+
+    @Test("Third-party plugin requires zero base code changes to integrate, layout, activate sub-items, and cleanly uninstall")
+    @MainActor
+    func testThirdPartyPluginRequiresZeroBaseChanges() {
+        @MainActor
+        final class MockSensorPlugin: PurahPodPlugin {
+            nonisolated let manifest = PurahPluginManifest(
+                id: "mock-sensor",
+                displayName: "Mock Telemetry Sensor",
+                systemIcon: "sensor.tag.radiowaves.forward.fill",
+                author: "Acme Sensors Inc.",
+                version: "1.0.0",
+                description: "Live multi-channel telemetry sensor suite",
+                defaultEdge: .left,
+                preferredZone: .goldenAction,
+                ergonomicWeight: 32.0,
+                minLengthRatio: 0.20,
+                defaultColorHex: "#34C759",
+                category: .lightweight,
+                permissions: []
+            )
+
+            var mounted = false
+            var unmounted = false
+
+            var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
+
+            func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+                [
+                    PurahPluginSubItem(id: "sensor-temp", title: "Temperature", subtitle: "42°C", systemIcon: "thermometer.medium", tintColorHex: "#FF9500"),
+                    PurahPluginSubItem(id: "sensor-fan", title: "Fan Speed", subtitle: "2400 RPM", systemIcon: "fanblades.fill", tintColorHex: "#007AFF"),
+                    PurahPluginSubItem(id: "sensor-volt", title: "Voltage", subtitle: "1.2V", systemIcon: "bolt.fill", tintColorHex: "#FFCC00")
+                ]
+            }
+
+            // Capability provider requirements
+            func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
+            func subItemCount(store: PurahWorkspaceStore) -> Int { 3 }
+            func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+                let ids = ["sensor-temp", "sensor-fan", "sensor-volt"]
+                guard ids.indices.contains(index) else { return nil }
+                return ids[index]
+            }
+            func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+                let titles = ["Temperature", "Fan Speed", "Voltage"]
+                guard titles.indices.contains(index) else { return nil }
+                return titles[index]
+            }
+            func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 168.0 }
+            func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+                ["sensor-temp", "sensor-fan", "sensor-volt"].contains(itemId)
+            }
+
+            // View factory
+            func makeRailBarView(context: PurahPluginContext) -> AnyView {
+                AnyView(
+                    VStack(spacing: 2) {
+                        Image(systemName: "sensor.tag.radiowaves.forward.fill")
+                        Text("Sensors")
+                    }
+                )
+            }
+
+            func makeDrawerView(context: PurahPluginContext) -> AnyView {
+                AnyView(Text("Sensor Suite Composite Card"))
+            }
+
+            func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+                AnyView(
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Sensor Channel: \(subItemId)")
+                            .font(.headline)
+                        Text("Real-time telemetry streaming active")
+                            .font(.caption)
+                    }
+                    .padding(8)
+                )
+            }
+
+            func onMount(store: PurahWorkspaceStore) {
+                mounted = true
+            }
+
+            func onUnmount(store: PurahWorkspaceStore) {
+                unmounted = true
+            }
+        }
+
+        let store = PurahWorkspaceStore()
+        let sensorPlugin = MockSensorPlugin()
+
+        defer {
+            PluginRegistry.shared.unregister(id: "mock-sensor", store: store)
+            PluginRegistry.shared.unregisterCatalog(id: "mock-sensor")
+            UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        }
+
+        // Register into PluginRegistry.shared and install via marketManager
+        PluginRegistry.shared.register(sensorPlugin, store: store)
+        store.marketManager.install(id: "mock-sensor")
+
+        // 1. Verify store.pods contains the pod
+        #expect(store.pods.contains { $0.id == "mock-sensor" })
+        let installedPod = store.pods.first { $0.id == "mock-sensor" }
+        #expect(installedPod?.name == "Mock Telemetry Sensor")
+        #expect(installedPod?.edge == .left)
+        #expect(sensorPlugin.mounted == true)
+
+        // 2. Verify store.minimumDrawerHeight(for: "mock-sensor") resolves via capability provider
+        #expect(store.minimumDrawerHeight(for: "mock-sensor") == 168.0)
+
+        // 3. Verify store.pod(forItemId: "sensor-temp") dynamically resolves ownership
+        let owningPod = store.pod(forItemId: "sensor-temp")
+        #expect(owningPod?.id == "mock-sensor")
+        #expect(store.pod(forItemId: "sensor-fan")?.id == "mock-sensor")
+        #expect(store.pod(forItemId: "sensor-volt")?.id == "mock-sensor")
+
+        // 4. Verify store.activeDrawerCardFrames resolves non-empty frames for the active sub-item without any base code modification
+        store.activateDrawer(podId: "mock-sensor", itemId: "sensor-temp")
+        #expect(store.activeDrawerItemId == "sensor-temp")
+        #expect(store.activeDrawerPodId == "mock-sensor")
+
+        let cardFrames = store.activeDrawerCardFrames(for: .left, totalHeight: 900.0)
+        #expect(!cardFrames.isEmpty)
+        if let frame = cardFrames.first {
+            #expect(frame.width > 0)
+            #expect(frame.height > 0)
+        }
+
+        // Verify custom stepped drawer view renders for sub-item
+        let context = PurahPluginContext(
+            pod: installedPod!,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 56.0,
+            drawerWidth: 280.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .green,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        let drawerView = sensorPlugin.makeSteppedDrawerView(subItemId: "sensor-temp", context: context)
+        #expect(drawerView != nil)
+
+        // 5. Verify store.marketManager.uninstall(id: "mock-sensor") cleanly unmounts and removes the pod
+        store.marketManager.uninstall(id: "mock-sensor")
+        #expect(!store.marketManager.isInstalled(id: "mock-sensor"))
+        #expect(!store.pods.contains { $0.id == "mock-sensor" })
+        #expect(PluginRegistry.shared.plugin(for: "mock-sensor") == nil)
+        #expect(sensorPlugin.unmounted == true)
+        #expect(store.activeDrawerCardFrames(for: .left, totalHeight: 900.0).isEmpty)
     }
 }

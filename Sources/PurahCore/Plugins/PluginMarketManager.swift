@@ -6,6 +6,11 @@ import Observation
 public protocol PluginMarketLifecycleDelegate: AnyObject, Sendable {
     func pluginMarketDidInstall(id: String, store: PurahWorkspaceStore)
     func pluginMarketDidUninstall(id: String, store: PurahWorkspaceStore)
+    func manifest(for id: String) -> PurahPluginManifest?
+}
+
+public extension PluginMarketLifecycleDelegate {
+    func manifest(for id: String) -> PurahPluginManifest? { nil }
 }
 
 @Observable
@@ -44,10 +49,12 @@ public final class PluginMarketManager: Sendable {
         self.userDefaults = userDefaults
         self.lifecycleDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
 
-        let resolvedInstalledIds: Set<String>
+        var resolvedInstalledIds: Set<String>
         if let saved = userDefaults.stringArray(forKey: userDefaultsKey) {
             resolvedInstalledIds = Set(saved)
-            store.pods.removeAll { !resolvedInstalledIds.contains($0.id) }
+            let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
+            store.pods.removeAll { managedIds.contains($0.id) && !resolvedInstalledIds.contains($0.id) }
+            resolvedInstalledIds.formUnion(store.pods.map(\.id))
             store.autoLayoutAll()
         } else {
             resolvedInstalledIds = Set(store.pods.map(\.id))
@@ -80,7 +87,7 @@ public final class PluginMarketManager: Sendable {
                 var pod = defaultPod
                 pod.isEnabled = true
                 store.pods.append(pod)
-            } else if let manifest = availableCatalog.first(where: { $0.id == id }) {
+            } else if let manifest = availableCatalog.first(where: { $0.id == id }) ?? (lifecycleDelegate ?? Self.globalLifecycleDelegate)?.manifest(for: id) {
                 let pod = manifest.makeDefaultSlotPod(isEnabled: true)
                 store.pods.append(pod)
             }
@@ -123,6 +130,10 @@ public final class PluginMarketManager: Sendable {
             availableCatalog[index] = manifest
         } else {
             availableCatalog.append(manifest)
+        }
+        if store.pods.contains(where: { $0.id == manifest.id }) {
+            installedPluginIds.insert(manifest.id)
+            enabledPluginIds.insert(manifest.id)
         }
     }
 

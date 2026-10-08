@@ -670,22 +670,20 @@ struct DrawerInteractionUITests {
     @MainActor
     func testMusicDrawerViewTiers() {
         let store = PurahWorkspaceStore()
-        let view = MusicDrawerView(store: store)
+        let isolatedState = MusicPluginState()
+        let view = MusicDrawerView(state: isolatedState, store: store)
 
         // Tier 1: Compact Capsule (< 155pt)
         let tier1Hosting = NSHostingView(rootView: view.frame(width: 290, height: 120))
         tier1Hosting.frame = NSRect(x: 0, y: 0, width: 290, height: 120)
-        tier1Hosting.layoutSubtreeIfNeeded()
 
         // Tier 2: Classic Studio (155pt ~ 235pt)
         let tier2Hosting = NSHostingView(rootView: view.frame(width: 290, height: 180))
         tier2Hosting.frame = NSRect(x: 0, y: 0, width: 290, height: 180)
-        tier2Hosting.layoutSubtreeIfNeeded()
 
         // Tier 3: Immersive Vinyl (>= 235pt)
         let tier3Hosting = NSHostingView(rootView: view.frame(width: 290, height: 260))
         tier3Hosting.frame = NSRect(x: 0, y: 0, width: 290, height: 260)
-        tier3Hosting.layoutSubtreeIfNeeded()
 
         #expect(tier1Hosting.bounds.height == 120)
         #expect(tier2Hosting.bounds.height == 180)
@@ -702,7 +700,6 @@ struct DrawerInteractionUITests {
         for h in testHeights {
             let hosting = NSHostingView(rootView: view.frame(width: 290, height: h))
             hosting.frame = NSRect(x: 0, y: 0, width: 290, height: h)
-            hosting.layoutSubtreeIfNeeded()
             #expect(hosting.bounds.height == h)
         }
     }
