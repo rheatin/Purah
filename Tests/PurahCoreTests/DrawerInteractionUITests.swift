@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 @testable import PurahCore
 @testable import PurahUI
+@testable import PurahApp
 
 @Suite("Drawer Interaction & UI Hit-Test Simulation Tests", .serialized)
 struct DrawerInteractionUITests {
@@ -704,5 +705,93 @@ struct DrawerInteractionUITests {
             hosting.layoutSubtreeIfNeeded()
             #expect(hosting.bounds.height == h)
         }
+    }
+
+    @Test("SteppedRailContainerView renders dynamic sub-item chips cleanly")
+    @MainActor
+    func testSteppedRailContainerViewRendering() throws {
+        let store = PurahWorkspaceStore()
+        guard let todoPod = store.pods.first(where: { $0.id == "todo" }) else {
+            Issue.record("Todo pod not found")
+            return
+        }
+        guard let plugin = PluginRegistry.shared.plugin(for: "todo") else {
+            Issue.record("Todo plugin not registered")
+            return
+        }
+
+        let context = PurahPluginContext(
+            pod: todoPod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 180.0,
+            drawerWidth: 280.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .green,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        let steppedView = SteppedRailContainerView(
+            plugin: plugin,
+            pod: todoPod,
+            context: context,
+            totalHeight: 180.0,
+            edge: .right,
+            store: store
+        )
+
+        let hosting = NSHostingView(rootView: steppedView.frame(width: 340, height: 180))
+        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 180)
+        hosting.layoutSubtreeIfNeeded()
+        #expect(hosting.bounds.height == 180)
+    }
+
+    @Test("EdgeMouseMonitor polymorphic activation correctly routes decomposed sub-items and composite pods")
+    @MainActor
+    func testPolymorphicEdgeMouseMonitorActivation() throws {
+        let store = PurahWorkspaceStore()
+        let monitor = EdgeMouseMonitor(store: store)
+
+        // 1. Decomposed pod (e.g. todo)
+        guard let todoPod = store.pods.first(where: { $0.id == "todo" }) else {
+            Issue.record("Todo pod not found")
+            return
+        }
+        guard let firstTodo = store.todos.first else {
+            Issue.record("No todos in store")
+            return
+        }
+
+        let layout = store.resolvedPhysicalLayout(for: .right, totalHeight: 1000.0)
+        guard let todoItem = layout.first(where: { $0.pod.id == "todo" }) else {
+            Issue.record("Todo layout item not found")
+            return
+        }
+
+        // Test top of Todo pod (relative Y ~ 0.0)
+        let topY = CGFloat(todoItem.startY) + 2.0
+        monitor.activatePodDrawer(candidate: todoPod, matched: todoItem, currentWindowY: topY, edge: .right)
+        #expect(store.activeDrawerPodId == "todo")
+        #expect(store.activeDrawerItemId == firstTodo.id)
+
+        // 2. Composite pod (e.g. music)
+        guard let musicPod = store.pods.first(where: { $0.id == "music" }) else {
+            Issue.record("Music pod not found")
+            return
+        }
+        guard let musicItem = layout.first(where: { $0.pod.id == "music" }) else {
+            Issue.record("Music layout item not found")
+            return
+        }
+
+        let midY = CGFloat(musicItem.startY) + CGFloat(musicItem.spanH) / 2.0
+        monitor.activatePodDrawer(candidate: musicPod, matched: musicItem, currentWindowY: midY, edge: .right)
+        #expect(store.activeDrawerPodId == "music")
+        #expect(store.activeDrawerItemId == "music")
     }
 }
