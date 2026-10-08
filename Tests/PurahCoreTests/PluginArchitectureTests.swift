@@ -406,4 +406,178 @@ struct PluginArchitectureTests {
 
         #expect(context.storage.string(forKey: "state") == "persisted")
     }
+
+    @Test("Built-in plugins own and expose dedicated private observable state containers")
+    func testBuiltInPluginStateOwnership() {
+        let vitals = HardwareVitalsPlugin()
+        let scripts = ScriptRunwayPlugin()
+        let notes = QuickNotesPlugin()
+        let shelf = DropShelfPlugin()
+        let music = MusicPlugin()
+        let calendar = CalendarPlugin()
+        let todo = TodoPlugin()
+        let terminal = TerminalPlugin()
+
+        let vitalsState: AnyObject = vitals.state
+        let scriptsState: AnyObject = scripts.state
+        let notesState: AnyObject = notes.state
+        let shelfState: AnyObject = shelf.state
+        let musicState: AnyObject = music.state
+        let calendarState: AnyObject = calendar.state
+        let todoState: AnyObject = todo.state
+        let terminalState: AnyObject = terminal.state
+
+        #expect(vitalsState is VitalsPluginState)
+        #expect(scriptsState is ScriptsPluginState)
+        #expect(notesState is NotesPluginState)
+        #expect(shelfState is ShelfPluginState)
+        #expect(musicState is MusicPluginState)
+        #expect(calendarState is CalendarPluginState)
+        #expect(todoState is TodoPluginState)
+        #expect(terminalState is TerminalPluginState)
+    }
+
+    @Test("Plugin states operate independently and persist via PurahPluginStorage")
+    func testPluginStatesPersistenceAndOperations() async {
+        // 1. Notes State
+        let notesStorage = ScopedPluginStorage(pluginId: "testNotesState")
+        let notesState = NotesPluginState(storage: notesStorage)
+        notesState.updateText("Scratchpad Test Content")
+        notesState.save()
+        let reloadedNotesState = NotesPluginState(storage: notesStorage)
+        #expect(reloadedNotesState.noteContent.text == "Scratchpad Test Content")
+        notesState.clear()
+        #expect(notesState.noteContent.text.isEmpty)
+
+        // 2. Shelf State
+        let shelfStorage = ScopedPluginStorage(pluginId: "testShelfState")
+        let shelfState = ShelfPluginState(storage: shelfStorage)
+        let testItem = ShelfFileItem(name: "test.txt", sizeDescription: "1 KB", fileExtension: "txt", filePath: "/tmp/test.txt")
+        shelfState.addFileItem(testItem)
+        #expect(shelfState.files.contains { $0.id == testItem.id })
+        shelfState.removeFile(id: testItem.id)
+        #expect(!shelfState.files.contains { $0.id == testItem.id })
+
+        // 3. Todo State
+        let todoStorage = ScopedPluginStorage(pluginId: "testTodoState")
+        let todoState = TodoPluginState(storage: todoStorage)
+        let testTodo = TodoItem(title: "Task Unit Test", isCompleted: false)
+        todoState.add(todo: testTodo)
+        #expect(todoState.todos.contains { $0.id == testTodo.id })
+        await todoState.toggleCompletion(id: testTodo.id)
+        #expect(todoState.todos.first { $0.id == testTodo.id }?.isCompleted == true)
+        todoState.updateTitle(id: testTodo.id, title: "Renamed Task")
+        #expect(todoState.todos.first { $0.id == testTodo.id }?.title == "Renamed Task")
+        todoState.remove(id: testTodo.id)
+        #expect(!todoState.todos.contains { $0.id == testTodo.id })
+
+        // 4. Calendar State
+        let calStorage = ScopedPluginStorage(pluginId: "testCalState")
+        let calState = CalendarPluginState(storage: calStorage)
+        calState.acknowledgeAlert(id: "evt-123")
+        #expect(calState.isAlertAcknowledged(id: "evt-123"))
+        #expect(!calState.isAlertAcknowledged(id: "evt-456"))
+        calState.resetAcknowledgedAlerts()
+        #expect(!calState.isAlertAcknowledged(id: "evt-123"))
+
+        // 5. Music State
+        let musicStorage = ScopedPluginStorage(pluginId: "testMusicState")
+        let musicState = MusicPluginState(storage: musicStorage)
+        let newTrack = MusicTrackInfo(title: "Song A", artist: "Artist B", isPlaying: false, durationSeconds: 200.0)
+        musicState.update(from: newTrack)
+        #expect(musicState.track.title == "Song A")
+        musicState.togglePlayPause()
+        #expect(musicState.track.isPlaying == true)
+        musicState.seek(to: 0.5)
+        #expect(musicState.track.playbackProgress == 0.5)
+
+        // 6. Vitals State
+        let vitalsStorage = ScopedPluginStorage(pluginId: "testVitalsState")
+        let vitalsState = VitalsPluginState(storage: vitalsStorage)
+        vitalsState.isDecomposed = true
+        vitalsState.enabledMetrics = [.cpu, .gpu]
+        vitalsState.save()
+        let reloadedVitalsState = VitalsPluginState(storage: vitalsStorage)
+        #expect(reloadedVitalsState.isDecomposed == true)
+        #expect(reloadedVitalsState.enabledMetrics == [.cpu, .gpu])
+
+        // 7. Scripts State
+        let scriptsStorage = ScopedPluginStorage(pluginId: "testScriptsState")
+        let scriptsState = ScriptsPluginState(storage: scriptsStorage)
+        let action = ScriptActionItem(
+            id: "test-echo",
+            name: "Test Echo",
+            systemIcon: "terminal",
+            commandType: .shell,
+            scriptContent: "echo hello",
+            description: "Unit test"
+        )
+        scriptsState.addAction(action)
+        #expect(scriptsState.actions.contains { $0.id == action.id })
+        scriptsState.removeAction(id: action.id)
+        #expect(!scriptsState.actions.contains { $0.id == action.id })
+
+        // 8. Terminal State
+        let termStorage = ScopedPluginStorage(pluginId: "testTermState")
+        let termState = TerminalPluginState(storage: termStorage)
+        termState.fontSize = 14.5
+        termState.fontFamily = "Monaco"
+        termState.save()
+        let reloadedTermState = TerminalPluginState(storage: termStorage)
+        #expect(reloadedTermState.fontSize == 14.5)
+        #expect(reloadedTermState.fontFamily == "Monaco")
+    }
+
+    @Test("Drawer views instantiate seamlessly with both state container and legacy store initializers")
+    func testDrawerPanelsAcceptStateContainers() {
+        let store = PurahWorkspaceStore()
+
+        let calState = CalendarPluginState()
+        let calDrawerWithState = CalendarDrawerView(state: calState, store: store)
+        let calDrawerWithStore = CalendarDrawerView(store: store)
+        _ = calDrawerWithState
+        _ = calDrawerWithStore
+
+        let todoState = TodoPluginState()
+        let todoDrawerWithState = TodoDrawerView(state: todoState, store: store)
+        let todoDrawerWithStore = TodoDrawerView(store: store)
+        _ = todoDrawerWithState
+        _ = todoDrawerWithStore
+
+        let musicState = MusicPluginState()
+        let musicDrawerWithState = MusicDrawerView(state: musicState, store: store)
+        let musicDrawerWithStore = MusicDrawerView(store: store)
+        _ = musicDrawerWithState
+        _ = musicDrawerWithStore
+
+        let shelfState = ShelfPluginState()
+        let shelfDrawerWithState = DropShelfDrawerView(state: shelfState, store: store)
+        let shelfDrawerWithStore = DropShelfDrawerView(store: store)
+        _ = shelfDrawerWithState
+        _ = shelfDrawerWithStore
+
+        let notesState = NotesPluginState()
+        let notesDrawerWithState = QuickNoteDrawerView(state: notesState, store: store)
+        let notesDrawerWithStore = QuickNoteDrawerView(store: store)
+        _ = notesDrawerWithState
+        _ = notesDrawerWithStore
+
+        let vitalsState = VitalsPluginState()
+        let vitalsDrawerWithState = HardwareVitalsDrawerView(state: vitalsState, store: store)
+        let vitalsDrawerWithStore = HardwareVitalsDrawerView(store: store)
+        _ = vitalsDrawerWithState
+        _ = vitalsDrawerWithStore
+
+        let scriptsState = ScriptsPluginState()
+        let scriptsDrawerWithState = ScriptRunwayDrawerView(state: scriptsState, store: store)
+        let scriptsDrawerWithStore = ScriptRunwayDrawerView(store: store)
+        _ = scriptsDrawerWithState
+        _ = scriptsDrawerWithStore
+
+        let termState = TerminalPluginState()
+        let termDrawerWithState = PersistentTerminalDrawerView(state: termState, store: store)
+        let termDrawerWithStore = PersistentTerminalDrawerView(store: store)
+        _ = termDrawerWithState
+        _ = termDrawerWithStore
+    }
 }

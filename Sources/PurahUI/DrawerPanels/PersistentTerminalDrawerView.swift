@@ -4,6 +4,7 @@ import AppKit
 import PurahCore
 
 public struct PersistentTerminalDrawerView: View {
+    public let state: TerminalPluginState
     public let store: PurahWorkspaceStore
 
     @ObservedObject private var manager = TerminalManager.shared
@@ -16,8 +17,14 @@ public struct PersistentTerminalDrawerView: View {
         palette.podColor(for: "terminal", store: store)
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: TerminalPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "terminal") as? TerminalPlugin)?.state ?? TerminalPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
@@ -49,8 +56,10 @@ public struct PersistentTerminalDrawerView: View {
                 // Font size quick adjuster
                 HStack(spacing: 2) {
                     Button {
-                        if store.terminalFontSize > 9.0 {
-                            store.terminalFontSize -= 0.5
+                        if state.fontSize > 9.0 {
+                            state.fontSize -= 0.5
+                            state.save()
+                            store.terminalFontSize = state.fontSize
                             store.savePersistentState()
                         }
                     } label: {
@@ -64,8 +73,10 @@ public struct PersistentTerminalDrawerView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        if store.terminalFontSize < 22.0 {
-                            store.terminalFontSize += 0.5
+                        if state.fontSize < 22.0 {
+                            state.fontSize += 0.5
+                            state.save()
+                            store.terminalFontSize = state.fontSize
                             store.savePersistentState()
                         }
                     } label: {

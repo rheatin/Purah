@@ -4,6 +4,7 @@ import AppKit
 import PurahCore
 
 public struct MusicDrawerView: View {
+    public let state: MusicPluginState
     public let store: PurahWorkspaceStore
 
     @State private var isBackwardHovered: Bool = false
@@ -20,19 +21,25 @@ public struct MusicDrawerView: View {
         palette.podColor(for: "music", store: store)
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: MusicPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
     }
 
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "music") as? MusicPlugin)?.state ?? MusicPluginState()
+        self.init(state: pluginState, store: store)
+    }
+
     public var body: some View {
-        let isPlaying = store.musicTrack.isPlaying
+        let isPlaying = state.isPlaying
 
         TimelineView(.periodic(from: .now, by: isPlaying ? 0.5 : 60.0)) { _ in
-            let liveCurrentSec = store.musicTrack.calculatedCurrentTime
-            let liveProgress = store.musicTrack.calculatedProgress
+            let liveCurrentSec = state.track.calculatedCurrentTime
+            let liveProgress = state.track.calculatedProgress
 
             let displayProgress = isScrubbing ? scrubbedProgress : liveProgress
-            let displaySec = isScrubbing ? (scrubbedProgress * max(store.musicTrack.durationSeconds, 1.0)) : liveCurrentSec
+            let displaySec = isScrubbing ? (scrubbedProgress * max(state.track.durationSeconds, 1.0)) : liveCurrentSec
 
             GeometryReader { geo in
                 let h = geo.size.height
@@ -50,7 +57,7 @@ public struct MusicDrawerView: View {
             }
         }
         .onAppear {
-            SystemMusicSyncService.shared.startListening(into: store)
+            state.mount(store: store)
         }
     }
 
@@ -67,12 +74,12 @@ public struct MusicDrawerView: View {
                         artworkThumbnail(size: 32, cornerRadius: 6)
 
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(store.musicTrack.title)
+                            Text(state.track.title)
                                 .purahTitle(size: 11, weight: .bold, design: .rounded)
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 .lineLimit(1)
 
-                            Text(store.musicTrack.artist)
+                            Text(state.track.artist)
                                 .purahBody(size: 9.5, weight: .medium, design: .rounded)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
@@ -96,7 +103,7 @@ public struct MusicDrawerView: View {
                 // Micro transport buttons
                 HStack(spacing: 4) {
                     Button {
-                        SystemMusicSyncService.shared.previousTrack(store: store)
+                        state.previousTrack(store: store)
                     } label: {
                         Image(systemName: "backward.fill")
                             .font(.system(size: 10, weight: .semibold))
@@ -106,7 +113,7 @@ public struct MusicDrawerView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        SystemMusicSyncService.shared.togglePlayPause(store: store)
+                        state.togglePlayPause(store: store)
                     } label: {
                         ZStack {
                             Circle()
@@ -121,7 +128,7 @@ public struct MusicDrawerView: View {
                     .buttonStyle(HeroPlayPauseButtonStyle())
 
                     Button {
-                        SystemMusicSyncService.shared.nextTrack(store: store)
+                        state.nextTrack(store: store)
                     } label: {
                         Image(systemName: "forward.fill")
                             .font(.system(size: 10, weight: .semibold))
@@ -136,7 +143,7 @@ public struct MusicDrawerView: View {
                     progress: displayProgress,
                     isPlaying: isPlaying,
                     color: musicColor,
-                    samples: store.musicTrack.waveformSamples,
+                    samples: state.waveformSamples,
                     barCount: 22,
                     waveformHeight: 16,
                     onScrubChange: { dragging, prog in
@@ -145,12 +152,12 @@ public struct MusicDrawerView: View {
                     },
                     onSeek: { newProg in
                         isScrubbing = false
-                        SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                        state.seek(to: newProg, store: store)
                     }
                 )
 
                 // Time Indicator (Compact single-label)
-                Text("\(timeString(for: displaySec))/\(timeString(for: store.musicTrack.durationSeconds))")
+                Text("\(timeString(for: displaySec))/\(timeString(for: state.track.durationSeconds))")
                     .purahCaption(size: 8, weight: .medium, design: .monospaced)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -173,12 +180,12 @@ public struct MusicDrawerView: View {
                         artworkThumbnail(size: 42, cornerRadius: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(store.musicTrack.title)
+                            Text(state.track.title)
                                 .purahTitle(size: 12.5, weight: .bold, design: .rounded)
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 .lineLimit(1)
 
-                            Text(store.musicTrack.artist)
+                            Text(state.track.artist)
                                 .purahBody(size: 10.5, weight: .medium, design: .rounded)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
@@ -203,7 +210,7 @@ public struct MusicDrawerView: View {
                     progress: displayProgress,
                     isPlaying: isPlaying,
                     color: musicColor,
-                    samples: store.musicTrack.waveformSamples,
+                    samples: state.waveformSamples,
                     barCount: 30,
                     waveformHeight: 20,
                     onScrubChange: { dragging, prog in
@@ -212,7 +219,7 @@ public struct MusicDrawerView: View {
                     },
                     onSeek: { newProg in
                         isScrubbing = false
-                        SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                        state.seek(to: newProg, store: store)
                     }
                 )
 
@@ -221,7 +228,7 @@ public struct MusicDrawerView: View {
                         .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text(timeString(for: store.musicTrack.durationSeconds))
+                    Text(timeString(for: state.track.durationSeconds))
                         .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
                         .foregroundColor(.secondary)
                 }
@@ -231,7 +238,7 @@ public struct MusicDrawerView: View {
             // Row 3: Standard Transport Controls
             HStack(spacing: 26) {
                 Button {
-                    SystemMusicSyncService.shared.previousTrack(store: store)
+                    state.previousTrack(store: store)
                 } label: {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 13, weight: .semibold))
@@ -246,7 +253,7 @@ public struct MusicDrawerView: View {
                 .onHover { isBackwardHovered = $0 }
 
                 Button {
-                    SystemMusicSyncService.shared.togglePlayPause(store: store)
+                    state.togglePlayPause(store: store)
                 } label: {
                     ZStack {
                         Circle()
@@ -263,7 +270,7 @@ public struct MusicDrawerView: View {
                 .buttonStyle(HeroPlayPauseButtonStyle())
 
                 Button {
-                    SystemMusicSyncService.shared.nextTrack(store: store)
+                    state.nextTrack(store: store)
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 13, weight: .semibold))
@@ -292,10 +299,10 @@ public struct MusicDrawerView: View {
             // Top Bar: Source Badge + Pin
             HStack {
                 HStack(spacing: 5) {
-                    Image(systemName: sourceIconName(for: store.musicTrack.sourceApp))
+                    Image(systemName: sourceIconName(for: state.track.sourceApp))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(musicColor)
-                    Text(store.musicTrack.sourceApp)
+                    Text(state.track.sourceApp)
                         .purahCaption(size: 9, weight: .bold, design: .rounded)
                         .foregroundColor(.secondary)
                 }
@@ -332,12 +339,12 @@ public struct MusicDrawerView: View {
                     }
 
                     VStack(spacing: 2) {
-                        Text(store.musicTrack.title)
+                        Text(state.track.title)
                             .purahTitle(size: 13, weight: .bold, design: .rounded)
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
                             .lineLimit(1)
 
-                        Text(store.musicTrack.artist)
+                        Text(state.track.artist)
                             .purahBody(size: 10.5, weight: .medium, design: .rounded)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
@@ -354,7 +361,7 @@ public struct MusicDrawerView: View {
                     progress: displayProgress,
                     isPlaying: isPlaying,
                     color: musicColor,
-                    samples: store.musicTrack.waveformSamples,
+                    samples: state.waveformSamples,
                     barCount: 34,
                     waveformHeight: 22,
                     onScrubChange: { dragging, prog in
@@ -363,7 +370,7 @@ public struct MusicDrawerView: View {
                     },
                     onSeek: { newProg in
                         isScrubbing = false
-                        SystemMusicSyncService.shared.seek(to: newProg, store: store)
+                        state.seek(to: newProg, store: store)
                     }
                 )
 
@@ -372,7 +379,7 @@ public struct MusicDrawerView: View {
                         .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text(timeString(for: store.musicTrack.durationSeconds))
+                    Text(timeString(for: state.track.durationSeconds))
                         .purahCaption(size: 8.5, weight: .medium, design: .monospaced)
                         .foregroundColor(.secondary)
                 }
@@ -382,7 +389,7 @@ public struct MusicDrawerView: View {
             // Prominent Transport Controls
             HStack(spacing: 32) {
                 Button {
-                    SystemMusicSyncService.shared.previousTrack(store: store)
+                    state.previousTrack(store: store)
                 } label: {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 14, weight: .semibold))
@@ -392,7 +399,7 @@ public struct MusicDrawerView: View {
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
 
                 Button {
-                    SystemMusicSyncService.shared.togglePlayPause(store: store)
+                    state.togglePlayPause(store: store)
                 } label: {
                     ZStack {
                         Circle()
@@ -409,7 +416,7 @@ public struct MusicDrawerView: View {
                 .buttonStyle(HeroPlayPauseButtonStyle())
 
                 Button {
-                    SystemMusicSyncService.shared.nextTrack(store: store)
+                    state.nextTrack(store: store)
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 14, weight: .semibold))
@@ -428,7 +435,7 @@ public struct MusicDrawerView: View {
     @ViewBuilder
     private func artworkThumbnail(size: CGFloat, cornerRadius: CGFloat) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            if let data = store.musicTrack.artworkData, let nsImg = NSImage(data: data) {
+            if let data = state.track.artworkData, let nsImg = NSImage(data: data) {
                 Image(nsImage: nsImg)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -452,7 +459,7 @@ public struct MusicDrawerView: View {
                     Image(systemName: "music.note")
                         .font(.system(size: size * 0.42, weight: .semibold))
                         .foregroundColor(musicColor)
-                        .symbolEffect(.bounce, value: store.musicTrack.isPlaying)
+                        .symbolEffect(.bounce, value: state.isPlaying)
                 }
             }
 
@@ -466,7 +473,7 @@ public struct MusicDrawerView: View {
                         Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.5)
                     )
 
-                Image(systemName: sourceIconName(for: store.musicTrack.sourceApp))
+                Image(systemName: sourceIconName(for: state.track.sourceApp))
                     .font(.system(size: badgeSize * 0.55, weight: .bold))
                     .foregroundColor(.white)
             }
@@ -486,7 +493,7 @@ public struct MusicDrawerView: View {
     }
 
     private func activateMusicPlayerApp() {
-        let source = store.musicTrack.sourceApp.lowercased()
+        let source = state.track.sourceApp.lowercased()
         let bundleId = source.contains("spotify") ? "com.spotify.client" : "com.apple.Music"
         if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
             let config = NSWorkspace.OpenConfiguration()
