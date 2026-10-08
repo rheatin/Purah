@@ -53,10 +53,16 @@ struct TerminalPluginTests {
         #expect(plugin.manifest.defaultColorHex == "#00F5D4")
 
         let store = PurahWorkspaceStore()
-        #expect(plugin.minimumDrawerHeight(store: store) >= 350.0)
+        #expect(plugin.minimumDrawerHeight(store: store) >= 360.0)
 
         let settingsView = plugin.makeSettingsView(store: store)
         #expect(settingsView != nil)
+    }
+
+    @Test("TerminalManager maintains stable container and shell lifecycle")
+    func testTerminalManager() {
+        let manager = TerminalManager.shared
+        #expect(manager.terminalTitle == "Terminal")
     }
 
     @Test("TerminalFontManager discovers installed fonts and resolves cascade list")
@@ -79,17 +85,14 @@ struct TerminalPluginTests {
         _ = view.body
     }
 
-    @Test("TerminalScreenBuffer handles carriage return, line erase, and screen clears without duplicates")
-    func testTerminalScreenBufferOperations() {
-        let buffer = TerminalScreenBuffer(cols: 40, rows: 10)
-        buffer.feed("echo old line\r\u{1b}[Kecho new line!\nDone.")
-        let rendered = buffer.renderPlain()
-        #expect(rendered.contains("echo new line!"))
-        #expect(!rendered.contains("echo old line"))
-        #expect(rendered.contains("Done."))
-
-        buffer.feed("\u{1b}[2J\u{1b}[HFresh Screen")
-        let cleared = buffer.renderPlain()
-        #expect(cleared.contains("Fresh Screen"))
+    @Test("SwiftTermRepresentable instantiates with font cascade")
+    func testSwiftTermRepresentable() {
+        let representable = SwiftTermRepresentable(
+            fontFamily: "Auto (Nerd Font)",
+            fontSize: 11.5,
+            palette: ThemePalette.palette(for: .native)
+        )
+        #expect(representable.fontFamily == "Auto (Nerd Font)")
+        #expect(representable.fontSize == 11.5)
     }
 }

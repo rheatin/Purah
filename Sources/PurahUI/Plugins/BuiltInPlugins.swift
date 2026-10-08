@@ -1462,7 +1462,7 @@ public struct TerminalPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        350.0
+        360.0
     }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
@@ -1473,8 +1473,8 @@ public struct TerminalPlugin: PurahPodPlugin {
 
 public struct TerminalRailBarPluginView: View {
     public let context: PurahPluginContext
-    private var terminal: PersistentTerminalService {
-        PersistentTerminalService.shared
+    private var manager: TerminalManager {
+        TerminalManager.shared
     }
 
     public init(context: PurahPluginContext) {
@@ -1488,7 +1488,7 @@ public struct TerminalRailBarPluginView: View {
                 .fill(context.accentColor.opacity(0.85))
                 .frame(width: context.railWidth, height: context.slotHeight)
 
-            if terminal.isRunning {
+            if manager.isProcessRunning {
                 Circle()
                     .fill(Color.green)
                     .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
@@ -1501,8 +1501,8 @@ public struct TerminalRailBarPluginView: View {
 
 public struct TerminalPluginSettingsView: View {
     public let store: PurahWorkspaceStore
-    private var terminal: PersistentTerminalService {
-        PersistentTerminalService.shared
+    private var manager: TerminalManager {
+        TerminalManager.shared
     }
 
     private var availableFonts: [String] {
@@ -1562,15 +1562,15 @@ public struct TerminalPluginSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Shell Binary")
                     .font(.caption.weight(.bold))
-                Text(terminal.shellName.uppercased())
+                Text(manager.shellName.uppercased())
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(terminal.isRunning ? Color.green : Color.red)
+                        .fill(manager.isProcessRunning ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
-                    Text(terminal.isRunning ? "Active & Running in Background (0% CPU when idle)" : "Exited")
+                    Text(manager.isProcessRunning ? "Active & Running in Background (Metal GPU Rendered)" : "Exited")
                         .font(.caption)
                 }
             }
@@ -1580,12 +1580,16 @@ public struct TerminalPluginSettingsView: View {
 
             HStack(spacing: 10) {
                 Button("Restart Shell") {
-                    terminal.restartSession()
+                    manager.restartShell(
+                        fontFamily: store.terminalFontFamily,
+                        fontSize: CGFloat(store.terminalFontSize),
+                        palette: ThemePalette.palette(for: .native)
+                    )
                 }
                 .buttonStyle(.bordered)
 
                 Button("Clear Output Buffer") {
-                    terminal.clearScreen()
+                    manager.clearScreen()
                 }
                 .buttonStyle(.bordered)
             }

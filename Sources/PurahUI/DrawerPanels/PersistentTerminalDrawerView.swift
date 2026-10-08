@@ -6,9 +6,7 @@ import PurahCore
 public struct PersistentTerminalDrawerView: View {
     public let store: PurahWorkspaceStore
 
-    private var terminal: PersistentTerminalService {
-        PersistentTerminalService.shared
-    }
+    @ObservedObject private var manager = TerminalManager.shared
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -28,10 +26,10 @@ public struct PersistentTerminalDrawerView: View {
             HStack(spacing: 6) {
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(terminal.isRunning ? Color.green : Color.red)
+                        .fill(manager.isProcessRunning ? Color.green : Color.red)
                         .frame(width: 5, height: 5)
 
-                    Text(terminal.shellName.uppercased())
+                    Text(manager.shellName.uppercased())
                         .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -39,7 +37,7 @@ public struct PersistentTerminalDrawerView: View {
                         .foregroundColor(terminalColor)
                         .cornerRadius(3)
 
-                    if !terminal.isRunning {
+                    if !manager.isProcessRunning {
                         Text("EXITED")
                             .font(.system(size: 7.5, weight: .bold))
                             .foregroundColor(.red)
@@ -66,7 +64,7 @@ public struct PersistentTerminalDrawerView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        if store.terminalFontSize < 20.0 {
+                        if store.terminalFontSize < 22.0 {
                             store.terminalFontSize += 0.5
                             store.savePersistentState()
                         }
@@ -83,7 +81,7 @@ public struct PersistentTerminalDrawerView: View {
 
                 // Quick Terminal Action Buttons
                 Button {
-                    terminal.sendInterrupt()
+                    manager.sendInterrupt()
                 } label: {
                     Text("^C")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
@@ -96,7 +94,7 @@ public struct PersistentTerminalDrawerView: View {
                 .help("Send SIGINT (Ctrl+C)")
 
                 Button {
-                    terminal.clearScreen()
+                    manager.clearScreen()
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 8.5))
@@ -106,7 +104,11 @@ public struct PersistentTerminalDrawerView: View {
                 .help("Clear Terminal Buffer")
 
                 Button {
-                    terminal.restartSession()
+                    manager.restartShell(
+                        fontFamily: store.terminalFontFamily,
+                        fontSize: CGFloat(store.terminalFontSize),
+                        palette: palette
+                    )
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 8.5))
@@ -117,24 +119,20 @@ public struct PersistentTerminalDrawerView: View {
             }
             .padding(.bottom, 1)
 
-            // Row 2: In-Screen Interactive Native Terminal
-            InteractiveTerminalView(
-                text: terminal.terminalOutput,
+            // Row 2: In-Screen Interactive SwiftTerm Terminal (GPU Accelerated, TrueColor, Starship Support)
+            SwiftTermRepresentable(
                 fontFamily: store.terminalFontFamily,
                 fontSize: store.terminalFontSize,
                 palette: palette
             )
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.black.opacity(0.35))
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
             )
             .frame(maxHeight: .infinity)
 
-            // Row 3: Subtle interaction hint
+            // Row 3: Subtle interaction hint & status
             HStack(spacing: 4) {
                 Text("Click inside to type · ⌘C / ⌘V supported · ⇥ autocomplete")
                     .font(.system(size: 7.5, design: .monospaced))
@@ -147,10 +145,7 @@ public struct PersistentTerminalDrawerView: View {
             .padding(.horizontal, 2)
         }
         .onAppear {
-            terminal.setDrawerActive(true)
-        }
-        .onDisappear {
-            terminal.setDrawerActive(false)
+            manager.focusTerminal()
         }
     }
 }

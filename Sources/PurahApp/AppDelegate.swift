@@ -17,6 +17,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // 状态栏常驻 Accessory App，无 Dock 图标扰乱
 
+        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let iconImage = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = iconImage
+        }
+
         PluginRegistry.shared.bindStore(store)
 
         let coord = ScreenEdgeCoordinator(store: store)
@@ -83,6 +88,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // App Title Item
         let headerItem = NSMenuItem(title: "app.name".localized, action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
+        if let icon = NSApp.applicationIconImage?.copy() as? NSImage {
+            icon.size = NSSize(width: 16, height: 16)
+            headerItem.image = icon
+        }
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
 

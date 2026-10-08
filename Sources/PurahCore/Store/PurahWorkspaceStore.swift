@@ -236,7 +236,7 @@ public final class PurahWorkspaceStore {
             case .fixed:
                 return CGFloat(max(fixedDrawerWidth, 340.0))
             case .adaptive:
-                return CGFloat(max(baseWidth, 500.0))
+                return CGFloat(max(baseWidth, 520.0))
             }
         }
         switch drawerWidthMode {
@@ -267,7 +267,7 @@ public final class PurahWorkspaceStore {
         switch podId {
         case "vitals": return 300.0
         case "scripts": return 160.0
-        case "terminal": return 350.0
+        case "terminal": return 360.0
         case "shelf": return 130.0
         case "notes": return 130.0
         case "music": return 110.0
@@ -847,7 +847,7 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.36, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.58, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.15),
             SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.78, length: 0.16), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.16),
-            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.94, length: 0.04), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 20, minLength: 0.12, isEnabled: false, drawerWidth: 500)
+            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.94, length: 0.04), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 20, minLength: 0.12, isEnabled: false, drawerWidth: 520)
         ]
     }
 
