@@ -37,6 +37,10 @@ public final class PurahWorkspaceStore {
         capabilityProviders[provider.podId] = provider
     }
 
+    public func unregisterCapabilityProvider(for podId: String) {
+        capabilityProviders.removeValue(forKey: podId)
+    }
+
     public func capabilityProvider(for podId: String) -> (any PurahPodCapabilityProvider)? {
         capabilityProviders[podId]
     }

@@ -41,13 +41,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.toggleFreezeMode()
         }
 
-        // 启动后台原生服务同步
-        SystemCalendarSyncService.shared.syncEvents(into: store)
-        Task {
-            await SystemRemindersSyncService.shared.syncReminders(into: store)
-        }
-        SystemMusicSyncService.shared.startListening(into: store)
-
         setupStatusItem()
     }
 
