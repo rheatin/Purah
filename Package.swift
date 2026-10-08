@@ -12,7 +12,9 @@ let package = Package(
         .library(name: "PurahCore", targets: ["PurahCore"]),
         .library(name: "PurahUI", targets: ["PurahUI"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(path: "Packages/SwiftTerm")
+    ],
     targets: [
         .target(
             name: "PurahCore",
@@ -23,13 +25,19 @@ let package = Package(
         ),
         .target(
             name: "PurahUI",
-            dependencies: ["PurahCore"]
+            dependencies: [
+                "PurahCore",
+                .product(name: "SwiftTerm", package: "SwiftTerm")
+            ]
         ),
         .executableTarget(
             name: "PurahApp",
             dependencies: ["PurahCore", "PurahUI"],
             exclude: [
                 "Resources/Info.plist"
+            ],
+            resources: [
+                .process("Resources")
             ],
             linkerSettings: [
                 .unsafeFlags([

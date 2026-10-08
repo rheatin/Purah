@@ -70,6 +70,14 @@ public struct PreferencesView: View {
                     .buttonStyle(.tactile)
                 }
                 Spacer()
+
+                if let appIcon = NSApp.applicationIconImage {
+                    Image(nsImage: appIcon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 26, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)

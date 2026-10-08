@@ -12,7 +12,6 @@ public final class PersistentTerminalService: Sendable {
     public private(set) var isRunning: Bool = false
     public private(set) var shellName: String = "zsh"
     public private(set) var lastExitCode: Int32? = nil
-    @ObservationIgnored public let screenBuffer = TerminalScreenBuffer(cols: 80, rows: 24)
 
     @ObservationIgnored private var masterFd: Int32 = -1
     @ObservationIgnored private var slaveFd: Int32 = -1
@@ -138,7 +137,6 @@ public final class PersistentTerminalService: Sendable {
     }
 
     public func clearScreen() {
-        screenBuffer.clear()
         terminalOutput = ""
         pendingBuffer = ""
         sendInput("clear\r")
@@ -167,7 +165,6 @@ public final class PersistentTerminalService: Sendable {
 
     public func setWindowSize(cols: UInt16, rows: UInt16) {
         guard masterFd >= 0 else { return }
-        screenBuffer.resize(cols: Int(cols), rows: Int(rows))
         var ws = winsize(ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0)
         _ = ioctl(masterFd, TIOCSWINSZ, &ws)
     }
@@ -176,8 +173,7 @@ public final class PersistentTerminalService: Sendable {
     public func setDrawerActive(_ active: Bool) {
         self.isSuspended = !active
         if active && !pendingBuffer.isEmpty {
-            screenBuffer.feed(pendingBuffer)
-            terminalOutput = screenBuffer.renderPlain()
+            appendOutput(pendingBuffer)
             pendingBuffer = ""
         }
     }
@@ -190,8 +186,14 @@ public final class PersistentTerminalService: Sendable {
                 pendingBuffer = String(pendingBuffer.suffix(maxOutputLength / 2))
             }
         } else {
-            screenBuffer.feed(text)
-            terminalOutput = screenBuffer.renderPlain()
+            appendOutput(text)
+        }
+    }
+
+    private func appendOutput(_ text: String) {
+        terminalOutput.append(text)
+        if terminalOutput.count > maxOutputLength {
+            terminalOutput = String(terminalOutput.suffix(maxOutputLength / 2))
         }
     }
 
