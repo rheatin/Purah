@@ -12,7 +12,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         systemIcon: "waveform.path.ecg",
         author: "Project Purah",
         version: "1.0.0",
-        description: "Real-time hardware performance, memory, and thermal monitoring",
+        description: "Real-time hardware performance, memory, and power monitoring",
         defaultEdge: .left,
         preferredZone: .glance,
         ergonomicWeight: 35.0,
@@ -68,7 +68,6 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
                 case .cpu: return metrics.cpuUsage
                 case .gpu: return metrics.gpuUsage
                 case .ram: return metrics.memoryUsage
-                case .thermal: return metrics.isUnderThermalPressure ? 0.90 : 0.30
                 case .power: return Double(metrics.batteryLevel) / 100.0
                 case .network: return min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
                 case .disk:
@@ -76,8 +75,8 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
                 }
             }()
             let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: context.store.vitalsThresholds, palette: context.palette)
-            let isAlerting = (metric == .thermal && metrics.isUnderThermalPressure) ||
-                             (metric == .cpu && metrics.cpuUsage > context.store.vitalsThresholds.cpuDanger)
+            let isAlerting = (metric == .cpu && metrics.cpuUsage > context.store.vitalsThresholds.cpuDanger) ||
+                             (metric == .ram && metrics.memoryUsage > context.store.vitalsThresholds.ramDanger)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
                 title: metric.displayName,
@@ -102,7 +101,7 @@ public struct VitalsRailBarPluginView: View {
 
     public var body: some View {
         let cpu = vitals.metrics.cpuUsage
-        let isPulsing = vitals.metrics.isUnderThermalPressure
+        let isPulsing = cpu > 0.85
         let radius = min(context.railWidth / 2, 4)
 
         ZStack(alignment: .bottom) {
@@ -687,7 +686,7 @@ public struct VitalsPluginSettingsView: View {
             ))
             .font(.subheadline.weight(.semibold))
 
-            Text("Splits hardware monitoring into individual rail chips (CPU, GPU, RAM, Thermal, Power, Network, Disk) like Calendar and Todo.")
+            Text("Splits hardware monitoring into individual rail chips (CPU, GPU, RAM, Power, Network, Disk) like Calendar and Todo.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -1429,5 +1428,124 @@ public struct NotesPluginSettingsView: View {
             .font(.caption.weight(.medium))
             .foregroundColor(.secondary)
         }
+    }
+}
+
+// MARK: - Persistent Terminal Plugin
+public struct TerminalPlugin: PurahPodPlugin {
+    public nonisolated let manifest = PurahPluginManifest(
+        id: "terminal",
+        displayName: "Terminal",
+        systemIcon: "apple.terminal.fill",
+        author: "Project Purah",
+        version: "1.0.0",
+        description: "Persistent background terminal and command shell",
+        defaultEdge: .left,
+        preferredZone: .goldenAction,
+        ergonomicWeight: 35.0,
+        minLengthRatio: 0.20,
+        defaultColorHex: "#00F5D4"
+    )
+
+    public init() {}
+
+    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
+        AnyView(TerminalRailBarPluginView(context: context))
+    }
+
+    public func makeDrawerView(context: PurahPluginContext) -> AnyView {
+        AnyView(PersistentTerminalDrawerView(store: context.store))
+    }
+
+    public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
+        AnyView(TerminalPluginSettingsView(store: store))
+    }
+
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        180.0
+    }
+
+    public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
+        context.performHaptic(.alignment)
+        context.requestExpand()
+    }
+}
+
+public struct TerminalRailBarPluginView: View {
+    public let context: PurahPluginContext
+    private var terminal: PersistentTerminalService {
+        PersistentTerminalService.shared
+    }
+
+    public init(context: PurahPluginContext) {
+        self.context = context
+    }
+
+    public var body: some View {
+        let radius = min(context.railWidth / 2, 4)
+        ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: radius)
+                .fill(context.accentColor.opacity(0.85))
+                .frame(width: context.railWidth, height: context.slotHeight)
+
+            if terminal.isRunning {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
+                    .padding(.bottom, 4)
+            }
+        }
+        .frame(width: context.railWidth, height: context.slotHeight)
+    }
+}
+
+public struct TerminalPluginSettingsView: View {
+    public let store: PurahWorkspaceStore
+    private var terminal: PersistentTerminalService {
+        PersistentTerminalService.shared
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        self.store = store
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Persistent Terminal Settings")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Shell Binary")
+                    .font(.caption.weight(.bold))
+                Text(terminal.shellName.uppercased())
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Session State")
+                    .font(.caption.weight(.bold))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(terminal.isRunning ? Color.green : Color.red)
+                        .frame(width: 8, height: 8)
+                    Text(terminal.isRunning ? "Active & Running in Background" : "Exited")
+                        .font(.caption)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button("Restart Shell") {
+                    terminal.restartSession()
+                }
+                .buttonStyle(.bordered)
+
+                Button("Clear Output Buffer") {
+                    terminal.clearScreen()
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding()
     }
 }

@@ -21,7 +21,6 @@ public struct HardwareVitalsDrawerView: View {
         let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
-        let thermalColor = VitalsColorResolver.color(for: .thermal, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
 
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 8) {
@@ -149,13 +148,13 @@ public struct HardwareVitalsDrawerView: View {
                     .cornerRadius(8)
                 }
 
-                // MARK: - Row 3: Thermal & Health Status
+                // MARK: - Row 3: Status & Refresh
                 HStack {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(thermalColor)
+                            .fill(powerColor)
                             .frame(width: 6, height: 6)
-                        Text("Thermal: \(metrics.thermalStateDescription)")
+                        Text(metrics.isCharging ? "Charging (\(metrics.powerSource))" : metrics.powerSource)
                             .font(.system(size: 9, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
                     }
@@ -270,8 +269,6 @@ public struct VitalsFocusedDrawerView: View {
                 gpuFocusedView(metrics: metrics)
             case .ram:
                 ramFocusedView(metrics: metrics)
-            case .thermal:
-                thermalFocusedView(metrics: metrics)
             case .power:
                 powerFocusedView(metrics: metrics)
             case .network:
@@ -415,57 +412,6 @@ public struct VitalsFocusedDrawerView: View {
     }
 
     @ViewBuilder
-    private func thermalFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .thermal, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
-        let thermalRatio: Double = {
-            switch metrics.thermalStateDescription {
-            case "Critical": return 0.95
-            case "Serious": return 0.75
-            case "Fair": return 0.50
-            case "Nominal": return 0.25
-            default: return metrics.isUnderThermalPressure ? 0.85 : 0.25
-            }
-        }()
-
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Label("Thermal State", systemImage: "thermometer.medium")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                Spacer()
-                Text(metrics.thermalStateDescription)
-                    .font(.system(size: 12, weight: .heavy, design: .monospaced))
-                    .foregroundColor(color)
-            }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(thermalRatio), 4))
-                }
-            }
-            .frame(height: 4)
-
-            HStack {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 4, height: 4)
-                    Text(metrics.isUnderThermalPressure ? "Thermal Throttling Active" : "No Pressure Throttling")
-                        .font(.system(size: 8, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Text(metrics.isUnderThermalPressure ? "Cooling" : "Nominal")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(color)
-            }
-        }
-    }
-
-    @ViewBuilder
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
@@ -495,9 +441,9 @@ public struct VitalsFocusedDrawerView: View {
                 Spacer()
                 HStack(spacing: 3) {
                     Circle()
-                        .fill(metrics.isUnderThermalPressure ? palette.dangerAccent : Color.green)
+                        .fill(Double(metrics.batteryLevel) / 100.0 <= store.vitalsThresholds.batteryLow ? palette.dangerAccent : Color.green)
                         .frame(width: 4, height: 4)
-                    Text(metrics.thermalStateDescription)
+                    Text(metrics.isCharging ? "Charging" : "Normal")
                         .font(.system(size: 8))
                         .foregroundColor(.secondary)
                 }

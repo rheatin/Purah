@@ -33,12 +33,6 @@ public enum VitalsColorResolver: Sendable {
             if u > thresholds.ramDanger { return red }
             if u > thresholds.ramWarning { return yellow }
             return green
-        case .thermal:
-            if vitals.isUnderThermalPressure || vitals.thermalStateDescription == "Critical" || vitals.thermalStateDescription == "Serious" {
-                return red
-            }
-            if vitals.thermalStateDescription == "Fair" { return yellow }
-            return green
         case .power:
             if vitals.isCharging { return green }
             let b = Double(vitals.batteryLevel) / 100.0
@@ -69,10 +63,6 @@ public enum VitalsColorResolver: Sendable {
         let yellow = warningYellow
         let red = dangerRed
 
-        if vitals.isUnderThermalPressure || vitals.thermalStateDescription == "Critical" || vitals.thermalStateDescription == "Serious" {
-            return red
-        }
-
         let batteryRatio = Double(vitals.batteryLevel) / 100.0
         let totalNetMB = (vitals.networkDownSpeed + vitals.networkUpSpeed) / 1_048_576.0
         let diskRatio = vitals.diskTotalGB > 0 ? (vitals.diskTotalGB - vitals.diskFreeGB) / vitals.diskTotalGB : 0.5
@@ -89,7 +79,6 @@ public enum VitalsColorResolver: Sendable {
         if vitals.cpuUsage > thresholds.cpuWarning ||
             vitals.gpuUsage > thresholds.gpuWarning ||
             vitals.memoryUsage > thresholds.ramWarning ||
-            vitals.thermalStateDescription == "Fair" ||
             (!vitals.isCharging && batteryRatio <= thresholds.batteryLow) ||
             totalNetMB > thresholds.networkWarningMB ||
             diskRatio > thresholds.diskWarning {

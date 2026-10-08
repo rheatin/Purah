@@ -555,7 +555,7 @@ public struct AmbientRailStripView: View {
             thresholds: store.vitalsThresholds,
             palette: palette
         )
-        let isPulsing = HardwareVitalsService.shared.metrics.isUnderThermalPressure
+        let isPulsing = cpu > 0.85
 
         let slotH = max(totalHeight, 145.0)
         let radius = min(barW / 2, 4)

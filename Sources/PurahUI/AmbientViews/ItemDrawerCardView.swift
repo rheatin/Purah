@@ -538,14 +538,6 @@ public struct VitalsItemDrawerView: View {
             return vitals.metrics.gpuUsage
         case .ram:
             return vitals.metrics.memoryUsage
-        case .thermal:
-            switch vitals.metrics.thermalStateDescription {
-            case "Critical": return 0.95
-            case "Serious": return 0.75
-            case "Fair": return 0.50
-            case "Nominal": return 0.25
-            default: return vitals.metrics.isUnderThermalPressure ? 0.85 : 0.25
-            }
         case .power:
             return Double(vitals.metrics.batteryLevel) / 100.0
         case .network:

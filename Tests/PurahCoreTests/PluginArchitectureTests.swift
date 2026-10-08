@@ -35,14 +35,14 @@ struct PluginArchitectureTests {
     @Test("PluginRegistry registers all standard built-in plugins on startup")
     func testBuiltInPluginsRegistered() throws {
         let registry = PluginRegistry.shared
-        let expectedIds = ["vitals", "scripts", "notes", "shelf", "music", "calendar", "todo"]
+        let expectedIds = ["vitals", "scripts", "terminal", "notes", "shelf", "music", "calendar", "todo"]
 
         for id in expectedIds {
             let plugin = try #require(registry.plugin(for: id), "Expected built-in plugin '\(id)' to be registered")
             #expect(plugin.manifest.id == id)
             #expect(!plugin.manifest.displayName.isEmpty)
         }
-        #expect(registry.allPlugins.count >= 7)
+        #expect(registry.allPlugins.count >= 8)
     }
 
     @Test("Custom plugin can be registered and unregistered with lifecycle callbacks")
