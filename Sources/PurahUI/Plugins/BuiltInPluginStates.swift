@@ -793,11 +793,13 @@ public final class VitalsPluginState: Sendable {
         self.thresholds = store.vitalsThresholds
         self.isDecomposed = store.isVitalsDecomposed
         self.enabledMetrics = store.vitalsEnabledMetrics
+        HardwareVitalsService.shared.startMonitoring()
         startPolling()
     }
 
     public func unmount(store: PurahWorkspaceStore) {
         stopPolling()
+        HardwareVitalsService.shared.stopMonitoring()
         save()
         if boundStore === store {
             boundStore = nil

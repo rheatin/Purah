@@ -90,6 +90,10 @@ public final class HardwareVitalsService {
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
 
+    public var isMonitoring: Bool {
+        monitorTask != nil
+    }
+
     public init() {
         refreshMetrics(includeProcesses: false)
         startMonitoring(interval: 1.0)

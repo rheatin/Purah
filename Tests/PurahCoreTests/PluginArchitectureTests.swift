@@ -9,7 +9,7 @@ import Foundation
 @Suite("Purah Pod Plugin Architecture Tests")
 struct PluginArchitectureTests {
     @Test("Plugin manifest initializes with valid ergonomic and visual properties")
-    func testManifestInitialization() {
+    func testManifestInitialization() throws {
         let manifest = PurahPluginManifest(
             id: "com.test.custom-pod",
             displayName: "Custom Pod",
@@ -30,6 +30,22 @@ struct PluginArchitectureTests {
         #expect(manifest.defaultEdge == .left)
         #expect(manifest.preferredZone == .goldenAction)
         #expect(manifest.defaultColorHex == "#FF00FF")
+        #expect(manifest.defaultDrawerWidth == 260.0)
+
+        let pod = manifest.makeDefaultSlotPod()
+        #expect(pod.drawerWidth == 260.0)
+
+        // Verify terminal manifest defaults to 520 width
+        let terminalManifest = try #require(PurahPluginManifest.builtInCatalog.first { $0.id == "terminal" })
+        #expect(terminalManifest.defaultDrawerWidth == 520.0)
+        let terminalPod = terminalManifest.makeDefaultSlotPod()
+        #expect(terminalPod.drawerWidth == 520.0)
+
+        // Verify other built-in manifests default to 260 width
+        for item in PurahPluginManifest.builtInCatalog where item.id != "terminal" {
+            #expect(item.defaultDrawerWidth == 260.0)
+            #expect(item.makeDefaultSlotPod().drawerWidth == 260.0)
+        }
     }
 
     @Test("PluginRegistry registers all standard built-in plugins on startup")
@@ -699,5 +715,21 @@ struct PluginArchitectureTests {
         #expect(market.isInstalled(id: "terminal"))
         #expect(store.pods.contains { $0.id == "terminal" })
         #expect(PluginRegistry.shared.plugin(for: "terminal") != nil)
+
+        // Test vitals zero-footprint uninstallation (stops monitoring)
+        #expect(market.isInstalled(id: "vitals"))
+        #expect(HardwareVitalsService.shared.isMonitoring == true)
+        market.uninstall(id: "vitals")
+        #expect(!market.isInstalled(id: "vitals"))
+        #expect(!store.pods.contains { $0.id == "vitals" })
+        #expect(PluginRegistry.shared.plugin(for: "vitals") == nil)
+        #expect(HardwareVitalsService.shared.isMonitoring == false)
+
+        // Reinstall vitals (resumes monitoring)
+        market.install(id: "vitals")
+        #expect(market.isInstalled(id: "vitals"))
+        #expect(store.pods.contains { $0.id == "vitals" })
+        #expect(PluginRegistry.shared.plugin(for: "vitals") != nil)
+        #expect(HardwareVitalsService.shared.isMonitoring == true)
     }
 }
