@@ -46,19 +46,19 @@ struct DrawerInteractionUITests {
     @MainActor
     func testTodoInteraction() async {
         let store = PurahWorkspaceStore()
-        guard let firstTodo = store.todos.first else { return }
+        guard let firstTodo = store._todos.first else { return }
         let initialCompleted = firstTodo.isCompleted
 
         // Simulate toggling completion
         await SystemRemindersSyncService.shared.toggleCompletion(id: firstTodo.id, into: store)
-        let updatedTodo = store.todos.first { $0.id == firstTodo.id }
+        let updatedTodo = store._todos.first { $0.id == firstTodo.id }
         #expect(updatedTodo?.isCompleted == !initialCompleted)
 
         // Simulate title editing
-        if let idx = store.todos.firstIndex(where: { $0.id == firstTodo.id }) {
-            store.todos[idx].title = "Edited Task Title"
+        if let idx = store._todos.firstIndex(where: { $0.id == firstTodo.id }) {
+            store._todos[idx].title = "Edited Task Title"
         }
-        #expect(store.todos.first?.title == "Edited Task Title")
+        #expect(store._todos.first?.title == "Edited Task Title")
     }
 
     @Test("Simulate Calendar Join button URL presence and extraction")
@@ -168,14 +168,14 @@ struct DrawerInteractionUITests {
     @MainActor
     func testMusicScrubberSeek() {
         let store = PurahWorkspaceStore()
-        store.musicTrack.durationSeconds = 200.0
-        store.musicTrack.playbackProgress = 0.25
-        #expect(store.musicTrack.playbackProgress == 0.25)
+        store._musicTrack.durationSeconds = 200.0
+        store._musicTrack.playbackProgress = 0.25
+        #expect(store._musicTrack.playbackProgress == 0.25)
 
         // Simulate user dragging to 75%
         SystemMusicSyncService.shared.seek(to: 0.75, store: store)
-        #expect(store.musicTrack.playbackProgress == 0.75)
-        #expect(store.musicTrack.currentPositionSeconds == 150.0)
+        #expect(store._musicTrack.playbackProgress == 0.75)
+        #expect(store._musicTrack.currentPositionSeconds == 150.0)
     }
 
     @Test("Pin isolation allows both same-rail and opposite-rail drawers to retract properly")
@@ -327,19 +327,19 @@ struct DrawerInteractionUITests {
     @MainActor
     func testMusicPlaybackNoDriftAfterSeek() {
         let store = PurahWorkspaceStore()
-        store.musicTrack.durationSeconds = 300.0
-        store.musicTrack.isPlaying = true
-        store.musicTrack.playbackRate = 1.0
+        store._musicTrack.durationSeconds = 300.0
+        store._musicTrack.isPlaying = true
+        store._musicTrack.playbackRate = 1.0
 
         // User seeks to 100 seconds
         SystemMusicSyncService.shared.seek(to: 100.0 / 300.0, store: store)
-        #expect(store.musicTrack.currentPositionSeconds == 100.0)
+        #expect(store._musicTrack.currentPositionSeconds == 100.0)
 
         // Simulate 2 seconds of playback
-        let tAnchor = store.musicTrack.lastUpdated
+        let tAnchor = store._musicTrack.lastUpdated
         let simulatedNow = tAnchor.addingTimeInterval(2.0)
-        let elapsed = simulatedNow.timeIntervalSince(store.musicTrack.lastUpdated)
-        let expectedCurrentTime = store.musicTrack.currentPositionSeconds + elapsed
+        let elapsed = simulatedNow.timeIntervalSince(store._musicTrack.lastUpdated)
+        let expectedCurrentTime = store._musicTrack.currentPositionSeconds + elapsed
 
         #expect(expectedCurrentTime == 102.0, "After 2 seconds, elapsed should be exactly 2 seconds without quadratic drift")
     }
@@ -393,14 +393,14 @@ struct DrawerInteractionUITests {
     @MainActor
     func testMusicSeekCallback() {
         let store = PurahWorkspaceStore()
-        store.musicTrack.durationSeconds = 200.0
+        store._musicTrack.durationSeconds = 200.0
         SystemMusicSyncService.shared.seek(to: 0.50, store: store)
-        #expect(store.musicTrack.playbackProgress == 0.50)
-        #expect(store.musicTrack.currentPositionSeconds == 100.0)
+        #expect(store._musicTrack.playbackProgress == 0.50)
+        #expect(store._musicTrack.currentPositionSeconds == 100.0)
 
         SystemMusicSyncService.shared.seek(to: 0.80, store: store)
-        #expect(store.musicTrack.playbackProgress == 0.80)
-        #expect(store.musicTrack.currentPositionSeconds == 160.0)
+        #expect(store._musicTrack.playbackProgress == 0.80)
+        #expect(store._musicTrack.currentPositionSeconds == 160.0)
     }
 
     @Test("Right rail unpinned drawer retracts independently when left rail or other items are pinned")
@@ -413,7 +413,7 @@ struct DrawerInteractionUITests {
         #expect(store.hasPinnedItem(on: .left) == true)
 
         // 2. Pin a Todo item on right rail
-        if let firstTodo = store.todos.first {
+        if let firstTodo = store._todos.first {
             store.togglePinItem(id: firstTodo.id)
             #expect(store.hasPinnedItem(on: .right) == true)
         }
@@ -525,11 +525,11 @@ struct DrawerInteractionUITests {
     @MainActor
     func testDecomposedVitalsSubBarHeight() {
         let store = PurahWorkspaceStore()
-        store.isVitalsDecomposed = true
-        store.vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
+        store._isVitalsDecomposed = true
+        store._vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
         let h = store.minimumDrawerHeight(for: "vitals")
         #expect(h >= 220.0, "Total decomposed vitals height must accommodate 4 sub-bars")
-        store.isVitalsDecomposed = false
+        store._isVitalsDecomposed = false
     }
 
     @Test("KeyboardShortcutRecorderView Carbon modifier mapping and function key detection")
@@ -759,7 +759,7 @@ struct DrawerInteractionUITests {
             Issue.record("Todo pod not found")
             return
         }
-        guard let firstTodo = store.todos.first else {
+        guard let firstTodo = store._todos.first else {
             Issue.record("No todos in store")
             return
         }

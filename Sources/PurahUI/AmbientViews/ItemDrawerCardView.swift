@@ -83,8 +83,8 @@ public struct TodoItemDrawerView: View {
                 TextField("", text: Binding(
                     get: { todo.title },
                     set: { newTitle in
-                        if let idx = store.todos.firstIndex(where: { $0.id == todo.id }) {
-                            store.todos[idx].title = newTitle
+                        if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
+                            store._todos[idx].title = newTitle
                         }
                     }
                 ))
@@ -466,7 +466,7 @@ public struct VitalsItemDrawerView: View {
         case .network:
             let totalSpeed = vitals.metrics.networkDownSpeed + vitals.metrics.networkUpSpeed
             let totalMB = totalSpeed / 1_048_576.0
-            let dangerMB = max(store.vitalsThresholds.networkDangerMB, 1.0)
+            let dangerMB = max(store._vitalsThresholds.networkDangerMB, 1.0)
             return min(totalMB / dangerMB, 1.0)
         case .disk:
             let total = vitals.metrics.diskTotalGB
@@ -479,7 +479,7 @@ public struct VitalsItemDrawerView: View {
         VitalsColorResolver.color(
             for: metric,
             vitals: vitals.metrics,
-            thresholds: store.vitalsThresholds,
+            thresholds: store._vitalsThresholds,
             palette: palette
         )
     }

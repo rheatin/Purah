@@ -147,41 +147,41 @@ struct VitalsAndScriptTests {
         #expect(VitalsMetricType.allCases.count == 6)
         #expect(VitalsMetricType.cpu.displayName == "CPU Load")
 
-        store.isVitalsDecomposed = true
-        store.vitalsEnabledMetrics = [.cpu, .ram]
+        store._isVitalsDecomposed = true
+        store._vitalsEnabledMetrics = [.cpu, .ram]
         store.savePersistentState()
 
         let reloaded = PurahWorkspaceStore()
-        #expect(reloaded.isVitalsDecomposed == true)
-        #expect(reloaded.vitalsEnabledMetrics.contains(.cpu))
-        #expect(reloaded.vitalsEnabledMetrics.contains(.ram))
+        #expect(reloaded._isVitalsDecomposed == true)
+        #expect(reloaded._vitalsEnabledMetrics.contains(.cpu))
+        #expect(reloaded._vitalsEnabledMetrics.contains(.ram))
 
         // Reset
-        store.isVitalsDecomposed = false
-        store.vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
+        store._isVitalsDecomposed = false
+        store._vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
         store.savePersistentState()
     }
 
     @Test("PurahWorkspaceStore scripts decomposition state and dynamic height")
     func testScriptsDecompositionState() {
         let store = PurahWorkspaceStore()
-        store.isScriptsDecomposed = true
-        store.scriptsEnabledActionIds = ["a1", "a2", "a3"]
+        store._isScriptsDecomposed = true
+        store._scriptsEnabledActionIds = ["a1", "a2", "a3"]
 
         let height = store.minimumDrawerHeight(for: "scripts")
         // 3 items * 56.0 + 2 gaps * 2.5 = 168.0 + 5.0 = 173.0
         #expect(height >= 168.0)
-        #expect(store.isScriptsDecomposed == true)
+        #expect(store._isScriptsDecomposed == true)
 
         // Test persistence roundtrip
         store.savePersistentState()
         let reloaded = PurahWorkspaceStore()
-        #expect(reloaded.isScriptsDecomposed == true)
-        #expect(reloaded.scriptsEnabledActionIds == ["a1", "a2", "a3"])
+        #expect(reloaded._isScriptsDecomposed == true)
+        #expect(reloaded._scriptsEnabledActionIds == ["a1", "a2", "a3"])
 
         // Reset
-        store.isScriptsDecomposed = false
-        store.scriptsEnabledActionIds = ScriptRunwayService.shared.actions.map(\.id)
+        store._isScriptsDecomposed = false
+        store._scriptsEnabledActionIds = ScriptRunwayService.shared.actions.map(\.id)
         store.savePersistentState()
     }
 
@@ -195,15 +195,15 @@ struct VitalsAndScriptTests {
 
         thresholds.cpuWarning = 0.60
         let store = PurahWorkspaceStore()
-        store.vitalsThresholds = thresholds
+        store._vitalsThresholds = thresholds
         store.savePersistentState()
-        #expect(store.vitalsThresholds.cpuWarning == 0.60)
+        #expect(store._vitalsThresholds.cpuWarning == 0.60)
 
         let reloaded = PurahWorkspaceStore()
-        #expect(reloaded.vitalsThresholds.cpuWarning == 0.60)
+        #expect(reloaded._vitalsThresholds.cpuWarning == 0.60)
 
         // Reset
-        store.vitalsThresholds = VitalsColorThresholds()
+        store._vitalsThresholds = VitalsColorThresholds()
         store.savePersistentState()
     }
 
@@ -315,7 +315,7 @@ struct VitalsAndScriptTests {
         #expect(resolved != Color(hex: "#FF0000"))
         let expected = VitalsColorResolver.overallVitalsColor(
             vitals: HardwareVitalsService.shared.metrics,
-            thresholds: store.vitalsThresholds,
+            thresholds: store._vitalsThresholds,
             palette: palette
         )
         #expect(resolved == expected)
@@ -369,7 +369,7 @@ struct VitalsAndScriptTests {
     @Test("Decomposed script rail chips enforce minimum 56pt height per action")
     func testDecomposedScriptsHeightCalculation() {
         let store = PurahWorkspaceStore()
-        store.isScriptsDecomposed = true
+        store._isScriptsDecomposed = true
 
         let allActions = ScriptRunwayService.shared.actions
         #expect(!allActions.isEmpty)
@@ -384,21 +384,21 @@ struct VitalsAndScriptTests {
         // Filter to 2 actions
         if allActions.count >= 2 {
             let selectedIds = [allActions[0].id, allActions[1].id]
-            store.scriptsEnabledActionIds = selectedIds
+            store._scriptsEnabledActionIds = selectedIds
             #expect(store.scriptsEnabledActions.count == 2)
             let filteredH = store.minimumDrawerHeight(for: "scripts")
             #expect(abs(filteredH - 114.5) < 0.001) // 2 * 56.0 + 1 * 2.5 = 114.5
         }
 
         // Reset
-        store.isScriptsDecomposed = false
-        store.scriptsEnabledActionIds = []
+        store._isScriptsDecomposed = false
+        store._scriptsEnabledActionIds = []
     }
 
     @Test("PassThroughHostingView 2D hit-testing accurately captures decomposed script drawer")
     func testDecomposedScriptsHitTesting() {
         let store = PurahWorkspaceStore()
-        store.isScriptsDecomposed = true
+        store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions
         guard let firstAction = actions.first else {
             Issue.record("No script actions available")
@@ -449,7 +449,7 @@ struct VitalsAndScriptTests {
     @Test("Decomposed script drawer enables click-through on transparent areas of inactive sibling actions")
     func testDecomposedScriptTransparentClickThrough() {
         let store = PurahWorkspaceStore()
-        store.isScriptsDecomposed = true
+        store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions
         guard actions.count >= 2 else { return }
 
@@ -498,24 +498,24 @@ struct VitalsAndScriptTests {
         _ = settingsView.body
 
         // Test decomposition toggle and persistence
-        store.isScriptsDecomposed = true
+        store._isScriptsDecomposed = true
         store.savePersistentState()
-        #expect(store.isScriptsDecomposed == true)
+        #expect(store._isScriptsDecomposed == true)
 
         let reloaded = PurahWorkspaceStore()
-        #expect(reloaded.isScriptsDecomposed == true)
+        #expect(reloaded._isScriptsDecomposed == true)
 
         // Test scriptsEnabledActionIds multi-select behavior
         let firstAction = allActions[0]
         let secondAction = allActions[1]
 
         // Enable only 2 actions
-        store.scriptsEnabledActionIds = [firstAction.id, secondAction.id]
+        store._scriptsEnabledActionIds = [firstAction.id, secondAction.id]
         store.savePersistentState()
         #expect(store.scriptsEnabledActions.count == 2)
 
         // Minimum 1 guard: if 1 action is selected, removing it is prevented
-        store.scriptsEnabledActionIds = [firstAction.id]
+        store._scriptsEnabledActionIds = [firstAction.id]
         #expect(store.scriptsEnabledActions.count == 1)
 
         // In-place script action editing test
@@ -546,8 +546,8 @@ struct VitalsAndScriptTests {
             description: firstAction.description
         )
         runway.updateAction(restoredAction)
-        store.scriptsEnabledActionIds = []
-        store.isScriptsDecomposed = false
+        store._scriptsEnabledActionIds = []
+        store._isScriptsDecomposed = false
         store.savePersistentState()
     }
 
@@ -581,28 +581,28 @@ struct VitalsAndScriptTests {
         custom.networkWarningMB = 25.0
         custom.networkDangerMB = 80.0
 
-        store.vitalsThresholds = custom
+        store._vitalsThresholds = custom
         store.savePersistentState()
 
         let reloaded = PurahWorkspaceStore()
-        #expect(reloaded.vitalsThresholds.cpuWarning == 0.65)
-        #expect(reloaded.vitalsThresholds.cpuDanger == 0.90)
-        #expect(reloaded.vitalsThresholds.gpuWarning == 0.55)
-        #expect(reloaded.vitalsThresholds.gpuDanger == 0.85)
-        #expect(reloaded.vitalsThresholds.ramWarning == 0.75)
-        #expect(reloaded.vitalsThresholds.ramDanger == 0.92)
-        #expect(reloaded.vitalsThresholds.batteryLow == 0.25)
-        #expect(reloaded.vitalsThresholds.networkWarningMB == 25.0)
-        #expect(reloaded.vitalsThresholds.networkDangerMB == 80.0)
+        #expect(reloaded._vitalsThresholds.cpuWarning == 0.65)
+        #expect(reloaded._vitalsThresholds.cpuDanger == 0.90)
+        #expect(reloaded._vitalsThresholds.gpuWarning == 0.55)
+        #expect(reloaded._vitalsThresholds.gpuDanger == 0.85)
+        #expect(reloaded._vitalsThresholds.ramWarning == 0.75)
+        #expect(reloaded._vitalsThresholds.ramDanger == 0.92)
+        #expect(reloaded._vitalsThresholds.batteryLow == 0.25)
+        #expect(reloaded._vitalsThresholds.networkWarningMB == 25.0)
+        #expect(reloaded._vitalsThresholds.networkDangerMB == 80.0)
 
         // Reset to defaults
-        store.vitalsThresholds = VitalsColorThresholds()
+        store._vitalsThresholds = VitalsColorThresholds()
         store.savePersistentState()
 
         let resetReloaded = PurahWorkspaceStore()
-        #expect(resetReloaded.vitalsThresholds.cpuWarning == 0.50)
-        #expect(resetReloaded.vitalsThresholds.cpuDanger == 0.80)
-        #expect(resetReloaded.vitalsThresholds.batteryLow == 0.20)
-        #expect(resetReloaded.vitalsThresholds.networkWarningMB == 10.0)
+        #expect(resetReloaded._vitalsThresholds.cpuWarning == 0.50)
+        #expect(resetReloaded._vitalsThresholds.cpuDanger == 0.80)
+        #expect(resetReloaded._vitalsThresholds.batteryLow == 0.20)
+        #expect(resetReloaded._vitalsThresholds.networkWarningMB == 10.0)
     }
 }

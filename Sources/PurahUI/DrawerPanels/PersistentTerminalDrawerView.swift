@@ -59,8 +59,6 @@ public struct PersistentTerminalDrawerView: View {
                         if state.fontSize > 9.0 {
                             state.fontSize -= 0.5
                             state.save()
-                            store.terminalFontSize = state.fontSize
-                            store.savePersistentState()
                         }
                     } label: {
                         Text("A-")
@@ -76,8 +74,6 @@ public struct PersistentTerminalDrawerView: View {
                         if state.fontSize < 22.0 {
                             state.fontSize += 0.5
                             state.save()
-                            store.terminalFontSize = state.fontSize
-                            store.savePersistentState()
                         }
                     } label: {
                         Text("A+")
@@ -116,8 +112,8 @@ public struct PersistentTerminalDrawerView: View {
 
                 Button {
                     manager.restartShell(
-                        fontFamily: store.terminalFontFamily,
-                        fontSize: CGFloat(store.terminalFontSize),
+                        fontFamily: state.fontFamily,
+                        fontSize: CGFloat(state.fontSize),
                         palette: palette
                     )
                 } label: {
@@ -132,8 +128,8 @@ public struct PersistentTerminalDrawerView: View {
 
             // Row 2: In-Screen Interactive SwiftTerm Terminal (GPU Accelerated, TrueColor, Starship Support)
             SwiftTermRepresentable(
-                fontFamily: store.terminalFontFamily,
-                fontSize: store.terminalFontSize,
+                fontFamily: state.fontFamily,
+                fontSize: state.fontSize,
                 palette: palette
             )
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -149,7 +145,7 @@ public struct PersistentTerminalDrawerView: View {
                     .font(.system(size: 7.5, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
                 Spacer()
-                Text("\(String(format: "%.1f", store.terminalFontSize))pt")
+                Text("\(String(format: "%.1f", state.fontSize))pt")
                     .font(.system(size: 7.5, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.6))
             }

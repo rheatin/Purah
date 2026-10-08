@@ -11,25 +11,25 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.calendarEvents.contains { store.isItemPinned(id: $0.id) }
+        store._calendarEvents.contains { store.isItemPinned(id: $0.id) }
     }
 
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        store.calendarEvents.contains { $0.id == itemId }
+        store._calendarEvents.contains { $0.id == itemId }
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store.calendarEvents.count
+        store._calendarEvents.count
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.calendarEvents.indices.contains(index) else { return nil }
-        return store.calendarEvents[index].id
+        guard store._calendarEvents.indices.contains(index) else { return nil }
+        return store._calendarEvents[index].id
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.calendarEvents.indices.contains(index) else { return nil }
-        return store.calendarEvents[index].title
+        guard store._calendarEvents.indices.contains(index) else { return nil }
+        return store._calendarEvents[index].title
     }
 }
 
@@ -42,25 +42,25 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.todos.contains { store.isItemPinned(id: $0.id) }
+        store._todos.contains { store.isItemPinned(id: $0.id) }
     }
 
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        store.todos.contains { $0.id == itemId }
+        store._todos.contains { $0.id == itemId }
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store.todos.count
+        store._todos.count
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.todos.indices.contains(index) else { return nil }
-        return store.todos[index].id
+        guard store._todos.indices.contains(index) else { return nil }
+        return store._todos[index].id
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.todos.indices.contains(index) else { return nil }
-        return store.todos[index].title
+        guard store._todos.indices.contains(index) else { return nil }
+        return store._todos[index].title
     }
 }
 
@@ -70,19 +70,19 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { false }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        store.isVitalsDecomposed
+        store._isVitalsDecomposed
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store.isVitalsDecomposed {
-            let count = max(store.vitalsEnabledMetrics.count, 1)
+        if store._isVitalsDecomposed {
+            let count = max(store._vitalsEnabledMetrics.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         return 300.0
     }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
+        store._vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
     }
 
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
@@ -90,17 +90,17 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store.isVitalsDecomposed ? store.vitalsEnabledMetrics.count : 0
+        store._isVitalsDecomposed ? store._vitalsEnabledMetrics.count : 0
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.isVitalsDecomposed, store.vitalsEnabledMetrics.indices.contains(index) else { return nil }
-        return "vitals-\(store.vitalsEnabledMetrics[index].rawValue)"
+        guard store._isVitalsDecomposed, store._vitalsEnabledMetrics.indices.contains(index) else { return nil }
+        return "vitals-\(store._vitalsEnabledMetrics[index].rawValue)"
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.isVitalsDecomposed, store.vitalsEnabledMetrics.indices.contains(index) else { return nil }
-        return store.vitalsEnabledMetrics[index].displayName
+        guard store._isVitalsDecomposed, store._vitalsEnabledMetrics.indices.contains(index) else { return nil }
+        return store._vitalsEnabledMetrics[index].displayName
     }
 }
 
@@ -110,11 +110,11 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { false }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        store.isScriptsDecomposed
+        store._isScriptsDecomposed
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store.isScriptsDecomposed {
+        if store._isScriptsDecomposed {
             let count = max(store.scriptsEnabledActions.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
@@ -130,16 +130,16 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store.isScriptsDecomposed ? store.scriptsEnabledActions.count : 0
+        store._isScriptsDecomposed ? store.scriptsEnabledActions.count : 0
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
+        guard store._isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
         return "scripts-\(store.scriptsEnabledActions[index].id)"
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store.isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
+        guard store._isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
         return store.scriptsEnabledActions[index].name
     }
 }

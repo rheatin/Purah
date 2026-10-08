@@ -97,7 +97,7 @@ public struct DropShelfDrawerView: View {
 
                                 Button {
                                     state.removeFile(id: file.id)
-                                    store.shelfFiles.removeAll { $0.id == file.id }
+                                    store._shelfFiles.removeAll { $0.id == file.id }
                                 } label: {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 9))
@@ -120,7 +120,7 @@ public struct DropShelfDrawerView: View {
                     Spacer()
                     Button("Clear All") {
                         state.clear()
-                        store.shelfFiles.removeAll()
+                        store._shelfFiles.removeAll()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 9))

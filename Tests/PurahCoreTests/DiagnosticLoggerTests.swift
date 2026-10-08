@@ -63,8 +63,8 @@ struct DiagnosticLoggerTests {
             toastMessage = msg
         }
 
-        store.isScriptsDecomposed = true
-        store.isVitalsDecomposed = true
+        store._isScriptsDecomposed = true
+        store._isVitalsDecomposed = true
         store.notifyCapacityWarningIfNeeded()
 
         if store.isRailOverloaded(edge: .left) {
@@ -72,7 +72,7 @@ struct DiagnosticLoggerTests {
             #expect(toastMessage?.contains("Left rail capacity overload") == true)
         }
 
-        store.isScriptsDecomposed = false
-        store.isVitalsDecomposed = false
+        store._isScriptsDecomposed = false
+        store._isVitalsDecomposed = false
     }
 }
