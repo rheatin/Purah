@@ -732,4 +732,94 @@ struct PluginArchitectureTests {
         #expect(PluginRegistry.shared.plugin(for: "vitals") != nil)
         #expect(HardwareVitalsService.shared.isMonitoring == true)
     }
+
+    @Test("PluginMarketplace categories, permissions, and manifest JSON decoding")
+    func testPluginMarketplaceManifestDecoding() throws {
+        let original = PurahPluginManifest(
+            id: "com.test.sensor",
+            displayName: "Test Sensor",
+            systemIcon: "sensor.tag.radiowaves.forward.fill",
+            author: "Third Party",
+            version: "2.1.0",
+            description: "Live sensor telemetry",
+            defaultEdge: .left,
+            preferredZone: .quickFlick,
+            defaultColorHex: "#34C759",
+            category: .heavyGPU,
+            permissions: [.machTelemetry, .shellExecution],
+            website: "https://example.com/sensor",
+            tags: ["sensor", "iot"],
+            isCommunity: true
+        )
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(PurahPluginManifest.self, from: data)
+
+        #expect(decoded.id == "com.test.sensor")
+        #expect(decoded.category == .heavyGPU)
+        #expect(decoded.permissions == [.machTelemetry, .shellExecution])
+        #expect(decoded.website == "https://example.com/sensor")
+        #expect(decoded.isCommunity == true)
+        #expect(decoded.permissions.first?.securityDescription.isEmpty == false)
+
+        // Test backward compatibility decoding when category and permissions are omitted
+        let jsonWithoutCategory = """
+        {
+            "id": "com.test.legacy",
+            "displayName": "Legacy",
+            "systemIcon": "cube",
+            "author": "Legacy Author",
+            "version": "1.0.0",
+            "description": "Legacy plugin",
+            "defaultEdge": "left",
+            "preferredZone": "glance",
+            "ergonomicWeight": 30.0,
+            "minLengthRatio": 0.15,
+            "defaultColorHex": "#FFFFFF"
+        }
+        """.data(using: .utf8)!
+
+        let decodedLegacy = try JSONDecoder().decode(PurahPluginManifest.self, from: jsonWithoutCategory)
+        #expect(decodedLegacy.category == .lightweight)
+        #expect(decodedLegacy.permissions.isEmpty)
+        #expect(decodedLegacy.isCommunity == false)
+    }
+
+    @Test("PluginMarketManager community catalog installation and zero-footprint lifecycle")
+    @MainActor
+    func testCommunityPluginMarketplaceLifecycle() {
+        let store = PurahWorkspaceStore()
+        let market = store.marketManager
+
+        let communityId = "com.community.git-radar"
+        #expect(!market.isInstalled(id: communityId))
+
+        // Install community plugin
+        market.install(id: communityId)
+        #expect(market.isInstalled(id: communityId))
+        #expect(store.pods.contains { $0.id == communityId })
+        #expect(PluginRegistry.shared.plugin(for: communityId) != nil)
+
+        // Verify slot pod properties
+        let pod = store.pods.first { $0.id == communityId }
+        #expect(pod?.name == "Git Radar")
+        #expect(pod?.edge == .left)
+
+        // Uninstall community plugin
+        market.uninstall(id: communityId)
+        #expect(!market.isInstalled(id: communityId))
+        #expect(!store.pods.contains { $0.id == communityId })
+        #expect(PluginRegistry.shared.plugin(for: communityId) == nil)
+    }
+
+    @Test("PluginMarketplaceView instantiates and PreferencesTab renders marketplace view")
+    @MainActor
+    func testPluginMarketplaceViewInstantiation() {
+        let store = PurahWorkspaceStore()
+        let marketView = PluginMarketplaceView(store: store)
+        #expect(marketView.marketManager.availableCatalog.count >= 8)
+
+        let prefView = PreferencesView(store: store, initialTab: .plugins)
+        #expect(prefView.selectedTab == .plugins)
+    }
 }

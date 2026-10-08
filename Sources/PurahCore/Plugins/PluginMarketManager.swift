@@ -35,7 +35,7 @@ public final class PluginMarketManager: Sendable {
 
     public init(
         store: PurahWorkspaceStore = PurahWorkspaceStore(),
-        availableCatalog: [PurahPluginManifest] = PurahPluginManifest.builtInCatalog,
+        availableCatalog: [PurahPluginManifest] = PurahPluginManifest.fullCatalog,
         userDefaults: UserDefaults = .standard,
         lifecycleDelegate: (any PluginMarketLifecycleDelegate)? = nil
     ) {
@@ -116,6 +116,14 @@ public final class PluginMarketManager: Sendable {
 
     public func uninstall(pluginId: String) {
         uninstall(id: pluginId)
+    }
+
+    public func addCatalogManifest(_ manifest: PurahPluginManifest) {
+        if let index = availableCatalog.firstIndex(where: { $0.id == manifest.id }) {
+            availableCatalog[index] = manifest
+        } else {
+            availableCatalog.append(manifest)
+        }
     }
 
     public func toggleEnabled(id: String) {

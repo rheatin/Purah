@@ -24,6 +24,15 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         register(MusicPlugin())
         register(CalendarPlugin())
         register(TodoPlugin())
+
+        for manifest in PurahPluginManifest.communityCatalog {
+            catalogPlugins[manifest.id] = CommunityPodPlugin(manifest: manifest)
+        }
+    }
+
+    public func registerManifestOnly(_ manifest: PurahPluginManifest) {
+        let plugin = CommunityPodPlugin(manifest: manifest)
+        catalogPlugins[manifest.id] = plugin
     }
 
     public func register(_ plugin: any PurahPodPlugin, store: PurahWorkspaceStore? = nil) {
@@ -38,7 +47,8 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
 
     public func bindStore(_ store: PurahWorkspaceStore, marketManager: PluginMarketManager? = nil) {
         self.boundStore = store
-        let market = marketManager ?? PluginMarketManager(store: store)
+        let market = marketManager ?? store.marketManager
+        store.setMarketManager(market)
         market.lifecycleDelegate = self
         PluginMarketManager.globalLifecycleDelegate = self
         for plugin in catalogPlugins.values {
@@ -89,6 +99,10 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     // MARK: - PluginMarketLifecycleDelegate
     public func pluginMarketDidInstall(id: String, store: PurahWorkspaceStore) {
         if let plugin = catalogPlugins[id] {
+            register(plugin, store: store)
+        } else if let manifest = PurahPluginManifest.fullCatalog.first(where: { $0.id == id }) {
+            let plugin = CommunityPodPlugin(manifest: manifest)
+            catalogPlugins[id] = plugin
             register(plugin, store: store)
         }
     }
