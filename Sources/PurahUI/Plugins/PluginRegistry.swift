@@ -40,6 +40,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         registeredPlugins[plugin.manifest.id] = plugin
         if let store {
             self.boundStore = store
+            store.marketManager.addCatalogManifest(plugin.manifest)
             store.registerCapabilityProvider(plugin)
             plugin.onMount(store: store)
         }
@@ -88,6 +89,10 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         catalogPlugins[id]
     }
 
+    public func unregisterCatalog(id: String) {
+        catalogPlugins.removeValue(forKey: id)
+    }
+
     public var allPlugins: [any PurahPodPlugin] {
         Array(registeredPlugins.values)
     }
@@ -97,6 +102,10 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     }
 
     // MARK: - PluginMarketLifecycleDelegate
+    public func manifest(for id: String) -> PurahPluginManifest? {
+        catalogPlugins[id]?.manifest
+    }
+
     public func pluginMarketDidInstall(id: String, store: PurahWorkspaceStore) {
         if let plugin = catalogPlugins[id] {
             register(plugin, store: store)

@@ -44,6 +44,7 @@ public extension PurahPodPlugin {
     var podId: String { manifest.id }
     var isDecomposed: Bool { supportedDrawerModes.contains(.stepped) }
 
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool { isDecomposed }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 120.0 }
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { itemId.hasPrefix("\(manifest.id)-") }
