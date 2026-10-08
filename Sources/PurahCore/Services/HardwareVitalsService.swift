@@ -31,8 +31,6 @@ public struct HardwareVitalsInfo: Sendable {
     public var batteryLevel: Int
     public var isCharging: Bool
     public var powerSource: String
-    public var thermalStateDescription: String
-    public var isUnderThermalPressure: Bool
     public var networkDownSpeed: Double // bytes/sec
     public var networkUpSpeed: Double // bytes/sec
     public var topProcesses: [ProcessInfoItem]
@@ -48,8 +46,6 @@ public struct HardwareVitalsInfo: Sendable {
         batteryLevel: Int = 100,
         isCharging: Bool = false,
         powerSource: String = "AC Power",
-        thermalStateDescription: String = "Nominal",
-        isUnderThermalPressure: Bool = false,
         networkDownSpeed: Double = 0.0,
         networkUpSpeed: Double = 0.0,
         topProcesses: [ProcessInfoItem] = []
@@ -64,8 +60,6 @@ public struct HardwareVitalsInfo: Sendable {
         self.batteryLevel = batteryLevel
         self.isCharging = isCharging
         self.powerSource = powerSource
-        self.thermalStateDescription = thermalStateDescription
-        self.isUnderThermalPressure = isUnderThermalPressure
         self.networkDownSpeed = networkDownSpeed
         self.networkUpSpeed = networkUpSpeed
         self.topProcesses = topProcesses
@@ -123,7 +117,6 @@ public final class HardwareVitalsService {
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
         let battery = readBatteryInfo()
-        let thermal = readThermalState()
         let net = readNetworkThroughput()
         let top = includeProcesses ? readTopProcessesNative() : metrics.topProcesses
 
@@ -138,8 +131,6 @@ public final class HardwareVitalsService {
             batteryLevel: battery.level,
             isCharging: battery.isCharging,
             powerSource: battery.source,
-            thermalStateDescription: thermal.description,
-            isUnderThermalPressure: thermal.isPressure || cpu > 0.80 || mem.usage > 0.85 || gpu > 0.85,
             networkDownSpeed: net.down,
             networkUpSpeed: net.up,
             topProcesses: top
@@ -192,17 +183,6 @@ public final class HardwareVitalsService {
             }
         }
         return (100, false, "AC Power")
-    }
-
-    private func readThermalState() -> (description: String, isPressure: Bool) {
-        let state = ProcessInfo.processInfo.thermalState
-        switch state {
-        case .nominal: return ("Nominal", false)
-        case .fair: return ("Fair", false)
-        case .serious: return ("Serious", true)
-        case .critical: return ("Critical", true)
-        @unknown default: return ("Normal", false)
-        }
     }
 
     private func readMemoryBreakdown() -> (usage: Double, usedGB: Double, totalGB: Double) {

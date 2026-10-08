@@ -139,8 +139,7 @@ public final class DiagnosticLogger: Sendable {
         report += "-- [HOST SYSTEM] --\n"
         report += "OS Version: \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
         report += "Physical Memory: \(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024)) GB\n"
-        report += "Processors: \(ProcessInfo.processInfo.processorCount) cores (active: \(ProcessInfo.processInfo.activeProcessorCount))\n"
-        report += "Thermal State: \(HardwareVitalsService.shared.metrics.thermalStateDescription)\n\n"
+        report += "Processors: \(ProcessInfo.processInfo.processorCount) cores (active: \(ProcessInfo.processInfo.activeProcessorCount))\n\n"
 
         // 2. MainActor Watchdog
         let (stalls, maxStall) = stats.withLock { ($0.stalls, $0.maxStallMs) }

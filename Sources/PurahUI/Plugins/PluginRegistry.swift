@@ -15,6 +15,7 @@ public final class PluginRegistry {
     public func registerBuiltInPlugins() {
         register(HardwareVitalsPlugin())
         register(ScriptRunwayPlugin())
+        register(TerminalPlugin())
         register(QuickNotesPlugin())
         register(DropShelfPlugin())
         register(MusicPlugin())

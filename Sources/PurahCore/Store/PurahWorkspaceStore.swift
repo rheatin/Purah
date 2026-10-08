@@ -255,6 +255,7 @@ public final class PurahWorkspaceStore {
         switch podId {
         case "vitals": return 300.0
         case "scripts": return 160.0
+        case "terminal": return 180.0
         case "shelf": return 130.0
         case "notes": return 130.0
         case "music": return 110.0
@@ -557,6 +558,7 @@ public final class PurahWorkspaceStore {
         case "todo": return "#FF9E0A"     // Amber Gold
         case "music": return "#FF2D55"    // Neon Magenta
         case "vitals": return "#00E5A3"   // Emerald Green
+        case "terminal": return "#00F5D4" // Cyber Cyan
         case "shelf": return "#2ED573"    // Mint Green
         case "notes": return "#FFD166"    // Warm Gold
         case "scripts": return "#6C5CE7"  // Obsidian Purple
@@ -822,7 +824,8 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.08, length: 0.26), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35, minLength: 0.22),
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.36, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.58, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.15),
-            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.78, length: 0.16), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.16)
+            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.78, length: 0.16), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.16),
+            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.94, length: 0.04), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 20, minLength: 0.12, isEnabled: false, drawerWidth: 320)
         ]
     }
 
