@@ -33,6 +33,22 @@ public final class PurahWorkspaceStore {
     @ObservationIgnored
     private var capabilityProviders: [String: any PurahPodCapabilityProvider] = [:]
 
+    @ObservationIgnored
+    private var _marketManager: PluginMarketManager?
+
+    public var marketManager: PluginMarketManager {
+        if let existing = _marketManager {
+            return existing
+        }
+        let manager = PluginMarketManager(store: self)
+        _marketManager = manager
+        return manager
+    }
+
+    public func setMarketManager(_ manager: PluginMarketManager) {
+        self._marketManager = manager
+    }
+
     public func registerCapabilityProvider(_ provider: any PurahPodCapabilityProvider) {
         capabilityProviders[provider.podId] = provider
     }
