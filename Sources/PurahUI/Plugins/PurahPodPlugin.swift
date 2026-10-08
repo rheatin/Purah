@@ -46,13 +46,6 @@ public extension PurahPodPlugin {
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 120.0 }
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { itemId.hasPrefix("\(manifest.id)-") }
-    func activeSubItemFrames(
-        item: ResolvedPodLayoutItem,
-        store: PurahWorkspaceStore,
-        totalHeight: Double,
-        windowWidth: Double,
-        corridor: Double
-    ) -> [CGRect]? { nil }
 
     func onMount(store: PurahWorkspaceStore) {}
     func onUnmount(store: PurahWorkspaceStore) {}

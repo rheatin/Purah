@@ -392,18 +392,6 @@ public final class PurahWorkspaceStore {
             let isPodActive = (activeDrawerItemId == pod.id || activeDrawerPodId == pod.id)
             let isPodPinned = isItemPinned(id: pod.id)
 
-            if let provider = capabilityProvider(for: pod.id),
-               let subFrames = provider.activeSubItemFrames(
-                   item: item,
-                   store: self,
-                   totalHeight: totalHeight,
-                   windowWidth: windowWidth,
-                   corridor: corridor
-               ) {
-                frames.append(contentsOf: subFrames)
-                continue
-            }
-
             // Case A: Decomposed Scripts (Precision sub-item bounding box)
             if pod.id == "scripts" && isScriptsDecomposed {
                 let actions = scriptsEnabledActions

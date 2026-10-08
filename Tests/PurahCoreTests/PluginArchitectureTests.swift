@@ -291,6 +291,7 @@ struct PluginArchitectureTests {
         store.pods.append(dynamicPod)
 
         PluginRegistry.shared.register(plugin, store: store)
+        defer { PluginRegistry.shared.unregister(id: "com.test.dynamic-pod", store: store) }
 
         // Store resolves height dynamically through capability provider
         #expect(store.minimumDrawerHeight(for: "com.test.dynamic-pod") == 210.0)
@@ -302,5 +303,107 @@ struct PluginArchitectureTests {
         #expect(store.hasPinnedItem(on: .right) == false)
         plugin.pinnedChildren.insert("dyn-task-42")
         #expect(store.hasPinnedItem(on: .right) == true)
+    }
+
+    @Test("ScopedPluginStorage isolates keys per plugin ID")
+    func testScopedPluginStorage() {
+        let storage1 = ScopedPluginStorage(pluginId: "pluginA")
+        let storage2 = ScopedPluginStorage(pluginId: "pluginB")
+
+        defer {
+            storage1.removeObject(forKey: "greeting")
+            storage2.removeObject(forKey: "greeting")
+        }
+
+        storage1.set("hello", forKey: "greeting")
+        storage2.set("world", forKey: "greeting")
+
+        #expect(storage1.string(forKey: "greeting") == "hello")
+        #expect(storage2.string(forKey: "greeting") == "world")
+        #expect(UserDefaults.standard.string(forKey: "purah.plugin.pluginA.greeting") == "hello")
+        #expect(UserDefaults.standard.string(forKey: "purah.plugin.pluginB.greeting") == "world")
+
+        storage1.removeObject(forKey: "greeting")
+        #expect(storage1.string(forKey: "greeting") == nil)
+        #expect(storage2.string(forKey: "greeting") == "world")
+    }
+
+    @Test("ScopedPluginStorage handles double, bool, and codable types")
+    func testScopedPluginStorageTypes() {
+        struct Config: Codable, Equatable {
+            let maxCount: Int
+            let title: String
+        }
+
+        let storage = ScopedPluginStorage(pluginId: "typeTestPlugin")
+        defer {
+            storage.removeObject(forKey: "ratio")
+            storage.removeObject(forKey: "enabled")
+            storage.removeObject(forKey: "config")
+        }
+
+        storage.set(0.75, forKey: "ratio")
+        #expect(storage.double(forKey: "ratio") == 0.75)
+
+        storage.set(true, forKey: "enabled")
+        #expect(storage.bool(forKey: "enabled") == true)
+
+        let config = Config(maxCount: 42, title: "Purah Test")
+        storage.setCodable(config, forKey: "config")
+        let retrieved = storage.codable(forKey: "config", as: Config.self)
+        #expect(retrieved == config)
+
+        storage.setCodable(Config?.none, forKey: "config")
+        #expect(storage.codable(forKey: "config", as: Config.self) == nil)
+    }
+
+    @Test("PurahPodCapabilityProvider protocol default requirements")
+    func testCapabilityProviderDefaults() {
+        struct MinimalProvider: PurahPodCapabilityProvider {
+            let podId: String = "minimal"
+            func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 100 }
+        }
+
+        let provider = MinimalProvider()
+        #expect(provider.podId == "minimal")
+        #expect(provider.isDecomposed == false)
+        #expect(provider.subItemCount == 0)
+        #expect(provider.subItemTitles.isEmpty)
+    }
+
+    @Test("PurahPluginContext supports ScopedPluginStorage and decoupled initialization")
+    func testDecoupledPluginContext() {
+        let storage = ScopedPluginStorage(pluginId: "decoupledTestPlugin")
+        storage.set("persisted", forKey: "state")
+        defer { storage.removeObject(forKey: "state") }
+
+        let pod = SlotPod(
+            id: "decoupledTestPlugin",
+            name: "Decoupled Pod",
+            systemIcon: "square.stack",
+            edge: .left,
+            range: .init(start: 0.1, length: 0.2),
+            ambientStyle: .ghostDot,
+            preferredZone: .glance,
+            ergonomicWeight: 30.0
+        )
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 180.0,
+            drawerWidth: 280.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            storage: storage,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        #expect(context.storage.string(forKey: "state") == "persisted")
     }
 }
