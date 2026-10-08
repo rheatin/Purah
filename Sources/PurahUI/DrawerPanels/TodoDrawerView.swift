@@ -4,6 +4,7 @@ import AppKit
 import PurahCore
 
 public struct TodoDrawerView: View {
+    public let state: TodoPluginState
     public let store: PurahWorkspaceStore
 
     private var palette: ThemePalette {
@@ -14,13 +15,19 @@ public struct TodoDrawerView: View {
         palette.podColor(for: "todo") // 待办专属活力琥珀金
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state ?? TodoPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         Group {
-            if store.todos.isEmpty {
+            if state.todos.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
                     Image(systemName: "checkmark.circle.badge.questionmark")
@@ -37,13 +44,13 @@ public struct TodoDrawerView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let activeItem = store.todos.first(where: { $0.id == store.activeDrawerItemId }) {
+            } else if let activeItem = state.todos.first(where: { $0.id == store.activeDrawerItemId }) {
                 // 【核心要求】：单个 item 单独弹出来
                 todoCard(todo: activeItem)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 5) {
-                        ForEach(store.todos) { todo in
+                        ForEach(state.todos) { todo in
                             todoCard(todo: todo)
                                 .transition(.asymmetric(
                                     insertion: .scale(scale: 0.96).combined(with: .opacity),
@@ -56,7 +63,7 @@ public struct TodoDrawerView: View {
             }
         }
         .task {
-            await SystemRemindersSyncService.shared.syncReminders(into: store, scope: store.remindersScope)
+            await state.syncReminders(into: store)
         }
     }
 
@@ -67,7 +74,7 @@ public struct TodoDrawerView: View {
         HStack(spacing: 8) {
             Button {
                 Task {
-                    await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
+                    await state.toggleCompletion(id: todo.id, store: store)
                 }
             } label: {
                 Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
@@ -81,6 +88,7 @@ public struct TodoDrawerView: View {
                 TextField("", text: Binding(
                     get: { todo.title },
                     set: { newTitle in
+                        state.updateTitle(id: todo.id, title: newTitle)
                         if let idx = store.todos.firstIndex(where: { $0.id == todo.id }) {
                             store.todos[idx].title = newTitle
                         }
@@ -112,6 +120,7 @@ public struct TodoDrawerView: View {
 
             Button {
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                    state.remove(id: todo.id)
                     store.todos.removeAll { $0.id == todo.id }
                 }
             } label: {

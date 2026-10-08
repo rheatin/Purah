@@ -3,6 +3,7 @@ import SwiftUI
 import PurahCore
 
 public struct QuickNoteDrawerView: View {
+    public let state: NotesPluginState
     public let store: PurahWorkspaceStore
     @State private var debounceTask: Task<Void, Never>?
 
@@ -14,21 +15,29 @@ public struct QuickNoteDrawerView: View {
         palette.podColor(for: "notes")
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: NotesPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "notes") as? QuickNotesPlugin)?.state ?? NotesPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             TextEditor(text: Binding(
-                get: { store.quickNote.text },
+                get: { state.noteContent.text },
                 set: {
+                    state.updateText($0)
                     store.quickNote.text = $0
-                    store.quickNote.lastModified = Date()
+                    store.quickNote.lastModified = state.noteContent.lastModified
                     debounceTask?.cancel()
                     debounceTask = Task { @MainActor in
                         try? await Task.sleep(nanoseconds: 500_000_000)
                         guard !Task.isCancelled else { return }
+                        state.save()
                         store.savePersistentState()
                     }
                 }
@@ -46,11 +55,11 @@ public struct QuickNoteDrawerView: View {
             .foregroundColor(.primary)
 
             HStack {
-                Text("Auto-saved · \(store.quickNote.lastModified.formatted(date: .omitted, time: .standard))")
+                Text("Auto-saved · \(state.noteContent.lastModified.formatted(date: .omitted, time: .standard))")
                     .purahCaption(size: 8)
                     .foregroundColor(.gray)
                 Spacer()
-                Text("\(store.quickNote.text.count) chars")
+                Text("\(state.noteContent.text.count) chars")
                     .purahCaption(size: 8)
                     .foregroundColor(noteColor)
             }
@@ -58,6 +67,7 @@ public struct QuickNoteDrawerView: View {
         .onDisappear {
             debounceTask?.cancel()
             debounceTask = nil
+            state.save()
             store.savePersistentState()
         }
     }
