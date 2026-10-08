@@ -652,4 +652,52 @@ struct PluginArchitectureTests {
         _ = termDrawerWithState
         _ = termDrawerWithStore
     }
+
+    @Test("PluginMarketManager installs and completely uninstalls plugin, freeing resources")
+    @MainActor
+    func testPluginMarketManagerLifecycle() {
+        UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        }
+
+        let store = PurahWorkspaceStore()
+        let market = PluginMarketManager(store: store)
+        market.lifecycleDelegate = PluginRegistry.shared
+
+        #expect(market.isInstalled(id: "notes"))
+        #expect(market.isEnabled(id: "notes"))
+
+        // Test toggle enabled
+        market.toggleEnabled(id: "notes")
+        #expect(!market.isEnabled(id: "notes"))
+        market.toggleEnabled(id: "notes")
+        #expect(market.isEnabled(id: "notes"))
+
+        // Uninstall notes: verify removed from store, registry, and uninstalled
+        market.uninstall(id: "notes")
+        #expect(!market.isInstalled(id: "notes"))
+        #expect(!store.pods.contains { $0.id == "notes" })
+        #expect(PluginRegistry.shared.plugin(for: "notes") == nil)
+
+        // Install notes: verify re-registered in store and registry
+        market.install(id: "notes")
+        #expect(market.isInstalled(id: "notes"))
+        #expect(store.pods.contains { $0.id == "notes" })
+        #expect(PluginRegistry.shared.plugin(for: "notes") != nil)
+
+        // Test terminal zero-footprint uninstallation (stops process)
+        #expect(market.isInstalled(id: "terminal"))
+        market.uninstall(id: "terminal")
+        #expect(!market.isInstalled(id: "terminal"))
+        #expect(!store.pods.contains { $0.id == "terminal" })
+        #expect(PluginRegistry.shared.plugin(for: "terminal") == nil)
+        #expect(TerminalManager.shared.isProcessRunning == false)
+
+        // Reinstall terminal
+        market.install(id: "terminal")
+        #expect(market.isInstalled(id: "terminal"))
+        #expect(store.pods.contains { $0.id == "terminal" })
+        #expect(PluginRegistry.shared.plugin(for: "terminal") != nil)
+    }
 }

@@ -1010,6 +1010,7 @@ public final class TerminalPluginState: Sendable {
     }
 
     public func unmount(store: PurahWorkspaceStore) {
+        TerminalManager.shared.stopProcess()
         save()
         if boundStore === store {
             boundStore = nil
