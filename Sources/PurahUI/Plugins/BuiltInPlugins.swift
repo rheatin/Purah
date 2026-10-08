@@ -49,19 +49,61 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if state.isDecomposed {
-            let count = max(state.enabledMetrics.count, 1)
+        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        if isDecomp {
+            let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+            let count = max(metrics.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         return 300.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        state.enabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
+        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        return metrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
         itemId.hasPrefix("vitals-")
+    }
+
+    public var isDecomposed: Bool {
+        state.isDecomposed
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        state.isDecomposed || store.isVitalsDecomposed
+    }
+
+    public var subItemCount: Int {
+        state.isDecomposed ? state.enabledMetrics.count : 0
+    }
+
+    public var subItemTitles: [String] {
+        state.isDecomposed ? state.enabledMetrics.map(\.displayName) : []
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        guard isDecomp else { return 0 }
+        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        return metrics.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        guard isDecomp else { return nil }
+        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        guard metrics.indices.contains(index) else { return nil }
+        return "vitals-\(metrics[index].rawValue)"
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        guard isDecomp else { return nil }
+        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        guard metrics.indices.contains(index) else { return nil }
+        return metrics[index].displayName
     }
 
     public func dynamicBarColor(context: PurahPluginContext) -> Color? {
@@ -176,19 +218,61 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if state.isDecomposed {
-            let count = max(state.enabledActions.count, 1)
+        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        if isDecomp {
+            let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+            let count = max(actions.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         return 160.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        state.enabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") }
+        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        return actions.contains { store.isItemPinned(id: "scripts-\($0.id)") }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
         itemId.hasPrefix("scripts-")
+    }
+
+    public var isDecomposed: Bool {
+        state.isDecomposed
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        state.isDecomposed || store.isScriptsDecomposed
+    }
+
+    public var subItemCount: Int {
+        state.isDecomposed ? state.enabledActions.count : 0
+    }
+
+    public var subItemTitles: [String] {
+        state.isDecomposed ? state.enabledActions.map(\.name) : []
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        guard isDecomp else { return 0 }
+        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        return actions.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        guard isDecomp else { return nil }
+        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        guard actions.indices.contains(index) else { return nil }
+        return "scripts-\(actions[index].id)"
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        guard isDecomp else { return nil }
+        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        guard actions.indices.contains(index) else { return nil }
+        return actions[index].name
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
@@ -482,11 +566,45 @@ public struct CalendarPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        state.events.contains { store.isItemPinned(id: $0.id) }
+        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        return events.contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        state.events.contains { $0.id == itemId }
+        state.events.contains { $0.id == itemId } || store.calendarEvents.contains { $0.id == itemId }
+    }
+
+    public var isDecomposed: Bool {
+        true
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        true
+    }
+
+    public var subItemCount: Int {
+        state.events.count
+    }
+
+    public var subItemTitles: [String] {
+        state.events.map(\.title)
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        return events.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        guard events.indices.contains(index) else { return nil }
+        return events[index].id
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        guard events.indices.contains(index) else { return nil }
+        return events[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
@@ -563,11 +681,45 @@ public struct TodoPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        state.todos.contains { store.isItemPinned(id: $0.id) }
+        let items = !store.todos.isEmpty ? store.todos : state.todos
+        return items.contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        state.todos.contains { $0.id == itemId }
+        state.todos.contains { $0.id == itemId } || store.todos.contains { $0.id == itemId }
+    }
+
+    public var isDecomposed: Bool {
+        true
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        true
+    }
+
+    public var subItemCount: Int {
+        state.todos.count
+    }
+
+    public var subItemTitles: [String] {
+        state.todos.map(\.title)
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let items = !store.todos.isEmpty ? store.todos : state.todos
+        return items.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let items = !store.todos.isEmpty ? store.todos : state.todos
+        guard items.indices.contains(index) else { return nil }
+        return items[index].id
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let items = !store.todos.isEmpty ? store.todos : state.todos
+        guard items.indices.contains(index) else { return nil }
+        return items[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {

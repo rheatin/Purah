@@ -539,6 +539,7 @@ struct PluginArchitectureTests {
     }
 
     @Test("Drawer views instantiate seamlessly with both state container and legacy store initializers")
+    @MainActor
     func testDrawerPanelsAcceptStateContainers() {
         let store = PurahWorkspaceStore()
 

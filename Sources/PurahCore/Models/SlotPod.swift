@@ -14,6 +14,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
     public var minLength: Double
     public var isEnabled: Bool
     public var drawerWidth: Double
+    public var defaultColorHex: String
 
     public init(
         id: String,
@@ -27,7 +28,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         ergonomicWeight: Double,
         minLength: Double = 0.10,
         isEnabled: Bool = true,
-        drawerWidth: Double = 260
+        drawerWidth: Double = 260,
+        defaultColorHex: String = "#00F5D4"
     ) {
         self.id = id
         self.nameKey = nameKey
@@ -41,6 +43,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         self.minLength = minLength
         self.isEnabled = isEnabled
         self.drawerWidth = drawerWidth
+        self.defaultColorHex = defaultColorHex
     }
 
     public init(
@@ -54,7 +57,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         ergonomicWeight: Double,
         minLength: Double = 0.10,
         isEnabled: Bool = true,
-        drawerWidth: Double = 260
+        drawerWidth: Double = 260,
+        defaultColorHex: String = "#00F5D4"
     ) {
         self.init(
             id: id,
@@ -68,7 +72,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
             ergonomicWeight: ergonomicWeight,
             minLength: minLength,
             isEnabled: isEnabled,
-            drawerWidth: drawerWidth
+            drawerWidth: drawerWidth,
+            defaultColorHex: defaultColorHex
         )
     }
 
