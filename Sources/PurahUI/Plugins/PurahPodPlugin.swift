@@ -10,6 +10,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
+    @ViewBuilder func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView?
 
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
@@ -50,6 +51,7 @@ public extension PurahPodPlugin {
     func onMount(store: PurahWorkspaceStore) {}
     func onUnmount(store: PurahWorkspaceStore) {}
     func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? { nil }
+    func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
 
     func dynamicBarColor(context: PurahPluginContext) -> Color? { nil }
     var supportedDrawerModes: Set<PurahDrawerMode> { [.composite] }

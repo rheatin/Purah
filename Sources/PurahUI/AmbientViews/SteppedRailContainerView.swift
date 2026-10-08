@@ -36,7 +36,7 @@ public struct SteppedRailContainerView: View {
         let count = max(items.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let minBarH: CGFloat = 24.0
+        let minBarH: CGFloat = 56.0
         let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minBarH)
         let totalSpanH = max(totalHeight, CGFloat(count) * itemH + totalSpacing)
 
@@ -51,25 +51,32 @@ public struct SteppedRailContainerView: View {
                         let isActive = (subItem.id == store.activeDrawerItemId || isPinned)
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
-                        subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: itemH)
-                            .id(subItem.id)
-                            .contentShape(Rectangle())
-                            .onHover { isHovered in
-                                if isHovered {
-                                    if store.dismissAlertOnHover && subItem.state == .alerting {
-                                        store.acknowledgeAlert(id: subItem.id)
-                                    }
-                                    guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
-                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                        store.activateDrawer(podId: pod.id, itemId: subItem.id)
+                        ZStack(alignment: edge == .right ? .trailing : .leading) {
+                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: itemH)
+                                .id(subItem.id)
+                                .onHover { isHovered in
+                                    if isHovered {
+                                        if store.dismissAlertOnHover && subItem.state == .alerting {
+                                            store.acknowledgeAlert(id: subItem.id)
+                                        }
+                                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
+                                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                            store.activateDrawer(podId: pod.id, itemId: subItem.id)
+                                        }
                                     }
                                 }
-                            }
-                            .onTapGesture {
-                                plugin.onRailBarTap(subItemId: subItem.id, context: context)
-                            }
-                            .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-                            .frame(height: itemH)
+
+                            // Scope rail tap gestures strictly to the rail bar indicator shape (not the entire ZStack containing expanded card)
+                            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
+                                .fill(Color.clear)
+                                .frame(width: CGFloat(store.railBarWidth), height: itemH)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    plugin.onRailBarTap(subItemId: subItem.id, context: context)
+                                }
+                        }
+                        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
+                        .frame(height: itemH)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
@@ -80,6 +87,42 @@ public struct SteppedRailContainerView: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
+    private func makeSubItemContext(for subItem: PurahPluginSubItem, itemH: CGFloat, isActive: Bool, isPinned: Bool) -> PurahPluginContext {
+        PurahPluginContext(
+            pod: pod,
+            edge: edge,
+            railWidth: CGFloat(store.railBarWidth),
+            slotHeight: itemH,
+            drawerWidth: store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0),
+            isExpanded: isActive,
+            isPinned: isPinned,
+            accentColor: subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor,
+            palette: palette,
+            storage: context.storage,
+            store: store,
+            requestExpand: {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    store.activateDrawer(podId: pod.id, itemId: subItem.id)
+                }
+            },
+            requestDismiss: {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                    if store.activeDrawerItemId == subItem.id {
+                        store.activeDrawerItemId = nil
+                    }
+                }
+            },
+            togglePin: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    store.togglePinItem(id: subItem.id)
+                }
+            },
+            showToast: context.showToast,
+            showWarning: context.showWarning,
+            performHaptic: context.performHaptic
+        )
+    }
+
     @ViewBuilder
     private func subItemChip(
         subItem: PurahPluginSubItem,
@@ -87,62 +130,9 @@ public struct SteppedRailContainerView: View {
         isPinned: Bool,
         itemH: CGFloat
     ) -> some View {
-        if pod.id == "todo", let todo = store.todos.first(where: { $0.id == subItem.id }) {
-            TodoItemDrawerView(
-                todo: todo,
-                edge: edge,
-                state: state,
-                isPinned: isPinned,
-                height: itemH,
-                store: store,
-                onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                        store.togglePinItem(id: subItem.id)
-                    }
-                }
-            )
-        } else if pod.id == "calendar", let event = store.calendarEvents.first(where: { $0.id == subItem.id }) {
-            CalendarItemDrawerView(
-                event: event,
-                edge: edge,
-                state: state,
-                isPinned: isPinned,
-                height: itemH,
-                store: store,
-                onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                        store.togglePinItem(id: subItem.id)
-                    }
-                }
-            )
-        } else if pod.id == "vitals", let metric = VitalsMetricType(rawValue: subItem.id.replacingOccurrences(of: "vitals-", with: "")) {
-            VitalsItemDrawerView(
-                metric: metric,
-                edge: edge,
-                state: state,
-                isPinned: isPinned,
-                height: itemH,
-                store: store,
-                onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                        store.togglePinItem(id: subItem.id)
-                    }
-                }
-            )
-        } else if pod.id == "scripts", let action = ScriptRunwayService.shared.action(for: subItem.id.replacingOccurrences(of: "scripts-", with: "")) {
-            ScriptItemDrawerView(
-                action: action,
-                edge: edge,
-                state: state,
-                isPinned: isPinned,
-                height: itemH,
-                store: store,
-                onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                        store.togglePinItem(id: subItem.id)
-                    }
-                }
-            )
+        let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned)
+        if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
+            customDrawer
         } else {
             genericSubItemChip(
                 subItem: subItem,
