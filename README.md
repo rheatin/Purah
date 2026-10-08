@@ -52,6 +52,7 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 
 - **⚡️ Zero-Block Click-Through**: Transparent empty space lets clicks pass straight through to desktop windows, Finder, and IDEs without blocking your workflow.
 - **🎛 Physical Bezel Extrusion**: Drawers slide smoothly out from the screen edge towards the center and retract solidly with zero ghosting.
+- **💻 Edge Interactive Terminal**: Persistent background terminal shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with full VT100/Xterm emulation, live font scaling, and Starship / Nerd Font glyphs.
 - **📐 Ergonomic Zone Layout**: Intelligently arranges modules into glance, action, and flick zones based on natural cursor momentum.
 - **🌊 60 / 120 FPS Fluid Waveform**: Metal GPU-driven audio visualizer that pulses naturally along the screen edge.
 - **🖥 Multi-Display Adaptive**: Follows your cursor across displays while suppressing accidental triggers when crossing screen borders.
@@ -62,6 +63,7 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 
 | Plugin | Icon | Description |
 | :--- | :---: | :--- |
+| **Terminal** | `apple.terminal.fill` | Persistent background command shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with Starship & Nerd Font support. |
 | **Hardware Vitals** | `waveform.path.ecg` | Real-time CPU, RAM, GPU, SSD, thermal, and network telemetry. |
 | **Calendar Timeline** | `calendar` | Day agenda timeline with meeting link detection (`Zoom`, `Meet`, `Teams`). |
 | **Todo Checklist** | `checklist` | System Reminders integration with one-tap completion. |
@@ -94,7 +96,7 @@ Purah is designed to stay completely out of your way until intentionally summone
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Purah.git
+git clone https://github.com/rheatin/Purah.git
 cd Purah
 
 # Run test suite
@@ -106,6 +108,12 @@ swift build -c release --disable-sandbox
 # Launch the app
 .build/release/PurahApp
 ```
+
+---
+
+### 🙏 Acknowledgments
+
+- **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** by Miguel de Icaza — powering Purah's GPU-accelerated edge terminal emulation.
 
 ---
 
