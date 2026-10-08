@@ -108,7 +108,7 @@ public final class SystemRemindersSyncService {
         if let targetStore = targetStore {
             targetStore.remindersScope = targetScope
             targetStore.isUsingRealReminders = true
-            targetStore.todos = items
+            targetStore._todos = items
         }
         lastSyncDate = Date()
         isSyncing = false
@@ -133,11 +133,11 @@ public final class SystemRemindersSyncService {
                 await syncReminders(into: targetStore)
                 return true
             } catch {
-                targetStore?.todos.append(TodoItem(title: trimmed))
+                targetStore?._todos.append(TodoItem(title: trimmed))
                 return true
             }
         } else {
-            targetStore?.todos.append(TodoItem(title: trimmed))
+            targetStore?._todos.append(TodoItem(title: trimmed))
             return true
         }
     }
@@ -159,8 +159,8 @@ public final class SystemRemindersSyncService {
             }
         }
 
-        if let idx = targetStore?.todos.firstIndex(where: { $0.id == id }) {
-            targetStore?.todos[idx].isCompleted.toggle()
+        if let idx = targetStore?._todos.firstIndex(where: { $0.id == id }) {
+            targetStore?._todos[idx].isCompleted.toggle()
         }
     }
 }

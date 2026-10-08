@@ -31,8 +31,8 @@ public struct QuickNoteDrawerView: View {
                 get: { state.noteContent.text },
                 set: {
                     state.updateText($0)
-                    store.quickNote.text = $0
-                    store.quickNote.lastModified = state.noteContent.lastModified
+                    store._quickNote.text = $0
+                    store._quickNote.lastModified = state.noteContent.lastModified
                     debounceTask?.cancel()
                     debounceTask = Task { @MainActor in
                         try? await Task.sleep(nanoseconds: 500_000_000)

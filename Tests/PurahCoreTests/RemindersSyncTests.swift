@@ -10,12 +10,12 @@ struct RemindersSyncTests {
     func testAddReminderFallback() async {
         let store = PurahWorkspaceStore()
         let service = SystemRemindersSyncService()
-        let initialCount = store.todos.count
+        let initialCount = store._todos.count
 
         let success = await service.addReminder(title: "Hyrule Ore Gathering Test", into: store)
         #expect(success)
-        #expect(store.todos.count == initialCount + 1)
-        #expect(store.todos.last?.title == "Hyrule Ore Gathering Test")
+        #expect(store._todos.count == initialCount + 1)
+        #expect(store._todos.last?.title == "Hyrule Ore Gathering Test")
     }
 
     @Test("Toggle completion in-memory fallback works")
@@ -23,13 +23,13 @@ struct RemindersSyncTests {
         let store = PurahWorkspaceStore()
         let service = SystemRemindersSyncService()
 
-        guard let firstTodo = store.todos.first else {
+        guard let firstTodo = store._todos.first else {
             Issue.record("Missing first todo")
             return
         }
         let originalState = firstTodo.isCompleted
         await service.toggleCompletion(id: firstTodo.id, into: store)
 
-        #expect(store.todos.first?.isCompleted == !originalState)
+        #expect(store._todos.first?.isCompleted == !originalState)
     }
 }

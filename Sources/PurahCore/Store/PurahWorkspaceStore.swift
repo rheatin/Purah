@@ -412,19 +412,17 @@ public final class PurahWorkspaceStore {
         savePersistentState()
     }
 
-    // MARK: - Compatibility Shims for Plugin State (to be removed once views are rewritten in Task 5)
-    public var calendarEvents: [CalendarEventItem]
-    public var todos: [TodoItem]
-    public var musicTrack: MusicTrackInfo = .init()
-    public var shelfFiles: [ShelfFileItem]
-    public var quickNote: NoteContent = .init()
-
-    public var isVitalsDecomposed: Bool {
+    // Internal backing storage for compatibility shims / default capability providers
+    package var _calendarEvents: [CalendarEventItem] = PurahWorkspaceStore.defaultEvents()
+    package var _todos: [TodoItem] = PurahWorkspaceStore.defaultTodos()
+    package var _musicTrack: MusicTrackInfo = .init()
+    package var _shelfFiles: [ShelfFileItem] = PurahWorkspaceStore.defaultShelfFiles()
+    package var _quickNote: NoteContent = .init()
+    package var _isVitalsDecomposed: Bool {
         get { UserDefaults.standard.bool(forKey: "purah.vitals.isDecomposed") }
         set { UserDefaults.standard.set(newValue, forKey: "purah.vitals.isDecomposed") }
     }
-
-    public var vitalsEnabledMetrics: [VitalsMetricType] {
+    package var _vitalsEnabledMetrics: [VitalsMetricType] {
         get {
             guard let arr = UserDefaults.standard.stringArray(forKey: "purah.vitals.enabledMetrics") else {
                 return [.cpu, .ram, .power, .disk]
@@ -436,8 +434,7 @@ public final class PurahWorkspaceStore {
             UserDefaults.standard.set(newValue.map(\.rawValue), forKey: "purah.vitals.enabledMetrics")
         }
     }
-
-    public var vitalsThresholds: VitalsColorThresholds {
+    package var _vitalsThresholds: VitalsColorThresholds {
         get {
             guard let data = UserDefaults.standard.data(forKey: "purah.vitals.thresholds"),
                   let decoded = try? JSONDecoder().decode(VitalsColorThresholds.self, from: data) else {
@@ -451,13 +448,11 @@ public final class PurahWorkspaceStore {
             }
         }
     }
-
-    public var isScriptsDecomposed: Bool {
+    package var _isScriptsDecomposed: Bool {
         get { UserDefaults.standard.bool(forKey: "purah.scripts.isDecomposed") }
         set { UserDefaults.standard.set(newValue, forKey: "purah.scripts.isDecomposed") }
     }
-
-    public var scriptsEnabledActionIds: [String] {
+    package var _scriptsEnabledActionIds: [String] {
         get {
             UserDefaults.standard.stringArray(forKey: "purah.scripts.enabledActionIds") ?? []
         }
@@ -465,18 +460,91 @@ public final class PurahWorkspaceStore {
             UserDefaults.standard.set(newValue, forKey: "purah.scripts.enabledActionIds")
         }
     }
+    package var _terminalFontFamily: String = "Auto (Nerd Font)"
+    package var _terminalFontSize: Double = 11.5
+
+    // MARK: - Compatibility Shims for Plugin State (to be removed once views are rewritten in Task 5)
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var calendarEvents: [CalendarEventItem] {
+        get { _calendarEvents }
+        set { _calendarEvents = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var todos: [TodoItem] {
+        get { _todos }
+        set { _todos = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var musicTrack: MusicTrackInfo {
+        get { _musicTrack }
+        set { _musicTrack = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var shelfFiles: [ShelfFileItem] {
+        get { _shelfFiles }
+        set { _shelfFiles = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var quickNote: NoteContent {
+        get { _quickNote }
+        set { _quickNote = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var isVitalsDecomposed: Bool {
+        get { _isVitalsDecomposed }
+        set { _isVitalsDecomposed = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var vitalsEnabledMetrics: [VitalsMetricType] {
+        get { _vitalsEnabledMetrics }
+        set { _vitalsEnabledMetrics = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var vitalsThresholds: VitalsColorThresholds {
+        get { _vitalsThresholds }
+        set { _vitalsThresholds = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var isScriptsDecomposed: Bool {
+        get { _isScriptsDecomposed }
+        set { _isScriptsDecomposed = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var scriptsEnabledActionIds: [String] {
+        get { _scriptsEnabledActionIds }
+        set { _scriptsEnabledActionIds = newValue }
+    }
 
     public var scriptsEnabledActions: [ScriptActionItem] {
         let all = ScriptRunwayService.shared.actions
-        if scriptsEnabledActionIds.isEmpty {
+        let ids = _scriptsEnabledActionIds
+        if ids.isEmpty {
             return all
         }
-        let filtered = all.filter { scriptsEnabledActionIds.contains($0.id) }
+        let filtered = all.filter { ids.contains($0.id) }
         return filtered.isEmpty ? all : filtered
     }
 
-    public var terminalFontFamily: String = "Auto (Nerd Font)"
-    public var terminalFontSize: Double = 11.5
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var terminalFontFamily: String {
+        get { _terminalFontFamily }
+        set { _terminalFontFamily = newValue }
+    }
+
+    @available(*, deprecated, message: "Use corresponding PluginState instead")
+    public var terminalFontSize: Double {
+        get { _terminalFontSize }
+        set { _terminalFontSize = newValue }
+    }
 
     private static func defaultEvents() -> [CalendarEventItem] {
         let cal = Calendar.current
@@ -509,9 +577,6 @@ public final class PurahWorkspaceStore {
 
     public init() {
         self.pods = Self.defaultPods()
-        self.calendarEvents = Self.defaultEvents()
-        self.todos = Self.defaultTodos()
-        self.shelfFiles = Self.defaultShelfFiles()
         registerDefaultCapabilityProviders()
         loadPersistentState()
         autoLayoutAll()

@@ -243,13 +243,13 @@ struct PluginArchitectureTests {
         #expect(scriptDrawer != nil)
 
         // Todo stepped drawer returns non-nil when item exists
-        store.todos = [TodoItem(title: "Task 1")]
-        let todoDrawer = todoPlugin.makeSteppedDrawerView(subItemId: store.todos[0].id, context: context)
+        store._todos = [TodoItem(title: "Task 1")]
+        let todoDrawer = todoPlugin.makeSteppedDrawerView(subItemId: store._todos[0].id, context: context)
         #expect(todoDrawer != nil)
 
         // Calendar stepped drawer returns non-nil when event exists
-        store.calendarEvents = [CalendarEventItem(title: "Meeting", startTime: Date(), endTime: Date().addingTimeInterval(3600))]
-        let calDrawer = calPlugin.makeSteppedDrawerView(subItemId: store.calendarEvents[0].id, context: context)
+        store._calendarEvents = [CalendarEventItem(title: "Meeting", startTime: Date(), endTime: Date().addingTimeInterval(3600))]
+        let calDrawer = calPlugin.makeSteppedDrawerView(subItemId: store._calendarEvents[0].id, context: context)
         #expect(calDrawer != nil)
 
         // Non-stepped plugin returns nil by default
@@ -566,12 +566,12 @@ struct PluginArchitectureTests {
 
         // Test togglePlayPause with store synchronization (avoid double-toggle)
         let testMusicStore = PurahWorkspaceStore()
-        testMusicStore.musicTrack = MusicTrackInfo(title: "Song B", artist: "Artist C", isPlaying: false)
+        testMusicStore._musicTrack = MusicTrackInfo(title: "Song B", artist: "Artist C", isPlaying: false)
         musicState.togglePlayPause(store: testMusicStore)
-        #expect(testMusicStore.musicTrack.isPlaying == true)
+        #expect(testMusicStore._musicTrack.isPlaying == true)
         #expect(musicState.track.isPlaying == true)
         musicState.togglePlayPause(store: testMusicStore)
-        #expect(testMusicStore.musicTrack.isPlaying == false)
+        #expect(testMusicStore._musicTrack.isPlaying == false)
         #expect(musicState.track.isPlaying == false)
 
         // 6. Vitals State
@@ -673,8 +673,10 @@ struct PluginArchitectureTests {
     @MainActor
     func testPluginMarketManagerLifecycle() {
         UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         defer {
             UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+            UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         }
 
         let store = PurahWorkspaceStore()
@@ -684,9 +686,14 @@ struct PluginArchitectureTests {
         #expect(market.isInstalled(id: "notes"))
         #expect(market.isEnabled(id: "notes"))
 
-        // Test toggle enabled
+        // Test toggle enabled and persistence across restart
         market.toggleEnabled(id: "notes")
         #expect(!market.isEnabled(id: "notes"))
+
+        let restartedStore = PurahWorkspaceStore()
+        let restartedMarket = PluginMarketManager(store: restartedStore)
+        #expect(!restartedMarket.isEnabled(id: "notes"))
+
         market.toggleEnabled(id: "notes")
         #expect(market.isEnabled(id: "notes"))
 
@@ -789,8 +796,10 @@ struct PluginArchitectureTests {
     @MainActor
     func testCommunityPluginMarketplaceLifecycle() {
         UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+        UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         defer {
             UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
+            UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         }
 
         let store = PurahWorkspaceStore()

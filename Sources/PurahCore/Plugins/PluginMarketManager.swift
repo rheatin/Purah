@@ -23,7 +23,11 @@ public final class PluginMarketManager: Sendable {
             savePersistentState()
         }
     }
-    public var enabledPluginIds: Set<String>
+    public var enabledPluginIds: Set<String> {
+        didSet {
+            savePersistentState()
+        }
+    }
     public var availableCatalog: [PurahPluginManifest]
 
     @ObservationIgnored
@@ -62,6 +66,7 @@ public final class PluginMarketManager: Sendable {
 
         self.installedPluginIds = resolvedInstalledIds
         self.enabledPluginIds = Set(store.pods.filter(\.isEnabled).map(\.id))
+        loadPersistentState()
     }
 
     public func isInstalled(id: String) -> Bool {
@@ -146,13 +151,27 @@ public final class PluginMarketManager: Sendable {
                 enabledPluginIds.remove(id)
             }
         }
+        savePersistentState()
     }
 
     public func toggleEnabled(pluginId: String) {
         toggleEnabled(id: pluginId)
     }
 
-    private func savePersistentState() {
+    public func loadPersistentState() {
+        if let savedEnabled = UserDefaults.standard.stringArray(forKey: "purah.market.enabledPluginIds") {
+            let savedSet = Set(savedEnabled)
+            let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
+            for i in store.pods.indices where managedIds.contains(store.pods[i].id) {
+                store.pods[i].isEnabled = savedSet.contains(store.pods[i].id)
+            }
+            self.enabledPluginIds = savedSet.union(store.pods.filter(\.isEnabled).map(\.id))
+            store.autoLayoutAll()
+        }
+    }
+
+    public func savePersistentState() {
         userDefaults.set(Array(installedPluginIds), forKey: userDefaultsKey)
+        UserDefaults.standard.setValue(Array(enabledPluginIds), forKey: "purah.market.enabledPluginIds")
     }
 }

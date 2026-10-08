@@ -127,7 +127,7 @@ public final class CalendarPluginState: Sendable {
                 if let targetStore = self.boundStore {
                     targetStore.calendarScope = currentScope
                     targetStore.isUsingRealCalendar = true
-                    targetStore.calendarEvents = deduplicated
+                    targetStore._calendarEvents = deduplicated
                 }
             }
         }
@@ -135,8 +135,8 @@ public final class CalendarPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store.calendarEvents.isEmpty && self.events.isEmpty {
-            self.events = store.calendarEvents
+        if !store._calendarEvents.isEmpty && self.events.isEmpty {
+            self.events = store._calendarEvents
         }
         if eventStoreObserver == nil {
             eventStoreObserver = NotificationCenter.default.addObserver(
@@ -240,7 +240,7 @@ public final class TodoPluginState: Sendable {
         self.save()
         if let targetStore {
             targetStore.isUsingRealReminders = self.isUsingRealReminders
-            targetStore.todos = self.todos
+            targetStore._todos = self.todos
         }
         isSyncing = false
     }
@@ -253,9 +253,9 @@ public final class TodoPluginState: Sendable {
         let targetStore = store ?? boundStore
         if let targetStore {
             await SystemRemindersSyncService.shared.toggleCompletion(id: id, into: targetStore)
-            if let idx = targetStore.todos.firstIndex(where: { $0.id == id }),
+            if let idx = targetStore._todos.firstIndex(where: { $0.id == id }),
                let selfIdx = todos.firstIndex(where: { $0.id == id }) {
-                todos[selfIdx].isCompleted = targetStore.todos[idx].isCompleted
+                todos[selfIdx].isCompleted = targetStore._todos[idx].isCompleted
             }
         }
     }
@@ -265,27 +265,27 @@ public final class TodoPluginState: Sendable {
             todos[idx].title = title
             save()
         }
-        if let boundStore, let idx = boundStore.todos.firstIndex(where: { $0.id == id }) {
-            boundStore.todos[idx].title = title
+        if let boundStore, let idx = boundStore._todos.firstIndex(where: { $0.id == id }) {
+            boundStore._todos[idx].title = title
         }
     }
 
     public func add(todo: TodoItem) {
         todos.append(todo)
         save()
-        boundStore?.todos.append(todo)
+        boundStore?._todos.append(todo)
     }
 
     public func remove(id: String) {
         todos.removeAll { $0.id == id }
         save()
-        boundStore?.todos.removeAll { $0.id == id }
+        boundStore?._todos.removeAll { $0.id == id }
     }
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store.todos.isEmpty && self.todos.isEmpty {
-            self.todos = store.todos
+        if !store._todos.isEmpty && self.todos.isEmpty {
+            self.todos = store._todos
         }
         if reminderStoreObserver == nil {
             reminderStoreObserver = NotificationCenter.default.addObserver(
@@ -383,8 +383,8 @@ public final class MusicPluginState: Sendable {
         let targetStore = store ?? boundStore
         if let targetStore {
             SystemMusicSyncService.shared.togglePlayPause(store: targetStore)
-            self.track = targetStore.musicTrack
-            self.isPlaying = targetStore.musicTrack.isPlaying
+            self.track = targetStore._musicTrack
+            self.isPlaying = targetStore._musicTrack.isPlaying
         } else {
             let nowPlaying = !track.isPlaying
             track.isPlaying = nowPlaying
@@ -415,20 +415,20 @@ public final class MusicPluginState: Sendable {
 
         let targetStore = store ?? boundStore
         if let targetStore {
-            targetStore.musicTrack = track
+            targetStore._musicTrack = track
         }
         SystemMusicSyncService.shared.seek(to: progress, store: targetStore)
     }
 
     public func update(from trackInfo: MusicTrackInfo) {
         self.track = trackInfo
-        self.boundStore?.musicTrack = trackInfo
+        self.boundStore?._musicTrack = trackInfo
     }
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store.musicTrack.title.isEmpty {
-            self.track = store.musicTrack
+        if !store._musicTrack.title.isEmpty {
+            self.track = store._musicTrack
         }
         self.isWaveformAnimationEnabled = store.isMusicWaveformAnimationEnabled
 
@@ -438,6 +438,7 @@ public final class MusicPluginState: Sendable {
 
     public func unmount(store: PurahWorkspaceStore) {
         stopListening()
+        SystemMusicSyncService.shared.stopListening()
         save()
         if boundStore === store {
             boundStore = nil
@@ -513,7 +514,7 @@ public final class MusicPluginState: Sendable {
             sourceBundleId: "com.apple.Music"
         )
         if let store = boundStore {
-            store.musicTrack = self.track
+            store._musicTrack = self.track
         }
     }
 
@@ -546,7 +547,7 @@ public final class MusicPluginState: Sendable {
             sourceBundleId: "com.spotify.client"
         )
         if let store = boundStore {
-            store.musicTrack = self.track
+            store._musicTrack = self.track
         }
     }
 }
@@ -593,31 +594,31 @@ public final class ShelfPluginState: Sendable {
         )
         files.append(item)
         save()
-        boundStore?.shelfFiles.append(item)
+        boundStore?._shelfFiles.append(item)
     }
 
     public func addFileItem(_ item: ShelfFileItem) {
         files.append(item)
         save()
-        boundStore?.shelfFiles.append(item)
+        boundStore?._shelfFiles.append(item)
     }
 
     public func removeFile(id: String) {
         files.removeAll { $0.id == id }
         save()
-        boundStore?.shelfFiles.removeAll { $0.id == id }
+        boundStore?._shelfFiles.removeAll { $0.id == id }
     }
 
     public func clear() {
         files.removeAll()
         save()
-        boundStore?.shelfFiles.removeAll()
+        boundStore?._shelfFiles.removeAll()
     }
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store.shelfFiles.isEmpty && self.files.isEmpty {
-            self.files = store.shelfFiles
+        if !store._shelfFiles.isEmpty && self.files.isEmpty {
+            self.files = store._shelfFiles
         }
     }
 
@@ -681,7 +682,7 @@ public final class NotesPluginState: Sendable {
         noteContent.lastModified = Date()
         save()
         if let boundStore {
-            boundStore.quickNote = noteContent
+            boundStore._quickNote = noteContent
         }
     }
 
@@ -690,14 +691,14 @@ public final class NotesPluginState: Sendable {
         noteContent.lastModified = Date()
         save()
         if let boundStore {
-            boundStore.quickNote = noteContent
+            boundStore._quickNote = noteContent
         }
     }
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store.quickNote.text.isEmpty && self.noteContent.text.isEmpty {
-            self.noteContent = store.quickNote
+        if !store._quickNote.text.isEmpty && self.noteContent.text.isEmpty {
+            self.noteContent = store._quickNote
         }
     }
 
@@ -785,14 +786,14 @@ public final class VitalsPluginState: Sendable {
     public func resetThresholds() {
         thresholds = VitalsColorThresholds()
         save()
-        boundStore?.vitalsThresholds = thresholds
+        boundStore?._vitalsThresholds = thresholds
     }
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        self.thresholds = store.vitalsThresholds
-        self.isDecomposed = store.isVitalsDecomposed
-        self.enabledMetrics = store.vitalsEnabledMetrics
+        self.thresholds = store._vitalsThresholds
+        self.isDecomposed = store._isVitalsDecomposed
+        self.enabledMetrics = store._vitalsEnabledMetrics
         HardwareVitalsService.shared.startMonitoring()
         startPolling()
     }
@@ -879,7 +880,7 @@ public final class ScriptsPluginState: Sendable {
         }
         save()
         ScriptRunwayService.shared.addAction(action)
-        boundStore?.scriptsEnabledActionIds = enabledActionIds
+        boundStore?._scriptsEnabledActionIds = enabledActionIds
     }
 
     public func removeAction(id: String) {
@@ -887,7 +888,7 @@ public final class ScriptsPluginState: Sendable {
         enabledActionIds.removeAll { $0 == id }
         save()
         ScriptRunwayService.shared.removeAction(id: id)
-        boundStore?.scriptsEnabledActionIds = enabledActionIds
+        boundStore?._scriptsEnabledActionIds = enabledActionIds
     }
 
     public func updateAction(_ action: ScriptActionItem) {
@@ -903,7 +904,7 @@ public final class ScriptsPluginState: Sendable {
         actions = ScriptRunwayService.shared.actions
         enabledActionIds = actions.map(\.id)
         save()
-        boundStore?.scriptsEnabledActionIds = enabledActionIds
+        boundStore?._scriptsEnabledActionIds = enabledActionIds
     }
 
     public func executeAction(_ action: ScriptActionItem, store: PurahWorkspaceStore? = nil) async -> (success: Bool, message: String) {
@@ -919,9 +920,9 @@ public final class ScriptsPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        self.isDecomposed = store.isScriptsDecomposed
-        if !store.scriptsEnabledActionIds.isEmpty {
-            self.enabledActionIds = store.scriptsEnabledActionIds
+        self.isDecomposed = store._isScriptsDecomposed
+        if !store._scriptsEnabledActionIds.isEmpty {
+            self.enabledActionIds = store._scriptsEnabledActionIds
         }
         if actions.isEmpty {
             actions = ScriptRunwayService.shared.actions
@@ -1003,11 +1004,11 @@ public final class TerminalPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store.terminalFontFamily.isEmpty {
-            self.fontFamily = store.terminalFontFamily
+        if !store._terminalFontFamily.isEmpty {
+            self.fontFamily = store._terminalFontFamily
         }
-        if store.terminalFontSize > 0 {
-            self.fontSize = store.terminalFontSize
+        if store._terminalFontSize > 0 {
+            self.fontSize = store._terminalFontSize
         }
     }
 

@@ -49,9 +49,9 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
         if isDecomp {
-            let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+            let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
             let count = max(metrics.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
@@ -59,7 +59,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         return metrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
     }
 
@@ -72,7 +72,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.isDecomposed || store.isVitalsDecomposed
+        state.isDecomposed || store._isVitalsDecomposed
     }
 
     public var subItemCount: Int {
@@ -84,24 +84,24 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
         guard isDecomp else { return 0 }
-        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         return metrics.count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
         guard isDecomp else { return nil }
-        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         guard metrics.indices.contains(index) else { return nil }
         return "vitals-\(metrics[index].rawValue)"
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store.isVitalsDecomposed
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
         guard isDecomp else { return nil }
-        let metrics = !store.vitalsEnabledMetrics.isEmpty ? store.vitalsEnabledMetrics : state.enabledMetrics
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         guard metrics.indices.contains(index) else { return nil }
         return metrics[index].displayName
     }
@@ -240,9 +240,9 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
         if isDecomp {
-            let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+            let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
             let count = max(actions.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
@@ -250,7 +250,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         return actions.contains { store.isItemPinned(id: "scripts-\($0.id)") }
     }
 
@@ -263,7 +263,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.isDecomposed || store.isScriptsDecomposed
+        state.isDecomposed || store._isScriptsDecomposed
     }
 
     public var subItemCount: Int {
@@ -275,24 +275,24 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
         guard isDecomp else { return 0 }
-        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         return actions.count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
         guard isDecomp else { return nil }
-        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         guard actions.indices.contains(index) else { return nil }
         return "scripts-\(actions[index].id)"
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store.isScriptsDecomposed
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
         guard isDecomp else { return nil }
-        let actions = !store.scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         guard actions.indices.contains(index) else { return nil }
         return actions[index].name
     }
@@ -610,12 +610,12 @@ public struct CalendarPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
         return events.contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        state.events.contains { $0.id == itemId } || store.calendarEvents.contains { $0.id == itemId }
+        state.events.contains { $0.id == itemId } || store._calendarEvents.contains { $0.id == itemId }
     }
 
     public var isDecomposed: Bool {
@@ -635,18 +635,18 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
         return events.count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
         guard events.indices.contains(index) else { return nil }
         return events[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let events = !store.calendarEvents.isEmpty ? store.calendarEvents : state.events
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
         guard events.indices.contains(index) else { return nil }
         return events[index].title
     }
@@ -673,7 +673,7 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        let events = !context.store.calendarEvents.isEmpty ? context.store.calendarEvents : state.events
+        let events = !context.store._calendarEvents.isEmpty ? context.store._calendarEvents : state.events
         guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.store.isItemPinned(id: subItemId)
         let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
@@ -747,12 +747,12 @@ public struct TodoPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        let items = !store.todos.isEmpty ? store.todos : state.todos
+        let items = !store._todos.isEmpty ? store._todos : state.todos
         return items.contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        state.todos.contains { $0.id == itemId } || store.todos.contains { $0.id == itemId }
+        state.todos.contains { $0.id == itemId } || store._todos.contains { $0.id == itemId }
     }
 
     public var isDecomposed: Bool {
@@ -772,18 +772,18 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let items = !store.todos.isEmpty ? store.todos : state.todos
+        let items = !store._todos.isEmpty ? store._todos : state.todos
         return items.count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let items = !store.todos.isEmpty ? store.todos : state.todos
+        let items = !store._todos.isEmpty ? store._todos : state.todos
         guard items.indices.contains(index) else { return nil }
         return items[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let items = !store.todos.isEmpty ? store.todos : state.todos
+        let items = !store._todos.isEmpty ? store._todos : state.todos
         guard items.indices.contains(index) else { return nil }
         return items[index].title
     }
@@ -817,7 +817,7 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        let todos = !context.store.todos.isEmpty ? context.store.todos : state.todos
+        let todos = !context.store._todos.isEmpty ? context.store._todos : state.todos
         guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.store.isItemPinned(id: subItemId)
         let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
@@ -1041,7 +1041,7 @@ public struct VitalsPluginSettingsView: View {
                 set: {
                     state.isDecomposed = $0
                     state.save()
-                    store.isVitalsDecomposed = $0
+                    store._isVitalsDecomposed = $0
                     store.savePersistentState()
                 }
             ))
@@ -1068,7 +1068,7 @@ public struct VitalsPluginSettingsView: View {
                                     state.enabledMetrics.append(metric)
                                 }
                                 state.save()
-                                store.vitalsEnabledMetrics = state.enabledMetrics
+                                store._vitalsEnabledMetrics = state.enabledMetrics
                                 store.savePersistentState()
                             }
                         } label: {
@@ -1103,7 +1103,7 @@ public struct VitalsPluginSettingsView: View {
                     Button("Reset Thresholds to Defaults") {
                         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                             state.resetThresholds()
-                            store.vitalsThresholds = state.thresholds
+                            store._vitalsThresholds = state.thresholds
                             store.savePersistentState()
                         }
                     }
@@ -1231,7 +1231,7 @@ public struct VitalsPluginSettingsView: View {
                                     set: {
                                         state.thresholds.batteryLow = $0 / 100.0
                                         state.save()
-                                        store.vitalsThresholds.batteryLow = state.thresholds.batteryLow
+                                        store._vitalsThresholds.batteryLow = state.thresholds.batteryLow
                                         store.savePersistentState()
                                     }
                                 ),
@@ -1269,7 +1269,7 @@ public struct VitalsPluginSettingsView: View {
                                     set: {
                                         state.thresholds.networkWarningMB = min($0, state.thresholds.networkDangerMB - 1.0)
                                         state.save()
-                                        store.vitalsThresholds.networkWarningMB = state.thresholds.networkWarningMB
+                                        store._vitalsThresholds.networkWarningMB = state.thresholds.networkWarningMB
                                         store.savePersistentState()
                                     }
                                 ),
@@ -1287,7 +1287,7 @@ public struct VitalsPluginSettingsView: View {
                                     set: {
                                         state.thresholds.networkDangerMB = max($0, state.thresholds.networkWarningMB + 1.0)
                                         state.save()
-                                        store.vitalsThresholds.networkDangerMB = state.thresholds.networkDangerMB
+                                        store._vitalsThresholds.networkDangerMB = state.thresholds.networkDangerMB
                                         store.savePersistentState()
                                     }
                                 ),
@@ -1335,7 +1335,7 @@ public struct VitalsPluginSettingsView: View {
                 let limit = state.thresholds[keyPath: limitKeyPath]
                 state.thresholds[keyPath: keyPath] = isWarning ? min(val, limit - 0.05) : max(val, limit + 0.05)
                 state.save()
-                store.vitalsThresholds[keyPath: keyPath] = state.thresholds[keyPath: keyPath]
+                store._vitalsThresholds[keyPath: keyPath] = state.thresholds[keyPath: keyPath]
                 store.savePersistentState()
             }
         )
@@ -1429,7 +1429,7 @@ public struct ScriptsPluginSettingsView: View {
                 set: {
                     state.isDecomposed = $0
                     state.save()
-                    store.isScriptsDecomposed = $0
+                    store._isScriptsDecomposed = $0
                     store.savePersistentState()
                 }
             ))
@@ -1456,14 +1456,14 @@ public struct ScriptsPluginSettingsView: View {
                                         updated.removeAll { $0 == action.id }
                                         state.enabledActionIds = updated
                                         state.save()
-                                        store.scriptsEnabledActionIds = updated
+                                        store._scriptsEnabledActionIds = updated
                                         store.savePersistentState()
                                     }
                                 } else {
                                     updated.append(action.id)
                                     state.enabledActionIds = updated
                                     state.save()
-                                    store.scriptsEnabledActionIds = updated
+                                    store._scriptsEnabledActionIds = updated
                                     store.savePersistentState()
                                 }
                             }
@@ -1512,7 +1512,7 @@ public struct ScriptsPluginSettingsView: View {
                     withAnimation {
                         state.resetToDefaults()
                         editingActionId = nil
-                        store.scriptsEnabledActionIds = state.enabledActionIds
+                        store._scriptsEnabledActionIds = state.enabledActionIds
                         store.savePersistentState()
                     }
                 }
@@ -1574,7 +1574,7 @@ public struct ScriptsPluginSettingsView: View {
                             )
                             withAnimation {
                                 state.addAction(item)
-                                store.scriptsEnabledActionIds = state.enabledActionIds
+                                store._scriptsEnabledActionIds = state.enabledActionIds
                                 store.savePersistentState()
                                 newActionName = ""
                                 newScriptContent = ""
@@ -1653,7 +1653,7 @@ public struct ScriptsPluginSettingsView: View {
                                         editingActionId = nil
                                     }
                                     state.removeAction(id: action.id)
-                                    store.scriptsEnabledActionIds = state.enabledActionIds
+                                    store._scriptsEnabledActionIds = state.enabledActionIds
                                     store.savePersistentState()
                                 }
                             } label: {
@@ -1785,7 +1785,7 @@ public struct ShelfPluginSettingsView: View {
             if !state.files.isEmpty {
                 Button("Clear Shelf") {
                     state.clear()
-                    store.shelfFiles.removeAll()
+                    store._shelfFiles.removeAll()
                 }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.medium))
@@ -1817,8 +1817,8 @@ public struct NotesPluginSettingsView: View {
             Spacer()
             Button("Clear Notes") {
                 state.clear()
-                store.quickNote.text = ""
-                store.quickNote.lastModified = Date()
+                store._quickNote.text = ""
+                store._quickNote.lastModified = Date()
                 store.savePersistentState()
             }
             .buttonStyle(.plain)
@@ -1947,7 +1947,7 @@ public struct TerminalPluginSettingsView: View {
                     set: {
                         state.fontFamily = $0
                         state.save()
-                        store.terminalFontFamily = $0
+                        store._terminalFontFamily = $0
                         store.savePersistentState()
                     }
                 )) {
@@ -1972,7 +1972,7 @@ public struct TerminalPluginSettingsView: View {
                     set: {
                         state.fontSize = $0
                         state.save()
-                        store.terminalFontSize = $0
+                        store._terminalFontSize = $0
                         store.savePersistentState()
                     }
                 ), in: 9.0...20.0, step: 0.5)

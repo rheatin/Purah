@@ -89,8 +89,8 @@ public struct TodoDrawerView: View {
                     get: { todo.title },
                     set: { newTitle in
                         state.updateTitle(id: todo.id, title: newTitle)
-                        if let idx = store.todos.firstIndex(where: { $0.id == todo.id }) {
-                            store.todos[idx].title = newTitle
+                        if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
+                            store._todos[idx].title = newTitle
                         }
                     }
                 ))
@@ -121,7 +121,7 @@ public struct TodoDrawerView: View {
             Button {
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
                     state.remove(id: todo.id)
-                    store.todos.removeAll { $0.id == todo.id }
+                    store._todos.removeAll { $0.id == todo.id }
                 }
             } label: {
                 Image(systemName: "trash")

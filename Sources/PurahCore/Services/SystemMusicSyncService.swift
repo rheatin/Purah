@@ -96,7 +96,7 @@ public final class SystemMusicSyncService {
         let existingArtwork = (cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil
 
         if let store = store {
-            store.musicTrack = MusicTrackInfo(
+            store._musicTrack = MusicTrackInfo(
                 title: title,
                 artist: artist,
                 album: album,
@@ -118,8 +118,8 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
-                        if store?.musicTrack.title == title {
-                            store?.musicTrack.artworkData = art
+                        if store?._musicTrack.title == title {
+                            store?._musicTrack.artworkData = art
                         }
                     }
                 }
@@ -149,7 +149,7 @@ public final class SystemMusicSyncService {
         let existingArtwork = (cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil
 
         if let store = store {
-            store.musicTrack = MusicTrackInfo(
+            store._musicTrack = MusicTrackInfo(
                 title: title,
                 artist: artist,
                 album: album,
@@ -171,8 +171,8 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
-                        if store?.musicTrack.title == title {
-                            store?.musicTrack.artworkData = art
+                        if store?._musicTrack.title == title {
+                            store?._musicTrack.artworkData = art
                         }
                     }
                 }
@@ -212,7 +212,7 @@ public final class SystemMusicSyncService {
 
         await MainActor.run {
             guard let store = store else { return }
-            store.musicTrack = MusicTrackInfo(
+            store._musicTrack = MusicTrackInfo(
                 title: title,
                 artist: artist,
                 album: album,
@@ -230,8 +230,8 @@ public final class SystemMusicSyncService {
 
         if let art = await fetchArtwork(title: title, artist: artist, album: album) {
             await MainActor.run {
-                if store?.musicTrack.title == title {
-                    store?.musicTrack.artworkData = art
+                if store?._musicTrack.title == title {
+                    store?._musicTrack.artworkData = art
                 }
             }
         }
@@ -245,16 +245,16 @@ public final class SystemMusicSyncService {
 
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak store] _ in
             MainActor.assumeIsolated {
-                guard let store = store, store.musicTrack.isPlaying else { return }
-                let cur = store.musicTrack.calculatedCurrentTime
-                let prog = store.musicTrack.calculatedProgress
+                guard let store = store, store._musicTrack.isPlaying else { return }
+                let cur = store._musicTrack.calculatedCurrentTime
+                let prog = store._musicTrack.calculatedProgress
                 let samples: [Double] = (0..<14).map { _ in
                     Double.random(in: 0.25...0.95)
                 }
-                store.musicTrack.currentPositionSeconds = cur
-                store.musicTrack.lastUpdated = Date()
-                store.musicTrack.playbackProgress = prog
-                store.musicTrack.waveformSamples = samples
+                store._musicTrack.currentPositionSeconds = cur
+                store._musicTrack.lastUpdated = Date()
+                store._musicTrack.playbackProgress = prog
+                store._musicTrack.waveformSamples = samples
             }
         }
     }
@@ -335,11 +335,11 @@ public final class SystemMusicSyncService {
 
     public func togglePlayPause(store: PurahWorkspaceStore?) {
         guard let store = store else { return }
-        let nowPlaying = !store.musicTrack.isPlaying
-        store.musicTrack.isPlaying = nowPlaying
-        store.musicTrack.playbackRate = nowPlaying ? 1.0 : 0.0
-        store.musicTrack.currentPositionSeconds = store.musicTrack.calculatedCurrentTime
-        store.musicTrack.lastUpdated = Date()
+        let nowPlaying = !store._musicTrack.isPlaying
+        store._musicTrack.isPlaying = nowPlaying
+        store._musicTrack.playbackRate = nowPlaying ? 1.0 : 0.0
+        store._musicTrack.currentPositionSeconds = store._musicTrack.calculatedCurrentTime
+        store._musicTrack.lastUpdated = Date()
         updatePlaybackTimer(store: store, isPlaying: nowPlaying)
 
         if isMusicAppRunning {
@@ -381,12 +381,12 @@ public final class SystemMusicSyncService {
     public func seek(to progress: Double, store: PurahWorkspaceStore?) {
         guard let store = store else { return }
         let clamped = min(max(progress, 0.0), 1.0)
-        let total = max(store.musicTrack.durationSeconds, 1.0)
+        let total = max(store._musicTrack.durationSeconds, 1.0)
         let targetSec = clamped * total
 
-        store.musicTrack.currentPositionSeconds = targetSec
-        store.musicTrack.lastUpdated = Date()
-        store.musicTrack.playbackProgress = clamped
+        store._musicTrack.currentPositionSeconds = targetSec
+        store._musicTrack.lastUpdated = Date()
+        store._musicTrack.playbackProgress = clamped
 
         if isMusicAppRunning {
             Task.detached {
