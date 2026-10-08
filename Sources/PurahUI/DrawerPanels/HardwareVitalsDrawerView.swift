@@ -279,7 +279,7 @@ public struct VitalsFocusedDrawerView: View {
     }
 
     public var body: some View {
-        let metrics = vitals.metrics
+        let metrics = state.metrics
 
         VStack(alignment: .leading, spacing: 4) {
             switch metric {
