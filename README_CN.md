@@ -114,6 +114,7 @@ swift build -c release --disable-sandbox
 ### 🙏 致谢与参考
 
 - **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** (作者 Miguel de Icaza) — 为 Purah 的边缘 GPU 加速终端模拟提供核心支持。
+- **[MacToastKit](https://github.com/daniyalmaster693/MacToastKit)** (作者 daniyalmaster693) — 为 Purah 的极简轻量 macOS HUD Toast 提示体系提供设计灵感与参考。
 
 ---
 
