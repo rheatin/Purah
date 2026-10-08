@@ -184,6 +184,63 @@ struct PluginArchitectureTests {
         }
     }
 
+    @Test("Plugins implement makeSteppedDrawerView for decomposed sub-items with generic fallback")
+    func testSteppedDrawerViews() {
+        let store = PurahWorkspaceStore()
+        let vitalsPlugin = HardwareVitalsPlugin()
+        let scriptsPlugin = ScriptRunwayPlugin()
+        let todoPlugin = TodoPlugin()
+        let calPlugin = CalendarPlugin()
+        let musicPlugin = MusicPlugin()
+
+        let context = PurahPluginContext(
+            pod: store.pods.first(where: { $0.id == "vitals" }) ?? SlotPod(
+                id: "vitals",
+                name: "Vitals",
+                systemIcon: "cpu",
+                edge: .left,
+                range: .init(start: 0, length: 0.2),
+                ambientStyle: .ghostDot,
+                preferredZone: .glance,
+                ergonomicWeight: 35.0
+            ),
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 56.0,
+            drawerWidth: 280.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .green,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        // Vitals stepped drawer returns non-nil for valid metric
+        let vitalsDrawer = vitalsPlugin.makeSteppedDrawerView(subItemId: "vitals-cpu", context: context)
+        #expect(vitalsDrawer != nil)
+
+        // Scripts stepped drawer returns non-nil for valid action
+        let scriptDrawer = scriptsPlugin.makeSteppedDrawerView(subItemId: "scripts-flush-dns", context: context)
+        #expect(scriptDrawer != nil)
+
+        // Todo stepped drawer returns non-nil when item exists
+        store.todos = [TodoItem(title: "Task 1")]
+        let todoDrawer = todoPlugin.makeSteppedDrawerView(subItemId: store.todos[0].id, context: context)
+        #expect(todoDrawer != nil)
+
+        // Calendar stepped drawer returns non-nil when event exists
+        store.calendarEvents = [CalendarEventItem(title: "Meeting", startTime: Date(), endTime: Date().addingTimeInterval(3600))]
+        let calDrawer = calPlugin.makeSteppedDrawerView(subItemId: store.calendarEvents[0].id, context: context)
+        #expect(calDrawer != nil)
+
+        // Non-stepped plugin returns nil by default
+        let musicDrawer = musicPlugin.makeSteppedDrawerView(subItemId: "track-1", context: context)
+        #expect(musicDrawer == nil)
+    }
+
     @Test("Plugin capability models and default protocol extensions")
     func testPluginCapabilities() {
         let store = PurahWorkspaceStore()

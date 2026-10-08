@@ -143,6 +143,28 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
             )
         }
     }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let metricKey = subItemId.replacingOccurrences(of: "vitals-", with: "")
+        guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            VitalsItemDrawerView(
+                metric: metric,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
+    }
 }
 
 public struct VitalsRailBarPluginView: View {
@@ -315,6 +337,28 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         } else {
             context.requestExpand()
         }
+    }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let actionId = subItemId.replacingOccurrences(of: "scripts-", with: "")
+        guard let action = state.action(for: actionId) ?? ScriptRunwayService.shared.action(for: actionId) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            ScriptItemDrawerView(
+                action: action,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
     }
 }
 
@@ -627,6 +671,28 @@ public struct CalendarPlugin: PurahPodPlugin {
             )
         }
     }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let events = !context.store.calendarEvents.isEmpty ? context.store.calendarEvents : state.events
+        guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            CalendarItemDrawerView(
+                event: event,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
+    }
 }
 
 // MARK: - Todo Plugin
@@ -748,6 +814,28 @@ public struct TodoPlugin: PurahPodPlugin {
         } else {
             context.requestExpand()
         }
+    }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let todos = !context.store.todos.isEmpty ? context.store.todos : state.todos
+        guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            TodoItemDrawerView(
+                todo: todo,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
     }
 }
 

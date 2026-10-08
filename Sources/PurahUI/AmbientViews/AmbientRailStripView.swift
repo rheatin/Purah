@@ -193,26 +193,14 @@ public struct AmbientRailStripView: View {
                 }
 
             if isActive {
-                if pod.id == "music" {
-                    musicDrawerCard(pod: pod, color: color, isPinned: isPinned, totalHeight: slotH)
-                        .transition(drawerTransition)
-                } else {
-                    pluginDrawerCard(plugin: plugin, pod: pod, context: context, totalHeight: slotH)
-                        .transition(drawerTransition)
-                }
+                pluginDrawerCard(plugin: plugin, pod: pod, context: context, totalHeight: slotH)
+                    .transition(drawerTransition)
             }
         }
         .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: slotH, alignment: .top)
         .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerPodId)
-    }
-
-    @ViewBuilder
-    private func musicDrawerCard(pod: SlotPod, color: Color, isPinned: Bool, totalHeight: CGFloat) -> some View {
-        MusicDrawerView(store: store)
-            .frame(width: store.effectiveDrawerWidth(for: store.musicTrack.title, baseWidth: 290.0), height: totalHeight)
-            .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 
     @ViewBuilder
