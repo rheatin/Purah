@@ -8,6 +8,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
 
     private var registeredPlugins: [String: any PurahPodPlugin] = [:]
     private var catalogPlugins: [String: any PurahPodPlugin] = [:]
+    private weak var boundStore: PurahWorkspaceStore?
 
     public init() {
         registerBuiltInPlugins()
@@ -29,12 +30,14 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         catalogPlugins[plugin.manifest.id] = plugin
         registeredPlugins[plugin.manifest.id] = plugin
         if let store {
+            self.boundStore = store
             store.registerCapabilityProvider(plugin)
             plugin.onMount(store: store)
         }
     }
 
     public func bindStore(_ store: PurahWorkspaceStore, marketManager: PluginMarketManager? = nil) {
+        self.boundStore = store
         let market = marketManager ?? PluginMarketManager(store: store)
         market.lifecycleDelegate = self
         PluginMarketManager.globalLifecycleDelegate = self
@@ -44,21 +47,26 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
                 store.registerCapabilityProvider(plugin)
                 plugin.onMount(store: store)
             } else {
-                registeredPlugins.removeValue(forKey: plugin.manifest.id)
-                store.unregisterCapabilityProvider(for: plugin.manifest.id)
+                if let removed = registeredPlugins.removeValue(forKey: plugin.manifest.id) {
+                    store.unregisterCapabilityProvider(for: plugin.manifest.id)
+                    removed.onUnmount(store: store)
+                } else {
+                    store.unregisterCapabilityProvider(for: plugin.manifest.id)
+                    plugin.onUnmount(store: store)
+                }
             }
         }
     }
 
     public func unregister(id: String, store: PurahWorkspaceStore? = nil) {
         if let plugin = registeredPlugins.removeValue(forKey: id) {
-            if let store {
-                store.unregisterCapabilityProvider(for: id)
-                plugin.onUnmount(store: store)
+            let targetStore = store ?? boundStore
+            if let targetStore {
+                targetStore.unregisterCapabilityProvider(for: id)
+                plugin.onUnmount(store: targetStore)
+            } else {
+                plugin.onUnmount(store: PurahWorkspaceStore())
             }
-        }
-        if id == "terminal" {
-            TerminalManager.shared.stopProcess()
         }
     }
 

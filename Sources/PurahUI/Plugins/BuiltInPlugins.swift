@@ -1841,7 +1841,8 @@ public struct TerminalPlugin: PurahPodPlugin {
         preferredZone: .goldenAction,
         ergonomicWeight: 35.0,
         minLengthRatio: 0.20,
-        defaultColorHex: "#00F5D4"
+        defaultColorHex: "#00F5D4",
+        defaultDrawerWidth: 520.0
     )
 
     public let state: TerminalPluginState

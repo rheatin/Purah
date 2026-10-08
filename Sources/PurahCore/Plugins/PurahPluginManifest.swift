@@ -13,6 +13,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     public var ergonomicWeight: Double
     public var minLengthRatio: Double
     public var defaultColorHex: String
+    public var defaultDrawerWidth: Double
 
     public init(
         id: String,
@@ -25,7 +26,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         preferredZone: ZoneType,
         ergonomicWeight: Double = 35.0,
         minLengthRatio: Double = 0.10,
-        defaultColorHex: String
+        defaultColorHex: String,
+        defaultDrawerWidth: Double = 260.0
     ) {
         self.id = id
         self.displayName = displayName
@@ -38,6 +40,45 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         self.ergonomicWeight = ergonomicWeight
         self.minLengthRatio = minLengthRatio
         self.defaultColorHex = defaultColorHex
+        self.defaultDrawerWidth = defaultDrawerWidth
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, displayName, systemIcon, author, version, description
+        case defaultEdge, preferredZone, ergonomicWeight, minLengthRatio, defaultColorHex
+        case defaultDrawerWidth
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        systemIcon = try container.decode(String.self, forKey: .systemIcon)
+        author = try container.decode(String.self, forKey: .author)
+        version = try container.decode(String.self, forKey: .version)
+        description = try container.decode(String.self, forKey: .description)
+        defaultEdge = try container.decode(MountEdge.self, forKey: .defaultEdge)
+        preferredZone = try container.decode(ZoneType.self, forKey: .preferredZone)
+        ergonomicWeight = try container.decode(Double.self, forKey: .ergonomicWeight)
+        minLengthRatio = try container.decode(Double.self, forKey: .minLengthRatio)
+        defaultColorHex = try container.decode(String.self, forKey: .defaultColorHex)
+        defaultDrawerWidth = try container.decodeIfPresent(Double.self, forKey: .defaultDrawerWidth) ?? 260.0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(systemIcon, forKey: .systemIcon)
+        try container.encode(author, forKey: .author)
+        try container.encode(version, forKey: .version)
+        try container.encode(description, forKey: .description)
+        try container.encode(defaultEdge, forKey: .defaultEdge)
+        try container.encode(preferredZone, forKey: .preferredZone)
+        try container.encode(ergonomicWeight, forKey: .ergonomicWeight)
+        try container.encode(minLengthRatio, forKey: .minLengthRatio)
+        try container.encode(defaultColorHex, forKey: .defaultColorHex)
+        try container.encode(defaultDrawerWidth, forKey: .defaultDrawerWidth)
     }
 
     public func makeDefaultSlotPod(range: NormalizedRange? = nil, isEnabled: Bool = true) -> SlotPod {
@@ -52,7 +93,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             ergonomicWeight: ergonomicWeight,
             minLength: minLengthRatio,
             isEnabled: isEnabled,
-            drawerWidth: id == "terminal" ? 520 : 260,
+            drawerWidth: defaultDrawerWidth,
             defaultColorHex: defaultColorHex
         )
     }
@@ -69,7 +110,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .glance,
             ergonomicWeight: 35.0,
             minLengthRatio: 0.22,
-            defaultColorHex: "#00E5A3"
+            defaultColorHex: "#00E5A3",
+            defaultDrawerWidth: 260.0
         ),
         PurahPluginManifest(
             id: "scripts",
@@ -82,7 +124,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .quickFlick,
             ergonomicWeight: 30.0,
             minLengthRatio: 0.18,
-            defaultColorHex: "#A78BFA"
+            defaultColorHex: "#A78BFA",
+            defaultDrawerWidth: 260.0
         ),
         PurahPluginManifest(
             id: "terminal",
@@ -95,7 +138,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .goldenAction,
             ergonomicWeight: 35.0,
             minLengthRatio: 0.20,
-            defaultColorHex: "#00F5D4"
+            defaultColorHex: "#00F5D4",
+            defaultDrawerWidth: 520.0
         ),
         PurahPluginManifest(
             id: "notes",
@@ -108,7 +152,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .quickFlick,
             ergonomicWeight: 30.0,
             minLengthRatio: 0.16,
-            defaultColorHex: "#FFD60A"
+            defaultColorHex: "#FFD60A",
+            defaultDrawerWidth: 260.0
         ),
         PurahPluginManifest(
             id: "shelf",
@@ -121,7 +166,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .quickFlick,
             ergonomicWeight: 35.0,
             minLengthRatio: 0.16,
-            defaultColorHex: "#BF5AF2"
+            defaultColorHex: "#BF5AF2",
+            defaultDrawerWidth: 260.0
         ),
         PurahPluginManifest(
             id: "music",
@@ -134,7 +180,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .goldenAction,
             ergonomicWeight: 25.0,
             minLengthRatio: 0.14,
-            defaultColorHex: "#FF375F"
+            defaultColorHex: "#FF375F",
+            defaultDrawerWidth: 260.0
         ),
         PurahPluginManifest(
             id: "calendar",
@@ -147,7 +194,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .goldenAction,
             ergonomicWeight: 45.0,
             minLengthRatio: 0.16,
-            defaultColorHex: "#FF9F0A"
+            defaultColorHex: "#FF9F0A",
+            defaultDrawerWidth: 260.0
         ),
         PurahPluginManifest(
             id: "todo",
@@ -160,7 +208,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             preferredZone: .goldenAction,
             ergonomicWeight: 40.0,
             minLengthRatio: 0.15,
-            defaultColorHex: "#30D158"
+            defaultColorHex: "#30D158",
+            defaultDrawerWidth: 260.0
         )
     ]
 }
