@@ -33,6 +33,11 @@ public struct InteractiveTerminalView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
@@ -55,14 +60,27 @@ public struct InteractiveTerminalView: NSViewRepresentable {
         let defaultColor = palette.style == .native ? NSColor.labelColor : NSColor(white: 0.94, alpha: 1.0)
         let attrString = AnsiParser.parse(text, font: font, defaultColor: defaultColor)
 
-        // Only update text storage when content changed to prevent cursor jitter
-        if context.coordinator.lastRenderedText != text {
+        let fontChanged = (context.coordinator.lastRenderedFontFamily != fontFamily) ||
+                          (context.coordinator.lastRenderedFontSize != fontSize)
+        let textChanged = (context.coordinator.lastRenderedText != text)
+        let styleChanged = (context.coordinator.lastRenderedStyle != palette.style)
+
+        if fontChanged || textChanged || styleChanged {
             context.coordinator.lastRenderedText = text
+            context.coordinator.lastRenderedFontFamily = fontFamily
+            context.coordinator.lastRenderedFontSize = fontSize
+            context.coordinator.lastRenderedStyle = palette.style
+
             textView.textStorage?.setAttributedString(attrString)
 
-            // Auto-scroll to bottom
-            DispatchQueue.main.async {
-                textView.scrollRangeToVisible(NSRange(location: attrString.length, length: 0))
+            if fontChanged {
+                textView.updatePtyDimensions()
+            }
+
+            if textChanged {
+                DispatchQueue.main.async {
+                    textView.scrollRangeToVisible(NSRange(location: attrString.length, length: 0))
+                }
             }
         }
     }
@@ -70,6 +88,9 @@ public struct InteractiveTerminalView: NSViewRepresentable {
     public final class Coordinator {
         weak var textView: TerminalInteractiveTextView?
         var lastRenderedText: String = ""
+        var lastRenderedFontFamily: String = ""
+        var lastRenderedFontSize: Double = 0
+        var lastRenderedStyle: AppThemeStyle?
     }
 }
 
@@ -100,7 +121,7 @@ public final class TerminalInteractiveTextView: NSTextView {
         updatePtyDimensions()
     }
 
-    private func updatePtyDimensions() {
+    func updatePtyDimensions() {
         let (charW, charH) = TerminalFontManager.charDimensions(font: activeFont)
         let usableW = max(bounds.width - 12, 100)
         let usableH = max(bounds.height - 12, 60)
@@ -231,7 +252,14 @@ private enum AnsiParser {
         guard !raw.isEmpty else { return result }
 
         // Clean up carriage returns
-        let text = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        var text = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+
+        // Strip non-color terminal escape sequences like [?2004h, [J, [K, OSC title sequences
+        text = text.replacingOccurrences(of: "\\x1B\\][^\u{07}\\x1B]*(\u{07}|\\x1B\\\\)", with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: "\\x1B\\[\\?[0-9;]*[a-zA-Z]", with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: "\\x1B\\[[0-9;]*[a-zA-Z&&[^m]]", with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: "\\x1B[=\\>]", with: "", options: .regularExpression)
+
         let pattern = "\\x1B\\[([0-9;]*)m"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: defaultColor])
