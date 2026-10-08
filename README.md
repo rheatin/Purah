@@ -114,6 +114,7 @@ swift build -c release --disable-sandbox
 ### 🙏 Acknowledgments
 
 - **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** by Miguel de Icaza — powering Purah's GPU-accelerated edge terminal emulation.
+- **[MacToastKit](https://github.com/daniyalmaster693/MacToastKit)** by daniyalmaster693 — inspiration and implementation reference for minimal, non-intrusive macOS HUD toasts.
 
 ---
 
