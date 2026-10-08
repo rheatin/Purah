@@ -79,11 +79,7 @@ public struct AmbientRailStripView: View {
             ForEach(store.todos) { todo in
                 let isPinned = store.isItemPinned(id: todo.id)
                 let isActive = (todo.id == store.activeDrawerItemId || isPinned)
-                let activeIdx = store.todos.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
-                let thisIdx = store.todos.firstIndex(where: { $0.id == todo.id }) ?? -99
-                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
-
-                let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+                let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                 TodoItemDrawerView(
                     todo: todo,
@@ -134,11 +130,7 @@ public struct AmbientRailStripView: View {
             ForEach(store.calendarEvents) { event in
                 let isPinned = store.isItemPinned(id: event.id)
                 let isActive = (event.id == store.activeDrawerItemId || isPinned)
-                let activeIdx = store.calendarEvents.firstIndex(where: { $0.id == (store.activeDrawerItemId ?? "") })
-                let thisIdx = store.calendarEvents.firstIndex(where: { $0.id == event.id }) ?? -99
-                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
-
-                let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+                let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                 CalendarItemDrawerView(
                     event: event,
@@ -195,10 +187,7 @@ public struct AmbientRailStripView: View {
                 let itemId = "vitals-\(metric.rawValue)"
                 let isPinned = store.isItemPinned(id: itemId)
                 let isActive = (itemId == store.activeDrawerItemId || isPinned)
-                let activeIdx = metrics.firstIndex(where: { "vitals-\($0.rawValue)" == (store.activeDrawerItemId ?? "") })
-                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
-
-                let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+                let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                 let cardActualH = max(itemH, 48.0)
                 let itemTopInWindow = startY + CGFloat(thisIdx) * (itemH + spacing)
@@ -259,10 +248,7 @@ public struct AmbientRailStripView: View {
                 let itemId = "scripts-\(action.id)"
                 let isPinned = store.isItemPinned(id: itemId)
                 let isActive = (itemId == store.activeDrawerItemId || isPinned)
-                let activeIdx = actions.firstIndex(where: { "scripts-\($0.id)" == (store.activeDrawerItemId ?? "") })
-                let isNeighbor = activeIdx.map { abs(thisIdx - $0) == 1 } ?? false
-
-                let state: ItemDrawerState = isActive ? .expandedDrawer : (isNeighbor ? .neighborPeek : .dockedFlush)
+                let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                 let cardActualH = max(itemH, 48.0)
                 let itemTopInWindow = startY + CGFloat(thisIdx) * (itemH + spacing)

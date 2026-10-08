@@ -226,6 +226,10 @@ public final class PurahWorkspaceStore {
     public var fixedDrawerWidth: Double = 290.0 // Bounds: 220px ~ 330px
     public var customPodColors: [String: String] = [:]
 
+    // Terminal Plugin Custom Settings
+    public var terminalFontFamily: String = "Auto (Nerd Font)"
+    public var terminalFontSize: Double = 11.5
+
     public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0) -> CGFloat {
         switch drawerWidthMode {
         case .fixed:
@@ -255,7 +259,7 @@ public final class PurahWorkspaceStore {
         switch podId {
         case "vitals": return 300.0
         case "scripts": return 160.0
-        case "terminal": return 180.0
+        case "terminal": return 350.0
         case "shelf": return 130.0
         case "notes": return 130.0
         case "music": return 110.0
@@ -689,10 +693,20 @@ public final class PurahWorkspaceStore {
         } else {
             self.customPushResistanceBarrier = 40.0
         }
+
+        if let font = defaults.string(forKey: "purah.terminal.fontFamily"), !font.isEmpty {
+            self.terminalFontFamily = font
+        }
+        let termSize = defaults.double(forKey: "purah.terminal.fontSize")
+        if termSize >= 9.0 && termSize <= 24.0 {
+            self.terminalFontSize = termSize
+        }
     }
 
     public func savePersistentState() {
         let defaults = UserDefaults.standard
+        defaults.set(terminalFontFamily, forKey: "purah.terminal.fontFamily")
+        defaults.set(terminalFontSize, forKey: "purah.terminal.fontSize")
         defaults.set(quickNote.text, forKey: "purah.quickNote.text")
         defaults.set(quickNote.lastModified, forKey: "purah.quickNote.lastModified")
         defaults.set(customPodColors, forKey: "purah.customPodColors")

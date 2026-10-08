@@ -51,9 +51,6 @@ public struct TodoItemDrawerView: View {
             if state == .expandedDrawer {
                 expandedCard(isDone: isDone, cardH: cardH)
                     .transition(itemDrawerTransition)
-            } else if state == .neighborPeek {
-                neighborPeekCard(isDone: isDone, cardH: cardH)
-                    .transition(neighborPeekTransition)
             }
         }
         .frame(height: cardH)
@@ -61,14 +58,6 @@ public struct TodoItemDrawerView: View {
     }
 
     private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
-    private var neighborPeekTransition: AnyTransition {
         let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
         return .asymmetric(
             insertion: .move(edge: edgeDirection),
@@ -131,32 +120,6 @@ public struct TodoItemDrawerView: View {
         .padding(.vertical, 4)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor.opacity(isDone ? 0.35 : 1.0))
-    }
-
-    @ViewBuilder
-    private func neighborPeekCard(isDone: Bool, cardH: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            if edge == .right {
-                Circle()
-                    .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                    .frame(width: 5, height: 5)
-                    .padding(.leading, 6)
-                Spacer()
-            } else {
-                Spacer()
-                Circle()
-                    .fill(podColor.opacity(isDone ? 0.35 : 0.9))
-                    .frame(width: 5, height: 5)
-                    .padding(.trailing, 6)
-            }
-        }
-        .frame(width: 28, height: cardH)
-        .background(drawerShape.fill(.ultraThinMaterial))
-        .clipShape(drawerShape)
-        .overlay(
-            drawerShape
-                .stroke(podColor.opacity(isDone ? 0.3 : 0.75), lineWidth: 1)
-        )
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -249,9 +212,6 @@ public struct CalendarItemDrawerView: View {
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting)
                     .transition(itemDrawerTransition)
-            } else if state == .neighborPeek {
-                neighborPeekCard(cardH: cardH, isPast: isPast)
-                    .transition(neighborPeekTransition)
             }
         }
         .frame(height: cardH)
@@ -269,14 +229,6 @@ public struct CalendarItemDrawerView: View {
     }
 
     private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
-    private var neighborPeekTransition: AnyTransition {
         let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
         return .asymmetric(
             insertion: .move(edge: edgeDirection),
@@ -405,32 +357,6 @@ public struct CalendarItemDrawerView: View {
         )
     }
 
-    @ViewBuilder
-    private func neighborPeekCard(cardH: CGFloat, isPast: Bool) -> some View {
-        HStack(spacing: 0) {
-            if edge == .right {
-                Circle()
-                    .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
-                    .frame(width: 5, height: 5)
-                    .padding(.leading, 6)
-                Spacer()
-            } else {
-                Spacer()
-                Circle()
-                    .fill((isPast ? podColor.opacity(0.35) : podColor).opacity(0.9))
-                    .frame(width: 5, height: 5)
-                    .padding(.trailing, 6)
-            }
-        }
-        .frame(width: 28, height: cardH)
-        .background(drawerShape.fill(.ultraThinMaterial))
-        .clipShape(drawerShape)
-        .overlay(
-            drawerShape
-                .stroke((isPast ? podColor.opacity(0.3) : podColor).opacity(0.75), lineWidth: 1)
-        )
-    }
-
     private var drawerShape: UnevenRoundedRectangle {
         if edge == .right {
             return UnevenRoundedRectangle(
@@ -521,9 +447,6 @@ public struct VitalsItemDrawerView: View {
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH)
                     .transition(itemDrawerTransition)
-            } else if state == .neighborPeek {
-                neighborPeekCard(cardH: cardH)
-                    .transition(neighborPeekTransition)
             }
         }
         .frame(height: cardH)
@@ -569,14 +492,6 @@ public struct VitalsItemDrawerView: View {
         )
     }
 
-    private var neighborPeekTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
     @ViewBuilder
     private func expandedCard(cardH: CGFloat) -> some View {
         let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
@@ -593,29 +508,6 @@ public struct VitalsItemDrawerView: View {
         .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
-    }
-
-    @ViewBuilder
-    private func neighborPeekCard(cardH: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            if edge == .right {
-                Image(systemName: metric.systemIcon)
-                    .font(.system(size: 8))
-                    .foregroundColor(telemetryColor)
-                    .padding(.leading, 6)
-                Spacer()
-            } else {
-                Spacer()
-                Image(systemName: metric.systemIcon)
-                    .font(.system(size: 8))
-                    .foregroundColor(telemetryColor)
-                    .padding(.trailing, 6)
-            }
-        }
-        .frame(width: 28, height: cardH)
-        .background(drawerShape.fill(.ultraThinMaterial))
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(telemetryColor.opacity(0.75), lineWidth: 1))
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -727,9 +619,6 @@ public struct ScriptItemDrawerView: View {
             if state == .expandedDrawer {
                 expandedCard(cardH: cardH)
                     .transition(itemDrawerTransition)
-            } else if state == .neighborPeek {
-                neighborPeekCard(cardH: cardH)
-                    .transition(neighborPeekTransition)
             }
         }
         .frame(height: cardH)
@@ -740,14 +629,6 @@ public struct ScriptItemDrawerView: View {
     }
 
     private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
-    private var neighborPeekTransition: AnyTransition {
         let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
         return .asymmetric(
             insertion: .move(edge: edgeDirection),
@@ -849,46 +730,6 @@ public struct ScriptItemDrawerView: View {
         .padding(.vertical, 5)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
-    }
-
-    @ViewBuilder
-    private func neighborPeekCard(cardH: CGFloat) -> some View {
-        let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
-        HStack(spacing: 0) {
-            if edge == .right {
-                Group {
-                    if isRunning {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .scaleEffect(0.55)
-                    } else {
-                        Image(systemName: action.systemIcon)
-                            .font(.system(size: 8))
-                            .foregroundColor(podColor)
-                    }
-                }
-                .padding(.leading, 6)
-                Spacer()
-            } else {
-                Spacer()
-                Group {
-                    if isRunning {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .scaleEffect(0.55)
-                    } else {
-                        Image(systemName: action.systemIcon)
-                            .font(.system(size: 8))
-                            .foregroundColor(podColor)
-                    }
-                }
-                .padding(.trailing, 6)
-            }
-        }
-        .frame(width: 28, height: cardH)
-        .background(drawerShape.fill(.ultraThinMaterial))
-        .clipShape(drawerShape)
-        .overlay(drawerShape.stroke(podColor.opacity(0.75), lineWidth: 1))
     }
 
     private var drawerShape: UnevenRoundedRectangle {
