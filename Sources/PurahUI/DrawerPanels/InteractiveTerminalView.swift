@@ -58,7 +58,12 @@ public struct InteractiveTerminalView: NSViewRepresentable {
         textView.activeFont = font
 
         let defaultColor = palette.style == .native ? NSColor.labelColor : NSColor(white: 0.94, alpha: 1.0)
-        let attrString = AnsiParser.parse(text, font: font, defaultColor: defaultColor)
+        let attrString = AnsiParser.renderAttributed(
+            from: PersistentTerminalService.shared.screenBuffer,
+            fallbackText: text,
+            font: font,
+            defaultColor: defaultColor
+        )
 
         let fontChanged = (context.coordinator.lastRenderedFontFamily != fontFamily) ||
                           (context.coordinator.lastRenderedFontSize != fontSize)
@@ -245,74 +250,73 @@ public final class TerminalInteractiveTextView: NSTextView {
     }
 }
 
-// MARK: - Lightweight High-Performance ANSI Escape Code Parser
+// MARK: - Lightweight High-Performance ANSI Escape Code Parser & Screen Renderer
 private enum AnsiParser {
-    static func parse(_ raw: String, font: NSFont, defaultColor: NSColor) -> NSAttributedString {
+    static func renderAttributed(
+        from buffer: TerminalScreenBuffer,
+        fallbackText: String,
+        font: NSFont,
+        defaultColor: NSColor
+    ) -> NSAttributedString {
+        let lines = buffer.getRenderedLines()
+        guard !lines.isEmpty else {
+            return parseFallback(fallbackText, font: font, defaultColor: defaultColor)
+        }
+
+        let result = NSMutableAttributedString()
+        for (lineIdx, line) in lines.enumerated() {
+            var endIdx = line.count - 1
+            while endIdx >= 0 && line[endIdx].char == " " {
+                endIdx -= 1
+            }
+            if endIdx < 0 {
+                if lineIdx < lines.count - 1 {
+                    result.append(NSAttributedString(string: "\n", attributes: [.font: font, .foregroundColor: defaultColor]))
+                }
+                continue
+            }
+
+            for x in 0...endIdx {
+                let cell = line[x]
+                let color = ansiColor(for: cell.fgColorCode, defaultColor: defaultColor)
+                let cellFont = cell.isBold ? NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) : font
+                result.append(NSAttributedString(string: String(cell.char), attributes: [
+                    .font: cellFont,
+                    .foregroundColor: color
+                ]))
+            }
+
+            if lineIdx < lines.count - 1 {
+                result.append(NSAttributedString(string: "\n", attributes: [.font: font, .foregroundColor: defaultColor]))
+            }
+        }
+        return result
+    }
+
+    static func ansiColor(for code: Int?, defaultColor: NSColor) -> NSColor {
+        guard let code = code else { return defaultColor }
+        switch code {
+        case 30: return .black
+        case 31, 91: return .systemRed
+        case 32, 92: return .systemGreen
+        case 33, 93: return .systemYellow
+        case 34, 94: return .systemBlue
+        case 35, 95: return .magenta
+        case 36, 96: return .cyan
+        case 37, 97: return .white
+        case 90: return .systemGray
+        default: return defaultColor
+        }
+    }
+
+    static func parseFallback(_ raw: String, font: NSFont, defaultColor: NSColor) -> NSAttributedString {
         let result = NSMutableAttributedString()
         guard !raw.isEmpty else { return result }
-
-        // Clean up carriage returns
         var text = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-
-        // Strip non-color terminal escape sequences like [?2004h, [J, [K, OSC title sequences
         text = text.replacingOccurrences(of: "\\x1B\\][^\u{07}\\x1B]*(\u{07}|\\x1B\\\\)", with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: "\\x1B\\[\\?[0-9;]*[a-zA-Z]", with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: "\\x1B\\[[0-9;]*[a-zA-Z&&[^m]]", with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: "\\x1B[=\\>]", with: "", options: .regularExpression)
-
-        let pattern = "\\x1B\\[([0-9;]*)m"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: defaultColor])
-        }
-
-        var currentColor = defaultColor
-        var lastIndex = text.startIndex
-        let nsRange = NSRange(location: 0, length: text.utf16.count)
-        let matches = regex.matches(in: text, options: [], range: nsRange)
-
-        for match in matches {
-            guard let r = Range(match.range, in: text) else { continue }
-            let chunk = String(text[lastIndex..<r.lowerBound])
-            if !chunk.isEmpty {
-                result.append(NSAttributedString(string: chunk, attributes: [
-                    .font: font,
-                    .foregroundColor: currentColor
-                ]))
-            }
-
-            if let codeRange = Range(match.range(at: 1), in: text) {
-                let codeStr = String(text[codeRange])
-                let codes = codeStr.split(separator: ";").compactMap { Int($0) }
-                if codes.isEmpty || codes.contains(0) {
-                    currentColor = defaultColor
-                }
-                for code in codes {
-                    switch code {
-                    case 0: currentColor = defaultColor
-                    case 30: currentColor = .black
-                    case 31, 91: currentColor = .systemRed
-                    case 32, 92: currentColor = .systemGreen
-                    case 33, 93: currentColor = .systemYellow
-                    case 34, 94: currentColor = .systemBlue
-                    case 35, 95: currentColor = .magenta
-                    case 36, 96: currentColor = .cyan
-                    case 37, 97: currentColor = .white
-                    case 90: currentColor = .systemGray
-                    default: break
-                    }
-                }
-            }
-            lastIndex = r.upperBound
-        }
-
-        if lastIndex < text.endIndex {
-            let chunk = String(text[lastIndex...])
-            result.append(NSAttributedString(string: chunk, attributes: [
-                .font: font,
-                .foregroundColor: currentColor
-            ]))
-        }
-
-        return result
+        return NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: defaultColor])
     }
 }

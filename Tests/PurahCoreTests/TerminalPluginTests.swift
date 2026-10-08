@@ -78,4 +78,18 @@ struct TerminalPluginTests {
         let view = PersistentTerminalDrawerView(store: store)
         _ = view.body
     }
+
+    @Test("TerminalScreenBuffer handles carriage return, line erase, and screen clears without duplicates")
+    func testTerminalScreenBufferOperations() {
+        let buffer = TerminalScreenBuffer(cols: 40, rows: 10)
+        buffer.feed("echo old line\r\u{1b}[Kecho new line!\nDone.")
+        let rendered = buffer.renderPlain()
+        #expect(rendered.contains("echo new line!"))
+        #expect(!rendered.contains("echo old line"))
+        #expect(rendered.contains("Done."))
+
+        buffer.feed("\u{1b}[2J\u{1b}[HFresh Screen")
+        let cleared = buffer.renderPlain()
+        #expect(cleared.contains("Fresh Screen"))
+    }
 }
