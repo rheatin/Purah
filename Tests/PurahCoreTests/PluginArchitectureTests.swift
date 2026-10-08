@@ -491,6 +491,16 @@ struct PluginArchitectureTests {
         musicState.seek(to: 0.5)
         #expect(musicState.track.playbackProgress == 0.5)
 
+        // Test togglePlayPause with store synchronization (avoid double-toggle)
+        let testMusicStore = PurahWorkspaceStore()
+        testMusicStore.musicTrack = MusicTrackInfo(title: "Song B", artist: "Artist C", isPlaying: false)
+        musicState.togglePlayPause(store: testMusicStore)
+        #expect(testMusicStore.musicTrack.isPlaying == true)
+        #expect(musicState.track.isPlaying == true)
+        musicState.togglePlayPause(store: testMusicStore)
+        #expect(testMusicStore.musicTrack.isPlaying == false)
+        #expect(musicState.track.isPlaying == false)
+
         // 6. Vitals State
         let vitalsStorage = ScopedPluginStorage(pluginId: "testVitalsState")
         let vitalsState = VitalsPluginState(storage: vitalsStorage)
@@ -565,8 +575,12 @@ struct PluginArchitectureTests {
         let vitalsState = VitalsPluginState()
         let vitalsDrawerWithState = HardwareVitalsDrawerView(state: vitalsState, store: store)
         let vitalsDrawerWithStore = HardwareVitalsDrawerView(store: store)
+        let vitalsFocusedWithState = VitalsFocusedDrawerView(metric: .cpu, state: vitalsState, store: store)
+        let vitalsFocusedWithStore = VitalsFocusedDrawerView(metric: .cpu, store: store)
         _ = vitalsDrawerWithState
         _ = vitalsDrawerWithStore
+        _ = vitalsFocusedWithState
+        _ = vitalsFocusedWithStore
 
         let scriptsState = ScriptsPluginState()
         let scriptsDrawerWithState = ScriptRunwayDrawerView(state: scriptsState, store: store)

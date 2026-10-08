@@ -235,11 +235,9 @@ public final class TodoPluginState: Sendable {
 
         isSyncing = true
         let fetched = await SystemRemindersSyncService.shared.fetchReminders(scope: scope)
-        if !fetched.isEmpty {
-            self.todos = fetched
-            self.isUsingRealReminders = true
-            self.save()
-        }
+        self.todos = fetched
+        self.isUsingRealReminders = true
+        self.save()
         if let targetStore {
             targetStore.isUsingRealReminders = self.isUsingRealReminders
             targetStore.todos = self.todos
@@ -382,18 +380,18 @@ public final class MusicPluginState: Sendable {
     }
 
     public func togglePlayPause(store: PurahWorkspaceStore? = nil) {
-        let nowPlaying = !track.isPlaying
-        track.isPlaying = nowPlaying
-        track.playbackRate = nowPlaying ? 1.0 : 0.0
-        track.currentPositionSeconds = track.calculatedCurrentTime
-        track.lastUpdated = Date()
-
         let targetStore = store ?? boundStore
         if let targetStore {
-            targetStore.musicTrack = track
             SystemMusicSyncService.shared.togglePlayPause(store: targetStore)
+            self.track = targetStore.musicTrack
+            self.isPlaying = targetStore.musicTrack.isPlaying
         } else {
-            SystemMusicSyncService.shared.togglePlayPause(store: nil)
+            let nowPlaying = !track.isPlaying
+            track.isPlaying = nowPlaying
+            track.playbackRate = nowPlaying ? 1.0 : 0.0
+            track.currentPositionSeconds = track.calculatedCurrentTime
+            track.lastUpdated = Date()
+            self.isPlaying = nowPlaying
         }
     }
 
