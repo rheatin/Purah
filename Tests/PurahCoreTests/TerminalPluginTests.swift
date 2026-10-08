@@ -53,10 +53,23 @@ struct TerminalPluginTests {
         #expect(plugin.manifest.defaultColorHex == "#00F5D4")
 
         let store = PurahWorkspaceStore()
-        #expect(plugin.minimumDrawerHeight(store: store) >= 180.0)
+        #expect(plugin.minimumDrawerHeight(store: store) >= 350.0)
 
         let settingsView = plugin.makeSettingsView(store: store)
         #expect(settingsView != nil)
+    }
+
+    @Test("TerminalFontManager discovers installed fonts and resolves cascade list")
+    func testTerminalFontManager() {
+        let families = TerminalFontManager.availableFamilies()
+        #expect(!families.isEmpty)
+        #expect(families.contains("Auto (Nerd Font)"))
+
+        let font = TerminalFontManager.resolveFont(family: "Auto (Nerd Font)", size: 12)
+        #expect(font.pointSize == 12)
+
+        let customFont = TerminalFontManager.resolveFont(family: "Menlo", size: 14)
+        #expect(customFont.pointSize == 14)
     }
 
     @Test("PersistentTerminalDrawerView instantiates and binds to store")

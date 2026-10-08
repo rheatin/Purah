@@ -227,41 +227,7 @@ public struct CalendarDrawerView: View {
             singleEventCard(event: event)
                 .frame(width: store.effectiveDrawerWidth(for: event.title, baseWidth: event.url != nil ? 310.0 : 280.0))
 
-        case .neighborPeek:
-            // 隔壁的日程：略微伸出来一点 (50pt peek tab，不显示拥挤文字)
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(podColor.opacity(isPast ? 0.35 : 0.85))
-                    .frame(width: 6, height: 6)
-
-                Capsule()
-                    .fill(podColor.opacity(isPast ? 0.25 : 0.6))
-                    .frame(width: 16, height: 3)
-
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            .frame(width: 50, height: 36)
-            .background(palette.solidDrawerBackground)
-            .cornerRadius(4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(podColor.opacity(isPast ? 0.3 : 0.7), lineWidth: 1)
-            )
-            .onHover { isHovered in
-                if isHovered {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                        activeIndex = index
-                    }
-                }
-            }
-            .onTapGesture {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                    activeIndex = index
-                }
-            }
-
-        case .dockedFlush:
+        case .neighborPeek, .dockedFlush:
             // 贴边保持不动 (8pt)
             RoundedRectangle(cornerRadius: 2)
                 .fill(podColor.opacity(isPast ? 0.35 : 0.6))
