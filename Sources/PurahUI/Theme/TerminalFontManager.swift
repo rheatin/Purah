@@ -67,12 +67,16 @@ public enum TerminalFontManager: Sendable {
 
         let baseFont: NSFont = {
             if family == "Auto (Nerd Font)" || family.isEmpty {
-                if installed.contains("Maple Mono NF CN") {
-                    return NSFont(name: "Maple Mono NF CN", size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+                if installed.contains("Maple Mono NF CN"), let f = NSFont(name: "Maple Mono NF CN", size: size) {
+                    return f
                 }
                 return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-            } else if installed.contains(family) {
-                return NSFont(name: family, size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            } else if family == "SF Mono" {
+                return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            } else if let f = NSFont(name: family, size: size) {
+                return f
+            } else if let f = NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size) {
+                return f
             } else {
                 return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
             }

@@ -693,7 +693,7 @@ public struct AmbientRailStripView: View {
         let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
         let color = plugin.dynamicBarColor(context: PurahPluginContext(
             pod: pod, edge: edge, railWidth: barW, slotHeight: max(totalHeight, 36.0),
-            drawerWidth: store.effectiveDrawerWidth(baseWidth: 280.0), isExpanded: isActive,
+            drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), isExpanded: isActive,
             isPinned: isPinned, accentColor: palette.podColor(for: pod.id, store: store),
             palette: palette, store: store, requestExpand: {}, requestDismiss: {}, togglePin: {}
         )) ?? palette.podColor(for: pod.id, store: store)
@@ -704,7 +704,7 @@ public struct AmbientRailStripView: View {
             edge: edge,
             railWidth: barW,
             slotHeight: slotH,
-            drawerWidth: store.effectiveDrawerWidth(baseWidth: 280.0),
+            drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id),
             isExpanded: isActive,
             isPinned: isPinned,
             accentColor: color,
@@ -782,7 +782,7 @@ public struct AmbientRailStripView: View {
             plugin.makeDrawerView(context: context)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: 280.0), height: totalHeight)
+        .frame(width: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), height: totalHeight)
         .liquidDrawerBackground(shape: drawerShape, accentColor: color)
     }
 

@@ -230,7 +230,15 @@ public final class PurahWorkspaceStore {
     public var terminalFontFamily: String = "Auto (Nerd Font)"
     public var terminalFontSize: Double = 11.5
 
-    public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0) -> CGFloat {
+    public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0, podId: String = "") -> CGFloat {
+        if podId == "terminal" || baseWidth >= 400.0 {
+            switch drawerWidthMode {
+            case .fixed:
+                return CGFloat(max(fixedDrawerWidth, 340.0))
+            case .adaptive:
+                return CGFloat(max(baseWidth, 500.0))
+            }
+        }
         switch drawerWidthMode {
         case .fixed:
             return CGFloat(min(max(fixedDrawerWidth, 220.0), 330.0))
@@ -372,7 +380,7 @@ public final class PurahWorkspaceStore {
         }
     }
 
-    public func activeDrawerCardFrames(for edge: MountEdge, totalHeight: Double, windowWidth: Double = 340.0) -> [CGRect] {
+    public func activeDrawerCardFrames(for edge: MountEdge, totalHeight: Double, windowWidth: Double = 580.0) -> [CGRect] {
         guard !isRailsFrozen else { return [] }
         var frames: [CGRect] = []
         let layoutItems = resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
@@ -548,7 +556,7 @@ public final class PurahWorkspaceStore {
                 let minY = max(bottomOfPodY - 6.0, 0.0)
                 let maxY = min(topOfPodY + 6.0, totalHeight)
 
-                let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor, windowWidth)
+                let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
                 let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                 frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
             }
@@ -839,7 +847,7 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.36, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.58, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.15),
             SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.78, length: 0.16), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.16),
-            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.94, length: 0.04), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 20, minLength: 0.12, isEnabled: false, drawerWidth: 320)
+            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.94, length: 0.04), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 20, minLength: 0.12, isEnabled: false, drawerWidth: 500)
         ]
     }
 
