@@ -728,8 +728,17 @@ public final class PurahWorkspaceStore {
     }
 
     public func autoLayoutAll() {
+        // Dynamically update each pod's minLength to reflect capability provider's minimum required height
+        for idx in pods.indices {
+            let pod = pods[idx]
+            let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
+            let minPt = Double(minimumDrawerHeight(for: pod.id))
+            pods[idx].minLength = max(minPt / screenH, 0.05)
+        }
+
         pods = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(
             pods: pods,
+            reassignEdges: false,
             availableHeight: Double(availableScreenHeight(for: .left))
         )
         savePersistentState()
