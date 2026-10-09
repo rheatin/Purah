@@ -32,4 +32,16 @@ struct RemindersSyncTests {
 
         #expect(store._todos.first?.isCompleted == !originalState)
     }
+
+    @Test("TodoItem carries native reminder listColorHex")
+    func testTodoItemListColorHex() {
+        let todo = TodoItem(
+            title: "Prepare Slide Deck",
+            listTitle: "Personal",
+            listColorHex: "#34C759",
+            isCompleted: false
+        )
+        #expect(todo.listColorHex == "#34C759")
+        #expect(todo.listTitle == "Personal")
+    }
 }

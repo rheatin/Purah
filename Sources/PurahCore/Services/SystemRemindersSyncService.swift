@@ -79,6 +79,7 @@ public final class SystemRemindersSyncService {
                             id: uniqueId,
                             title: rem.title ?? "Untitled Reminder",
                             listTitle: rem.calendar?.title ?? "Reminders",
+                            listColorHex: SystemCalendarSyncService.hexString(from: rem.calendar?.cgColor),
                             dueDate: dueDate,
                             isCompleted: rem.isCompleted
                         )

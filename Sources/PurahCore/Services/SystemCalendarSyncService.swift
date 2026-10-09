@@ -104,6 +104,7 @@ public final class SystemCalendarSyncService {
                 title: ekEvent.title ?? "Untitled Event",
                 location: ekEvent.location ?? "Apple Calendar",
                 calendarTitle: ekEvent.calendar?.title ?? "Calendar",
+                colorHex: hexString(from: ekEvent.calendar?.cgColor),
                 url: extractedURL,
                 startTime: ekEvent.startDate,
                 endTime: ekEvent.endDate,
@@ -118,6 +119,16 @@ public final class SystemCalendarSyncService {
             .filter { event in
                 seenKeys.insert("\(event.title.trimmingCharacters(in: .whitespacesAndNewlines))_\(Int(event.startTime.timeIntervalSince1970))").inserted
             }
+    }
+
+    nonisolated public static func hexString(from cgColor: CGColor?) -> String? {
+        guard let cgColor, let components = cgColor.components, components.count >= 3 else {
+            return nil
+        }
+        let r = Int(round(components[0] * 255.0))
+        let g = Int(round(components[1] * 255.0))
+        let b = Int(round(components[2] * 255.0))
+        return String(format: "#%02X%02X%02X", r, g, b)
     }
 
     nonisolated public static func extractFirstURL(from text: String) -> URL? {

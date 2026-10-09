@@ -666,7 +666,7 @@ public struct CalendarPlugin: PurahPodPlugin {
                 state: state,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
-                tintColorHex: nil,
+                tintColorHex: event.colorHex,
                 isPinned: context.store.isItemPinned(id: event.id)
             )
         }
@@ -799,7 +799,7 @@ public struct TodoPlugin: PurahPodPlugin {
                 state: todo.isCompleted ? .inactive : .normal,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
-                tintColorHex: nil,
+                tintColorHex: todo.listColorHex,
                 isPinned: context.store.isItemPinned(id: todo.id)
             )
         }
