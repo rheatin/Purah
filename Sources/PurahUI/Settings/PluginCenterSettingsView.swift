@@ -88,6 +88,8 @@ public struct PluginCenterSettingsView: View {
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                                 .background(
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                                         .fill(isSelected ? palette.primaryAccent.opacity(0.15) : Color.clear)
@@ -97,7 +99,7 @@ public struct PluginCenterSettingsView: View {
                                         .stroke(isSelected ? palette.primaryAccent.opacity(0.35) : Color.clear, lineWidth: 1)
                                 )
                             }
-                            .buttonStyle(.tactile)
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 8)

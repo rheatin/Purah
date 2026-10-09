@@ -5,8 +5,9 @@ import UniformTypeIdentifiers
 import PurahCore
 
 public enum PluginMarketFilter: String, CaseIterable, Identifiable {
+    case all = "All Ecosystem"
+    case available = "Get Plugins"
     case installed = "Installed"
-    case available = "Available"
     case heavyGPU = "Heavy / GPU"
     case community = "Community"
 
@@ -14,8 +15,9 @@ public enum PluginMarketFilter: String, CaseIterable, Identifiable {
 
     public var icon: String {
         switch self {
+        case .all: return "sparkles"
+        case .available: return "arrow.down.circle.fill"
         case .installed: return "checkmark.circle.fill"
-        case .available: return "arrow.down.circle"
         case .heavyGPU: return "flame.fill"
         case .community: return "person.2.fill"
         }
@@ -23,15 +25,15 @@ public enum PluginMarketFilter: String, CaseIterable, Identifiable {
 }
 
 public enum MarketplaceViewMode: String, CaseIterable, Identifiable {
-    case catalog = "Marketplace"
-    case settings = "Installed Settings"
+    case catalog = "Explore Marketplace"
+    case settings = "Plugin Settings"
 
     public var id: String { rawValue }
 
     public var icon: String {
         switch self {
         case .catalog: return "square.grid.2x2.fill"
-        case .settings: return "gearshape.2.fill"
+        case .settings: return "slider.horizontal.3"
         }
     }
 }
@@ -46,7 +48,7 @@ public struct PluginMarketplaceView: View {
     public let store: PurahWorkspaceStore
     public let marketManager: PluginMarketManager
 
-    @State private var selectedFilter: PluginMarketFilter = .installed
+    @State private var selectedFilter: PluginMarketFilter = .all
     @State private var searchFilter: String = ""
     @State private var viewMode: MarketplaceViewMode = .catalog
     @State private var securityReviewManifest: PurahPluginManifest? = nil
@@ -112,6 +114,8 @@ public struct PluginMarketplaceView: View {
     private var filteredManifests: [PurahPluginManifest] {
         let base: [PurahPluginManifest]
         switch selectedFilter {
+        case .all:
+            base = allCatalog
         case .installed:
             base = allCatalog.filter { marketManager.isInstalled(id: $0.id) }
         case .available:
@@ -420,9 +424,10 @@ public struct PluginMarketplaceView: View {
 
     private func filterTitle(_ filter: PluginMarketFilter) -> String {
         switch filter {
+        case .all: return "All (\(allCatalog.count))"
         case .installed: return "Installed (\(installedCount))"
-        case .available: return "Available (\(availableCount))"
-        case .heavyGPU: return "Heavy / GPU (\(heavyGpuCount))"
+        case .available: return "Get (\(availableCount))"
+        case .heavyGPU: return "Heavy GPU (\(heavyGpuCount))"
         case .community: return "Community (\(communityCount))"
         }
     }
