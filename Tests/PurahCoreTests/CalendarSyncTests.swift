@@ -115,4 +115,17 @@ struct CalendarSyncTests {
         #expect(deduplicated.count == 2)
         #expect(deduplicated.map(\.title) == ["Architecture Review", "Sprint Planning"])
     }
+
+    @Test("CalendarEventItem carries native calendar category colorHex")
+    func testCalendarCategoryColorHex() {
+        let event = CalendarEventItem(
+            title: "Executive Sync",
+            calendarTitle: "Work",
+            colorHex: "#007AFF",
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(3600)
+        )
+        #expect(event.colorHex == "#007AFF")
+        #expect(event.calendarTitle == "Work")
+    }
 }

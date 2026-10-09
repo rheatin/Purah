@@ -160,9 +160,6 @@ public struct CalendarDrawerView: View {
                         .buttonStyle(.tactile)
                         .help("Open link: \(url.absoluteString)")
                     }
-
-                    // 专属 Pin 针
-                    pinButton(id: event.id, isPinned: store.isItemPinned(id: event.id))
                 }
 
                 HStack(spacing: 6) {
@@ -173,13 +170,25 @@ public struct CalendarDrawerView: View {
                     Text("·")
                         .foregroundColor(.gray)
 
-                    Text(event.calendarTitle)
-                        .font(.system(size: 9))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(podColor.opacity(isPast ? 0.10 : 0.15))
-                        .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
-                        .cornerRadius(3)
+                    let calColor: Color = {
+                        if let hex = event.colorHex {
+                            return Color(hex: hex)
+                        }
+                        return podColor
+                    }()
+
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(calColor)
+                            .frame(width: 4.5, height: 4.5)
+                        Text(event.calendarTitle)
+                            .purahBadge(size: 8, weight: .bold)
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(calColor.opacity(isPast ? 0.08 : 0.16))
+                    .foregroundColor(calColor.opacity(isPast ? 0.45 : 1.0))
+                    .cornerRadius(3)
 
                     if !event.location.isEmpty && event.location != "Apple Calendar" {
                         Text(event.location)
@@ -252,12 +261,6 @@ public struct CalendarDrawerView: View {
                         activeIndex = index
                     }
                 }
-        }
-    }
-
-    private func pinButton(id: String, isPinned: Bool) -> some View {
-        PurahPinButton(isPinned: isPinned, tintColor: podColor) {
-            store.togglePinItem(id: id)
         }
     }
 
