@@ -735,16 +735,17 @@ public struct VitalsItemDrawerView: View {
     private func expandedCard(cardH: CGFloat) -> some View {
         let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
 
-        HStack(spacing: 8) {
-            VitalsFocusedDrawerView(metric: metric, availableHeight: cardH, store: store)
-
-            Spacer(minLength: 2)
-
-            pinButton
+        VStack(alignment: .leading, spacing: 0) {
+            VitalsFocusedDrawerView(
+                metric: metric,
+                availableHeight: cardH - 16,
+                trailingHeader: AnyView(pinButton),
+                store: store
+            )
         }
         .padding(.leading, edge == .left ? 12 : 22)
         .padding(.trailing, edge == .left ? 22 : 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
     }

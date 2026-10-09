@@ -262,6 +262,7 @@ public struct HardwareVitalsDrawerView: View {
 public struct VitalsFocusedDrawerView: View {
     public let metric: VitalsMetricType
     public let availableHeight: CGFloat
+    public let trailingHeader: AnyView?
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
@@ -269,20 +270,40 @@ public struct VitalsFocusedDrawerView: View {
     private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
     private var effectiveThresholds: VitalsColorThresholds { state.thresholds }
 
-    public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+    public init(
+        metric: VitalsMetricType,
+        availableHeight: CGFloat = 48.0,
+        trailingHeader: AnyView? = nil,
+        state: VitalsPluginState,
+        store: PurahWorkspaceStore = PurahWorkspaceStore()
+    ) {
         self.metric = metric
         self.availableHeight = availableHeight
+        self.trailingHeader = trailingHeader
         self.state = state
         self.store = store
     }
 
-    public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, store: PurahWorkspaceStore) {
+    public init(
+        metric: VitalsMetricType,
+        availableHeight: CGFloat = 48.0,
+        trailingHeader: AnyView? = nil,
+        store: PurahWorkspaceStore
+    ) {
         let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
-        self.init(metric: metric, availableHeight: availableHeight, state: pluginState, store: store)
+        self.init(metric: metric, availableHeight: availableHeight, trailingHeader: trailingHeader, state: pluginState, store: store)
+    }
+
+    public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.init(metric: metric, availableHeight: availableHeight, trailingHeader: nil, state: state, store: store)
+    }
+
+    public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, store: PurahWorkspaceStore) {
+        self.init(metric: metric, availableHeight: availableHeight, trailingHeader: nil, store: store)
     }
 
     public init(metric: VitalsMetricType, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
-        self.init(metric: metric, availableHeight: 48.0, state: state, store: store)
+        self.init(metric: metric, availableHeight: 48.0, trailingHeader: nil, state: state, store: store)
     }
 
     public var body: some View {
@@ -316,13 +337,16 @@ public struct VitalsFocusedDrawerView: View {
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
+            HStack(spacing: 6) {
                 Label("CPU Activity", systemImage: "cpu")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(Int(metrics.cpuUsage * 100))%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
                     .foregroundColor(color)
+                if let trailingHeader {
+                    trailingHeader
+                }
             }
 
             if availableHeight >= 72.0 {
@@ -377,13 +401,16 @@ public struct VitalsFocusedDrawerView: View {
         let gpuRatio = max(min(metrics.gpuUsage, 1.0), 0.0)
 
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
+            HStack(spacing: 6) {
                 Label("GPU Activity", systemImage: "display")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(Int(gpuRatio * 100))%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
                     .foregroundColor(color)
+                if let trailingHeader {
+                    trailingHeader
+                }
             }
 
             if availableHeight >= 72.0 {
@@ -422,13 +449,16 @@ public struct VitalsFocusedDrawerView: View {
     private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
+            HStack(spacing: 6) {
                 Label("Memory (RAM)", systemImage: "memorychip")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(Int(metrics.memoryUsage * 100))%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
                     .foregroundColor(color)
+                if let trailingHeader {
+                    trailingHeader
+                }
             }
 
             if availableHeight >= 72.0 {
@@ -469,13 +499,16 @@ public struct VitalsFocusedDrawerView: View {
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
+            HStack(spacing: 6) {
                 Label("Battery & Power", systemImage: "bolt.batteryblock.fill")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(metrics.batteryLevel)%")
                     .font(.system(size: 13, weight: .heavy, design: .monospaced))
                     .foregroundColor(color)
+                if let trailingHeader {
+                    trailingHeader
+                }
             }
 
             if availableHeight >= 72.0 {
@@ -523,13 +556,16 @@ public struct VitalsFocusedDrawerView: View {
         let networkRatio = min(totalMB / dangerMB, 1.0)
         
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
+            HStack(spacing: 6) {
                 Label("Network I/O", systemImage: "network")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Spacer()
                 Text(formatSpeed(bytesPerSec: totalSpeed))
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .foregroundColor(color)
+                if let trailingHeader {
+                    trailingHeader
+                }
             }
 
             if availableHeight >= 72.0 {
@@ -577,13 +613,16 @@ public struct VitalsFocusedDrawerView: View {
         let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
 
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
+            HStack(spacing: 6) {
                 Label("Disk Storage", systemImage: "internaldrive")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(Int(metrics.diskFreeGB))GB Free")
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .foregroundColor(color)
+                if let trailingHeader {
+                    trailingHeader
+                }
             }
 
             if availableHeight >= 72.0 {
