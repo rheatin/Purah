@@ -94,8 +94,6 @@ public final class LocalizationManager {
             "calendar.overflow.smartFold.desc": "Prioritizes key events (NOW/SOON) with a +N More capsule for remaining items",
             "calendar.overflow.continuous": "Continuous Stream",
             "calendar.overflow.continuous.desc": "Consolidates into a sleek ambient time gauge that expands to full agenda",
-            "calendar.overflow.fullStepped": "All Items (Stepped)",
-            "calendar.overflow.fullStepped.desc": "Renders all event chips with rigid rail boundary overflow protection",
             "calendar.overview.title": "Upcoming Agenda",
             "calendar.overview.moreEvents": "+%d More Events",
 
@@ -157,8 +155,6 @@ public final class LocalizationManager {
             "calendar.overflow.smartFold.desc": "优先锁定 NOW/SOON 核心日程，其余事件优雅聚合为 +N 胶囊",
             "calendar.overflow.continuous": "连续时间流光表",
             "calendar.overflow.continuous.desc": "折叠为纯粹沉静的边缘时间光柱，悬停滑出全天日程大抽屉",
-            "calendar.overflow.fullStepped": "全量步进展开",
-            "calendar.overflow.fullStepped.desc": "展示所有日程色块，内置等比边界压缩防穿透护盾",
             "calendar.overview.title": "全日程总览",
             "calendar.overview.moreEvents": "+%d 个更多日程",
 

@@ -10,10 +10,9 @@ struct CalendarOverflowStrategyTests {
     @MainActor
     func testStrategyCases() {
         let all = CalendarOverflowStrategy.allCases
-        #expect(all.count == 3)
+        #expect(all.count == 2)
         #expect(CalendarOverflowStrategy.smartFold.rawValue == "smartFold")
         #expect(CalendarOverflowStrategy.continuousStream.rawValue == "continuous")
-        #expect(CalendarOverflowStrategy.fullStepped.rawValue == "fullStepped")
         #expect(!CalendarOverflowStrategy.smartFold.displayName.isEmpty)
         #expect(!CalendarOverflowStrategy.smartFold.subtitle.isEmpty)
     }

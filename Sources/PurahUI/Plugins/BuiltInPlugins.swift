@@ -605,7 +605,12 @@ public struct CalendarPlugin: PurahPodPlugin {
         state.unmount(store: store)
     }
 
-    public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
+    public var supportedDrawerModes: Set<PurahDrawerMode> {
+        if state.overflowStrategy == .continuousStream {
+            return [.composite]
+        }
+        return [.stepped]
+    }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if state.overflowStrategy == .continuousStream {

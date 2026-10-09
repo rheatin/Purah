@@ -50,8 +50,8 @@ public struct CalendarDrawerView: View {
                 // 【单个日程弹出模式】：充裕高度与精美排版，绝不糊在一起
                 singleEventCard(event: activeEvent)
             } else {
-                // 【阶梯式多项抽屉特效】：当前聚焦项完全弹出，相邻项略微伸出 peek tab，其余贴边
-                steppedEventList()
+                // 【全量日程排程列表】
+                agendaListView()
             }
         }
         .task {
@@ -214,54 +214,134 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    // MARK: - 阶梯式抽屉列表
+    // MARK: - 全量日程排程列表
     @ViewBuilder
-    private func steppedEventList() -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .trailing, spacing: 6) {
-                ForEach(state.events.indices, id: \.self) { i in
-                    let event = state.events[i]
-                    let drawerState = ItemSteppedDrawerCalculator.state(
-                        for: i,
-                        activeIndex: activeIndex,
-                        totalCount: state.events.count
-                    )
-
-                    steppedEventRow(event: event, index: i, state: drawerState)
+    private func agendaListView() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(state.events) { event in
+                        agendaRow(event: event)
+                    }
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 4)
+
+            Divider()
+                .background(palette.borderColor.opacity(0.35))
+
+            // Action Bar
+            HStack {
+                Text(store.calendarScope.title)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Button {
+                    if let url = URL(string: "ical://") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 8.5))
+                        Text("Apple Calendar")
+                            .font(.system(size: 9.5, weight: .medium))
+                    }
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(palette.surfaceBackground)
+                    .cornerRadius(5)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.tactile)
+            }
         }
     }
 
     @ViewBuilder
-    private func steppedEventRow(event: CalendarEventItem, index: Int, state: ItemDrawerState) -> some View {
+    private func agendaRow(event: CalendarEventItem) -> some View {
         let isPast = event.isPast
+        let isOngoing = event.isOngoing
+        let isImminent = event.isImminent
+        let calColor = event.colorHex.flatMap { Color(hex: $0) } ?? podColor
 
-        switch state {
-        case .expandedDrawer:
-            // 完整弹出的日程抽屉小窗 (自适应宽度与会议链接)
-            singleEventCard(event: event)
-                .frame(width: store.effectiveDrawerWidth(for: event.title, baseWidth: event.url != nil ? 310.0 : 280.0))
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(calColor)
+                    .frame(width: 5, height: 5)
 
-        case .neighborPeek, .dockedFlush:
-            // 贴边保持不动 (8pt)
-            RoundedRectangle(cornerRadius: 2)
-                .fill(podColor.opacity(isPast ? 0.35 : 0.6))
-                .frame(width: 8, height: 24)
-                .onHover { isHovered in
-                    if isHovered {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                            activeIndex = index
+                Text(event.title)
+                    .font(.system(size: 11.5, weight: isOngoing ? .bold : .medium, design: .rounded))
+                    .foregroundColor(isPast ? .secondary : (palette.style == .native ? Color.primary : .white))
+                    .lineLimit(1)
+
+                Spacer()
+
+                if isOngoing {
+                    Text("NOW")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.green.opacity(0.18))
+                        .foregroundColor(.green)
+                        .cornerRadius(3)
+                } else if isImminent {
+                    Text("SOON")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.18))
+                        .foregroundColor(.orange)
+                        .cornerRadius(3)
+                }
+
+                if let url = event.url {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 7))
+                            Text("Join")
+                                .font(.system(size: 8.5, weight: .bold))
                         }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(podColor.opacity(0.18))
+                        .foregroundColor(podColor)
+                        .cornerRadius(4)
                     }
+                    .buttonStyle(.tactile)
                 }
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                        activeIndex = index
-                    }
+            }
+
+            HStack(spacing: 4) {
+                Text(formattedTime(event: event))
+                    .font(palette.fontMono)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+
+                if !event.location.isEmpty && event.location != "Apple Calendar" {
+                    Text("·")
+                        .foregroundColor(.secondary)
+                    Text(event.location)
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
+            }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(isOngoing ? podColor.opacity(0.08) : Color.clear)
+        .cornerRadius(6)
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {
