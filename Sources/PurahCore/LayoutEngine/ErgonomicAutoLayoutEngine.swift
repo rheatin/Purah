@@ -18,7 +18,7 @@ public enum ErgonomicAutoLayoutEngine {
     public static let defaultSafeBounds: ClosedRange<Double> = 0.02...0.98
     public static let defaultGap: Double = 0.012
 
-    /// 计算给定边缘的一组槽位模块的最优人机工学排布
+    /// Computes optimal ergonomic slot pod layout along a given edge
     public static func layout(
         pods: [SlotPod],
         on edge: MountEdge,
@@ -28,34 +28,34 @@ public enum ErgonomicAutoLayoutEngine {
         let activePods = pods.filter { $0.edge == edge && $0.isEnabled }
         guard !activePods.isEmpty else { return [] }
 
-        // 1. 按照人机工学舒适区与权重排序
+        // 1. Sort pods by ergonomic zone hierarchy and weight
         let sortedPods = activePods.sorted {
             ($0.preferredZone, -$0.ergonomicWeight) < ($1.preferredZone, -$1.ergonomicWeight)
         }
 
-        // 2. 计算可分配的净空间
+        // 2. Compute available net vertical height
         let totalSpan = safeBounds.upperBound - safeBounds.lowerBound
         let totalGaps = Double(sortedPods.count - 1) * gap
         let availableHeight = max(totalSpan - totalGaps, 0.05)
 
-        // 3. 计算权重分配，初步计算目标高度
+        // 3. Proportional weight allocation to calculate target lengths
         let totalWeight = sortedPods.reduce(0.0) { $0 + max($1.ergonomicWeight, 1.0) }
         var targetLengths: [Double] = sortedPods.map { pod in
             let rawLength = availableHeight * (max(pod.ergonomicWeight, 1.0) / totalWeight)
             return max(rawLength, pod.minLength)
         }
 
-        // 4. 若超出可用空间，优先压缩有富余空间的弹性模块，严密保卫各模块的 minLength 刚性底线！
+        // 4. If space is exceeded, compress pods with surplus slack while strictly defending minLength floors
         let excess = targetLengths.reduce(0.0, +) - availableHeight
         if excess > 0 {
-            // 计算所有高于其 minLength 的可压缩弹性余量总和
+            // Sum up all compressible slack above minLength
             let compressableSlack = targetLengths.enumerated().reduce(0.0) { total, item in
                 let podMin = sortedPods[item.offset].minLength
                 return total + max(item.element - podMin, 0.0)
             }
 
             if compressableSlack >= excess && compressableSlack > 0 {
-                // 弹性余量充足：仅压缩有富余空间的模块，绝对不侵犯已在 minLength 底线的刚性模块！
+                // Sufficient slack: only compress pods with surplus space, never violating minLength floors
                 for i in targetLengths.indices {
                     let podMin = sortedPods[i].minLength
                     let slack = max(targetLengths[i] - podMin, 0.0)
@@ -65,11 +65,11 @@ public enum ErgonomicAutoLayoutEngine {
                     }
                 }
             } else {
-                // 弹性余量不足（轨道物理超载）：先将所有模块压缩至其各自的 minLength 底线
+                // Insufficient slack (physical overload): clamp all pods to their minLength floors
                 for i in targetLengths.indices {
                     targetLengths[i] = sortedPods[i].minLength
                 }
-                // 超载情况下按比例保底适配可用屏幕
+                // Under overload, scale proportionally to fit available screen height
                 let minSum = targetLengths.reduce(0.0, +)
                 if minSum > availableHeight && minSum > 0 {
                     let overflowScale = availableHeight / minSum
@@ -78,7 +78,7 @@ public enum ErgonomicAutoLayoutEngine {
             }
         }
 
-        // 4. 从安全区起点顺序安放每个 Pod
+        // 5. Sequence pods starting from safe boundary
         var currentY = safeBounds.lowerBound
         var resolvedPods: [SlotPod] = []
 
@@ -93,9 +93,9 @@ public enum ErgonomicAutoLayoutEngine {
         return resolvedPods
     }
 
-    /// 最优双轨人机工程学自动排版 (Optimal Bilateral Ergonomic Layout Optimizer)
-    /// 针对所有已启用的插件，按其所在导轨执行人机工学舒适区与权重排布
-    /// - Parameter reassignEdges: 是否全局重排分配左右导轨（默认 false：绝对尊重用户的左右侧归属，任何插件均可自由安放在左轨或右轨）
+    /// Optimal Bilateral Ergonomic Layout Optimizer
+    /// Rebalances enabled pods across left and right rails according to ergonomic zones and weights
+    /// - Parameter reassignEdges: Whether to repartition rail assignments (default false: strictly preserves user-chosen edge)
     public static func optimizeBilateralLayout(
         pods: [SlotPod],
         reassignEdges: Bool = false,
@@ -120,7 +120,7 @@ public enum ErgonomicAutoLayoutEngine {
                 }
             }
 
-            // 双轨负载均衡：如果一侧模块数过多，按照人机工学权重由低到高迁移灵活性最高的模块
+            // Bilateral load balancing: migrate lowest-weight flexible pods when one rail has a surplus
             while leftCandidates.count > rightCandidates.count + 2 {
                 if let minIdx = leftCandidates.indices.min(by: { leftCandidates[$0].ergonomicWeight < leftCandidates[$1].ergonomicWeight }) {
                     var shifted = leftCandidates.remove(at: minIdx)
@@ -141,7 +141,7 @@ public enum ErgonomicAutoLayoutEngine {
                 }
             }
         } else {
-            // 严密尊重用户对每个插件的左/右导轨归属指定！绝对不强行篡改用户指定的 edge！
+            // Strictly preserve user-assigned left/right rail choices
             for pod in enabledPods {
                 if pod.edge == .left {
                     leftCandidates.append(pod)
@@ -151,7 +151,7 @@ public enum ErgonomicAutoLayoutEngine {
             }
         }
 
-        // 对左右双轨分别执行严密的人机工学区间排序与空间比例分配
+        // Solve ergonomic ordering and proportional distribution independently on left and right rails
         let laidOutLeft = layout(pods: leftCandidates, on: .left, safeBounds: safeBounds, gap: gap)
         let laidOutRight = layout(pods: rightCandidates, on: .right, safeBounds: safeBounds, gap: gap)
 
@@ -159,7 +159,7 @@ public enum ErgonomicAutoLayoutEngine {
         return pods.map { map[$0.id] ?? $0 }
     }
 
-    /// 严格物理零重叠导轨链式求解器 (Strict Physical Non-Overlapping Rail Solver)
+    /// Strict physical non-overlapping rail layout solver
     public static func resolvePhysicalRailLayout(
         pods: [SlotPod],
         on edge: MountEdge,
@@ -176,7 +176,7 @@ public enum ErgonomicAutoLayoutEngine {
         let bottomLimit = safeBottom ?? (totalHeight - 16.0)
         let availableH = max(bottomLimit - safeTop, 100.0)
 
-        // 1. 计算每个 Pod 的有效展开跨度
+        // 1. Compute effective expanded span for each pod
         var spans: [Double] = edgePods.map { pod in
             if let provider = spanProvider {
                 return max(provider(pod), 36.0)
@@ -188,13 +188,13 @@ public enum ErgonomicAutoLayoutEngine {
         let totalGaps = Double(edgePods.count - 1) * gap
         let totalNeeded = totalSpans + totalGaps
 
-        // 若总高度超出可用高度，进行等比平滑收缩保底
+        // If total needed height exceeds available height, apply smooth proportional compression
         if totalNeeded > availableH && totalSpans > 0 {
             let scale = max((availableH - totalGaps) / totalSpans, 0.65)
             spans = spans.map { max($0 * scale, 36.0) }
         }
 
-        // 2. 正向求解初步起始位置
+        // 2. Forward pass to establish initial anchor positions
         var startYs: [Double] = []
         var currentY: Double = safeTop
 
@@ -204,7 +204,7 @@ public enum ErgonomicAutoLayoutEngine {
             currentY = idealY + spans[i] + gap
         }
 
-        // 3. 反向平推：若底部 Pod 触碰底界，逆向优雅抬升整条链
+        // 3. Backward pass: if bottom pod exceeds boundary, gracefully push chain upwards
         if let lastStart = startYs.last, let lastSpan = spans.last {
             let overflow = (lastStart + lastSpan) - bottomLimit
             if overflow > 0 {
@@ -217,7 +217,7 @@ public enum ErgonomicAutoLayoutEngine {
             }
         }
 
-        // 4. 严格零重叠铁律：Pod[i] 必须永远位于 Pod[i-1] 底部之后
+        // 4. Strict zero-overlap invariant: Pod[i] must always follow Pod[i-1] bottom edge
         for i in 0..<edgePods.count {
             if i == 0 {
                 startYs[i] = max(startYs[i], safeTop)

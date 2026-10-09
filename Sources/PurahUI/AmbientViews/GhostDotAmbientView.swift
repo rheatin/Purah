@@ -30,7 +30,7 @@ public struct RailBarAmbientView: View {
     }
 }
 
-// 保持兼容旧调用的别名
+// Backward compatibility alias
 public typealias GhostDotAmbientView = RailBarAmbientView
 
 public extension RailBarAmbientView {

@@ -81,7 +81,7 @@ public struct PluginMarketplaceView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Top Mode Switcher Bar - Just Two Tabs: 市场 (Marketplace) & 已安装 (Installed)
+            // Top Mode Switcher Bar - Just Two Tabs: Marketplace & Installed
             HStack(spacing: 12) {
                 HStack(spacing: 4) {
                     ForEach(PluginCenterTab.allCases) { tab in

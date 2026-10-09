@@ -15,7 +15,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updaterWindow: NSWindow?
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // 状态栏常驻 Accessory App，无 Dock 图标扰乱
+        NSApp.setActivationPolicy(.accessory) // Persistent menu bar accessory app without dock icon
 
         if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
            let iconImage = NSImage(contentsOf: iconURL) {
@@ -31,17 +31,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         self.mouseMonitor = monitor
         monitor.start()
 
-        // 注册导轨容量超载 Toast 提示 (利用 TransientHUD)
+        // Register rail capacity warning toast callback via TransientHUD
         store.onCapacityWarningToast = { message in
             TransientHUDController.shared.showWarning(message: message)
         }
 
-        // 注册直达插件设置的回调
+        // Register direct plugin settings callback
         store.onRequestOpenPluginSettings = { [weak self] pluginId in
             self?.showPreferences(initialTab: .plugins, initialPluginId: pluginId)
         }
 
-        // 注册全局冻结/激活快捷键
+        // Register global freeze/unfreeze hotkey shortcut
         GlobalHotKeyManager.shared.register(shortcut: store.hotKeyShortcut) { [weak self] in
             self?.toggleFreezeMode()
         }

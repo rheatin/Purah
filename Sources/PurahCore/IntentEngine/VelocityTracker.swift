@@ -9,7 +9,7 @@ public struct VelocityTracker: Sendable {
     }
 
     private var samples: [Sample] = []
-    private let maxWindow: TimeInterval = 0.10 // 100ms 采样窗口
+    private let maxWindow: TimeInterval = 0.10 // 100ms sample window
 
     public init() {}
 

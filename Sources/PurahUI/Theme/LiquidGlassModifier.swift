@@ -58,7 +58,7 @@ private final class ColorHarmonicCache: @unchecked Sendable {
         var a: CGFloat = 0
         rgb.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
 
-        // 色相顺时针自然偏移约 35 度 (0.097 in 0.0~1.0 range)
+        // Hue clockwise harmonic offset of approx +35 degrees (0.10 in 0.0 to 1.0 range)
         let shiftedHue = (h + 0.10).truncatingRemainder(dividingBy: 1.0)
         let adjustedSat = min(max(s * 0.90, 0.45), 0.95)
         let adjustedBri = min(max(b * 0.95, 0.55), 1.0)
@@ -75,7 +75,7 @@ private final class ColorHarmonicCache: @unchecked Sendable {
 }
 
 public extension Color {
-    /// 计算基于 HSB 色域空间谐振偏移 (+35°) 的 Apple Music 极光次级渗透色 (带缓存极速路径)
+    /// Computes secondary harmonic aurora tint based on HSB resonant offset (+35 deg) with fast caching
     func harmonicSecondary() -> Color {
         ColorHarmonicCache.shared.harmonic(for: self)
     }
@@ -100,7 +100,7 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
             .clipShape(shape)
             .contentShape(shape)
             .overlay(
-                // 极简微弱折射微边框 (0.8pt，纯净自然)
+                // Subtle refractive border (0.8pt, clean and natural)
                 shape
                     .strokeBorder(
                         Color.white.opacity(colorScheme == .dark ? 0.16 : 0.28),
@@ -120,10 +120,10 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
         let secondary = accentColor.harmonicSecondary()
 
         ZStack {
-            // 1. macOS 核心硬件级 Behind-Window 模糊：100% 实时穿透并模糊底层活动窗口、照片或桌面！
+            // 1. Core macOS behind-window visual effect material: blurs underlying active desktop or app content
             NativeVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
 
-            // 2. Apple Music 极光氛围微晕 (透光率极高，仅 8%~14% 浓度，绝不遮蔽底层画面)
+            // 2. Translucent aurora ambient gradient (8% to 14% concentration without occluding content)
             LinearGradient(
                 stops: [
                     .init(color: accentColor.opacity(colorScheme == .dark ? 0.14 : 0.08), location: 0.0),

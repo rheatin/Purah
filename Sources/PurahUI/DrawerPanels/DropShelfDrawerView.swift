@@ -128,7 +128,7 @@ public struct DropShelfDrawerView: View {
                 }
             }
         }
-        // 原生拖拽置入支持
+        // Native drag-and-drop file ingestion support
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             for provider in providers {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in

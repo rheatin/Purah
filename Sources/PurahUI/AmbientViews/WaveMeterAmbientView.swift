@@ -33,7 +33,7 @@ public struct WaveMeterAmbientView: View {
 
         Group {
             if isPlaying && isAnimated && !reduceMotion {
-                // 使用 30fps 周期采样 + Metal GPU Canvas 直推，杜绝高 CPU 占用与内存抖动
+                // 30fps periodic sampling via Metal GPU Canvas to eliminate high CPU overhead and memory jitter
                 TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
                     Canvas { context, size in
                         let time = timeline.date.timeIntervalSinceReferenceDate

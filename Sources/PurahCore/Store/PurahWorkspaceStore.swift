@@ -753,7 +753,7 @@ public final class PurahWorkspaceStore {
 
     public func fillRail(podId: String) {
         guard pods.contains(where: { $0.id == podId }) else { return }
-        // 让当前 Pod 占满整条轨道的有效安全区间 (0.02 ~ 0.98)
+        // Expand current pod to fill the entire effective safe range of the rail (0.02 to 0.98)
         let safeSpan = 0.96
         let newRange = NormalizedRange(start: 0.02, length: safeSpan)
         updatePodRange(id: podId, newRange: newRange)

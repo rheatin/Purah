@@ -24,18 +24,18 @@ public struct FlingIntentDetector: Sendable {
         let absVx = abs(velocity.x)
         let absVy = abs(velocity.y)
 
-        // 1. 若纵向速度远高于横向速度，且速度显著，立即判定为抑制
+        // 1. If vertical velocity substantially exceeds horizontal velocity and is significant, suppress
         if absVy > (absVx * verticalFlingRatio) && absVy > verticalMinSpeed {
             return .verticalFlingSuppressed
         }
 
-        // 2. 判定是否为边缘顶住与低漂移驻留
+        // 2. Determine whether cursor is resting against edge with minimal vertical drift
         let nearEdge: Bool
         switch edge {
         case .left:
             nearEdge = point.x <= edgeMargin
         case .right:
-            nearEdge = point.x >= -edgeMargin // 相对右边缘
+            nearEdge = point.x >= -edgeMargin // Relative to right edge
         }
 
         if nearEdge && absVy <= maxVerticalDrift {

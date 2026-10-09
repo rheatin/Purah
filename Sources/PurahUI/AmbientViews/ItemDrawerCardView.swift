@@ -17,7 +17,7 @@ public struct TodoItemDrawerView: View {
     }
 
     private var podColor: Color {
-        palette.podColor(for: "todo") // 待办专属活力琥珀金
+        palette.podColor(for: "todo") // Vibrant amber gold for reminders
     }
 
     public init(
@@ -49,7 +49,7 @@ public struct TodoItemDrawerView: View {
         }()
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 导轨贴边基座色条（采用对应分类原生颜色）
+            // Rail-anchored baseline color bar (using native category list color)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(listColor.opacity(isDone ? 0.35 : 0.9))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
@@ -198,7 +198,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     private var podColor: Color {
-        palette.podColor(for: "calendar") // 日程专属珊瑚红橙
+        palette.podColor(for: "calendar") // Coral red-orange for calendar
     }
 
     public init(
@@ -236,7 +236,7 @@ public struct CalendarItemDrawerView: View {
         }()
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // 贴边基座色条（尺寸严格共面齐平，高亮时呈现动态信标呼吸）
+            // Rail-anchored indicator bar (co-planar flush height with dynamic attention beacon)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
@@ -888,7 +888,7 @@ public struct VitalsItemDrawerView: View {
         let barW = CGFloat(store.railBarWidth)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 贴边基座色条 (微缩电平动态占用柱)
+            // Rail-anchored baseline bar (micro dynamic telemetry meter level)
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: barRadius)
                     .fill(telemetryColor.opacity(0.18))
@@ -1076,7 +1076,7 @@ public struct ScriptItemDrawerView: View {
         let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 导轨贴边基座色条（微缩图标、运行状态指示与触觉反馈）
+            // Rail-anchored indicator bar (micro icon, execution state indicator, and tactile feedback)
             ZStack(alignment: .center) {
                 RoundedRectangle(cornerRadius: barRadius)
                     .fill(podColor.opacity(isHovered ? 1.0 : (isRunning ? 0.95 : 0.85)))

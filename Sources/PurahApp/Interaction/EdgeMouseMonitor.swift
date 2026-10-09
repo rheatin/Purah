@@ -182,7 +182,7 @@ public final class EdgeMouseMonitor {
         let edge: MountEdge = isAtLeftEdge ? .left : .right
         let outwardDelta = (edge == .left) ? -rawDeltaX : rawDeltaX
 
-        // 仅在光标紧贴绝对边框 (<= 1.5pt) 且持续施加推力时进行硬件级位移累加
+        // Accumulate raw motion deltas only when cursor rests against physical bezel (<= 1.5pt) and pushes outward
         let isAtAbsoluteBezel = (edge == .left) ? (mousePoint.x <= visibleRect.minX + 1.5) : (mousePoint.x >= visibleRect.maxX - 1.5)
         guard isAtAbsoluteBezel else {
             wasAtAbsoluteBezel = false
@@ -198,8 +198,8 @@ public final class EdgeMouseMonitor {
             return
         }
 
-        // 触边静止稳定门禁 (Settle Gate: 50ms)：
-        // 从空中划向边框的前 50ms 内属于撞边惯性滑行期，强制不计入推力！
+        // Settle gate (50ms):
+        // Inflight approach motion during the first 50ms upon arriving at bezel is inertia, not deliberate push force
         guard now.timeIntervalSince(arrivalTime) >= 0.05 else {
             pushAccumulator.reset()
             return
@@ -366,11 +366,11 @@ public final class EdgeMouseMonitor {
         let isFromDockedState = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
         let isAtAbsoluteBezel = (edge == .left) ? (point.x <= visibleRect.minX + 1.5) : (point.x >= visibleRect.maxX - 1.5)
 
-        // 1. Calculate Edge Push Force (Barrier / Input Leap / Loop 相对位移累加器模型)
-        // 核心铁律：
-        // 1. 光标未完全到达物理边框 (<= 1.5pt) 之前，严禁提前蓄力，累加器强制清零！
-        // 2. 触边静止稳定门禁 (Settle Gate: 50ms)：从空中划向边框的前 50ms 内属于撞边惯性滑行期，强制不计入推力！
-        // 3. 只有到达边缘停稳后，后续继续推边产生的位移才计入推力！
+        // 1. Calculate Edge Push Force (Barrier / Input Leap model)
+        // Core rules:
+        // 1. Before cursor reaches physical border (<= 1.5pt), accumulator stays reset
+        // 2. Post-arrival settle gate (50ms): inflight approach inertia is discarded
+        // 3. Only sustained pushing after settling accumulates force
         let isPushForceBreakthrough: Bool
         if isAtAbsoluteBezel {
             if let arrivalTime = bezelArrivalTime {
@@ -404,31 +404,17 @@ public final class EdgeMouseMonitor {
                 isPushForceBreakthrough = false
             }
         } else {
-            bezelArrivalTime = nil
             wasAtAbsoluteBezel = false
+            bezelArrivalTime = nil
             pushAccumulator.reset()
             isPushForceBreakthrough = false
         }
 
-        // Velocity speed check: suppress wild vertical fling if not pushing inward
-        if store.edgeTriggerMode == .hoverDwell {
-            guard speed < 900.0 else {
-                cancelInitialDwell()
-                return
-            }
-        } else {
-            if !isPushForceBreakthrough {
-                guard speed < 900.0 else {
-                    cancelInitialDwell()
-                    return
-                }
-            }
-        }
-
+        // Apply Mutual-Exclusion between Push Force and Hover Dwell
         if isFromDockedState {
             switch store.edgeTriggerMode {
             case .pushForce:
-                // 模式 1：仅推力突破触发 (0ms 瞬间破门，无悬停等待)
+                // Mode 1: Push force breakthrough trigger (0ms instant trigger upon overcoming barrier)
                 if isPushForceBreakthrough {
                     cancelInitialDwell()
                     activatePodDrawer(candidate: candidate, matched: matched, currentWindowY: currentWindowY, edge: edge)
@@ -436,24 +422,24 @@ public final class EdgeMouseMonitor {
                 return
 
             case .hoverDwell:
-                // 极速模式（agile）：0ms 一 hover 就有！
+                // Agile mode: 0ms instant trigger on hover
                 if store.edgeTriggerSensitivity == .agile {
                     cancelInitialDwell()
                     activatePodDrawer(candidate: candidate, matched: matched, currentWindowY: currentWindowY, edge: edge)
                     return
                 }
 
-                // 模式 2：仅悬停驻留门禁触发 (严格遵循用户设定的驻留时长，避免划过误弹)
+                // Mode 2: Hover dwell gate trigger (strictly adheres to configured dwell duration)
                 let requiredDwell = store.activeInitialDwellSeconds
 
-                // 若同步事件已达到驻留时长，立即触发
+                // If hover duration already satisfies dwell requirement, trigger immediately
                 if hoverDuration >= requiredDwell {
                     cancelInitialDwell()
                     activatePodDrawer(candidate: candidate, matched: matched, currentWindowY: currentWindowY, edge: edge)
                     return
                 }
 
-                // 启动异步驻留计时器 (捕获静止悬停)
+                // Launch asynchronous dwell timer to capture stationary hover
                 if initialDwellTask == nil || currentDwellCandidatePodId != candidate.id {
                     cancelInitialDwell()
                     currentDwellCandidatePodId = candidate.id
@@ -469,7 +455,7 @@ public final class EdgeMouseMonitor {
                         guard self.store.activeDrawerPodId == nil && self.store.activeDrawerItemId == nil else { return }
                         guard self.store.edgeTriggerMode == .hoverDwell else { return }
 
-                        // 重新校验当前鼠标位置是否仍停留在边缘及目标 Pod 上
+                        // Re-verify that cursor still resides on edge and target pod
                         let currentPoint = self.customCurrentMouseLocation ?? NSEvent.mouseLocation
                         let curScreen = self.coordinator?.targetScreen(for: currentPoint) ?? NSScreen.main ?? NSScreen.screens.first
                         let curVisibleRect = self.customTargetVisibleRect ?? curScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -495,7 +481,7 @@ public final class EdgeMouseMonitor {
                             return
                         }
 
-                        // 悬停驻留达标：触发初次弹出！
+                        // Hover dwell requirement satisfied: trigger initial drawer expansion
                         self.activatePodDrawer(candidate: targetMatched.pod, matched: targetMatched, currentWindowY: curWinY, edge: edge)
                         self.initialDwellTask = nil
                         self.currentDwellCandidatePodId = nil
@@ -504,7 +490,7 @@ public final class EdgeMouseMonitor {
                 }
             }
         } else {
-            // 抽屉已处于展开态，沿轨快速滑动切换 (40ms 或已是当前 Pod)
+            // Drawer already expanded: fast slide transition across pods along rail (40ms)
             guard hoverDuration >= 0.04 || store.activeDrawerPodId == candidate.id else { return }
             activatePodDrawer(candidate: candidate, matched: matched, currentWindowY: currentWindowY, edge: edge)
         }
@@ -553,7 +539,7 @@ public final class EdgeMouseMonitor {
         return cardFrames.contains(where: { $0.contains(winPoint) })
     }
 
-    /// 检测给定边缘是否与其他外接屏幕直接相邻拼接 (Inter-Screen Seam)
+    /// Determines whether edge is an adjacent inter-screen seam in multi-display setups
     public static func isSeam(edge: MountEdge, on screen: NSScreen, point: NSPoint) -> Bool {
         let screens = NSScreen.screens
         guard screens.count > 1 else { return false }
@@ -561,16 +547,16 @@ public final class EdgeMouseMonitor {
 
         for other in screens where other != screen {
             let otherFrame = other.frame
-            // 垂直方向有视口重叠
+            // Check vertical viewport overlap
             guard point.y >= otherFrame.minY - 15 && point.y <= otherFrame.maxY + 15 else { continue }
 
             if edge == .right {
-                // 另一块显示器紧贴在当前显示器右侧 (左右拼接缝隙 <= 20px)
+                // Adjacent screen on right side (seam gap <= 20px)
                 if abs(otherFrame.minX - currentFrame.maxX) <= 20 {
                     return true
                 }
             } else {
-                // 另一块显示器紧贴在当前显示器左侧 (左右拼接缝隙 <= 20px)
+                // Adjacent screen on left side (seam gap <= 20px)
                 if abs(currentFrame.minX - otherFrame.maxX) <= 20 {
                     return true
                 }
