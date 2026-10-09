@@ -74,12 +74,12 @@ struct ErgonomicAutoLayoutEngineTests {
     @Test("Optimizes bilateral layout respecting user edge assignments by default")
     func testOptimizeBilateralLayoutPreservesUserEdges() {
         let vitals = SlotPod(
-            id: "vitals", name: "Vitals", systemIcon: "waveform", edge: .right,
+            id: "vitals", name: "Vitals", systemIcon: "waveform", edge: .right, defaultEdge: .left,
             range: .init(start: 0.1, length: 0.1), ambientStyle: .ghostDot,
             preferredZone: .quickFlick, ergonomicWeight: 30, isEnabled: true
         )
         let calendar = SlotPod(
-            id: "calendar", name: "Calendar", systemIcon: "calendar", edge: .left,
+            id: "calendar", name: "Calendar", systemIcon: "calendar", edge: .left, defaultEdge: .right,
             range: .init(start: 0.1, length: 0.1), ambientStyle: .progressTimeline,
             preferredZone: .glance, ergonomicWeight: 40, isEnabled: true
         )

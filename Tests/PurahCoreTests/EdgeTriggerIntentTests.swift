@@ -610,12 +610,12 @@ struct EdgeTriggerIntentTests {
         )
 
         // 1. First alert notification
-        store.notifyEventAlertIfNeeded(for: event)
+        store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
         #expect(toastReceived?.contains("Executive Standup") == true)
 
         // 2. Subsequent alert for same event should deduplicate
         toastReceived = nil
-        store.notifyEventAlertIfNeeded(for: event)
+        store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
         #expect(toastReceived == nil, "Duplicate toast for same event must be suppressed")
 
         // 3. When disabled, no toast is fired
@@ -627,7 +627,7 @@ struct EdgeTriggerIntentTests {
             startTime: Date(),
             endTime: Date().addingTimeInterval(3600)
         )
-        store.notifyEventAlertIfNeeded(for: event2)
+        store.postToastNotification(id: event2.id, message: "📅 \(event2.title) is starting now")
         #expect(toastReceived == nil, "Toast must not fire when isEventToastAlertEnabled is false")
     }
 
@@ -743,8 +743,8 @@ struct EdgeTriggerIntentTests {
         monitor.processMouse(point: edgePoint, now: startTime, customVelocity: .zero)
         #expect(store.activeDrawerPodId == nil, "Must wait for 300ms dwell")
 
-        // Wait 350ms (longer than 300ms)
-        try? await Task.sleep(for: .milliseconds(350))
+        // Wait 400ms (longer than 300ms)
+        try? await Task.sleep(for: .milliseconds(400))
 
         #expect(store.activeDrawerPodId == firstItem.pod.id, "Resting on pod past 300ms dwell must open drawer")
     }

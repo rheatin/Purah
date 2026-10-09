@@ -7,6 +7,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
     public var defaultName: String
     public var systemIcon: String
     public var edge: MountEdge
+    public var defaultEdge: MountEdge?
     public var range: NormalizedRange
     public var ambientStyle: AmbientStyle
     public var preferredZone: ZoneType
@@ -22,6 +23,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         defaultName: String,
         systemIcon: String,
         edge: MountEdge,
+        defaultEdge: MountEdge? = nil,
         range: NormalizedRange,
         ambientStyle: AmbientStyle,
         preferredZone: ZoneType,
@@ -36,6 +38,38 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         self.defaultName = defaultName
         self.systemIcon = systemIcon
         self.edge = edge
+        self.defaultEdge = defaultEdge ?? edge
+        self.range = range
+        self.ambientStyle = ambientStyle
+        self.preferredZone = preferredZone
+        self.ergonomicWeight = ergonomicWeight
+        self.minLength = minLength
+        self.isEnabled = isEnabled
+        self.drawerWidth = drawerWidth
+        self.defaultColorHex = defaultColorHex
+    }
+
+    public init(
+        id: String,
+        name: String,
+        systemIcon: String,
+        edge: MountEdge,
+        defaultEdge: MountEdge? = nil,
+        range: NormalizedRange,
+        ambientStyle: AmbientStyle,
+        preferredZone: ZoneType,
+        ergonomicWeight: Double,
+        minLength: Double = 0.10,
+        isEnabled: Bool = true,
+        drawerWidth: Double = 260,
+        defaultColorHex: String = "#00F5D4"
+    ) {
+        self.id = id
+        self.nameKey = "plugin.\(id).name"
+        self.defaultName = name
+        self.systemIcon = systemIcon
+        self.edge = edge
+        self.defaultEdge = defaultEdge ?? edge
         self.range = range
         self.ambientStyle = ambientStyle
         self.preferredZone = preferredZone

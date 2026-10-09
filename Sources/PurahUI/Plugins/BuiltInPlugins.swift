@@ -809,6 +809,7 @@ public struct CalendarPlugin: PurahPodPlugin {
         return AnyView(
             CalendarItemDrawerView(
                 event: event,
+                allEvents: events,
                 edge: context.edge,
                 state: state,
                 isPinned: isPinned,

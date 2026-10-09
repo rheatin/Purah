@@ -185,6 +185,7 @@ public struct TodoItemDrawerView: View {
 
 public struct CalendarItemDrawerView: View {
     public let event: CalendarEventItem
+    public let allEvents: [CalendarEventItem]
     public let edge: MountEdge
     public let state: ItemDrawerState
     public let isPinned: Bool
@@ -202,6 +203,7 @@ public struct CalendarItemDrawerView: View {
 
     public init(
         event: CalendarEventItem,
+        allEvents: [CalendarEventItem] = [],
         edge: MountEdge,
         state: ItemDrawerState,
         isPinned: Bool,
@@ -210,6 +212,7 @@ public struct CalendarItemDrawerView: View {
         onTogglePin: @escaping () -> Void
     ) {
         self.event = event
+        self.allEvents = allEvents
         self.edge = edge
         self.state = state
         self.isPinned = isPinned
@@ -259,12 +262,12 @@ public struct CalendarItemDrawerView: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
         .onAppear {
             if isAlerting {
-                store.notifyEventAlertIfNeeded(for: event)
+                store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
             }
         }
         .onChange(of: isAlerting) { _, alerting in
             if alerting {
-                store.notifyEventAlertIfNeeded(for: event)
+                store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
             }
         }
     }
@@ -698,7 +701,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func upcomingNextEvent() -> CalendarEventItem? {
-        let others = store._calendarEvents.filter { $0.id != event.id && $0.startTime >= event.startTime }
+        let others = allEvents.filter { $0.id != event.id && $0.startTime >= event.startTime }
         return others.sorted(by: { $0.startTime < $1.startTime }).first
     }
 
