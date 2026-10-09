@@ -791,4 +791,55 @@ struct DrawerInteractionUITests {
         #expect(store.activeDrawerPodId == "music")
         #expect(store.activeDrawerItemId == "music")
     }
+
+    @Test("CalendarItemDrawerView instantiates across Compact, Standard, and Flagship height tiers")
+    @MainActor
+    func testCalendarDrawerViewTiers() {
+        let store = PurahWorkspaceStore()
+        let event = CalendarEventItem(
+            title: "Project Strategy Review",
+            location: "Room 402",
+            calendarTitle: "Work",
+            colorHex: "#007AFF",
+            url: URL(string: "https://zoom.us/j/123456789"),
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(3600)
+        )
+
+        // Compact Tier (< 65pt)
+        let compactView = CalendarItemDrawerView(
+            event: event,
+            edge: .right,
+            state: .expandedDrawer,
+            isPinned: false,
+            height: 48.0,
+            store: store,
+            onTogglePin: {}
+        )
+        _ = compactView
+
+        // Standard Tier (65pt ~ 115pt)
+        let standardView = CalendarItemDrawerView(
+            event: event,
+            edge: .right,
+            state: .expandedDrawer,
+            isPinned: false,
+            height: 85.0,
+            store: store,
+            onTogglePin: {}
+        )
+        _ = standardView
+
+        // Flagship Tier (>= 115pt)
+        let flagshipView = CalendarItemDrawerView(
+            event: event,
+            edge: .right,
+            state: .expandedDrawer,
+            isPinned: true,
+            height: 140.0,
+            store: store,
+            onTogglePin: {}
+        )
+        _ = flagshipView
+    }
 }
