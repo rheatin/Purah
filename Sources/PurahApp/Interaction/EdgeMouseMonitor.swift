@@ -537,6 +537,11 @@ public final class EdgeMouseMonitor {
 
     private func isPointInsideAnyDrawerCard(point: NSPoint, visibleRect: CGRect, edge: MountEdge) -> Bool {
         guard !store.isRailsFrozen else { return false }
+        // Fast-path: If no drawer is active and no items are pinned on this edge, return false instantly without computing frames!
+        let hasActive = (store.activePod?.edge == edge) && (store.activeDrawerPodId != nil || store.activeDrawerItemId != nil)
+        let hasPinned = store.hasPinnedItem(on: edge)
+        guard hasActive || hasPinned else { return false }
+
         let totalH = Double(visibleRect.height)
         let windowW = 340.0
         let windowMinX = (edge == .right) ? (visibleRect.maxX - windowW) : visibleRect.minX

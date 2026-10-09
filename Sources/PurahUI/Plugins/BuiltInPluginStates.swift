@@ -23,6 +23,8 @@ public final class CalendarPluginState: Sendable {
     public var acknowledgedAlertIds: Set<String>
     public let storage: any PurahPluginStorage
 
+    @ObservationIgnored public var cachedSubItemHeaders: [(id: String, title: String)] = []
+    @ObservationIgnored public var cacheTimestamp: TimeInterval = 0
     @ObservationIgnored private var eventStoreObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
