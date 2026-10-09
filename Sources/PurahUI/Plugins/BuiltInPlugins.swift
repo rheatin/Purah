@@ -959,7 +959,8 @@ public struct CalendarPluginSettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            // 1. Calendar Scope
             VStack(alignment: .leading, spacing: 4) {
                 Text("Calendar Scope")
                     .font(.caption)
@@ -980,6 +981,56 @@ public struct CalendarPluginSettingsView: View {
                 .pickerStyle(.segmented)
             }
 
+            Divider()
+                .background(Color.primary.opacity(0.08))
+
+            // 2. Overflow & Rail Density Strategy
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Overflow Strategy & Density")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                PurahThemedSegmentedPicker(
+                    options: CalendarOverflowStrategy.allCases,
+                    selection: Binding(
+                        get: { state.overflowStrategy },
+                        set: { newStrategy in
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                state.overflowStrategy = newStrategy
+                                state.save()
+                            }
+                        }
+                    ),
+                    titleForOption: { $0.displayName }
+                )
+
+                Text(state.overflowStrategy.subtitle)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if state.overflowStrategy == .smartFold {
+                    PurahThemedSliderRow(
+                        title: "Max Rail Events",
+                        subtitle: "Primary events shown on bezel before folding into +N More capsule",
+                        value: Binding(
+                            get: { Double(state.maxRailEvents) },
+                            set: {
+                                state.maxRailEvents = Int($0)
+                                state.save()
+                            }
+                        ),
+                        range: 2...6,
+                        step: 1,
+                        valueBadgeText: "\(state.maxRailEvents) items"
+                    )
+                }
+            }
+
+            Divider()
+                .background(Color.primary.opacity(0.08))
+
+            // 3. Attention Alert Dynamics
             VStack(alignment: .leading, spacing: 6) {
                 Text("Attention Alert Dynamic")
                     .font(.caption)
