@@ -208,7 +208,7 @@ public struct CalendarItemDrawerView: View {
             return podColor
         }()
 
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // 贴边基座色条（尺寸严格共面齐平，高亮时呈现动态信标呼吸）
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
@@ -231,7 +231,7 @@ public struct CalendarItemDrawerView: View {
                     .transition(itemDrawerTransition)
             }
         }
-        .frame(height: cardH)
+        .frame(height: cardH, alignment: .top)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
         .onAppear {
             if isAlerting {

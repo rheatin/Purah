@@ -53,7 +53,7 @@ public struct SteppedRailContainerView: View {
                         let isActive = (subItem.id == store.activeDrawerItemId || isPinned)
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
-                        ZStack(alignment: edge == .right ? .trailing : .leading) {
+                        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
                             subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: itemH)
                                 .id(subItem.id)
                                 .onHover { isHovered in
@@ -77,13 +77,12 @@ public struct SteppedRailContainerView: View {
                                     plugin.onRailBarTap(subItemId: subItem.id, context: context)
                                 }
                         }
-                        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-                        .frame(height: itemH)
+                        .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)
+                        .frame(height: itemH, alignment: .top)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
-                .frame(height: totalSpanH)
-                .clipped()
+                .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)
+                .frame(height: totalSpanH, alignment: .top)
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
