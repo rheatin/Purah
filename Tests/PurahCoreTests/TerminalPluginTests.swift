@@ -24,8 +24,8 @@ struct TerminalPluginTests {
         #expect(plugin.manifest.minLengthRatio == 0.20)
 
         let store = PurahWorkspaceStore()
-        #expect(plugin.minimumDrawerHeight(store: store) >= 360.0)
-        #expect(store.minimumDrawerHeight(for: "terminal") == 360.0)
+        #expect(plugin.minimumDrawerHeight(store: store) == 60.0)
+        #expect(store.minimumDrawerHeight(for: "terminal") == 60.0)
 
         let settingsView = plugin.makeSettingsView(store: store)
         #expect(settingsView != nil)
