@@ -103,7 +103,10 @@ public struct VisualLayoutSimulatorView: View {
                 // 1. Mini Screen Simulation (Top Primary Focus)
                 ScreenSimulationCanvas(store: store)
 
-                // 2. Presets Card
+                // 2. Rail Module Assembly Card
+                moduleAssemblyCard
+
+                // 3. Presets Card
                 settingsCard(title: "simulator.presets".localized, icon: "sparkle") {
                     HStack(spacing: 12) {
                         ForEach(PodPreset.allCases) { preset in
@@ -407,70 +410,126 @@ public struct VisualLayoutSimulatorView: View {
                         KeyboardShortcutRecorderView(store: store)
                     }
                 }
-
-                // 4. Module Assembly Card
-                settingsCard(title: "Rail Module Assembly", icon: "square.grid.2x2.fill") {
-                    VStack(spacing: 10) {
-                        HStack {
-                            Text("Toggle modules to mount or unmount on rails. Configure each in the Plugins tab.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text("\(store.pods.filter { $0.isEnabled }.count) of \(store.pods.count) active")
-                                .font(.system(.caption, design: .monospaced).weight(.semibold))
-                                .foregroundColor(palette.primaryAccent)
-                        }
-
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            ForEach(store.pods) { pod in
-                                Button {
-                                    withAnimation(.spring(response: 0.24, dampingFraction: 0.80)) {
-                                        store.togglePodEnabled(id: pod.id)
-                                    }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: pod.isEnabled ? "checkmark.circle.fill" : "circle")
-                                            .foregroundColor(pod.isEnabled ? palette.primaryAccent : .gray)
-                                            .font(.subheadline)
-
-                                        Image(systemName: pod.systemIcon)
-                                            .font(.caption)
-                                            .foregroundColor(pod.isEnabled ? palette.podColor(for: pod.id, store: store) : .gray)
-
-                                        Text(pod.name)
-                                            .font(.subheadline)
-                                            .foregroundColor(pod.isEnabled ? (palette.style == .native ? Color.primary : .white) : .secondary)
-                                            .lineLimit(1)
-
-                                        Spacer()
-
-                                        Text(pod.edge == .left ? "Left" : "Right")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(pod.isEnabled ? palette.primaryAccent.opacity(0.12) : Color.gray.opacity(0.15))
-                                            .foregroundColor(pod.isEnabled ? palette.primaryAccent : .gray)
-                                            .cornerRadius(4)
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 8)
-                                    .background(pod.isEnabled ? Color(nsColor: .controlBackgroundColor) : Color.clear)
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(pod.isEnabled ? palette.primaryAccent.opacity(0.3) : palette.borderColor.opacity(0.3), lineWidth: 1)
-                                    )
-                                }
-                                .buttonStyle(.tactile)
-                            }
-                        }
-                    }
-                }
             }
             .padding(24)
             .frame(width: 680)
         }
         .frame(minHeight: 560)
+    }
+
+    // MARK: - Rail Module Assembly Card
+    private var moduleAssemblyCard: some View {
+        let palette = theme.palette
+        let mountedPods = store.pods.filter { $0.isEnabled }
+        let unmountedPods = store.pods.filter { !$0.isEnabled }
+
+        return settingsCard(title: "Rail Module Assembly", icon: "square.grid.2x2.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Toggle modules on rails. Click ✕ to unmount or + to mount.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(mountedPods.count) of \(store.pods.count) mounted")
+                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .foregroundColor(palette.primaryAccent)
+                }
+
+                // 1. Mounted Pods Grid
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(mountedPods) { pod in
+                        HStack(spacing: 8) {
+                            Image(systemName: pod.systemIcon)
+                                .font(.caption)
+                                .foregroundColor(palette.podColor(for: pod.id, store: store))
+
+                            Text(pod.name)
+                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Text(pod.edge == .left ? "Left" : "Right")
+                                .font(.system(size: 8.5, weight: .bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(palette.primaryAccent.opacity(0.12))
+                                .foregroundColor(palette.primaryAccent)
+                                .cornerRadius(4)
+
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.togglePodEnabled(id: pod.id)
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.red.opacity(0.85))
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Unmount \(pod.name) from rail")
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(palette.primaryAccent.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                }
+
+                // 2. Unmounted Pods Tray (if any exist)
+                if !unmountedPods.isEmpty {
+                    Divider()
+                        .background(palette.borderColor.opacity(0.35))
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Available to Mount (\(unmountedPods.count))")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                            ForEach(unmountedPods) { pod in
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.togglePodEnabled(id: pod.id)
+                                    }
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 9.5))
+                                            .foregroundColor(.green)
+
+                                        Image(systemName: pod.systemIcon)
+                                            .font(.caption2)
+                                            .foregroundColor(palette.podColor(for: pod.id, store: store).opacity(0.8))
+
+                                        Text(pod.name)
+                                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.primary.opacity(0.03))
+                                    .cornerRadius(6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                                    )
+                                }
+                                .buttonStyle(.tactile)
+                                .help("Mount \(pod.name) to rail")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder

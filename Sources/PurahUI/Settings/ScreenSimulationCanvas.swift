@@ -128,55 +128,6 @@ public struct ScreenSimulationCanvas: View {
 
                     Spacer()
 
-                    // Center: Quick Mount Tray for Disabled Pods
-                    let unmountedPods = store.pods.filter { !$0.isEnabled }
-                    if !unmountedPods.isEmpty {
-                        VStack(spacing: 5) {
-                            Text("Unmounted Modules")
-                                .font(.system(size: 8, weight: .bold, design: .rounded))
-                                .foregroundColor(.secondary)
-
-                            VStack(spacing: 4) {
-                                ForEach(unmountedPods) { pod in
-                                    Button {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.togglePodEnabled(id: pod.id)
-                                        }
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "plus.circle.fill")
-                                                .font(.system(size: 8))
-                                                .foregroundColor(.green)
-                                            Image(systemName: pod.systemIcon)
-                                                .font(.system(size: 8))
-                                                .foregroundColor(palette.podColor(for: pod.id, store: store))
-                                            Text(pod.name)
-                                                .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                                .lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(palette.surfaceBackground)
-                                        .cornerRadius(4)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .stroke(palette.borderColor.opacity(0.35), lineWidth: 0.8)
-                                        )
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("Click to enable \(pod.name) on rail")
-                                }
-                            }
-                        }
-                        .padding(6)
-                        .background(Color.black.opacity(0.18))
-                        .cornerRadius(6)
-                        .padding(.top, 24)
-                    }
-
-                    Spacer()
-
                     // Right Rail Container
                     ZStack(alignment: .topTrailing) {
                         // Right rail background slot
