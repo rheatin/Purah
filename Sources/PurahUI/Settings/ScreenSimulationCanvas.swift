@@ -124,7 +124,6 @@ public struct ScreenSimulationCanvas: View {
                         }
                     }
                     .frame(width: 185, height: workableHeight, alignment: .topLeading)
-                    .clipped()
 
                     Spacer()
 
@@ -168,7 +167,6 @@ public struct ScreenSimulationCanvas: View {
                         }
                     }
                     .frame(width: 185, height: workableHeight, alignment: .topTrailing)
-                    .clipped()
                 }
                 .padding(.horizontal, 8)
             }

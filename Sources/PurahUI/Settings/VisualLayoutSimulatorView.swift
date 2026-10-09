@@ -450,13 +450,25 @@ public struct VisualLayoutSimulatorView: View {
 
                             Spacer()
 
-                            Text(pod.edge == .left ? "Left" : "Right")
-                                .font(.system(size: 8.5, weight: .bold))
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: pod.edge == .left ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
+                                        .font(.system(size: 8))
+                                    Text(pod.edge == .left ? "Left" : "Right")
+                                        .font(.system(size: 8.5, weight: .bold))
+                                }
                                 .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(palette.primaryAccent.opacity(0.12))
+                                .padding(.vertical, 2.5)
+                                .background(palette.primaryAccent.opacity(0.15))
                                 .foregroundColor(palette.primaryAccent)
                                 .cornerRadius(4)
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Click to move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
 
                             Button {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
