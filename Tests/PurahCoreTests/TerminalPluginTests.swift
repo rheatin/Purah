@@ -168,4 +168,35 @@ struct TerminalPluginTests {
         #expect(representable.fontFamily == "Auto (Nerd Font)")
         #expect(representable.fontSize == 11.5)
     }
+
+    @Test("Terminal drawer frame spans full 520pt width within 580pt canvas ensuring far-edge controls hit-test successfully")
+    @MainActor
+    func testTerminalDrawerCardFrameSpansFullWidth() {
+        let store = PurahWorkspaceStore()
+        let termPod = SlotPod(
+            id: "terminal",
+            name: "Terminal",
+            systemIcon: "terminal",
+            edge: .right,
+            range: NormalizedRange(start: 0.2, length: 0.3),
+            ambientStyle: .ghostDot,
+            preferredZone: .glance,
+            ergonomicWeight: 30.0,
+            drawerWidth: 520.0
+        )
+        store.pods = [termPod]
+        store.activeDrawerPodId = "terminal"
+
+        let totalH = 1000.0
+        let windowW = 580.0
+        let frames = store.activeDrawerCardFrames(for: .right, totalHeight: totalH, windowWidth: windowW)
+        #expect(!frames.isEmpty)
+        let termFrame = frames[0]
+
+        #expect(termFrame.width >= 520.0)
+
+        // Point near the far-left outer edge of the card (where Pin and Settings buttons are)
+        let farLeftPinPoint = NSPoint(x: windowW - 510.0, y: termFrame.midY)
+        #expect(termFrame.contains(farLeftPinPoint), "Pin button region (510pt from right bezel) must be covered by card frame")
+    }
 }

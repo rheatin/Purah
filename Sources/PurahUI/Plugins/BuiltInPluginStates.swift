@@ -224,6 +224,7 @@ public final class TodoPluginState: Sendable {
     public var scope: RemindersScope
     public var isUsingRealReminders: Bool
     public var isSyncing: Bool
+    public var maxRailTodos: Int
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private var reminderStoreObserver: (any NSObjectProtocol)?
@@ -240,12 +241,18 @@ public final class TodoPluginState: Sendable {
         self.scope = storage.codable(forKey: "scope", as: RemindersScope.self) ?? .allIncomplete
         self.isUsingRealReminders = false
         self.isSyncing = false
+        let savedMax = storage.int(forKey: "maxRailTodos")
+        self.maxRailTodos = savedMax > 0 ? savedMax : 6
         self.todos = storage.codable(forKey: "todos", as: [TodoItem].self) ?? Self.defaultTodos()
     }
 
     public func load() {
         if let savedScope = storage.codable(forKey: "scope", as: RemindersScope.self) {
             self.scope = savedScope
+        }
+        let savedMax = storage.int(forKey: "maxRailTodos")
+        if savedMax > 0 {
+            self.maxRailTodos = savedMax
         }
         if let savedTodos = storage.codable(forKey: "todos", as: [TodoItem].self) {
             self.todos = savedTodos
@@ -254,6 +261,7 @@ public final class TodoPluginState: Sendable {
 
     public func save() {
         storage.setCodable(scope, forKey: "scope")
+        storage.set(maxRailTodos, forKey: "maxRailTodos")
         storage.setCodable(todos, forKey: "todos")
     }
 
@@ -926,7 +934,11 @@ public final class VitalsPluginState: Sendable {
 
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "vitals")) {
         self.storage = storage
-        self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            self.isDecomposed = true
+        }
         self.enabledMetrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
         self.thresholds = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
         self.metrics = HardwareVitalsService.shared.metrics
@@ -961,7 +973,11 @@ public final class VitalsPluginState: Sendable {
     }
 
     public func load() {
-        self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            self.isDecomposed = true
+        }
         if let metrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) {
             self.enabledMetrics = metrics
         }
@@ -1069,7 +1085,11 @@ public final class ScriptsPluginState: Sendable {
 
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "scripts")) {
         self.storage = storage
-        self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            self.isDecomposed = true
+        }
         self.enabledActionIds = storage.codable(forKey: "enabledActionIds", as: [String].self) ?? []
         self.actions = storage.codable(forKey: "actions", as: [ScriptActionItem].self) ?? ScriptRunwayService.shared.actions
         self.lastOutput = nil
@@ -1078,7 +1098,11 @@ public final class ScriptsPluginState: Sendable {
     }
 
     public func load() {
-        self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            self.isDecomposed = true
+        }
         if let ids = storage.codable(forKey: "enabledActionIds", as: [String].self) {
             self.enabledActionIds = ids
         }

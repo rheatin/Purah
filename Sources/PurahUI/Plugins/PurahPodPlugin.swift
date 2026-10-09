@@ -37,6 +37,10 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
     // 7. Native Context Menu Actions
     func contextMenuActions(subItemId: String?, context: PurahPluginContext) -> [PurahMenuAction]
+
+    // 8. Custom Header Slots (Accessories next to title & Trailing tools before settings/pin)
+    @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
+    @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
 }
 
 public extension PurahPodPlugin {
@@ -53,6 +57,8 @@ public extension PurahPodPlugin {
     func onUnmount(store: PurahWorkspaceStore) {}
     func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? { nil }
     func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
+    func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? { nil }
+    func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? { nil }
 
     func dynamicBarColor(context: PurahPluginContext) -> Color? { nil }
     var supportedDrawerModes: Set<PurahDrawerMode> { [.composite] }

@@ -56,58 +56,25 @@ public struct DropShelfDrawerView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 5) {
                         ForEach(state.files) { file in
-                            HStack(spacing: 8) {
-                                Button {
+                            ShelfFileRowView(
+                                file: file,
+                                shelfColor: shelfColor,
+                                palette: palette,
+                                onOpen: {
                                     if let path = file.filePath {
                                         NSWorkspace.shared.open(URL(fileURLWithPath: path))
                                     }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: iconForExtension(file.fileExtension))
-                                            .font(.system(size: 14))
-                                            .foregroundColor(shelfColor)
-
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(file.name)
-                                                .purahBody(size: 11, weight: .medium, design: .rounded)
-                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                                .lineLimit(1)
-                                            Text(file.sizeDescription)
-                                                .purahCaption(size: 8)
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .help("Click to open file")
-
-                                Spacer()
-
-                                if let path = file.filePath {
-                                    Button {
+                                },
+                                onReveal: {
+                                    if let path = file.filePath {
                                         NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-                                    } label: {
-                                        Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.gray)
                                     }
-                                    .buttonStyle(.plain)
-                                    .help("Reveal in Finder")
-                                }
-
-                                Button {
+                                },
+                                onRemove: {
                                     state.removeFile(id: file.id)
                                     store._shelfFiles.removeAll { $0.id == file.id }
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.gray.opacity(0.6))
                                 }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .liquidCardBackground(cornerRadius: 6, strokeColor: palette.borderColor.opacity(0.4))
+                            )
                         }
                     }
                     .padding(.vertical, 2)
@@ -144,11 +111,130 @@ public struct DropShelfDrawerView: View {
     }
 
     private func iconForExtension(_ ext: String) -> String {
+        Self.iconForExtension(ext)
+    }
+
+    public static func iconForExtension(_ ext: String) -> String {
         switch ext.lowercased() {
         case "pdf": return "doc.text.fill"
         case "png", "jpg", "jpeg", "heic": return "photo.fill"
         case "zip", "tar", "gz": return "archivebox.fill"
+        case "swift", "js", "ts", "py", "rs", "go", "c", "cpp", "h", "sh": return "chevron.left.forwardslash.chevron.right"
+        case "mp3", "m4a", "wav", "flac": return "music.note"
+        case "mp4", "mov", "mkv": return "film.fill"
         default: return "doc.fill"
+        }
+    }
+}
+
+public struct ShelfFileRowView: View {
+    public let file: ShelfFileItem
+    public let shelfColor: Color
+    public let palette: ThemePalette
+    public let onOpen: () -> Void
+    public let onReveal: () -> Void
+    public let onRemove: () -> Void
+
+    @State private var isHovered: Bool = false
+    @State private var isDragging: Bool = false
+
+    public init(
+        file: ShelfFileItem,
+        shelfColor: Color,
+        palette: ThemePalette,
+        onOpen: @escaping () -> Void,
+        onReveal: @escaping () -> Void,
+        onRemove: @escaping () -> Void
+    ) {
+        self.file = file
+        self.shelfColor = shelfColor
+        self.palette = palette
+        self.onOpen = onOpen
+        self.onReveal = onReveal
+        self.onRemove = onRemove
+    }
+
+    public var body: some View {
+        HStack(spacing: 8) {
+            // Drag grip indicator
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 8))
+                .foregroundColor(.secondary.opacity(isHovered ? 0.8 : 0.3))
+                .frame(width: 8)
+
+            Button(action: onOpen) {
+                HStack(spacing: 8) {
+                    Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
+                        .font(.system(size: 14))
+                        .foregroundColor(shelfColor)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(file.name)
+                            .purahBody(size: 11, weight: .medium, design: .rounded)
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+                        Text(file.sizeDescription)
+                            .purahCaption(size: 8)
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Click to open · Drag out to Finder/Desktop")
+
+            Spacer()
+
+            if file.filePath != nil {
+                Button(action: onReveal) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 9))
+                        .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
+                }
+                .buttonStyle(.plain)
+                .help("Reveal in Finder")
+            }
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9))
+                    .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
+            }
+            .buttonStyle(.plain)
+            .help("Remove from shelf")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .liquidCardBackground(
+            cornerRadius: 6,
+            strokeColor: isHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4)
+        )
+        .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))
+        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isHovered)
+        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isDragging)
+        .onHover { isHovered = $0 }
+        // Native drag out to Finder, Desktop, Mail, etc.
+        .onDrag {
+            isDragging = true
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                isDragging = false
+            }
+            guard let path = file.filePath else { return NSItemProvider() }
+            return NSItemProvider(object: URL(fileURLWithPath: path) as NSURL)
+        } preview: {
+            HStack(spacing: 6) {
+                Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
+                    .font(.system(size: 14))
+                    .foregroundColor(shelfColor)
+                Text(file.name)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.85))
+            .cornerRadius(8)
+            .shadow(color: shelfColor.opacity(0.4), radius: 6, y: 3)
         }
     }
 }

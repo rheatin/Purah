@@ -46,9 +46,11 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let count = max(store._todos.count, 1)
-        let minH = CGFloat(count) * 44.0 + CGFloat(count - 1) * 2.5
-        return min(max(minH, 70.0), 320.0)
+        let maxTasks = max(store.todoMaxRailTasks, 1)
+        let minChipH: CGFloat = 32.0
+        let spacing: CGFloat = 2.5
+        let totalSpacing = CGFloat(maxTasks - 1) * spacing
+        return CGFloat(maxTasks) * minChipH + totalSpacing
     }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
@@ -60,16 +62,16 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store._todos.count
+        min(store._todos.count, store.todoMaxRailTasks)
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store._todos.indices.contains(index) else { return nil }
+        guard index < store.todoMaxRailTasks, store._todos.indices.contains(index) else { return nil }
         return store._todos[index].id
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store._todos.indices.contains(index) else { return nil }
+        guard index < store.todoMaxRailTasks, store._todos.indices.contains(index) else { return nil }
         return store._todos[index].title
     }
 }
@@ -77,7 +79,7 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
 @MainActor
 struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String = "vitals"
-    var isDecomposed: Bool { false }
+    var isDecomposed: Bool { true }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         store._isVitalsDecomposed
@@ -117,7 +119,7 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
 @MainActor
 struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String = "scripts"
-    var isDecomposed: Bool { false }
+    var isDecomposed: Bool { true }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         store._isScriptsDecomposed

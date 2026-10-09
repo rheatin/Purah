@@ -88,6 +88,8 @@ public final class SystemMusicSyncService {
 
     public func handleAppleMusicInfo(notification: Notification, store: PurahWorkspaceStore?) {
         guard let userInfo = notification.userInfo else { return }
+        playbackTimer?.invalidate()
+        playbackTimer = nil
         lastNotificationDate = Date()
         isMusicAppConnected = true
 
@@ -142,6 +144,8 @@ public final class SystemMusicSyncService {
 
     public func handleSpotifyInfo(notification: Notification, store: PurahWorkspaceStore?) {
         guard let userInfo = notification.userInfo else { return }
+        playbackTimer?.invalidate()
+        playbackTimer = nil
         lastNotificationDate = Date()
         isMusicAppConnected = true
 
@@ -259,13 +263,15 @@ public final class SystemMusicSyncService {
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak store] _ in
             MainActor.assumeIsolated {
                 guard let store = store, store._musicTrack.isPlaying else { return }
-                let cur = store._musicTrack.calculatedCurrentTime
+                // Time-Anchor Model (AGENTS.md Section 5.2):
+                // Do NOT rewrite currentPositionSeconds or update lastUpdated on timer ticks.
+                // The true anchor (currentPositionSeconds, lastUpdated) is calibrated solely by external
+                // notifications or explicit seek/pause actions. The timer only pushes waveform samples and
+                // cached progress reflection to drive fluid UI visualizers without drift.
                 let prog = store._musicTrack.calculatedProgress
                 let samples: [Double] = (0..<14).map { _ in
                     Double.random(in: 0.25...0.95)
                 }
-                store._musicTrack.currentPositionSeconds = cur
-                store._musicTrack.lastUpdated = Date()
                 store._musicTrack.playbackProgress = prog
                 store._musicTrack.waveformSamples = samples
             }

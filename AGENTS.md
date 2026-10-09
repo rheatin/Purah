@@ -59,21 +59,31 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
 
 ## 3. Plugin Architecture (`PurahPodPlugin`)
 
-All modules (Vitals, Notes, Music, Shelf, Scripts, Calendar, Todo) are implemented as standard plugins:
+All modules (Vitals, Notes, Music, Shelf, Scripts, Calendar, Todo, Terminal) are implemented as standard plugins conforming to `PurahPodPlugin` and `PurahPodCapabilityProvider`. For comprehensive step-by-step developer documentation, refer to **`docs/PLUGIN_DEVELOPMENT_GUIDE.md`**.
 
 ```swift
 @MainActor
-public protocol PurahPodPlugin: Identifiable, Sendable {
+public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendable {
     nonisolated var manifest: PurahPluginManifest { get }
     @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
+    @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
+    @ViewBuilder func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView?
+
+    // Custom Header Slots (Accessories next to title & Trailing tools before settings/pin)
+    @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
+    @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
+
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
 }
 ```
 
 - **`PluginRegistry.shared`**: Manages registration, discovery, and lifecycle. Built-in plugins are registered on startup.
-- **`PurahPluginContext`**: Supplies layout geometry (`edge`, `railWidth`, `slotHeight`, `drawerWidth`), state (`isExpanded`, `isPinned`), theme palette, and action triggers (`requestExpand`, `requestDismiss`, `togglePin`).
+- **`PurahPluginStorage`**: Provides scoped isolation (`ScopedPluginStorage(pluginId:)`), keeping plugin persistent preferences neatly partitioned (`purah.plugin.<id>.<key>`).
+- **`PurahPluginContext`**: Supplies layout geometry (`edge`, `railWidth`, `slotHeight`, `drawerWidth`), state (`isExpanded`, `isPinned`), theme palette, isolated storage, and action triggers (`requestExpand`, `requestDismiss`, `togglePin`, `showToast`, `showWarning`, `performHaptic`). Third-party plugins communicate through context actions rather than mutating host store internals directly.
+- **Default Decomposed Principle**: Plugins that support multi-item stepped modes (Vitals, Scripts, Calendar, Todo) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and per-item direct interaction.
+- **Header Slot Integration**: Plugins can inject badges (e.g. Terminal `[• ZSH]`) and inline toolbars directly into the card header row via `makeHeaderAccessoryView` and `makeHeaderTrailingView`, saving vertical drawer space.
 - **Extensibility**: Third-party plugins can register custom manifests and views without modifying core layout engines.
 
 ---
@@ -101,13 +111,15 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
    - Exception: Multi-item stepped pods (`Calendar` & `Todo`), where individual task/event chips step out from their respective sub-slots.
 
 ### 5. Physical Ergonomic Minimum Height & Dynamic Rail Capacity Rule (Mandatory)
-1. **Pixel-Perfect Sub-Item Minimum**:
-   - Every independently interactive rail chip (split hardware metric, script runway action, calendar event, todo task) **MUST enforce a strict minimum visual height of $\ge 56\text{pt}$**.
-   - Full-pod composite drawers (Music, Shelf, Notes) **MUST enforce $\ge 120\text{pt}$**.
+1. **Tiered Ergonomic Sub-Item Minimum**:
+   - **Full-Pod Composite Drawers** (Music, Shelf, Notes, Terminal): **MUST enforce $\ge 120\text{pt}$** (Terminal preserves $\ge 520\text{pt}$ width).
+   - **Tactile Metrics & Actions** (split hardware metric chips, script runway action buttons): **MUST enforce $\ge 56\text{pt}$** to ensure precise fingertip/cursor click hitboxes.
+   - **Compact Calendar Event Chips** (`compactEventCard`): enforce **$40\text{pt}$ baseline** with configurable `calendarMaxRailEvents` (2~6 events), optimizing high-density multi-event glanceability without overflowing the rail.
+   - **Compact Reminder/Todo Task Chips** (`compactTodoCard`): enforce **$32\text{pt}$ baseline** with configurable `todoMaxRailTasks` (2~10 tasks) for concise task completion and fast-tick workflows.
    - Infinite downward compression that squashes typography, clips buttons, or shrinks click hitboxes is strictly forbidden.
-2. **Dynamic Height Budgeting**:
-   - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts.
-   - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at $\ge 56\text{pt}$.
+2. **Dynamic Height Budgeting & In-Rail Capacity**:
+   - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts bounded by `calendarMaxRailEvents` and `todoMaxRailTasks`.
+   - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at their respective tier minimums ($\ge 56\text{pt}$, $\ge 40\text{pt}$, or $\ge 32\text{pt}$).
 
 ### 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
 1. **Unified Card Anatomy**:
@@ -130,14 +142,15 @@ public protocol PurahPodPlugin: Identifiable, Sendable {
 
 ---
 
-## 5. System Services & Low-Level Darwin Rules
+## 7. System Services & Low-Level Darwin Rules
 
 1. **Darwin / Mach Kernel Memory Deallocation**:
    - `host_processor_info` returns count in terms of `mach_msg_type_number_t` elements.
    - `vm_deallocate` requires byte size: `previousCpuInfoCount * mach_msg_type_number_t(MemoryLayout<integer_t>.stride)`. Always deallocate exact byte sizes to prevent kernel leaks.
-2. **Music Playback Engine**:
+2. **Music Playback Engine & Immutable Time-Anchor Rule**:
    - Use the **Time-Anchor Model**: `calculatedCurrentTime = currentPositionSeconds + Date().timeIntervalSince(lastUpdated) * playbackRate`.
-   - Reset `lastUpdated = Date()` whenever `currentPositionSeconds` updates or on seek to eliminate quadratic compounding time drift.
+   - **Strict Anchor Immutability**: The anchor `(currentPositionSeconds, lastUpdated)` represents external ground truth. It MUST ONLY be reset when external system playback notifications arrive, when track changes, or on explicit user seek / play-pause actions.
+   - **Zero Drift Timer Rule**: Periodic timers (e.g. 0.5s visualizer timers) MUST NEVER write `calculatedCurrentTime` back into `currentPositionSeconds` or update `lastUpdated`. Periodic timers only push visual waveform amplitude samples and progress reflection to drive 60/120 FPS views without drift compounding.
    - During scrubbing drag gestures, update local preview only; dispatch AppleScript `set player position` once on `onEnded`.
 3. **Background EventKit Sync**:
    - `SystemCalendarSyncService` and `SystemRemindersSyncService` maintain `weak var boundStore: PurahWorkspaceStore?`.

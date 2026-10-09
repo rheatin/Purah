@@ -5,6 +5,8 @@ import PurahCore
 public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
+    @State private var isPulsing: Bool = false
+
     private var vitals: HardwareVitalsService {
         HardwareVitalsService.shared
     }
@@ -25,26 +27,38 @@ public struct HardwareVitalsDrawerView: View {
         self.init(state: pluginState, store: store)
     }
 
+    private func formatSpeed(_ bytesPerSec: Double) -> String {
+        if bytesPerSec >= 1_048_576 {
+            return String(format: "%.1f MB/s", bytesPerSec / 1_048_576)
+        } else if bytesPerSec >= 1024 {
+            return String(format: "%.0f KB/s", bytesPerSec / 1024)
+        } else {
+            return String(format: "%.0f B/s", bytesPerSec)
+        }
+    }
+
     public var body: some View {
         let metrics = state.metrics
         let cpuColor = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
+        let gpuColor = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
+        let netColor = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 8) {
-                // MARK: - Row 1: CPU & RAM Gauges
+            VStack(alignment: .leading, spacing: 6) {
+                // MARK: - Row 1: Dual Compute Cores (CPU & GPU)
                 HStack(spacing: 6) {
-                    // CPU Metric Card
+                    // CPU Card
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("CPU")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
                             Spacer()
                             Text("\(Int(metrics.cpuUsage * 100))%")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(cpuColor)
                         }
                         GeometryReader { geo in
@@ -53,24 +67,55 @@ public struct HardwareVitalsDrawerView: View {
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
                                     .fill(cpuColor)
-                                    .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 4))
+                                    .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 3))
                             }
                         }
-                        .frame(height: 5)
+                        .frame(height: 4.5)
                     }
-                    .padding(7)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(8)
+                    .padding(6.5)
+                    .background(Color.primary.opacity(0.035))
+                    .cornerRadius(7)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
 
-                    // Memory Metric Card
+                    // GPU Card
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("GPU")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(Int(metrics.gpuUsage * 100))%")
+                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                .foregroundColor(gpuColor)
+                        }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.08))
+                                Capsule()
+                                    .fill(gpuColor)
+                                    .frame(width: max(geo.size.width * CGFloat(metrics.gpuUsage), 3))
+                            }
+                        }
+                        .frame(height: 4.5)
+                    }
+                    .padding(6.5)
+                    .background(Color.primary.opacity(0.035))
+                    .cornerRadius(7)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+                }
+
+                // MARK: - Row 2: Memory & Storage (RAM & Disk)
+                HStack(spacing: 6) {
+                    // Memory Card
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("RAM")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
                             Spacer()
                             Text("\(Int(metrics.memoryUsage * 100))%")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(ramColor)
                         }
                         GeometryReader { geo in
@@ -79,31 +124,29 @@ public struct HardwareVitalsDrawerView: View {
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
                                     .fill(ramColor)
-                                    .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 4))
+                                    .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 3))
                             }
                         }
-                        .frame(height: 5)
+                        .frame(height: 4.5)
 
                         Text("\(String(format: "%.1f", metrics.memoryUsedGB)) / \(String(format: "%.0f", metrics.memoryTotalGB)) GB")
-                            .font(.system(size: 8, design: .monospaced))
+                            .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
-                    .padding(7)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(8)
-                }
+                    .padding(6.5)
+                    .background(Color.primary.opacity(0.035))
+                    .cornerRadius(7)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
 
-                // MARK: - Row 2: Disk & Battery / Power Gauges
-                HStack(spacing: 6) {
-                    // Disk Metric Card
+                    // Disk Card
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Label("Disk", systemImage: "internaldrive")
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            Text("Disk")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
                             Spacer()
                             Text("\(Int(metrics.diskFreeGB))G")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(diskColor)
                         }
                         let usedDiskRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
@@ -113,59 +156,96 @@ public struct HardwareVitalsDrawerView: View {
                                     .fill(Color.primary.opacity(0.08))
                                 Capsule()
                                     .fill(diskColor)
-                                    .frame(width: max(geo.size.width * CGFloat(usedDiskRatio), 4))
+                                    .frame(width: max(geo.size.width * CGFloat(usedDiskRatio), 3))
                             }
                         }
-                        .frame(height: 5)
+                        .frame(height: 4.5)
 
                         Text("\(Int(metrics.diskFreeGB))GB free / \(Int(metrics.diskTotalGB))GB")
-                            .font(.system(size: 8, design: .monospaced))
+                            .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
-                    .padding(7)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(8)
+                    .padding(6.5)
+                    .background(Color.primary.opacity(0.035))
+                    .cornerRadius(7)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+                }
 
-                    // Battery / Power Metric Card
-                    VStack(alignment: .leading, spacing: 4) {
+                // MARK: - Row 3: Network Throughput & Power Dynamics
+                HStack(spacing: 6) {
+                    // Network Card
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("Network")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Circle()
+                                .fill(netColor)
+                                .frame(width: 4.5, height: 4.5)
+                        }
+                        HStack(spacing: 6) {
+                            HStack(spacing: 2) {
+                                Text("↓")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(netColor)
+                                Text(formatSpeed(metrics.networkDownSpeed))
+                                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            HStack(spacing: 2) {
+                                Text("↑")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Text(formatSpeed(metrics.networkUpSpeed))
+                                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(6.5)
+                    .background(Color.primary.opacity(0.035))
+                    .cornerRadius(7)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+
+                    // Battery / Power Card
+                    VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Label("Power", systemImage: batteryIcon(level: metrics.batteryLevel, isCharging: metrics.isCharging))
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(powerColor)
                             Spacer()
                             Text("\(metrics.batteryLevel)%")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(powerColor)
                         }
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.08))
-                                Capsule()
-                                    .fill(powerColor)
-                                    .frame(width: max(geo.size.width * CGFloat(Double(metrics.batteryLevel) / 100.0), 4))
-                            }
-                        }
-                        .frame(height: 5)
-
                         Text(metrics.isCharging ? "Charging (\(metrics.powerSource))" : metrics.powerSource)
-                            .font(.system(size: 8, design: .monospaced))
+                            .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
-                    .padding(7)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(8)
+                    .padding(6.5)
+                    .background(Color.primary.opacity(0.035))
+                    .cornerRadius(7)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
                 }
 
-                // MARK: - Row 3: Status & Refresh
+                // MARK: - Row 4: Status Heartbeat & Refresh
                 HStack {
                     HStack(spacing: 5) {
-                        Circle()
-                            .fill(powerColor)
-                            .frame(width: 6, height: 6)
-                        Text(metrics.isCharging ? "Charging (\(metrics.powerSource))" : metrics.powerSource)
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                        ZStack {
+                            Circle()
+                                .fill(cpuColor.opacity(0.25))
+                                .frame(width: 11, height: 11)
+                                .scaleEffect(isPulsing ? 1.4 : 0.8)
+                                .opacity(isPulsing ? 0.25 : 0.8)
+                            Circle()
+                                .fill(cpuColor)
+                                .frame(width: 5, height: 5)
+                        }
+                        Text(metrics.cpuUsage > 0.85 ? "Heavy Compute Load" : "System Running Optimally")
+                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
                     }
 
@@ -178,58 +258,74 @@ public struct HardwareVitalsDrawerView: View {
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 9))
+                                .font(.system(size: 8.5))
                             Text("Refresh")
-                                .font(.system(size: 9, weight: .medium))
+                                .font(.system(size: 8.5, weight: .medium, design: .rounded))
                         }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(4)
                         .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 3)
 
-                // MARK: - Row 4: Top Processes
-                VStack(alignment: .leading, spacing: 6) {
+                // MARK: - Row 5: Top Processes
+                VStack(alignment: .leading, spacing: 5) {
                     Text("Top Processes")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         .foregroundColor(.secondary)
 
                     VStack(spacing: 4) {
                         ForEach(metrics.topProcesses) { proc in
-                            HStack(spacing: 8) {
+                            HStack(spacing: 7) {
                                 Circle()
-                                    .fill(proc.cpuPercent > 50 ? palette.dangerAccent : cpuColor)
-                                    .frame(width: 5, height: 5)
+                                    .fill(proc.cpuPercent > 50 ? palette.dangerAccent : (proc.cpuPercent > 20 ? VitalsColorResolver.warningYellow : cpuColor))
+                                    .frame(width: 4.5, height: 4.5)
 
-                                VStack(alignment: .leading, spacing: 1) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(proc.name)
-                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .font(.system(size: 10, weight: .medium, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                                         .lineLimit(1)
-                                    Text("CPU \(String(format: "%.1f", proc.cpuPercent))%  ·  RAM \(String(format: "%.1f", proc.memoryPercent))%")
-                                        .font(.system(size: 8, design: .monospaced))
-                                        .foregroundColor(.secondary)
+
+                                    GeometryReader { g in
+                                        ZStack(alignment: .leading) {
+                                            Capsule()
+                                                .fill(Color.primary.opacity(0.06))
+                                            Capsule()
+                                                .fill(proc.cpuPercent > 50 ? palette.dangerAccent : cpuColor)
+                                                .frame(width: max(g.size.width * CGFloat(min(proc.cpuPercent / 100.0, 1.0)), 2))
+                                        }
+                                    }
+                                    .frame(height: 2.5)
                                 }
 
                                 Spacer()
+
+                                Text("\(String(format: "%.1f", proc.cpuPercent))%")
+                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.secondary)
 
                                 Button {
                                     vitals.killProcess(pid: proc.id)
                                 } label: {
                                     Text("Kill")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(palette.dangerAccent.opacity(0.15))
+                                        .font(.system(size: 8, weight: .semibold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1.5)
+                                        .background(palette.dangerAccent.opacity(0.12))
                                         .foregroundColor(palette.dangerAccent)
-                                        .cornerRadius(4)
+                                        .cornerRadius(3.5)
                                 }
                                 .buttonStyle(.tactile)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Color.primary.opacity(0.04))
-                            .cornerRadius(6)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.03))
+                            .cornerRadius(5.5)
                         }
                     }
                 }
@@ -237,6 +333,9 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.vertical, 2)
         }
         .onAppear {
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
             state.mount(store: store)
             vitals.startMonitoring()
             Task {

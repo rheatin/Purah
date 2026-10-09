@@ -5,23 +5,23 @@ import UniformTypeIdentifiers
 import PurahCore
 
 public enum PluginCenterTab: String, CaseIterable, Identifiable, Sendable {
-    case marketplace = "market"
     case installed = "installed"
+    case marketplace = "market"
 
     nonisolated public var id: String { rawValue }
 
     nonisolated public var icon: String {
         switch self {
-        case .marketplace: return "sparkles"
         case .installed: return "checkmark.circle.fill"
+        case .marketplace: return "sparkles"
         }
     }
 
     @MainActor
     public var localizedTitle: String {
         switch self {
-        case .marketplace: return "marketplace.tab.market".localized
         case .installed: return "marketplace.tab.installed".localized
+        case .marketplace: return "marketplace.tab.market".localized
         }
     }
 }
@@ -36,7 +36,7 @@ public struct PluginMarketplaceView: View {
     public let store: PurahWorkspaceStore
     public let marketManager: PluginMarketManager
 
-    @State private var selectedTab: PluginCenterTab = .marketplace
+    @State private var selectedTab: PluginCenterTab = .installed
     @State private var searchFilter: String = ""
     @State private var securityReviewManifest: PurahPluginManifest? = nil
     @State private var configuringPluginId: IdentifiablePluginId? = nil
@@ -55,9 +55,7 @@ public struct PluginMarketplaceView: View {
         self.store = store
         self.marketManager = marketManager ?? store.marketManager
         self.initialPluginId = initialPluginId
-        if initialPluginId != nil {
-            self._selectedTab = State(initialValue: .installed)
-        }
+        self._selectedTab = State(initialValue: .installed)
     }
 
     private var allCatalog: [PurahPluginManifest] {
