@@ -276,3 +276,204 @@ public struct CalendarDrawerView: View {
         return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
     }
 }
+
+// MARK: - 全量日程总览抽屉 (+N More / 连续流光展开)
+public struct CalendarAgendaOverviewDrawerView: View {
+    public let events: [CalendarEventItem]
+    public let edge: MountEdge
+    public let slotHeight: CGFloat
+    public let store: PurahWorkspaceStore
+
+    private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var isPinned: Bool { store.isItemPinned(id: "calendar_more_events") }
+
+    public init(
+        events: [CalendarEventItem],
+        edge: MountEdge,
+        slotHeight: CGFloat,
+        store: PurahWorkspaceStore
+    ) {
+        self.events = events
+        self.edge = edge
+        self.slotHeight = slotHeight
+        self.store = store
+    }
+
+    public var body: some View {
+        let podColor = palette.podColor(for: "calendar")
+        let floatingEdgePadding: CGFloat = (edge == .left ? 18.0 : 12.0)
+        let railEdgePadding: CGFloat = (edge == .left ? 12.0 : 18.0)
+
+        VStack(alignment: .leading, spacing: 8) {
+            // Row 1: Header
+            HStack(spacing: 8) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(podColor)
+
+                Text("calendar.overview.title".localized)
+                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+
+                Text("\(events.count)")
+                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(podColor)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(podColor.opacity(0.18))
+                    .cornerRadius(4)
+
+                Spacer()
+
+                PurahPinButton(isPinned: isPinned, tintColor: podColor) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        store.togglePinItem(id: "calendar_more_events")
+                    }
+                }
+            }
+
+            Divider()
+                .background(palette.borderColor.opacity(0.35))
+
+            // Row 2: Scrollable Event List
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(events) { event in
+                        agendaRow(event: event, podColor: podColor)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(maxHeight: 280)
+
+            Divider()
+                .background(palette.borderColor.opacity(0.35))
+
+            // Row 3: Action Bar
+            HStack {
+                Text(store.calendarScope.title)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Button {
+                    if let url = URL(string: "ical://") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 8.5))
+                        Text("Apple Calendar")
+                            .font(.system(size: 9.5, weight: .medium))
+                    }
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(palette.surfaceBackground)
+                    .cornerRadius(5)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.tactile)
+            }
+        }
+        .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
+        .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
+        .padding(.vertical, 10)
+        .frame(width: 320)
+        .liquidCardBackground(
+            cornerRadius: 10,
+            strokeColor: podColor.opacity(0.8)
+        )
+    }
+
+    @ViewBuilder
+    private func agendaRow(event: CalendarEventItem, podColor: Color) -> some View {
+        let isPast = event.isPast
+        let isOngoing = event.isOngoing
+        let isImminent = event.isImminent
+        let calColor = event.colorHex.flatMap { Color(hex: $0) } ?? podColor
+
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(calColor)
+                    .frame(width: 5, height: 5)
+
+                Text(event.title)
+                    .font(.system(size: 11, weight: isOngoing ? .bold : .medium, design: .rounded))
+                    .foregroundColor(isPast ? .secondary : (palette.style == .native ? Color.primary : .white))
+                    .lineLimit(1)
+
+                Spacer()
+
+                if isOngoing {
+                    Text("NOW")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.green.opacity(0.18))
+                        .foregroundColor(.green)
+                        .cornerRadius(3)
+                } else if isImminent {
+                    Text("SOON")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.18))
+                        .foregroundColor(.orange)
+                        .cornerRadius(3)
+                }
+
+                if let url = event.url {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 7))
+                            Text("Join")
+                                .font(.system(size: 8.5, weight: .bold))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(podColor.opacity(0.18))
+                        .foregroundColor(podColor)
+                        .cornerRadius(4)
+                    }
+                    .buttonStyle(.tactile)
+                }
+            }
+
+            HStack(spacing: 4) {
+                Text(formattedTime(event: event))
+                    .font(palette.fontMono)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+
+                if !event.location.isEmpty && event.location != "Apple Calendar" {
+                    Text("·")
+                        .foregroundColor(.secondary)
+                    Text(event.location)
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(isOngoing ? podColor.opacity(0.08) : Color.clear)
+        .cornerRadius(6)
+    }
+
+    private func formattedTime(event: CalendarEventItem) -> String {
+        if event.isAllDay { return "All Day" }
+        return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
+    }
+}
