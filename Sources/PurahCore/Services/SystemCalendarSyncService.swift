@@ -99,6 +99,9 @@ public final class SystemCalendarSyncService {
             let occurrenceTimestamp = Int(ekEvent.startDate.timeIntervalSince1970)
             let uniqueId = "\(baseId)_\(occurrenceTimestamp)"
 
+            let cleanedNotes = ekEvent.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let validNotes = (cleanedNotes?.isEmpty == false) ? cleanedNotes : nil
+
             return CalendarEventItem(
                 id: uniqueId,
                 title: ekEvent.title ?? "Untitled Event",
@@ -106,6 +109,7 @@ public final class SystemCalendarSyncService {
                 calendarTitle: ekEvent.calendar?.title ?? "Calendar",
                 colorHex: hexString(from: ekEvent.calendar?.cgColor),
                 url: extractedURL,
+                notes: validNotes,
                 startTime: ekEvent.startDate,
                 endTime: ekEvent.endDate,
                 isAllDay: ekEvent.isAllDay

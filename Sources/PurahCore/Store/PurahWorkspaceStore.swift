@@ -353,7 +353,8 @@ public final class PurahWorkspaceStore {
                 let count = min(rawCount, maxAllowed)
                 let safeCount = max(count, 1)
                 let totalSpacing = spacing * Double(safeCount - 1)
-                let itemH = max((item.spanH - totalSpacing) / Double(safeCount), minChipH)
+                let maxChipH = 160.0
+                let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), minChipH), maxChipH)
                 let cardH = max(itemH, 34.0)
 
                 var matchedSubItem = false

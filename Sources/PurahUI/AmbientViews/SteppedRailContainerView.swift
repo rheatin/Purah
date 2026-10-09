@@ -39,7 +39,8 @@ public struct SteppedRailContainerView: View {
         let items = (allItems.count > maxAllowedItems) ? Array(allItems.prefix(maxAllowedItems)) : allItems
         let count = max(items.count, 1)
         let totalSpacing = spacing * CGFloat(count - 1)
-        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minChipH)
+        let maxChipH: CGFloat = 160.0
+        let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), minChipH), maxChipH)
         let totalSpanH = totalHeight
 
         Group {

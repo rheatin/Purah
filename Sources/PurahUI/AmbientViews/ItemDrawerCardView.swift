@@ -290,13 +290,13 @@ public struct CalendarItemDrawerView: View {
             } else if cardH < 110.0 {
                 standardEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             } else {
-                flagshipEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
+                flagshipEventCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             }
         }
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 10)
-        .frame(width: effectiveW, height: max(cardH, 120.0))
+        .frame(width: effectiveW, height: max(cardH, 120.0), alignment: .top)
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85))
@@ -458,8 +458,8 @@ public struct CalendarItemDrawerView: View {
     }
 
     @ViewBuilder
-    private func flagshipEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func flagshipEventCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: cardH > 220.0 ? 10 : 7) {
             // Row 1: Header (Icon + Category Pill + Status Pill + Pin)
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.clock")
@@ -495,7 +495,7 @@ public struct CalendarItemDrawerView: View {
             Divider()
                 .background(palette.borderColor.opacity(0.35))
 
-            // Row 2: Big Event Title & Details (Clean open layout, NO nested dark box!)
+            // Row 2: Big Event Title & Details
             VStack(alignment: .leading, spacing: 5) {
                 Button {
                     openInSystemCalendar(event: event)
@@ -532,10 +532,79 @@ public struct CalendarItemDrawerView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            // Dynamic Timeline Progress / Countdown
+            if isOngoing {
+                eventProgressBar(calColor: calColor)
+            } else if isImminent {
+                let startMins = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
+                HStack(spacing: 4) {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(calColor)
+                    Text(String(format: "Starts in %d min", startMins))
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(calColor)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(Capsule().fill(calColor.opacity(0.12)))
+            }
+
+            // Meeting Agenda / Notes (if available and card height permits)
+            if let notes = event.notes, !notes.isEmpty, cardH >= 170.0 {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "text.alignleft")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
+                        Text("Agenda")
+                            .purahCaption(size: 8)
+                            .foregroundColor(.secondary)
+                    }
+                    Text(notes)
+                        .font(.system(size: 9.5, weight: .regular))
+                        .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(0.78))
+                        .lineLimit(cardH > 250.0 ? 4 : 2)
+                        .lineSpacing(2)
+                }
+                .padding(7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(palette.surfaceBackground.opacity(0.45))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(palette.borderColor.opacity(0.35), lineWidth: 0.5)
+                )
+            }
+
+            // Next Up Preview Glance (when cardH is tall and subsequent events exist)
+            if cardH >= 240.0, let nextEvent = upcomingNextEvent() {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(nextEvent.colorHex.flatMap { Color(hex: $0) } ?? podColor)
+                        .frame(width: 4.5, height: 4.5)
+                    Text("Next: \(nextEvent.title)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(palette.style == .native ? Color.primary : Color.white)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(formattedTime(event: nextEvent))
+                        .font(palette.fontMono)
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(palette.surfaceBackground.opacity(0.35))
+                .cornerRadius(5)
+            }
+
             Divider()
                 .background(palette.borderColor.opacity(0.35))
 
-            // Row 3: Action Bar (Balanced height & clean buttons)
+            // Row 3: Action Bar
             HStack(spacing: 8) {
                 if let url = event.url {
                     Button {
@@ -554,6 +623,21 @@ public struct CalendarItemDrawerView: View {
                         .foregroundColor(calColor)
                     }
                     .buttonStyle(.tactile)
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                    } label: {
+                        Image(systemName: "link")
+                            .font(.system(size: 8.5))
+                            .padding(5.5)
+                            .background(palette.surfaceBackground)
+                            .cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(palette.borderColor.opacity(0.5), lineWidth: 1))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    }
+                    .buttonStyle(.tactile)
+                    .help("Copy Video Meeting Link")
                 }
 
                 Button {
@@ -579,6 +663,43 @@ public struct CalendarItemDrawerView: View {
                 .help("Open in Apple Calendar")
             }
         }
+    }
+
+    private func eventProgressBar(calColor: Color) -> some View {
+        let totalDuration = max(event.endTime.timeIntervalSince(event.startTime), 60.0)
+        let elapsed = max(Date().timeIntervalSince(event.startTime), 0.0)
+        let progress = min(max(elapsed / totalDuration, 0.0), 1.0)
+        let remainingMins = max(Int(ceil(event.endTime.timeIntervalSince(Date()) / 60.0)), 0)
+
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                HStack(spacing: 3.5) {
+                    Circle().fill(calColor).frame(width: 3.5, height: 3.5)
+                    Text("In Progress")
+                        .purahCaption(size: 8.5)
+                        .foregroundColor(calColor)
+                }
+                Spacer()
+                Text("\(remainingMins)m remaining")
+                    .font(palette.fontMono)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(calColor.opacity(0.18))
+                    Capsule().fill(calColor)
+                        .frame(width: max(geo.size.width * CGFloat(progress), 6.0))
+                }
+            }
+            .frame(height: 3.5)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func upcomingNextEvent() -> CalendarEventItem? {
+        let others = store._calendarEvents.filter { $0.id != event.id && $0.startTime >= event.startTime }
+        return others.sorted(by: { $0.startTime < $1.startTime }).first
     }
 
     private func categoryTag(calColor: Color, isPast: Bool) -> some View {
@@ -709,29 +830,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {
-        if let calAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
-            NSWorkspace.shared.openApplication(at: calAppURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
-        } else if let fallback = URL(string: "ical://") {
-            NSWorkspace.shared.open(fallback)
-        }
-
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateStr = formatter.string(from: event.startTime)
-        let script = """
-        tell application "Calendar"
-            activate
-            switch view to day view
-            view calendar at date "\(dateStr)"
-        end tell
-        """
-        DispatchQueue.global(qos: .userInteractive).async {
-            var error: NSDictionary?
-            if let appleScript = NSAppleScript(source: script) {
-                appleScript.executeAndReturnError(&error)
-            }
-        }
+        launchAppleCalendar(at: event.startTime)
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {

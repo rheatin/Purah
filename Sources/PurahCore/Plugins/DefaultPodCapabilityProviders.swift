@@ -8,7 +8,11 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { true }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
-    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        let count = max(store._calendarEvents.count, 1)
+        let minH = CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        return min(max(minH, 80.0), 320.0)
+    }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store._calendarEvents.contains { store.isItemPinned(id: $0.id) }
@@ -39,7 +43,11 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { true }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
-    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        let count = max(store._todos.count, 1)
+        let minH = CGFloat(count) * 44.0 + CGFloat(count - 1) * 2.5
+        return min(max(minH, 70.0), 320.0)
+    }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store._todos.contains { store.isItemPinned(id: $0.id) }
