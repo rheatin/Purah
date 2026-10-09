@@ -453,7 +453,7 @@ public final class MusicPluginState: Sendable {
         }
         if self.track.lyrics == nil {
             Task { [weak self] in
-                if let lyr = SystemMusicSyncService.shared.fetchLocalLyrics() {
+                if let lyr = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
                     await MainActor.run {
                         if self?.track.title == currentTitle {
                             self?.track.lyrics = lyr
@@ -580,10 +580,10 @@ public final class MusicPluginState: Sendable {
             }
         }
 
-        // Fetch local lyrics from Music.app (pure local, zero network)
+        // Fetch online lyrics
         if existingLyrics == nil {
             Task { [weak self] in
-                if let lyr = SystemMusicSyncService.shared.fetchLocalLyrics() {
+                if let lyr = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
                         if self?.track.title == title && self?.track.artist == artist {
                             self?.track.lyrics = lyr
@@ -619,6 +619,13 @@ public final class MusicPluginState: Sendable {
             return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
         }()
 
+        let existingLyrics: String? = {
+            if isSameTrack && self.track.lyrics != nil {
+                return self.track.lyrics
+            }
+            return nil
+        }()
+
         self.track = MusicTrackInfo(
             title: title,
             artist: artist,
@@ -631,7 +638,7 @@ public final class MusicPluginState: Sendable {
             playbackRate: isPlaying ? 1.0 : 0.0,
             waveformSamples: samples,
             artworkData: existingArtwork,
-            lyrics: nil,
+            lyrics: existingLyrics,
             sourceApp: "Spotify",
             sourceBundleId: "com.spotify.client"
         )
@@ -647,6 +654,21 @@ public final class MusicPluginState: Sendable {
                             self?.track.artworkData = art
                             if let store = self?.boundStore {
                                 store._musicTrack.artworkData = art
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if existingLyrics == nil {
+            Task { [weak self] in
+                if let lyr = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
+                    await MainActor.run {
+                        if self?.track.title == title && self?.track.artist == artist {
+                            self?.track.lyrics = lyr
+                            if let store = self?.boundStore {
+                                store._musicTrack.lyrics = lyr
                             }
                         }
                     }

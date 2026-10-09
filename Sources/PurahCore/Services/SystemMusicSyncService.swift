@@ -12,6 +12,8 @@ public final class SystemMusicSyncService {
     @ObservationIgnored private var spotifyObserver: Any?
     @ObservationIgnored private var cachedArtworkKey: String?
     @ObservationIgnored private var cachedArtworkData: Data?
+    @ObservationIgnored private var cachedLyricsKey: String?
+    @ObservationIgnored private var cachedLyricsText: String?
     @ObservationIgnored private var playbackTimer: Timer?
 
     public private(set) var isMusicAppConnected: Bool = false
@@ -268,28 +270,93 @@ public final class SystemMusicSyncService {
         return nil
     }
 
-    public func fetchLocalLyrics() -> String? {
-        guard isMusicAppRunning else { return nil }
-        let script = """
-        tell application "Music"
-            try
-                if player state is not stopped then
-                    set lyr to lyrics of current track
-                    return lyr
-                end if
-            end try
-            return ""
-        end tell
-        """
-        guard let appleScript = NSAppleScript(source: script) else { return nil }
-        var errorInfo: NSDictionary?
-        let descriptor = appleScript.executeAndReturnError(&errorInfo)
-        guard errorInfo == nil else { return nil }
-        let str = descriptor.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let str, !str.isEmpty {
-            return str
+    // MARK: - Online Lyrics Fetching Engine (LRCLIB + NetEase Open APIs)
+    public func cachedLyrics(for title: String, artist: String) -> String? {
+        let key = "\(title)|\(artist)"
+        if key == cachedLyricsKey {
+            return cachedLyricsText
         }
         return nil
+    }
+
+    public func fetchOnlineLyrics(title: String, artist: String) async -> String? {
+        guard !title.isEmpty && !artist.isEmpty else { return nil }
+        let key = "\(title)|\(artist)"
+        if key == cachedLyricsKey, let cached = cachedLyricsText {
+            return cached
+        }
+
+        // 1. First attempt: LRCLIB open-source REST API
+        let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let lrclibURL = URL(string: "https://lrclib.net/api/get?artist_name=\(encodedArtist)&track_name=\(encodedTitle)") {
+            var request = URLRequest(url: lrclibURL)
+            request.timeoutInterval = 4.0
+            request.setValue("Purah/2.0 (macOS Ambient Rail Kernel)", forHTTPHeaderField: "User-Agent")
+            if let (data, resp) = try? await URLSession.shared.data(for: request),
+               let http = resp as? HTTPURLResponse, http.statusCode == 200,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let plain = json["plainLyrics"] as? String, !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    cachedLyricsKey = key
+                    cachedLyricsText = plain
+                    return plain
+                } else if let synced = json["syncedLyrics"] as? String, !synced.isEmpty {
+                    let cleaned = cleanLrcTimestamps(synced)
+                    if !cleaned.isEmpty {
+                        cachedLyricsKey = key
+                        cachedLyricsText = cleaned
+                        return cleaned
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback: NetEase Cloud Music Search & Lyric API
+        let neteaseSearch = "\(title) \(artist)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let searchURL = URL(string: "https://music.163.com/api/search/get/web?s=\(neteaseSearch)&type=1&offset=0&total=true&limit=1") {
+            var request = URLRequest(url: searchURL)
+            request.timeoutInterval = 4.0
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+            if let (data, resp) = try? await URLSession.shared.data(for: request),
+               let http = resp as? HTTPURLResponse, http.statusCode == 200,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let result = json["result"] as? [String: Any],
+               let songs = result["songs"] as? [[String: Any]],
+               let firstSong = songs.first,
+               let songId = firstSong["id"] as? Int {
+                if let lyricURL = URL(string: "https://music.163.com/api/song/lyric?os=osx&id=\(songId)&lv=-1&kv=-1&tv=-1") {
+                    var lrcReq = URLRequest(url: lyricURL)
+                    lrcReq.timeoutInterval = 4.0
+                    if let (lrcData, lrcResp) = try? await URLSession.shared.data(for: lrcReq),
+                       let lrcHttp = lrcResp as? HTTPURLResponse, lrcHttp.statusCode == 200,
+                       let lrcJson = try? JSONSerialization.jsonObject(with: lrcData) as? [String: Any],
+                       let lrcObj = lrcJson["lrc"] as? [String: Any],
+                       let rawLrc = lrcObj["lyric"] as? String {
+                        let cleaned = cleanLrcTimestamps(rawLrc)
+                        if !cleaned.isEmpty {
+                            cachedLyricsKey = key
+                            cachedLyricsText = cleaned
+                            return cleaned
+                        }
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func cleanLrcTimestamps(_ rawLrc: String) -> String {
+        let lines = rawLrc.components(separatedBy: .newlines)
+        var cleanedLines: [String] = []
+        for line in lines {
+            let stripped = line.replacingOccurrences(of: "\\[\\d{2}:\\d{2}\\.\\d{2,3}\\]", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            if !stripped.isEmpty && !stripped.hasPrefix("[ti:") && !stripped.hasPrefix("[ar:") && !stripped.hasPrefix("[al:") && !stripped.hasPrefix("[by:") {
+                cleanedLines.append(stripped)
+            }
+        }
+        return cleanedLines.joined(separator: "\n")
     }
 
     public func fetchArtwork(title: String, artist: String, album: String) async -> Data? {

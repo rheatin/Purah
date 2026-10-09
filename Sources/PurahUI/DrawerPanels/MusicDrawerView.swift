@@ -280,7 +280,7 @@ public struct MusicDrawerView: View {
     // MARK: - Tier 3: Immersive Vinyl Showcase Layout (>= 265pt)
     @ViewBuilder
     private func immersiveVinylView(displayProgress: Double, displaySec: Double, isPlaying: Bool, availableHeight: CGFloat) -> some View {
-        let dynamicArtSize = min(max((availableHeight - 200) * 0.65, 52.0), 80.0)
+        let dynamicArtSize = min(max((availableHeight - 160) * 0.50, 60.0), 160.0)
 
         VStack(spacing: 8) {
             // Top Bar: Source Badge
