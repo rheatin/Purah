@@ -60,10 +60,6 @@ public final class CommunityPodPlugin: PurahPodPlugin {
                     }
 
                     Spacer()
-
-                    PurahPinButton(isPinned: context.isPinned, tintColor: podColor) {
-                        context.togglePin()
-                    }
                 }
 
                 // Row 2: Body
