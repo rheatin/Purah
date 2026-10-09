@@ -374,32 +374,47 @@ public struct CalendarDrawerView: View {
     }
 }
 
-fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
+internal func launchAppleCalendar(at date: Date? = nil) {
     if let calAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
         NSWorkspace.shared.openApplication(at: calAppURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     } else if let fallback = URL(string: "ical://") {
         NSWorkspace.shared.open(fallback)
     }
 
-    if let event {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateStr = formatter.string(from: event.startTime)
-        let script = """
-        tell application "Calendar"
-            activate
-            switch view to day view
-            view calendar at date "\(dateStr)"
-        end tell
-        """
-        DispatchQueue.global(qos: .userInteractive).async {
-            var error: NSDictionary?
-            if let appleScript = NSAppleScript(source: script) {
-                appleScript.executeAndReturnError(&error)
-            }
+    let targetDate = date ?? Date()
+    let calendar = Calendar.current
+    let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: targetDate)
+    let y = comps.year ?? 2026
+    let m = comps.month ?? 1
+    let d = comps.day ?? 1
+    let h = comps.hour ?? 0
+    let min = comps.minute ?? 0
+
+    let script = """
+    tell application "Calendar"
+        activate
+        switch view to day view
+        set targetDate to (current date)
+        set day of targetDate to 1
+        set year of targetDate to \(y)
+        set month of targetDate to \(m)
+        set day of targetDate to \(d)
+        set hours of targetDate to \(h)
+        set minutes of targetDate to \(min)
+        set seconds of targetDate to 0
+        view calendar at targetDate
+    end tell
+    """
+    DispatchQueue.global(qos: .userInteractive).async {
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            appleScript.executeAndReturnError(&error)
         }
     }
+}
+
+fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
+    launchAppleCalendar(at: event?.startTime)
 }
 
 // MARK: - 全量日程总览抽屉 (+N More / 连续流光展开)
@@ -553,9 +568,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 Spacer()
 
                 Button {
-                    if let url = URL(string: "ical://") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    launchAppleCalendar()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.up.forward.app")
@@ -579,7 +592,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 10)
-        .frame(width: 320, height: max(slotHeight, 140.0))
+        .frame(width: 320, height: max(slotHeight, 140.0), alignment: .top)
         .liquidCardBackground(
             cornerRadius: 10,
             strokeColor: podColor.opacity(0.8)
@@ -692,10 +705,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
     }
 
     private func openInSystemCalendar(event: CalendarEventItem? = nil) {
-        if let calAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
-            NSWorkspace.shared.openApplication(at: calAppURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
-        } else if let fallback = URL(string: "ical://") {
-            NSWorkspace.shared.open(fallback)
-        }
+        launchAppleCalendar(at: event?.startTime)
     }
 }

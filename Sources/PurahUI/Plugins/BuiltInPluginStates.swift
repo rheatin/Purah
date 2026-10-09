@@ -193,21 +193,21 @@ public final class CalendarPluginState: Sendable {
         let d4 = cal.date(bySettingHour: 15, minute: 0, second: 0, of: today) ?? today
 
         var list = [
-            CalendarEventItem(id: "default-event-1", title: "Architecture Review", location: "Central Workshop", startTime: d1, endTime: d2),
-            CalendarEventItem(id: "default-event-2", title: "Environmental Monitoring", location: "Observation Station", startTime: d3, endTime: d4)
+            CalendarEventItem(id: "default-event-1", title: "Architecture Review", location: "Central Workshop", notes: "Review cross-process rail synchronization and zero-copy Metal framebuffer pipeline.", startTime: d1, endTime: d2),
+            CalendarEventItem(id: "default-event-2", title: "Environmental Monitoring", location: "Observation Station", notes: "Inspect thermal dissipation logs, battery health stats, and ambient light sensors.", startTime: d3, endTime: d4)
         ]
 
         if scope == .next7Days || scope == .thisWeek || scope == .thisMonth {
             if let d5 = cal.date(byAdding: .day, value: 1, to: d1), let d6 = cal.date(byAdding: .day, value: 1, to: d2) {
-                list.append(CalendarEventItem(id: "default-event-3", title: "Kernel Sprint Standup", location: "Design Lab", startTime: d5, endTime: d6))
+                list.append(CalendarEventItem(id: "default-event-3", title: "Kernel Sprint Standup", location: "Design Lab", notes: "Daily sync on Mach kernel thread priority and AppKit window level management.", startTime: d5, endTime: d6))
             }
             if let d7 = cal.date(byAdding: .day, value: 2, to: d3), let d8 = cal.date(byAdding: .day, value: 2, to: d4) {
-                list.append(CalendarEventItem(id: "default-event-4", title: "Purah Pad UI Polish", location: "Virtual Studio", url: URL(string: "https://zoom.us/j/999"), startTime: d7, endTime: d8))
+                list.append(CalendarEventItem(id: "default-event-4", title: "Purah Pad UI Polish", location: "Virtual Studio", url: URL(string: "https://zoom.us/j/999"), notes: "Refine spring deceleration curves, haptic feedback profiles, and safe edge corridors.", startTime: d7, endTime: d8))
             }
         }
         if scope == .thisMonth {
             if let d9 = cal.date(byAdding: .day, value: 10, to: d1), let d10 = cal.date(byAdding: .day, value: 10, to: d2) {
-                list.append(CalendarEventItem(id: "default-event-5", title: "WWDC Keynote Debrief", location: "Apple Park", startTime: d9, endTime: d10))
+                list.append(CalendarEventItem(id: "default-event-5", title: "WWDC Keynote Debrief", location: "Apple Park", notes: "Deep dive on latest macOS ergonomics, system services, and dynamic attention APIs.", startTime: d9, endTime: d10))
             }
         }
         return list

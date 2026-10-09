@@ -8,6 +8,7 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
     public var calendarTitle: String
     public var colorHex: String?
     public var url: URL?
+    public var notes: String?
     public var startTime: Date
     public var endTime: Date
     public var isAllDay: Bool
@@ -19,6 +20,7 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
         calendarTitle: String = "Calendar",
         colorHex: String? = nil,
         url: URL? = nil,
+        notes: String? = nil,
         startTime: Date,
         endTime: Date,
         isAllDay: Bool = false
@@ -29,6 +31,7 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
         self.calendarTitle = calendarTitle
         self.colorHex = colorHex
         self.url = url
+        self.notes = notes
         self.startTime = startTime
         self.endTime = endTime
         self.isAllDay = isAllDay
