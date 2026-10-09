@@ -5,10 +5,9 @@ import UniformTypeIdentifiers
 import PurahCore
 
 public enum PluginMarketFilter: String, CaseIterable, Identifiable {
-    case all = "All Ecosystem"
-    case available = "Get Plugins"
+    case all = "All"
+    case available = "Get"
     case installed = "Installed"
-    case heavyGPU = "Heavy / GPU"
     case community = "Community"
 
     public var id: String { rawValue }
@@ -18,7 +17,6 @@ public enum PluginMarketFilter: String, CaseIterable, Identifiable {
         case .all: return "sparkles"
         case .available: return "arrow.down.circle.fill"
         case .installed: return "checkmark.circle.fill"
-        case .heavyGPU: return "flame.fill"
         case .community: return "person.2.fill"
         }
     }
@@ -120,8 +118,6 @@ public struct PluginMarketplaceView: View {
             base = allCatalog.filter { marketManager.isInstalled(id: $0.id) }
         case .available:
             base = allCatalog.filter { !marketManager.isInstalled(id: $0.id) }
-        case .heavyGPU:
-            base = allCatalog.filter { $0.category == .heavyGPU }
         case .community:
             base = allCatalog.filter { $0.isCommunity }
         }
@@ -370,14 +366,16 @@ public struct PluginMarketplaceView: View {
                     Button {
                         selectedFilter = filter
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: filter.icon)
-                                .font(.system(size: 10))
+                                .font(.system(size: 9.5))
                             Text(filterTitle(filter))
                                 .font(.system(size: 10.5, weight: isSelected ? .bold : .medium))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                         .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : .white) : .secondary)
-                        .padding(.horizontal, 9)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(isSelected ? palette.surfaceBackground : Color.clear)
                         .cornerRadius(6)
@@ -418,16 +416,15 @@ public struct PluginMarketplaceView: View {
             .padding(.vertical, 5)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
             .cornerRadius(6)
-            .frame(width: 220)
+            .frame(width: 170)
         }
     }
 
     private func filterTitle(_ filter: PluginMarketFilter) -> String {
         switch filter {
         case .all: return "All (\(allCatalog.count))"
+        case .available: return "Available (\(availableCount))"
         case .installed: return "Installed (\(installedCount))"
-        case .available: return "Get (\(availableCount))"
-        case .heavyGPU: return "Heavy GPU (\(heavyGpuCount))"
         case .community: return "Community (\(communityCount))"
         }
     }

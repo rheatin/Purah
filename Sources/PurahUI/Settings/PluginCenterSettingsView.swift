@@ -6,6 +6,7 @@ public struct PluginCenterSettingsView: View {
     public let store: PurahWorkspaceStore
     @State private var selectedPluginId: String = "calendar"
     @State private var searchFilter: String = ""
+    @State private var confirmingUninstall: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -299,6 +300,58 @@ public struct PluginCenterSettingsView: View {
                                     .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
                             )
                         }
+
+                        // Management & Uninstall
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Management", systemImage: "trash")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                            Divider()
+                                .background(palette.borderColor.opacity(0.3))
+
+                            HStack {
+                                Text("Uninstall plugin and completely release its memory and background processes.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+
+                                Spacer()
+
+                                Button {
+                                    if confirmingUninstall {
+                                        store.marketManager.uninstall(id: podId)
+                                        confirmingUninstall = false
+                                        if let next = PluginRegistry.shared.allPlugins.first?.manifest.id {
+                                            selectedPluginId = next
+                                        }
+                                    } else {
+                                        withAnimation { confirmingUninstall = true }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                                            withAnimation { confirmingUninstall = false }
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "trash.fill")
+                                        Text(confirmingUninstall ? "Confirm Uninstall" : "Uninstall")
+                                    }
+                                    .font(.system(size: 10.5, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4.5)
+                                    .background(Color.red)
+                                    .cornerRadius(6)
+                                }
+                                .buttonStyle(.tactile)
+                            }
+                        }
+                        .padding(12)
+                        .background(palette.surfaceBackground)
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
+                        )
 
                         Spacer()
                     }
