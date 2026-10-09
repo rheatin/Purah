@@ -41,15 +41,21 @@ public struct TodoItemDrawerView: View {
     public var body: some View {
         let isDone = todo.isCompleted
         let cardH = max(height, 32.0)
+        let listColor: Color = {
+            if let hex = todo.listColorHex {
+                return Color(hex: hex)
+            }
+            return podColor
+        }()
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // 导轨贴边基座色条（圆角与左侧完全对称统一）
+            // 导轨贴边基座色条（采用对应分类原生颜色）
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(podColor.opacity(isDone ? 0.35 : 0.9))
+                .fill(listColor.opacity(isDone ? 0.35 : 0.9))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
 
             if state == .expandedDrawer {
-                expandedCard(isDone: isDone, cardH: cardH)
+                expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
                     .transition(itemDrawerTransition)
             }
         }
@@ -66,7 +72,7 @@ public struct TodoItemDrawerView: View {
     }
 
     @ViewBuilder
-    private func expandedCard(isDone: Bool, cardH: CGFloat) -> some View {
+    private func expandedCard(isDone: Bool, cardH: CGFloat, listColor: Color) -> some View {
         HStack(spacing: 8) {
             Button {
                 Task {
@@ -104,14 +110,19 @@ public struct TodoItemDrawerView: View {
 
             Spacer(minLength: 4)
 
-            // Category tag
-            Text(todo.listTitle)
-                .purahBadge(size: 8, weight: .bold)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(podColor.opacity(isDone ? 0.10 : 0.18))
-                .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
-                .cornerRadius(3)
+            // Category tag with native list color indicator
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(listColor)
+                    .frame(width: 4.5, height: 4.5)
+                Text(todo.listTitle)
+                    .purahBadge(size: 8, weight: .bold)
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(listColor.opacity(isDone ? 0.08 : 0.16))
+            .foregroundColor(listColor.opacity(isDone ? 0.45 : 1.0))
+            .cornerRadius(3)
 
             pinButton
         }
@@ -119,7 +130,7 @@ public struct TodoItemDrawerView: View {
         .padding(.trailing, edge == .left ? 20 : 10)
         .padding(.vertical, 4)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
-        .liquidDrawerBackground(shape: drawerShape, accentColor: podColor.opacity(isDone ? 0.35 : 1.0))
+        .liquidDrawerBackground(shape: drawerShape, accentColor: listColor.opacity(isDone ? 0.35 : 1.0))
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -190,17 +201,23 @@ public struct CalendarItemDrawerView: View {
         let isImminent = event.isImminent
         let isAcknowledged = store.isAlertAcknowledged(id: event.id)
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled && !isAcknowledged
+        let calColor: Color = {
+            if let hex = event.colorHex {
+                return Color(hex: hex)
+            }
+            return podColor
+        }()
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // 贴边基座色条（尺寸严格共面齐平，高亮时呈现动态信标呼吸）
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
+                .fill(calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
                 .dynamicAttentionBeacon(
                     isAlerting: isAlerting,
                     edge: edge,
                     baseWidth: CGFloat(store.railBarWidth),
-                    color: podColor,
+                    color: calColor,
                     alertStyle: store.alertStyle,
                     onHoverDismiss: {
                         if store.dismissAlertOnHover {
@@ -210,7 +227,7 @@ public struct CalendarItemDrawerView: View {
                 )
 
             if state == .expandedDrawer {
-                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting)
+                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
                     .transition(itemDrawerTransition)
             }
         }
@@ -237,31 +254,33 @@ public struct CalendarItemDrawerView: View {
     }
 
     @ViewBuilder
-    private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool) -> some View {
+    private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
         let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
         let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
 
-        HStack(spacing: 8) {
-            if isAlerting {
-                TimelineView(.animation) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    let pulse = (sin(time * 4.2) + 1.0) / 2.0
-                    ZStack {
-                        Circle()
-                            .stroke(podColor.opacity(0.6 * (1.0 - pulse)), lineWidth: 1.2)
-                            .frame(width: 6 + pulse * 6, height: 6 + pulse * 6)
-                        Circle()
-                            .fill(podColor)
-                            .frame(width: 7, height: 7)
-                            .shadow(color: podColor.opacity(0.8), radius: 3)
-                    }
-                    .frame(width: 14, height: 14)
-                }
+        Group {
+            if cardH < 65.0 {
+                compactEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
+            } else if cardH < 115.0 {
+                standardEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             } else {
-                Circle()
-                    .fill(podColor.opacity(isPast ? 0.35 : 1.0))
-                    .frame(width: 6, height: 6)
+                flagshipEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             }
+        }
+        .padding(.leading, edge == .left ? 10 : 20)
+        .padding(.trailing, edge == .left ? 20 : 10)
+        .padding(.vertical, 4)
+        .frame(width: effectiveW, height: cardH)
+        .liquidDrawerBackground(
+            shape: drawerShape,
+            accentColor: calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.9))
+        )
+    }
+
+    @ViewBuilder
+    private func compactEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        HStack(spacing: 8) {
+            statusBeacon(isPast: isPast, isAlerting: isAlerting, calColor: calColor)
 
             VStack(alignment: .leading, spacing: 1) {
                 Button {
@@ -283,18 +302,16 @@ public struct CalendarItemDrawerView: View {
                             }
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(podColor))
+                            .background(Capsule().fill(calColor))
                             .foregroundColor(.white)
-                            .shadow(color: podColor.opacity(0.6), radius: 3)
+                            .shadow(color: calColor.opacity(0.6), radius: 3)
                         } else if isImminent {
-                            HStack(spacing: 3) {
-                                Text("SOON")
-                                    .purahBadge(size: 8, weight: .bold, design: .rounded)
-                            }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(Capsule().fill(podColor.opacity(0.25)))
-                            .foregroundColor(podColor)
+                            Text("SOON")
+                                .purahBadge(size: 8, weight: .bold, design: .rounded)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(Capsule().fill(calColor.opacity(0.25)))
+                                .foregroundColor(calColor)
                         }
                     }
                 }
@@ -303,58 +320,266 @@ public struct CalendarItemDrawerView: View {
 
                 Text("\(formattedTime(event: event)) · \(event.location)")
                     .font(palette.fontMono)
-                    .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
+                    .foregroundColor(isPast ? calColor.opacity(0.35) : .gray)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 4)
 
-            // Link meeting action button (Prominent, finger-friendly pill)
             if let url = event.url {
-                Button {
-                    NSWorkspace.shared.open(url)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("Join")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(podColor.opacity(0.24))
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(podColor.opacity(0.75), lineWidth: 1.0)
-                    )
-                    .foregroundColor(podColor)
-                    .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
-                }
-                .buttonStyle(.tactile)
-                .help("Open link: \(url.absoluteString)")
+                joinMeetingButton(url: url, isOngoing: isOngoing, isAlerting: isAlerting, calColor: calColor)
             }
 
-            Text(event.calendarTitle)
-                .font(.system(size: 8))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(podColor.opacity(isPast ? 0.10 : 0.15))
-                .foregroundColor(podColor.opacity(isPast ? 0.45 : 1.0))
-                .cornerRadius(3)
+            categoryTag(calColor: calColor, isPast: isPast)
 
-            pinButton
+            pinButton(calColor: calColor)
         }
-        .padding(.leading, edge == .left ? 10 : 20)
-        .padding(.trailing, edge == .left ? 20 : 10)
-        .padding(.vertical, 4)
-        .frame(width: effectiveW, height: cardH)
-        .liquidDrawerBackground(
-            shape: drawerShape,
-            accentColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.9))
-        )
+    }
+
+    @ViewBuilder
+    private func standardEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            // Row 1: Category Tag + Status + Pin
+            HStack(spacing: 6) {
+                categoryTag(calColor: calColor, isPast: isPast)
+
+                if isOngoing {
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 3.5, height: 3.5)
+                        Text("NOW")
+                            .purahBadge(size: 7.5, weight: .heavy, design: .rounded)
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(calColor))
+                    .foregroundColor(.white)
+                } else if isImminent {
+                    Text("SOON")
+                        .purahBadge(size: 7.5, weight: .bold, design: .rounded)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(calColor.opacity(0.22)))
+                        .foregroundColor(calColor)
+                }
+
+                Spacer(minLength: 4)
+
+                pinButton(calColor: calColor)
+            }
+
+            // Row 2: Title & Details
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Button {
+                        openInSystemCalendar(event: event)
+                    } label: {
+                        Text(event.title)
+                            .purahTitle(size: 11.5, weight: isOngoing ? .bold : .semibold, design: .rounded)
+                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 5) {
+                        Text(formattedTime(event: event))
+                            .font(palette.fontMono)
+                            .foregroundColor(isPast ? calColor.opacity(0.35) : .secondary)
+
+                        if !event.location.isEmpty && event.location != "Apple Calendar" {
+                            Text("•")
+                                .foregroundColor(.gray)
+                            Text(event.location)
+                                .purahCaption(size: 9)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                if let url = event.url {
+                    joinMeetingButton(url: url, isOngoing: isOngoing, isAlerting: isAlerting, calColor: calColor)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func flagshipEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            // Header: Category Pill + Status Pill + Pin
+            HStack(spacing: 6) {
+                categoryTag(calColor: calColor, isPast: isPast)
+
+                if isOngoing {
+                    HStack(spacing: 3) {
+                        Circle().fill(Color.white).frame(width: 3.5, height: 3.5)
+                        Text("IN PROGRESS")
+                            .purahBadge(size: 7.5, weight: .heavy, design: .rounded)
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(calColor))
+                    .foregroundColor(.white)
+                } else if isImminent {
+                    Text("STARTING SOON")
+                        .purahBadge(size: 7.5, weight: .bold, design: .rounded)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(calColor.opacity(0.22)))
+                        .foregroundColor(calColor)
+                }
+
+                Spacer(minLength: 4)
+
+                pinButton(calColor: calColor)
+            }
+
+            // Middle: Big Event Title & Location
+            VStack(alignment: .leading, spacing: 3) {
+                Button {
+                    openInSystemCalendar(event: event)
+                } label: {
+                    Text(event.title)
+                        .purahTitle(size: 13, weight: .bold, design: .rounded)
+                        .foregroundColor(palette.style == .native ? Color.primary : Color.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(calColor)
+                    Text(formattedTime(event: event))
+                        .font(palette.fontMono)
+                        .foregroundColor(.secondary)
+                }
+
+                if !event.location.isEmpty && event.location != "Apple Calendar" {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 9))
+                            .foregroundColor(calColor)
+                        Text(event.location)
+                            .purahCaption(size: 9.5)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer(minLength: 2)
+
+            // Bottom Actions: Wide Join Button or Calendar Link
+            HStack(spacing: 8) {
+                if let url = event.url {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Join Video Meeting")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(calColor.opacity(0.24)))
+                        .overlay(Capsule().stroke(calColor.opacity(0.75), lineWidth: 1.0))
+                        .foregroundColor(calColor)
+                    }
+                    .buttonStyle(.tactile)
+                }
+
+                Button {
+                    openInSystemCalendar(event: event)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 10))
+                        Text("Calendar")
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.06))
+                    .cornerRadius(5)
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open in Apple Calendar")
+            }
+        }
+    }
+
+    private func categoryTag(calColor: Color, isPast: Bool) -> some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(calColor)
+                .frame(width: 4.5, height: 4.5)
+            Text(event.calendarTitle)
+                .purahBadge(size: 8, weight: .bold)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 1.5)
+        .background(calColor.opacity(isPast ? 0.08 : 0.16))
+        .foregroundColor(calColor.opacity(isPast ? 0.45 : 1.0))
+        .cornerRadius(3)
+    }
+
+    private func joinMeetingButton(url: URL, isOngoing: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        Button {
+            NSWorkspace.shared.open(url)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("Join")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule(style: .continuous).fill(calColor.opacity(0.24)))
+            .overlay(Capsule(style: .continuous).stroke(calColor.opacity(0.75), lineWidth: 1.0))
+            .foregroundColor(calColor)
+            .modifier(OptionalGlow(color: calColor, enabled: isOngoing || isAlerting))
+        }
+        .buttonStyle(.tactile)
+        .help("Open link: \(url.absoluteString)")
+    }
+
+    private func statusBeacon(isPast: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        Group {
+            if isAlerting {
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    let pulse = (sin(time * 4.2) + 1.0) / 2.0
+                    ZStack {
+                        Circle()
+                            .stroke(calColor.opacity(0.6 * (1.0 - pulse)), lineWidth: 1.2)
+                            .frame(width: 6 + pulse * 6, height: 6 + pulse * 6)
+                        Circle()
+                            .fill(calColor)
+                            .frame(width: 7, height: 7)
+                            .shadow(color: calColor.opacity(0.8), radius: 3)
+                    }
+                    .frame(width: 14, height: 14)
+                }
+            } else {
+                Circle()
+                    .fill(calColor.opacity(isPast ? 0.35 : 1.0))
+                    .frame(width: 6, height: 6)
+            }
+        }
+    }
+
+    private func pinButton(calColor: Color) -> some View {
+        PurahPinButton(isPinned: isPinned, tintColor: calColor, action: onTogglePin)
     }
 
     private var drawerShape: UnevenRoundedRectangle {
