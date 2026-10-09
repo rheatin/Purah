@@ -261,21 +261,28 @@ public struct HardwareVitalsDrawerView: View {
 // MARK: - Focused Decomposed Vitals Drawer View
 public struct VitalsFocusedDrawerView: View {
     public let metric: VitalsMetricType
+    public let availableHeight: CGFloat
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
-    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
+
     private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
     private var effectiveThresholds: VitalsColorThresholds { state.thresholds }
 
-    public init(metric: VitalsMetricType, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+    public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.metric = metric
+        self.availableHeight = availableHeight
         self.state = state
         self.store = store
     }
 
-    public init(metric: VitalsMetricType, store: PurahWorkspaceStore) {
+    public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, store: PurahWorkspaceStore) {
         let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
-        self.init(metric: metric, state: pluginState, store: store)
+        self.init(metric: metric, availableHeight: availableHeight, state: pluginState, store: store)
+    }
+
+    public init(metric: VitalsMetricType, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.init(metric: metric, availableHeight: 48.0, state: state, store: store)
     }
 
     public var body: some View {
@@ -308,7 +315,7 @@ public struct VitalsFocusedDrawerView: View {
     @ViewBuilder
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Label("CPU Activity", systemImage: "cpu")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -318,15 +325,24 @@ public struct VitalsFocusedDrawerView: View {
                     .foregroundColor(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 4))
+            if availableHeight >= 72.0 {
+                VitalsTimeSeriesGraphView(
+                    points: state.history(for: .cpu),
+                    color: color,
+                    palette: palette,
+                    height: min(max(availableHeight - 44, 32), 100)
+                )
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 4))
+                    }
                 }
+                .frame(height: 4)
             }
-            .frame(height: 4)
 
             HStack {
                 if let top = metrics.topProcesses.first {
@@ -360,7 +376,7 @@ public struct VitalsFocusedDrawerView: View {
         let color = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let gpuRatio = max(min(metrics.gpuUsage, 1.0), 0.0)
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Label("GPU Activity", systemImage: "display")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -370,15 +386,24 @@ public struct VitalsFocusedDrawerView: View {
                     .foregroundColor(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(gpuRatio), 4))
+            if availableHeight >= 72.0 {
+                VitalsTimeSeriesGraphView(
+                    points: state.history(for: .gpu),
+                    color: color,
+                    palette: palette,
+                    height: min(max(availableHeight - 44, 32), 100)
+                )
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * CGFloat(gpuRatio), 4))
+                    }
                 }
+                .frame(height: 4)
             }
-            .frame(height: 4)
 
             HStack {
                 Text(gpuRatio > 0.10 ? "Metal / Apple Silicon GPU" : "Low Power / Idle Engine")
@@ -396,7 +421,7 @@ public struct VitalsFocusedDrawerView: View {
     @ViewBuilder
     private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Label("Memory (RAM)", systemImage: "memorychip")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -406,15 +431,24 @@ public struct VitalsFocusedDrawerView: View {
                     .foregroundColor(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 4))
+            if availableHeight >= 72.0 {
+                VitalsTimeSeriesGraphView(
+                    points: state.history(for: .ram),
+                    color: color,
+                    palette: palette,
+                    height: min(max(availableHeight - 44, 32), 100)
+                )
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 4))
+                    }
                 }
+                .frame(height: 4)
             }
-            .frame(height: 4)
 
             HStack {
                 Text("\(String(format: "%.1f", metrics.memoryUsedGB)) / \(String(format: "%.0f", metrics.memoryTotalGB)) GB")
@@ -434,7 +468,7 @@ public struct VitalsFocusedDrawerView: View {
     @ViewBuilder
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Label("Battery & Power", systemImage: "bolt.batteryblock.fill")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -444,15 +478,24 @@ public struct VitalsFocusedDrawerView: View {
                     .foregroundColor(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(Double(metrics.batteryLevel) / 100.0), 4))
+            if availableHeight >= 72.0 {
+                VitalsTimeSeriesGraphView(
+                    points: state.history(for: .power),
+                    color: color,
+                    palette: palette,
+                    height: min(max(availableHeight - 44, 32), 100)
+                )
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * CGFloat(Double(metrics.batteryLevel) / 100.0), 4))
+                    }
                 }
+                .frame(height: 4)
             }
-            .frame(height: 4)
 
             HStack {
                 Text(metrics.isCharging ? "Charging (\(metrics.powerSource))" : metrics.powerSource)
@@ -479,7 +522,7 @@ public struct VitalsFocusedDrawerView: View {
         let dangerMB = max(effectiveThresholds.networkDangerMB, 1.0)
         let networkRatio = min(totalMB / dangerMB, 1.0)
         
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Label("Network I/O", systemImage: "network")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -489,15 +532,24 @@ public struct VitalsFocusedDrawerView: View {
                     .foregroundColor(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(networkRatio), 4))
+            if availableHeight >= 72.0 {
+                VitalsTimeSeriesGraphView(
+                    points: state.history(for: .network),
+                    color: color,
+                    palette: palette,
+                    height: min(max(availableHeight - 44, 32), 100)
+                )
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * CGFloat(networkRatio), 4))
+                    }
                 }
+                .frame(height: 4)
             }
-            .frame(height: 4)
 
             HStack {
                 Text("↓ \(formatSpeed(bytesPerSec: metrics.networkDownSpeed))  ·  ↑ \(formatSpeed(bytesPerSec: metrics.networkUpSpeed))")
@@ -524,7 +576,7 @@ public struct VitalsFocusedDrawerView: View {
         let color = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Label("Disk Storage", systemImage: "internaldrive")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -534,15 +586,24 @@ public struct VitalsFocusedDrawerView: View {
                     .foregroundColor(color)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(geo.size.width * CGFloat(usedRatio), 4))
+            if availableHeight >= 72.0 {
+                VitalsTimeSeriesGraphView(
+                    points: state.history(for: .disk),
+                    color: color,
+                    palette: palette,
+                    height: min(max(availableHeight - 44, 32), 100)
+                )
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(geo.size.width * CGFloat(usedRatio), 4))
+                    }
                 }
+                .frame(height: 4)
             }
-            .frame(height: 4)
 
             HStack {
                 Text("\(Int(metrics.diskTotalGB - metrics.diskFreeGB)) / \(Int(metrics.diskTotalGB)) GB")
@@ -552,13 +613,112 @@ public struct VitalsFocusedDrawerView: View {
                 Button("Reveal") {
                     NSWorkspace.shared.selectFile("/", inFileViewerRootedAtPath: "")
                 }
+                .buttonStyle(.plain)
                 .font(.system(size: 8, weight: .bold))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(Color.primary.opacity(0.06))
-                .foregroundColor(.secondary)
-                .cornerRadius(3)
-                .buttonStyle(.tactile)
+                .foregroundColor(.accentColor)
+            }
+        }
+    }
+}
+
+// MARK: - Real-Time Time-Series Historical Graph (X-Axis: Time, Y-Axis: Value)
+public struct VitalsTimeSeriesGraphView: View {
+    public let points: [VitalsHistoryPoint]
+    public let color: Color
+    public let palette: ThemePalette
+    public let height: CGFloat
+
+    public init(points: [VitalsHistoryPoint], color: Color, palette: ThemePalette, height: CGFloat = 46.0) {
+        self.points = points
+        self.color = color
+        self.palette = palette
+        self.height = height
+    }
+
+    public var body: some View {
+        VStack(spacing: 2) {
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                let data = points.suffix(30)
+                let count = max(data.count, 2)
+                let stepX = w / CGFloat(max(count - 1, 1))
+
+                ZStack {
+                    // Grid background lines at 25%, 50%, 75%
+                    Path { path in
+                        path.move(to: CGPoint(x: 0, y: h * 0.25))
+                        path.addLine(to: CGPoint(x: w, y: h * 0.25))
+                        path.move(to: CGPoint(x: 0, y: h * 0.50))
+                        path.addLine(to: CGPoint(x: w, y: h * 0.50))
+                        path.move(to: CGPoint(x: 0, y: h * 0.75))
+                        path.addLine(to: CGPoint(x: w, y: h * 0.75))
+                    }
+                    .stroke(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 0.8, dash: [3, 3]))
+
+                    if !data.isEmpty {
+                        // Area fill under curve
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: h))
+                            for (idx, pt) in data.enumerated() {
+                                let x = CGFloat(idx) * stepX
+                                let y = h - (h * CGFloat(max(min(pt.value, 1.0), 0.0)))
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                            let lastX = CGFloat(data.count - 1) * stepX
+                            path.addLine(to: CGPoint(x: lastX, y: h))
+                            path.closeSubpath()
+                        }
+                        .fill(
+                            LinearGradient(
+                                colors: [color.opacity(0.32), color.opacity(0.02)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
+                        // Top line
+                        Path { path in
+                            for (idx, pt) in data.enumerated() {
+                                let x = CGFloat(idx) * stepX
+                                let y = h - (h * CGFloat(max(min(pt.value, 1.0), 0.0)))
+                                if idx == 0 {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+
+                        // Current point indicator
+                        if let last = data.last {
+                            let x = CGFloat(data.count - 1) * stepX
+                            let y = h - (h * CGFloat(max(min(last.value, 1.0), 0.0)))
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 4, height: 4)
+                                .overlay(Circle().stroke(color, lineWidth: 1.5))
+                                .position(x: x, y: y)
+                        }
+                    }
+                }
+            }
+            .frame(height: height)
+
+            // X-axis time markings
+            HStack {
+                Text("-30s")
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.7))
+                Spacer()
+                Text("-15s")
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.5))
+                Spacer()
+                Text("Now")
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.7))
             }
         }
     }
