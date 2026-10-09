@@ -36,9 +36,9 @@ public struct SteppedRailContainerView: View {
         let count = max(items.count, 1)
         let spacing: CGFloat = 2.5
         let totalSpacing = spacing * CGFloat(count - 1)
-        let minBarH: CGFloat = 56.0
-        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minBarH)
-        let totalSpanH = max(totalHeight, CGFloat(count) * itemH + totalSpacing)
+        let availablePerItem = (totalHeight - totalSpacing) / CGFloat(count)
+        let itemH = max(availablePerItem, 24.0)
+        let totalSpanH = totalHeight
 
         Group {
             if items.isEmpty {
