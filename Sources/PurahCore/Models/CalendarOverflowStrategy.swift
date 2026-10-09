@@ -4,7 +4,6 @@ import Foundation
 public enum CalendarOverflowStrategy: String, CaseIterable, Identifiable, Codable, Sendable {
     case smartFold = "smartFold"
     case continuousStream = "continuous"
-    case fullStepped = "fullStepped"
 
     public var id: String { rawValue }
 
@@ -13,7 +12,6 @@ public enum CalendarOverflowStrategy: String, CaseIterable, Identifiable, Codabl
         switch self {
         case .smartFold: return "calendar.overflow.smartFold".localized
         case .continuousStream: return "calendar.overflow.continuous".localized
-        case .fullStepped: return "calendar.overflow.fullStepped".localized
         }
     }
 
@@ -22,7 +20,6 @@ public enum CalendarOverflowStrategy: String, CaseIterable, Identifiable, Codabl
         switch self {
         case .smartFold: return "calendar.overflow.smartFold.desc".localized
         case .continuousStream: return "calendar.overflow.continuous.desc".localized
-        case .fullStepped: return "calendar.overflow.fullStepped.desc".localized
         }
     }
 }
