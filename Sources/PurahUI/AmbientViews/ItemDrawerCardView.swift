@@ -298,7 +298,7 @@ public struct CalendarItemDrawerView: View {
         }
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .frame(width: effectiveW, height: max(cardH, 120.0), alignment: .top)
         .liquidDrawerBackground(
             shape: drawerShape,
@@ -462,11 +462,11 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func flagshipEventCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: cardH > 220.0 ? 10 : 7) {
+        VStack(alignment: .leading, spacing: cardH > 220.0 ? 8 : 5) {
             // Row 1: Header (Icon + Category Pill + Status Pill + Pin)
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(calColor)
 
                 categoryTag(calColor: calColor, isPast: isPast)
@@ -499,12 +499,12 @@ public struct CalendarItemDrawerView: View {
                 .background(palette.borderColor.opacity(0.35))
 
             // Row 2: Big Event Title & Details
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 Button {
                     openInSystemCalendar(event: event)
                 } label: {
                     Text(event.title)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : Color.white)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -513,21 +513,21 @@ public struct CalendarItemDrawerView: View {
 
                 HStack(spacing: 5) {
                     Image(systemName: "clock.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: 8.5))
                         .foregroundColor(calColor)
                     Text(formattedTime(event: event))
                         .font(palette.fontMono)
-                        .font(.system(size: 9.5))
+                        .font(.system(size: 9))
                         .foregroundColor(.secondary)
                 }
 
                 if !event.location.isEmpty && event.location != "Apple Calendar" {
                     HStack(spacing: 5) {
                         Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 9))
+                            .font(.system(size: 8.5))
                             .foregroundColor(calColor)
                         Text(event.location)
-                            .font(.system(size: 9.5))
+                            .font(.system(size: 9))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
@@ -542,85 +542,87 @@ public struct CalendarItemDrawerView: View {
                 let startMins = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
                 HStack(spacing: 4) {
                     Image(systemName: "hourglass")
-                        .font(.system(size: 8.5))
+                        .font(.system(size: 8))
                         .foregroundColor(calColor)
                     Text(String(format: "Starts in %d min", startMins))
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
                         .foregroundColor(calColor)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2.5)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
                 .background(Capsule().fill(calColor.opacity(0.12)))
             }
 
-            // Meeting Agenda / Notes (if available and card height permits)
-            if let notes = event.notes, !notes.isEmpty, cardH >= 170.0 {
-                VStack(alignment: .leading, spacing: 3) {
+            // Meeting Agenda / Notes (only when card is spacious enough: cardH >= 210.0)
+            if let notes = event.notes, !notes.isEmpty, cardH >= 210.0 {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Image(systemName: "text.alignleft")
-                            .font(.system(size: 8))
+                            .font(.system(size: 7.5))
                             .foregroundColor(.secondary)
                         Text("Agenda")
-                            .purahCaption(size: 8)
+                            .purahCaption(size: 7.5)
                             .foregroundColor(.secondary)
                     }
                     Text(notes)
-                        .font(.system(size: 9.5, weight: .regular))
+                        .font(.system(size: 9, weight: .regular))
                         .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(0.78))
-                        .lineLimit(cardH > 250.0 ? 4 : 2)
-                        .lineSpacing(2)
+                        .lineLimit(cardH > 260.0 ? 3 : 2)
+                        .lineSpacing(1.5)
                 }
-                .padding(7)
+                .padding(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(palette.surfaceBackground.opacity(0.45))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .stroke(palette.borderColor.opacity(0.35), lineWidth: 0.5)
                 )
             }
 
-            // Next Up Preview Glance (when cardH is tall and subsequent events exist)
-            if cardH >= 240.0, let nextEvent = upcomingNextEvent() {
-                HStack(spacing: 6) {
+            // Next Up Preview Glance (when cardH is very tall: cardH >= 260.0)
+            if cardH >= 260.0, let nextEvent = upcomingNextEvent() {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(nextEvent.colorHex.flatMap { Color(hex: $0) } ?? podColor)
-                        .frame(width: 4.5, height: 4.5)
+                        .frame(width: 4, height: 4)
                     Text("Next: \(nextEvent.title)")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 8.5, weight: .medium))
                         .foregroundColor(palette.style == .native ? Color.primary : Color.white)
                         .lineLimit(1)
                     Spacer()
                     Text(formattedTime(event: nextEvent))
                         .font(palette.fontMono)
-                        .font(.system(size: 8.5))
+                        .font(.system(size: 8))
                         .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3.5)
                 .background(palette.surfaceBackground.opacity(0.35))
-                .cornerRadius(5)
+                .cornerRadius(4)
             }
+
+            Spacer(minLength: 2)
 
             Divider()
                 .background(palette.borderColor.opacity(0.35))
 
-            // Row 3: Action Bar
-            HStack(spacing: 8) {
+            // Row 3: Action Bar (Firmly anchored to the bottom)
+            HStack(spacing: 7) {
                 if let url = event.url {
                     Button {
                         NSWorkspace.shared.open(url)
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "video.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8.5, weight: .bold))
                             Text("Join Video Meeting")
-                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4.5)
+                        .padding(.vertical, 4)
                         .background(Capsule().fill(calColor.opacity(0.22)))
                         .overlay(Capsule().stroke(calColor.opacity(0.75), lineWidth: 1.0))
                         .foregroundColor(calColor)
@@ -632,8 +634,8 @@ public struct CalendarItemDrawerView: View {
                         NSPasteboard.general.setString(url.absoluteString, forType: .string)
                     } label: {
                         Image(systemName: "link")
-                            .font(.system(size: 8.5))
-                            .padding(5.5)
+                            .font(.system(size: 8))
+                            .padding(5)
                             .background(palette.surfaceBackground)
                             .cornerRadius(5)
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(palette.borderColor.opacity(0.5), lineWidth: 1))
@@ -648,12 +650,12 @@ public struct CalendarItemDrawerView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 8.5))
+                            .font(.system(size: 8))
                         Text("Calendar")
-                            .font(.system(size: 9.5, weight: .medium))
+                            .font(.system(size: 9, weight: .medium))
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4.5)
+                    .padding(.vertical, 4)
                     .background(palette.surfaceBackground)
                     .cornerRadius(5)
                     .overlay(

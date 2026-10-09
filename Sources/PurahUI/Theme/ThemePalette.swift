@@ -25,27 +25,14 @@ public struct ThemePalette: Sendable {
 
     @MainActor
     public func podColor(for podId: String, store: PurahWorkspaceStore? = nil) -> Color {
-        // 1. Dynamic color from plugin protocol requirement (e.g. Hardware Vitals dynamic health state)
-        if let plugin = PluginRegistry.shared.plugin(for: podId) {
-            let pod = store?.pods.first(where: { $0.id == podId }) ?? plugin.manifest.makeDefaultSlotPod()
-            let context = PurahPluginContext(
-                pod: pod,
-                edge: pod.edge,
-                railWidth: CGFloat(store?.railBarWidth ?? 8.0),
-                slotHeight: 100.0,
-                drawerWidth: 280.0,
-                isExpanded: false,
-                isPinned: false,
-                accentColor: primaryAccent,
-                palette: self,
-                store: store ?? PurahWorkspaceStore(),
-                requestExpand: {},
-                requestDismiss: {},
-                togglePin: {}
+        // 1. Hardware Vitals dynamic real-time color (resolved in nanoseconds with zero object allocations)
+        if podId == "vitals" {
+            let thresholds = store?._vitalsThresholds ?? VitalsColorThresholds()
+            return VitalsColorResolver.overallVitalsColor(
+                vitals: HardwareVitalsService.shared.metrics,
+                thresholds: thresholds,
+                palette: self
             )
-            if let dynamic = plugin.dynamicBarColor(context: context) {
-                return dynamic
-            }
         }
 
         // 2. Custom user color override

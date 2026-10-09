@@ -654,8 +654,17 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     private func resolvedSubItemHeaders(store: PurahWorkspaceStore) -> [(id: String, title: String)] {
         guard state.overflowStrategy != .continuousStream else { return [] }
+        let currentTime = CACurrentMediaTime()
+        if currentTime - state.cacheTimestamp < 0.25 && !state.cachedSubItemHeaders.isEmpty {
+            return state.cachedSubItemHeaders
+        }
+
         let allEvents = effectiveEvents(store: store)
-        guard !allEvents.isEmpty else { return [] }
+        guard !allEvents.isEmpty else {
+            state.cachedSubItemHeaders = []
+            state.cacheTimestamp = currentTime
+            return []
+        }
 
         let now = Date()
         let sortedEvents = allEvents.sorted { a, b in
@@ -674,17 +683,21 @@ public struct CalendarPlugin: PurahPodPlugin {
         }
 
         let maxLimit = (state.overflowStrategy == .smartFold) ? max(state.maxRailEvents, 2) : sortedEvents.count
+        var result: [(id: String, title: String)] = []
 
         if state.overflowStrategy == .smartFold && sortedEvents.count > maxLimit {
             let primaryCount = maxLimit - 1
-            var result: [(id: String, title: String)] = sortedEvents.prefix(primaryCount).map { ($0.id, $0.title) }
+            result = sortedEvents.prefix(primaryCount).map { ($0.id, $0.title) }
             let remaining = sortedEvents.count - primaryCount
             let moreTitle = String(format: "calendar.overview.moreEvents".localized, remaining)
             result.append(("calendar_more_events", moreTitle))
-            return result
         } else {
-            return sortedEvents.map { ($0.id, $0.title) }
+            result = sortedEvents.map { ($0.id, $0.title) }
         }
+
+        state.cachedSubItemHeaders = result
+        state.cacheTimestamp = currentTime
+        return result
     }
 
     public var subItemCount: Int {

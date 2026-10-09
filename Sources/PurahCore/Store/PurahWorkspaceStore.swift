@@ -322,7 +322,7 @@ public final class PurahWorkspaceStore {
             let minReserved = minimumDrawerHeight(for: pod.id)
             let rawCount = provider.subItemCount(store: self)
             if rawCount > 0 {
-                let maxChipH: CGFloat = 160.0
+                let maxChipH: CGFloat = 185.0
                 let spacing: CGFloat = 2.5
                 let count = CGFloat(rawCount)
                 let itemH = min(max((podHeight - spacing * (count - 1)) / count, 40.0), maxChipH)
@@ -358,9 +358,12 @@ public final class PurahWorkspaceStore {
 
         for item in layoutItems {
             let pod = item.pod
-            let hasChild = hasActiveOrPinnedChild(for: pod.id)
             let isPodActive = (activeDrawerItemId == pod.id || activeDrawerPodId == pod.id)
             let isPodPinned = isItemPinned(id: pod.id)
+            let hasChild = hasActiveOrPinnedChild(for: pod.id)
+
+            // High-performance prune: Skip completely idle pods that have neither active nor pinned drawers
+            guard isPodActive || isPodPinned || hasChild else { continue }
 
             if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id) {
                 let rawCount = provider.subItemCount(store: self)
@@ -370,7 +373,7 @@ public final class PurahWorkspaceStore {
                 let count = min(rawCount, maxAllowed)
                 let safeCount = max(count, 1)
                 let totalSpacing = spacing * Double(safeCount - 1)
-                let maxChipH = 160.0
+                let maxChipH = 185.0
                 let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), minChipH), maxChipH)
                 let cardH = max(itemH, 34.0)
 
