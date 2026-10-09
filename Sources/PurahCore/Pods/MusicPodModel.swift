@@ -11,7 +11,7 @@ public struct MusicTrackInfo: Codable, Sendable {
     public var durationSeconds: Double
     public var lastUpdated: Date
     public var playbackRate: Double
-    public var waveformSamples: [Double] // 归一化振幅
+    public var waveformSamples: [Double] // Normalized amplitudes (0.0 to 1.0)
     public var artworkData: Data?
     public var lyrics: String?
     public var syncedLyrics: String?

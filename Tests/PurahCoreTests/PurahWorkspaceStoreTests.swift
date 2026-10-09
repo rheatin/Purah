@@ -26,12 +26,12 @@ struct PurahWorkspaceStoreTests {
         let store = PurahWorkspaceStore()
         store.applyPreset(.sprintProductivity)
 
-        // 冲刺模式：左侧分配暂存架与便签
+        // Sprint preset: left rail hosts shelf and notes
         let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
         #expect(leftPods.contains(where: { $0.id == "shelf" }))
         #expect(leftPods.contains(where: { $0.id == "notes" }))
 
-        // 右侧放置日历与待办
+        // Right rail hosts calendar and todo
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
         #expect(rightPods.contains(where: { $0.id == "calendar" }))
         #expect(rightPods.contains(where: { $0.id == "todo" }))

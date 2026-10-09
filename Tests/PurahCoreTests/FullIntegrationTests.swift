@@ -10,7 +10,7 @@ struct FullIntegrationTests {
     func testCompleteLayoutCycle() {
         let store = PurahWorkspaceStore()
 
-        // 1. 切换预设
+        // 1. Apply layout preset
         store.applyPreset(.sprintProductivity)
         for edge in [MountEdge.left, MountEdge.right] {
             let pods = store.pods.filter { $0.edge == edge && $0.isEnabled }.sorted { $0.range.start < $1.range.start }
@@ -19,12 +19,12 @@ struct FullIntegrationTests {
             }
         }
 
-        // 2. 模拟用户拖拽拉长
+        // 2. Simulate user drag-to-expand gesture
         if let cal = store.pods.first(where: { $0.id == "calendar" }) {
             store.updatePodRange(id: "calendar", newRange: .init(start: cal.range.start, length: cal.range.length + 0.15))
         }
 
-        // 3. 再次验证绝对无重叠 (No Overlap Guarantee)
+        // 3. Verify rigid zero-overlap invariant
         for edge in [MountEdge.left, MountEdge.right] {
             let pods = store.pods.filter { $0.edge == edge && $0.isEnabled }.sorted { $0.range.start < $1.range.start }
             for i in 0..<(pods.count - 1) {

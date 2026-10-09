@@ -14,7 +14,7 @@ public struct CalendarDrawerView: View {
     }
 
     private var podColor: Color {
-        palette.podColor(for: "calendar") // 日程专属珊瑚红橙
+        palette.podColor(for: "calendar") // Coral red-orange for calendar
     }
 
     public init(state: CalendarPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
@@ -47,10 +47,10 @@ public struct CalendarDrawerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let activeEvent = state.events.first(where: { $0.id == store.activeDrawerItemId }) {
-                // 【单个日程弹出模式】：充裕高度与精美排版，绝不糊在一起
+                // Single event drawer mode
                 singleEventCard(event: activeEvent)
             } else {
-                // 【全量日程排程列表】
+                // Full agenda event schedule list
                 agendaListView()
             }
         }
@@ -59,7 +59,7 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    // MARK: - 单个日程弹出视图
+    // MARK: - Single Event Drawer View
     @ViewBuilder
     private func singleEventCard(event: CalendarEventItem) -> some View {
         let isPast = event.isPast
@@ -133,7 +133,7 @@ public struct CalendarDrawerView: View {
 
                     Spacer(minLength: 4)
 
-                    // 参会链接胶囊按钮 (放大手感，自适应布局)
+                    // Video meeting capsule button
                     if let url = event.url {
                         Button {
                             NSWorkspace.shared.open(url)
@@ -214,7 +214,7 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    // MARK: - 全量日程排程列表
+    // MARK: - Full Agenda Event List
     @ViewBuilder
     private func agendaListView() -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -417,7 +417,7 @@ fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
     launchAppleCalendar(at: event?.startTime)
 }
 
-// MARK: - 全量日程总览抽屉 (+N More / 连续流光展开)
+// MARK: - Full Agenda Overview Drawer (+N More / Continuous Stream)
 public struct CalendarAgendaOverviewDrawerView: View {
     public let events: [CalendarEventItem]
     public let edge: MountEdge
@@ -457,12 +457,12 @@ public struct CalendarAgendaOverviewDrawerView: View {
         let cardH = max(slotHeight, 32.0)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // 贴边基座色条 (未展开时只显示这条，绝对不弹窗)
+            // Rail-anchored baseline bar
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(podColor.opacity(0.85))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
 
-            // 悬停或固定时才滑出全量日程大抽屉
+            // Glides out full agenda overview drawer only when hovered or pinned
             if state == .expandedDrawer {
                 expandedAgendaCard(podColor: podColor)
                     .transition(drawerTransition)

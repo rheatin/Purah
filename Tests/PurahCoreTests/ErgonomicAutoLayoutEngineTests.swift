@@ -31,13 +31,13 @@ struct ErgonomicAutoLayoutEngineTests {
         )
 
         #expect(result.count == 3)
-        // 验证位于安全区间内
+        // Verify pods reside within safe bounds
         let firstPod = try #require(result.first)
         let lastPod = try #require(result.last)
         #expect(firstPod.range.start >= safeBounds.lowerBound)
         #expect(lastPod.range.end <= safeBounds.upperBound)
 
-        // 验证绝不重叠 (No Overlap Guarantee)
+        // Verify zero-overlap invariant
         for i in 0..<(result.count - 1) {
             #expect(result[i].range.end <= result[i + 1].range.start)
         }

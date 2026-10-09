@@ -26,12 +26,12 @@ public final class SystemCalendarSyncService {
         }
     }
 
-    /// 刷新底层 EventStore，保证权限变动后立即生效
+    /// Refreshes the underlying EventStore so permission changes take effect immediately
     public func resetStore() {
         self.eventStore = EKEventStore()
     }
 
-    /// 计算当日时间流逝归一化进度 (0.0 ~ 1.0)
+    /// Calculates normalized day elapsed progress (0.0 to 1.0)
     public func todayProgress(referenceDate: Date = Date()) -> Double {
         let cal = Calendar.current
         let startOfDay = cal.startOfDay(for: referenceDate)

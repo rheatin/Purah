@@ -35,7 +35,7 @@ public final class AppUpdaterManager {
         state = .checking
         lastCheckDate = Date()
 
-        // 模拟网络时延与远端发布解析
+        // Simulate network delay and remote release resolution
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         if let release = simulatedRelease {
@@ -47,7 +47,7 @@ public final class AppUpdaterManager {
             return
         }
 
-        // 默认模拟查询：生成当前最优版本
+        // Default simulated query: currently up to date
         state = .upToDate(currentVersion: currentVersion)
     }
 }

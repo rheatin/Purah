@@ -3,7 +3,7 @@ import SwiftUI
 import PurahCore
 
 public struct ProgressTimelineAmbientView: View {
-    public var progress: Double // 0.0 ~ 1.0 (已过时间)
+    public var progress: Double // 0.0 to 1.0 (elapsed time progress)
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -16,14 +16,14 @@ public struct ProgressTimelineAmbientView: View {
     public var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .top) {
-                // 背景未流逝区域
+                // Remaining duration background
                 Rectangle()
                     .fill(Color(nsColor: .separatorColor).opacity(0.3))
-                // 已流逝区域
+                // Elapsed duration fill
                 Rectangle()
                     .fill(Color.gray.opacity(0.45))
                     .frame(height: geo.size.height * progress)
-                // 当前游标横线
+                // Current time needle indicator
                 Rectangle()
                     .fill(palette.primaryAccent)
                     .frame(height: 2)

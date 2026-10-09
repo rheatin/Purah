@@ -104,7 +104,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             }
             super.scrollWheel(with: event)
         } else {
-            // 光标位于卡片外透明区域 (包括卡片上下方)：严禁吞噬滚轮事件，立即将窗口切为全穿透！
+            // Cursor in transparent region outside cards: do not swallow scroll events, switch to click-through immediately
             if let panel = self.window as? NSPanel {
                 panel.ignoresMouseEvents = true
             }
@@ -120,7 +120,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         if isPointInInteractiveDrawer(winPoint) {
             super.rightMouseDown(with: event)
         } else {
-            // 光标位于卡片外透明区域 (包括卡片上下方)：严禁拦截右键菜单，立即将窗口切为全穿透！
+            // Cursor in transparent region outside cards: do not intercept context menus, switch to click-through immediately
             if let panel = self.window as? NSPanel {
                 panel.ignoresMouseEvents = true
             }
@@ -145,8 +145,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     panel.ignoresMouseEvents = false
                 }
             } else {
-                // 光标滑出卡片与导轨、来到透明空白区域时：
-                // 瞬间将窗口切为 ignoresMouseEvents = true，保证上下空白处的滚轮、右键、点击 100% 直达底层窗口！
+                // When cursor leaves cards and rails into transparent empty space:
+                // Switch window to ignoresMouseEvents = true so scroll, right-click, and taps pass 100% through to underlying apps
                 if !panel.ignoresMouseEvents {
                     panel.ignoresMouseEvents = true
                 }

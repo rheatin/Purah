@@ -22,7 +22,7 @@ struct SpringConstraintSolverTests {
             preferredZone: .quickFlick, ergonomicWeight: 30, minLength: 0.10
         )
 
-        // 用户将 Pod1 向下拖长或下移到 0.20~0.52，侵占 Pod2 空间
+        // User drags Pod1 downward into 0.20~0.52, encroaching on Pod2 space
         let solved = SpringConstraintSolver.resolve(
             draggedPodId: "1",
             newRange: .init(start: 0.20, length: 0.32),
@@ -32,13 +32,13 @@ struct SpringConstraintSolverTests {
 
         let edgePods = solved.filter { $0.edge == .left }.sorted { $0.range.start < $1.range.start }
 
-        // 验证绝无重叠 (No Overlap Guarantee)
+        // Verify zero-overlap invariant
         for i in 0..<(edgePods.count - 1) {
             #expect(edgePods[i].range.end <= edgePods[i + 1].range.start + 0.0001)
         }
-        // 验证 Pod2 被弹性向后推挤
+        // Verify Pod2 is elastically pushed downward
         #expect(edgePods[1].range.start >= edgePods[0].range.end)
-        // 验证均大于 minLength
+        // Verify all lengths satisfy minLength
         for pod in edgePods {
             #expect(pod.range.length >= pod.minLength - 0.001)
         }
@@ -62,7 +62,7 @@ struct SpringConstraintSolverTests {
             preferredZone: .quickFlick, ergonomicWeight: 30, minLength: 0.10
         )
 
-        // 用户将 Pod3 强行向上拖拽至 0.05（试图侵占 Pod1 和 Pod2）
+        // User forcefully drags Pod3 upward to 0.05 encroaching on Pod1 and Pod2
         let solved = SpringConstraintSolver.resolve(
             draggedPodId: "3",
             newRange: .init(start: 0.05, length: 0.20),
@@ -72,13 +72,13 @@ struct SpringConstraintSolverTests {
 
         let edgePods = solved.filter { $0.edge == .left }.sorted { $0.range.start < $1.range.start }
 
-        // 验证绝对零重叠：每一项的 end 必须小于等于下一项的 start
+        // Verify strict zero-overlap: each item end must be <= next start
         for i in 0..<(edgePods.count - 1) {
             #expect(edgePods[i].range.end <= edgePods[i + 1].range.start + 0.0001,
                     "Pod \(edgePods[i].id) end (\(edgePods[i].range.end)) overlaps next start (\(edgePods[i + 1].range.start))")
         }
 
-        // 验证 Pod3 绝不能骑到 Pod1 和 Pod2 的头上
+        // Verify Pod3 never leapfrogs preceding pods
         let p3Solved = edgePods.first { $0.id == "3" }!
         let p2Solved = edgePods.first { $0.id == "2" }!
         let p1Solved = edgePods.first { $0.id == "1" }!
@@ -86,12 +86,12 @@ struct SpringConstraintSolverTests {
         #expect(p3Solved.range.start >= p2Solved.range.end - 0.0001)
         #expect(p2Solved.range.start >= p1Solved.range.end - 0.0001)
 
-        // 验证所有 Pod 均大于各自的 minLength
+        // Verify all pods maintain respective minLengths
         for pod in edgePods {
             #expect(pod.range.length >= pod.minLength - 0.001)
         }
 
-        // 验证顶部贴边安全利用率：Pod1 应该被推挤到接近 0.01 的天花板
+        // Verify top boundary safety: Pod1 should be pushed near the safe top ceiling
         #expect(p1Solved.range.start >= SpringConstraintSolver.defaultBounds.lowerBound)
         #expect(p1Solved.range.start <= 0.05)
     }

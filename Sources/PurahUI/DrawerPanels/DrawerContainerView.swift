@@ -29,7 +29,7 @@ public struct DrawerContainerView<Content: View>: View {
     }
 
     public var body: some View {
-        // 纯粹内容小窗：零杂乱头部与分割线，100% 空间留给 Pin 针与核心内容
+        // Clean content container: dedicated to core content and pin state
         content()
             .frame(width: CGFloat(pod.drawerWidth))
             .liquidCardBackground(cornerRadius: 12, strokeColor: podColor.opacity(0.85))

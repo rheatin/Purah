@@ -12,7 +12,7 @@ public struct TodoDrawerView: View {
     }
 
     private var podColor: Color {
-        palette.podColor(for: "todo") // 待办专属活力琥珀金
+        palette.podColor(for: "todo") // Amber gold for reminders
     }
 
     public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
@@ -45,7 +45,7 @@ public struct TodoDrawerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let activeItem = state.todos.first(where: { $0.id == store.activeDrawerItemId }) {
-                // 【核心要求】：单个 item 单独弹出来
+                // Single item stepped drawer mode
                 todoCard(todo: activeItem)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
@@ -78,7 +78,7 @@ public struct TodoDrawerView: View {
                 }
             } label: {
                 Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                    // 已完成保持同色系低对比度
+                    // Completed state maintains low-contrast harmonic hue
                     .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
                     .font(.system(size: 14))
             }
@@ -96,7 +96,7 @@ public struct TodoDrawerView: View {
                 ))
                 .textFieldStyle(.plain)
                 .strikethrough(isDone)
-                // 已完成保持同色系低对比度，绝不换成死灰
+                // Completed state maintains low-contrast harmonic hue rather than dull gray
                 .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .lineLimit(2)

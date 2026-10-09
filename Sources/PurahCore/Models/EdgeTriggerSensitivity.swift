@@ -52,7 +52,7 @@ public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// 边缘推力突破阈值 (横向压入像素速度 pt/s)
+    /// Edge push force breakthrough velocity threshold (inward velocity pt/s)
     public var pushForceThreshold: Double {
         switch self {
         case .agile: return 260.0
@@ -62,12 +62,12 @@ public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// 边缘推力阻力结界阈值 (Barrier/Loop 相对位移累加像素 px)
+    /// Edge push force resistance barrier threshold (accumulated raw motion delta px)
     public var pushResistanceBarrier: Double {
         switch self {
-        case .agile: return 24.0      // 敏捷轻推即破
-        case .balanced: return 36.0   // 稳健推力 (推荐默认)
-        case .cautious: return 52.0   // 强阻力墙 (严苛防误触)
+        case .agile: return 24.0      // Agile lightweight impulse
+        case .balanced: return 36.0   // Balanced push resistance (recommended default)
+        case .cautious: return 52.0   // High resistance barrier (strict anti-accidental touch)
         case .custom: return 36.0
         }
     }

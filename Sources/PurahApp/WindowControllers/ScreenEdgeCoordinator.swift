@@ -92,7 +92,7 @@ public final class ScreenEdgeCoordinator {
         } else {
             leftRailWindow?.animator().alphaValue = 1.0
             rightRailWindow?.animator().alphaValue = 1.0
-            // 默认窗口严格保持全透明穿透态 (ignoresMouseEvents = true)，仅由 2D 碰撞检测在卡片内开启交互
+            // Windows maintain full pass-through by default (ignoresMouseEvents = true), enabled only when cursor is inside cards
             leftRailWindow?.ignoresMouseEvents = true
             rightRailWindow?.ignoresMouseEvents = true
         }
@@ -134,7 +134,7 @@ public final class ScreenEdgeCoordinator {
                     store.hoveredPodId = nil
                 }
             }
-            // 抽屉收回后默认将窗口置为全穿透态，光标在卡片外绝不截留鼠标事件
+            // Reset window to pass-through after drawer retraction so clicks pass directly to underlying apps
             setInteractive(false, for: edge)
             EdgeMouseMonitor.shared?.resetEdgeState()
         } else {
