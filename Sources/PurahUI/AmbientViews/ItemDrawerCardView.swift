@@ -126,9 +126,9 @@ public struct TodoItemDrawerView: View {
 
             pinButton
         }
-        .padding(.leading, edge == .left ? 10 : 20)
-        .padding(.trailing, edge == .left ? 20 : 10)
-        .padding(.vertical, 4)
+        .padding(.leading, edge == .left ? 12 : 22)
+        .padding(.trailing, edge == .left ? 22 : 12)
+        .padding(.vertical, 6)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: listColor.opacity(isDone ? 0.35 : 1.0))
     }
@@ -267,9 +267,9 @@ public struct CalendarItemDrawerView: View {
                 flagshipEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             }
         }
-        .padding(.leading, edge == .left ? 10 : 20)
-        .padding(.trailing, edge == .left ? 20 : 10)
-        .padding(.vertical, 4)
+        .padding(.leading, edge == .left ? 12 : 22)
+        .padding(.trailing, edge == .left ? 22 : 12)
+        .padding(.vertical, 8)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(
             shape: drawerShape,
@@ -409,7 +409,7 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func flagshipEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 0) {
             // Header: Category Pill + Status Pill + Pin
             HStack(spacing: 6) {
                 categoryTag(calColor: calColor, isPast: isPast)
@@ -437,43 +437,57 @@ public struct CalendarItemDrawerView: View {
 
                 pinButton(calColor: calColor)
             }
+            .padding(.bottom, 6)
 
-            // Middle: Big Event Title & Location
-            VStack(alignment: .leading, spacing: 3) {
+            Spacer(minLength: 4)
+
+            // Middle: Big Event Title & Location Card with subtle plate
+            VStack(alignment: .leading, spacing: 7) {
                 Button {
                     openInSystemCalendar(event: event)
                 } label: {
                     Text(event.title)
                         .purahTitle(size: 13, weight: .bold, design: .rounded)
                         .foregroundColor(palette.style == .native ? Color.primary : Color.white)
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .lineSpacing(2)
                         .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(calColor)
-                    Text(formattedTime(event: event))
-                        .font(palette.fontMono)
-                        .foregroundColor(.secondary)
-                }
-
-                if !event.location.isEmpty && event.location != "Apple Calendar" {
-                    HStack(spacing: 4) {
-                        Image(systemName: "mappin.and.ellipse")
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock.fill")
                             .font(.system(size: 9))
                             .foregroundColor(calColor)
-                        Text(event.location)
-                            .purahCaption(size: 9.5)
+                        Text(formattedTime(event: event))
+                            .font(palette.fontMono)
                             .foregroundColor(.secondary)
-                            .lineLimit(1)
+                    }
+
+                    if !event.location.isEmpty && event.location != "Apple Calendar" {
+                        HStack(spacing: 5) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.system(size: 9))
+                                .foregroundColor(calColor)
+                            Text(event.location)
+                                .purahCaption(size: 9.5)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
             }
+            .padding(9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.8)
+            )
 
-            Spacer(minLength: 2)
+            Spacer(minLength: 6)
 
             // Bottom Actions: Wide Join Button or Calendar Link
             HStack(spacing: 8) {
@@ -518,18 +532,18 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func categoryTag(calColor: Color, isPast: Bool) -> some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             Circle()
                 .fill(calColor)
-                .frame(width: 4.5, height: 4.5)
+                .frame(width: 5, height: 5)
             Text(event.calendarTitle)
-                .purahBadge(size: 8, weight: .bold)
+                .purahBadge(size: 8.5, weight: .bold)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 1.5)
-        .background(calColor.opacity(isPast ? 0.08 : 0.16))
-        .foregroundColor(calColor.opacity(isPast ? 0.45 : 1.0))
-        .cornerRadius(3)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(calColor.opacity(0.18))
+        .foregroundColor(palette.style == .native ? Color.primary : Color.white)
+        .cornerRadius(4)
     }
 
     private func joinMeetingButton(url: URL, isOngoing: Bool, isAlerting: Bool, calColor: Color) -> some View {
@@ -722,14 +736,14 @@ public struct VitalsItemDrawerView: View {
         let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
 
         HStack(spacing: 8) {
-            VitalsFocusedDrawerView(metric: metric, store: store)
+            VitalsFocusedDrawerView(metric: metric, availableHeight: cardH, store: store)
 
             Spacer(minLength: 2)
 
             pinButton
         }
-        .padding(.leading, edge == .left ? 10 : 20)
-        .padding(.trailing, edge == .left ? 20 : 10)
+        .padding(.leading, edge == .left ? 12 : 22)
+        .padding(.trailing, edge == .left ? 22 : 12)
         .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
@@ -950,9 +964,9 @@ public struct ScriptItemDrawerView: View {
             // Pin button (Matches Hardware Vitals design)
             pinButton
         }
-        .padding(.leading, edge == .left ? 10 : 20)
-        .padding(.trailing, edge == .left ? 20 : 10)
-        .padding(.vertical, 5)
+        .padding(.leading, edge == .left ? 12 : 22)
+        .padding(.trailing, edge == .left ? 22 : 12)
+        .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
     }
