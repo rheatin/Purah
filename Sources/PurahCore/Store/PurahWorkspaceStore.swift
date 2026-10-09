@@ -694,10 +694,11 @@ public final class PurahWorkspaceStore {
     }
 
     public func autoLayoutAll() {
-        let left = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .left)
-        let right = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .right)
-        let map = Dictionary(uniqueKeysWithValues: (left + right).map { ($0.id, $0) })
-        pods = pods.map { map[$0.id] ?? $0 }
+        pods = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(
+            pods: pods,
+            availableHeight: Double(availableScreenHeight(for: .left))
+        )
+        savePersistentState()
         notifyCapacityWarningIfNeeded()
     }
 
