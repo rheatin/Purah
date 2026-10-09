@@ -336,8 +336,23 @@ public final class PurahWorkspaceStore {
         return podHeight
     }
 
+    @ObservationIgnored
+    private var cachedResolvedLayouts: [MountEdge: (height: Double, podsCount: Int, items: [ResolvedPodLayoutItem], timestamp: Double)] = [:]
+
+    public func invalidateLayoutCache() {
+        cachedResolvedLayouts.removeAll()
+    }
+
     public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
-        ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
+        let now = Date().timeIntervalSinceReferenceDate
+        if let cached = cachedResolvedLayouts[edge],
+           abs(cached.height - totalHeight) < 0.5,
+           cached.podsCount == pods.count,
+           (now - cached.timestamp) < 0.05 {
+            return cached.items
+        }
+
+        let items = ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
             pods: pods,
             on: edge,
             totalHeight: totalHeight,
@@ -348,6 +363,9 @@ public final class PurahWorkspaceStore {
             guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
             return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
         }
+
+        cachedResolvedLayouts[edge] = (height: totalHeight, podsCount: pods.count, items: items, timestamp: now)
+        return items
     }
 
     public func activeDrawerCardFrames(for edge: MountEdge, totalHeight: Double, windowWidth: Double = 580.0) -> [CGRect] {
@@ -684,6 +702,7 @@ public final class PurahWorkspaceStore {
             reassignEdges: false,
             availableHeight: Double(availableScreenHeight(for: .left))
         )
+        invalidateLayoutCache()
         savePersistentState()
         notifyCapacityWarningIfNeeded()
     }
@@ -762,6 +781,7 @@ public final class PurahWorkspaceStore {
                 return minH / screenH
             }
         )
+        invalidateLayoutCache()
     }
 
     public func movePod(id: String, to edge: MountEdge) {

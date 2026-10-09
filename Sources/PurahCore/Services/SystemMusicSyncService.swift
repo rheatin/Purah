@@ -263,6 +263,9 @@ public final class SystemMusicSyncService {
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak store] _ in
             MainActor.assumeIsolated {
                 guard let store = store, store._musicTrack.isPlaying else { return }
+                guard !store.isRailsFrozen else { return }
+                guard store.pods.contains(where: { $0.id == "music" && $0.isEnabled }) else { return }
+
                 // Time-Anchor Model (AGENTS.md Section 5.2):
                 // Do NOT rewrite currentPositionSeconds or update lastUpdated on timer ticks.
                 // The true anchor (currentPositionSeconds, lastUpdated) is calibrated solely by external
