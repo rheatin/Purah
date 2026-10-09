@@ -27,7 +27,7 @@ print_usage() {
 ${BOLD}Usage:${RESET} ./release.sh [version] [options]
 
 ${BOLD}Arguments:${RESET}
-  [version]                       Release version (e.g. 2.0.0 or 2.1.0).
+  [version]                       Release version (e.g. 0.1.0 or 0.2.0).
                                   If omitted, reads current version from PurahCore.swift.
 
 ${BOLD}Options:${RESET}
