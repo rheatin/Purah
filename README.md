@@ -20,19 +20,11 @@ English &nbsp;|&nbsp; [**简体中文 (Chinese)**](README_CN.md)
 
 <br />
 
-<!-- ═════════════════════ DEMO PREVIEW PLACEHOLDER ═════════════════════ -->
-> 🎬 **Interactive Showcase**
-> 
-> ```
-> ┌────────────────────────────────────────────────────────────────────────┐
-> │                                                                        │
-> │                    [ Demo GIF / Video Showcase ]                       │
-> │                                                                        │
-> │    Physical bezel extrusion, ambient waveform & ergonomic edge rails   │
-> │                                                                        │
-> └────────────────────────────────────────────────────────────────────────┘
-> ```
-<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!-- ═════════════════════ DEMO SHOWCASE ═════════════════════ -->
+<p align="center">
+  <img src="assets/purah-demo.gif" width="880" alt="Purah macOS Interactive Demo" style="border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.35);" />
+</p>
+<!-- ═══════════════════════════════════════════════════════════ -->
 
 </div>
 
