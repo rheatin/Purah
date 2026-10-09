@@ -17,6 +17,8 @@ public struct PurahPluginContext: Sendable {
     public let storage: any PurahPluginStorage
     private let _store: PurahWorkspaceStore?
 
+    /// Legacy host store reference for built-in panels during transition.
+    /// Third-party plugins should prefer context layout properties, storage, and action closures.
     public var store: PurahWorkspaceStore {
         _store ?? PurahWorkspaceStore()
     }

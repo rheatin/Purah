@@ -154,11 +154,15 @@ public final class PurahWorkspaceStore {
         acknowledgedAlertIds.remove(id)
     }
 
+    public func postToastNotification(id: String, message: String) {
+        guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(id) else { return }
+        notifiedToastEventIds.insert(id)
+        onCapacityWarningToast?(message)
+    }
+
+    @available(*, deprecated, message: "Use postToastNotification instead")
     public func notifyEventAlertIfNeeded(for event: CalendarEventItem) {
-        guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(event.id) else { return }
-        notifiedToastEventIds.insert(event.id)
-        let msg = "\(event.title) is starting now"
-        onCapacityWarningToast?("📅 \(msg)")
+        postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
     }
 
     // Edge Trigger Intentionality Sensitivity & Calibration

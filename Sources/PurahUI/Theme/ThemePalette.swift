@@ -25,33 +25,46 @@ public struct ThemePalette: Sendable {
 
     @MainActor
     public func podColor(for podId: String, store: PurahWorkspaceStore? = nil) -> Color {
-        if podId != "vitals", let store = store, let customHex = store.customPodColors[podId] {
+        // 1. Dynamic color from plugin protocol requirement (e.g. Hardware Vitals dynamic health state)
+        if let plugin = PluginRegistry.shared.plugin(for: podId) {
+            let pod = store?.pods.first(where: { $0.id == podId }) ?? plugin.manifest.makeDefaultSlotPod()
+            let context = PurahPluginContext(
+                pod: pod,
+                edge: pod.edge,
+                railWidth: CGFloat(store?.railBarWidth ?? 8.0),
+                slotHeight: 100.0,
+                drawerWidth: 280.0,
+                isExpanded: false,
+                isPinned: false,
+                accentColor: primaryAccent,
+                palette: self,
+                store: store ?? PurahWorkspaceStore(),
+                requestExpand: {},
+                requestDismiss: {},
+                togglePin: {}
+            )
+            if let dynamic = plugin.dynamicBarColor(context: context) {
+                return dynamic
+            }
+        }
+
+        // 2. Custom user color override
+        if let store, let customHex = store.customPodColors[podId] {
             return Color(hex: customHex)
         }
-        switch podId {
-        case "calendar":
-            return Color(red: 1.0, green: 0.35, blue: 0.38) // Coral Red
-        case "todo":
-            return Color(red: 1.0, green: 0.62, blue: 0.04) // Amber Gold
-        case "music":
-            return Color(red: 1.0, green: 0.18, blue: 0.45) // Neon Magenta
-        case "shelf":
-            return Color(red: 0.18, green: 0.82, blue: 0.55) // Mint Green
-        case "notes":
-            return Color(red: 1.0, green: 0.82, blue: 0.15) // Warm Gold
-        case "vitals":
-            // Hardware Vitals: Dynamic color resolved via VitalsColorResolver
-            let thresholds = store?._vitalsThresholds ?? VitalsColorThresholds()
-            return VitalsColorResolver.overallVitalsColor(
-                vitals: HardwareVitalsService.shared.metrics,
-                thresholds: thresholds,
-                palette: self
-            )
-        case "scripts":
-            return Color(red: 0.42, green: 0.36, blue: 0.91) // Obsidian Purple
-        default:
-            return primaryAccent
+
+        // 3. Plugin manifest default color hex
+        if let manifest = PluginRegistry.shared.catalogPlugin(for: podId)?.manifest {
+            return Color(hex: manifest.defaultColorHex)
         }
+
+        // 4. SlotPod default color hex
+        if let pod = store?.pods.first(where: { $0.id == podId }) {
+            return Color(hex: pod.defaultColorHex)
+        }
+
+        // 5. Fallback primary accent
+        return primaryAccent
     }
 
     public static func palette(for style: AppThemeStyle = .native) -> ThemePalette {

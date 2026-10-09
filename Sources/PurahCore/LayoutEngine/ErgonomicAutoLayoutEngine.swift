@@ -84,19 +84,8 @@ public enum ErgonomicAutoLayoutEngine {
         var rightCandidates: [SlotPod] = []
 
         if reassignEdges {
-            func preferredEdge(for pod: SlotPod) -> MountEdge {
-                switch pod.id {
-                case "vitals", "shelf", "notes", "terminal", "docker":
-                    return .left
-                case "calendar", "todo", "music", "weather":
-                    return .right
-                default:
-                    return pod.edge
-                }
-            }
-
             for var pod in enabledPods {
-                let targetEdge = preferredEdge(for: pod)
+                let targetEdge = pod.defaultEdge ?? pod.edge
                 pod.edge = targetEdge
                 if targetEdge == .left {
                     leftCandidates.append(pod)
@@ -105,11 +94,10 @@ public enum ErgonomicAutoLayoutEngine {
                 }
             }
 
-            // 双轨负载均衡：如果一侧模块数过多，将灵活性最高的模块平衡迁移到另一侧
-            let flexibleShiftOrder = ["scripts", "notes", "shelf", "music", "git-radar"]
+            // 双轨负载均衡：如果一侧模块数过多，按照人机工学权重由低到高迁移灵活性最高的模块
             while leftCandidates.count > rightCandidates.count + 2 {
-                if let shiftIdx = leftCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
-                    var shifted = leftCandidates.remove(at: shiftIdx)
+                if let minIdx = leftCandidates.indices.min(by: { leftCandidates[$0].ergonomicWeight < leftCandidates[$1].ergonomicWeight }) {
+                    var shifted = leftCandidates.remove(at: minIdx)
                     shifted.edge = .right
                     rightCandidates.append(shifted)
                 } else {
@@ -118,8 +106,8 @@ public enum ErgonomicAutoLayoutEngine {
             }
 
             while rightCandidates.count > leftCandidates.count + 2 {
-                if let shiftIdx = rightCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
-                    var shifted = rightCandidates.remove(at: shiftIdx)
+                if let minIdx = rightCandidates.indices.min(by: { rightCandidates[$0].ergonomicWeight < rightCandidates[$1].ergonomicWeight }) {
+                    var shifted = rightCandidates.remove(at: minIdx)
                     shifted.edge = .left
                     leftCandidates.append(shifted)
                 } else {
