@@ -209,6 +209,7 @@ public final class PurahWorkspaceStore {
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false
     public var calendarScope: CalendarTimeScope = .today
+    public var calendarMaxRailEvents: Int = 4
     public var remindersScope: RemindersScope = .allIncomplete
     public var isEventGlowAlertEnabled: Bool = true
     public var isMusicWaveformAnimationEnabled: Bool = true
@@ -313,8 +314,20 @@ public final class PurahWorkspaceStore {
 
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
         let podHeight = max(pod.range.length * totalHeight, 36.0)
-        if isPodDecomposed(pod.id) {
-            return max(podHeight, minimumDrawerHeight(for: pod.id))
+        if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id) {
+            let minReserved = minimumDrawerHeight(for: pod.id)
+            let rawCount = provider.subItemCount(store: self)
+            if rawCount > 0 {
+                let maxChipH: CGFloat = 160.0
+                let spacing: CGFloat = 2.5
+                let count = CGFloat(rawCount)
+                let itemH = min(max((podHeight - spacing * (count - 1)) / count, 40.0), maxChipH)
+                let actualSpan = count * itemH + spacing * (count - 1)
+                // If actual items require less than podHeight (e.g. only 1 event), shrink pod to actualSpan,
+                // anchoring to the top of its slot and leaving remaining space empty!
+                return min(actualSpan, max(podHeight, minReserved))
+            }
+            return max(podHeight, minReserved)
         }
         return podHeight
     }
@@ -627,6 +640,11 @@ public final class PurahWorkspaceStore {
             self.railBarWidth = savedRailW
         }
 
+        let savedMaxCal = defaults.integer(forKey: "purah.calendarMaxRailEvents")
+        if savedMaxCal > 0 {
+            self.calendarMaxRailEvents = savedMaxCal
+        }
+
         if let presetStr = defaults.string(forKey: "purah.currentPreset"),
            let preset = PodPreset(rawValue: presetStr) {
             self.currentPreset = preset
@@ -685,6 +703,7 @@ public final class PurahWorkspaceStore {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
+        defaults.set(calendarMaxRailEvents, forKey: "purah.calendarMaxRailEvents")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")

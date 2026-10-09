@@ -9,9 +9,11 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let count = max(store._calendarEvents.count, 1)
-        let minH = CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
-        return min(max(minH, 80.0), 320.0)
+        let maxEvents = max(store.calendarMaxRailEvents, 1)
+        let minChipH: CGFloat = 40.0
+        let spacing: CGFloat = 2.5
+        let totalSpacing = CGFloat(maxEvents - 1) * spacing
+        return CGFloat(maxEvents) * minChipH + totalSpacing
     }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
