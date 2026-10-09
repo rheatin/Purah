@@ -6,6 +6,8 @@ import PurahUI
 
 @MainActor
 public final class AmbientRailWindow: NSPanel {
+    public static let maxCanvasWidth: CGFloat = 580.0
+
     public override var canBecomeKey: Bool {
         true // Allow key window status for text editing in notes
     }
@@ -27,7 +29,7 @@ public final class AmbientRailWindow: NSPanel {
         // 1. Horizontal X coordinates anchor strictly to visible screen boundaries (0 gap).
         // 2. Vertical Y coordinates use screen.visibleFrame to avoid dock and menu bar.
         let visibleRect = screen.visibleFrame
-        let maxCanvasWidth: CGFloat = 580.0
+        let maxCanvasWidth = Self.maxCanvasWidth
         let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
         let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
 
@@ -78,7 +80,7 @@ public final class AmbientRailWindow: NSPanel {
     public func relocate(to screen: NSScreen) {
         self.targetScreen = screen
         let visibleRect = screen.visibleFrame
-        let maxCanvasWidth: CGFloat = 580.0
+        let maxCanvasWidth = Self.maxCanvasWidth
         let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
         let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
         self.setFrame(frame, display: true)

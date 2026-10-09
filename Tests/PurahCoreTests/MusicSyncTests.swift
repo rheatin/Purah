@@ -57,4 +57,24 @@ struct MusicSyncTests {
         track.artworkData = dummyData
         #expect(track.artworkData == dummyData)
     }
+
+    @Test("Time anchor model ensures linear monotonic calculation without position corruption")
+    func testTimeAnchorMonotonicCalculation() {
+        let initialTime = Date()
+        let track = MusicTrackInfo(
+            title: "Test Track",
+            artist: "Artist",
+            isPlaying: true,
+            currentPositionSeconds: 60.0,
+            durationSeconds: 180.0,
+            lastUpdated: initialTime,
+            playbackRate: 1.0
+        )
+
+        // currentPositionSeconds remains constant ground truth
+        #expect(track.currentPositionSeconds == 60.0)
+        // calculatedCurrentTime is strictly >= currentPositionSeconds
+        #expect(track.calculatedCurrentTime >= 60.0)
+        #expect(track.calculatedProgress >= (60.0 / 180.0))
+    }
 }

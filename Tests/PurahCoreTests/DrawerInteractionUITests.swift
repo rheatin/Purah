@@ -291,6 +291,27 @@ struct DrawerInteractionUITests {
         #expect(isInsideCaptured == true, "Inside pinned card must be captured for interactivity")
     }
 
+    @Test("Drop shelf file item supports file URL drag provider creation and extension resolution")
+    @MainActor
+    func testDropShelfDragItemProvider() {
+        let file = ShelfFileItem(
+            name: "design_spec.pdf",
+            sizeDescription: "2.4 MB",
+            fileExtension: "pdf",
+            filePath: "/Users/test/Documents/design_spec.pdf"
+        )
+        let icon = DropShelfDrawerView.iconForExtension(file.fileExtension)
+        #expect(icon == "doc.text.fill")
+
+        let codeIcon = DropShelfDrawerView.iconForExtension("swift")
+        #expect(codeIcon == "chevron.left.forwardslash.chevron.right")
+
+        #expect(file.filePath != nil)
+        let url = URL(fileURLWithPath: file.filePath!)
+        let provider = NSItemProvider(object: url as NSURL)
+        #expect(provider.canLoadObject(ofClass: URL.self))
+    }
+
     @Test("Music track calculates real-time progress accurately based on time elapsed")
     @MainActor
     func testMusicRealTimeProgressCalculation() {

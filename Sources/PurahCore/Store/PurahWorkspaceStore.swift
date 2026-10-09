@@ -25,8 +25,6 @@ public final class PurahWorkspaceStore {
     public var isDrawerPinned: Bool = false
     public var pinnedDrawerItemIds: Set<String> = []
     public var currentPreset: PodPreset = .balanced
-    @available(*, deprecated, message: "Use Emil Kowalski unified physics-driven spring animations instead")
-    public var animationStyle: AnimationStyle = .magneticCascade
     public var isRailsFrozen: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
 
@@ -213,10 +211,11 @@ public final class PurahWorkspaceStore {
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false
     public var calendarScope: CalendarTimeScope = .today
-    public var calendarMaxRailEvents: Int = 4
     public var remindersScope: RemindersScope = .allIncomplete
-    public var isEventGlowAlertEnabled: Bool = true
+    public var calendarMaxRailEvents: Int = 4
+    public var todoMaxRailTasks: Int = 6
     public var isMusicWaveformAnimationEnabled: Bool = true
+    public var isEventGlowAlertEnabled: Bool = true
 
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
@@ -228,7 +227,7 @@ public final class PurahWorkspaceStore {
         if baseWidth >= 400.0 {
             switch drawerWidthMode {
             case .fixed:
-                return CGFloat(max(fixedDrawerWidth, 340.0))
+                return CGFloat(max(fixedDrawerWidth, baseWidth))
             case .adaptive:
                 return CGFloat(max(baseWidth, 520.0))
             }
@@ -318,14 +317,15 @@ public final class PurahWorkspaceStore {
 
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
         let podHeight = max(pod.range.length * totalHeight, 36.0)
-        if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id) {
+        if let provider = capabilityProvider(for: pod.id), provider.isDecomposed(store: self) {
             let minReserved = minimumDrawerHeight(for: pod.id)
             let rawCount = provider.subItemCount(store: self)
             if rawCount > 0 {
                 let maxChipH: CGFloat = 185.0
                 let spacing: CGFloat = 2.5
                 let count = CGFloat(rawCount)
-                let itemH = min(max((podHeight - spacing * (count - 1)) / count, 40.0), maxChipH)
+                let minBaseH: CGFloat = (pod.id == "todo") ? 32.0 : ((pod.id == "calendar") ? 40.0 : 56.0)
+                let itemH = min(max((podHeight - spacing * (count - 1)) / count, minBaseH), maxChipH)
                 let actualSpan = count * itemH + spacing * (count - 1)
                 // If actual items require less than podHeight (e.g. only 1 event), shrink pod to actualSpan,
                 // anchoring to the top of its slot and leaving remaining space empty!
@@ -450,7 +450,12 @@ public final class PurahWorkspaceStore {
     package var _shelfFiles: [ShelfFileItem] = PurahWorkspaceStore.defaultShelfFiles()
     package var _quickNote: NoteContent = .init()
     package var _isVitalsDecomposed: Bool {
-        get { UserDefaults.standard.bool(forKey: "purah.vitals.isDecomposed") }
+        get {
+            if UserDefaults.standard.object(forKey: "purah.vitals.isDecomposed") == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: "purah.vitals.isDecomposed")
+        }
         set { UserDefaults.standard.set(newValue, forKey: "purah.vitals.isDecomposed") }
     }
     package var _vitalsEnabledMetrics: [VitalsMetricType] {
@@ -480,7 +485,12 @@ public final class PurahWorkspaceStore {
         }
     }
     package var _isScriptsDecomposed: Bool {
-        get { UserDefaults.standard.bool(forKey: "purah.scripts.isDecomposed") }
+        get {
+            if UserDefaults.standard.object(forKey: "purah.scripts.isDecomposed") == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: "purah.scripts.isDecomposed")
+        }
         set { UserDefaults.standard.set(newValue, forKey: "purah.scripts.isDecomposed") }
     }
     package var _scriptsEnabledActionIds: [String] {
@@ -494,67 +504,6 @@ public final class PurahWorkspaceStore {
     package var _terminalFontFamily: String = "Auto (Nerd Font)"
     package var _terminalFontSize: Double = 11.5
 
-    // MARK: - Compatibility Shims for Plugin State (to be removed once views are rewritten in Task 5)
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var calendarEvents: [CalendarEventItem] {
-        get { _calendarEvents }
-        set { _calendarEvents = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var todos: [TodoItem] {
-        get { _todos }
-        set { _todos = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var musicTrack: MusicTrackInfo {
-        get { _musicTrack }
-        set { _musicTrack = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var shelfFiles: [ShelfFileItem] {
-        get { _shelfFiles }
-        set { _shelfFiles = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var quickNote: NoteContent {
-        get { _quickNote }
-        set { _quickNote = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var isVitalsDecomposed: Bool {
-        get { _isVitalsDecomposed }
-        set { _isVitalsDecomposed = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var vitalsEnabledMetrics: [VitalsMetricType] {
-        get { _vitalsEnabledMetrics }
-        set { _vitalsEnabledMetrics = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var vitalsThresholds: VitalsColorThresholds {
-        get { _vitalsThresholds }
-        set { _vitalsThresholds = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var isScriptsDecomposed: Bool {
-        get { _isScriptsDecomposed }
-        set { _isScriptsDecomposed = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var scriptsEnabledActionIds: [String] {
-        get { _scriptsEnabledActionIds }
-        set { _scriptsEnabledActionIds = newValue }
-    }
-
     public var scriptsEnabledActions: [ScriptActionItem] {
         let all = ScriptRunwayService.shared.actions
         let ids = _scriptsEnabledActionIds
@@ -563,18 +512,6 @@ public final class PurahWorkspaceStore {
         }
         let filtered = all.filter { ids.contains($0.id) }
         return filtered.isEmpty ? all : filtered
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var terminalFontFamily: String {
-        get { _terminalFontFamily }
-        set { _terminalFontFamily = newValue }
-    }
-
-    @available(*, deprecated, message: "Use corresponding PluginState instead")
-    public var terminalFontSize: Double {
-        get { _terminalFontSize }
-        set { _terminalFontSize = newValue }
     }
 
     private static func defaultEvents() -> [CalendarEventItem] {
@@ -652,6 +589,11 @@ public final class PurahWorkspaceStore {
             self.calendarMaxRailEvents = savedMaxCal
         }
 
+        let savedMaxTodo = defaults.integer(forKey: "purah.todoMaxRailTasks")
+        if savedMaxTodo > 0 {
+            self.todoMaxRailTasks = savedMaxTodo
+        }
+
         if let presetStr = defaults.string(forKey: "purah.currentPreset"),
            let preset = PodPreset(rawValue: presetStr) {
             self.currentPreset = preset
@@ -711,6 +653,7 @@ public final class PurahWorkspaceStore {
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
         defaults.set(calendarMaxRailEvents, forKey: "purah.calendarMaxRailEvents")
+        defaults.set(todoMaxRailTasks, forKey: "purah.todoMaxRailTasks")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")

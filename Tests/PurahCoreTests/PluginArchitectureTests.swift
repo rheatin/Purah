@@ -993,4 +993,18 @@ struct PluginArchitectureTests {
         #expect(sensorPlugin.unmounted == true)
         #expect(store.activeDrawerCardFrames(for: .left, totalHeight: 900.0).isEmpty)
     }
+
+    @Test("Todo capability provider bounds minimum height dynamically by todoMaxRailTasks and compact chip height")
+    func testTodoCapabilityProviderDynamicHeight() {
+        let store = PurahWorkspaceStore()
+        store.todoMaxRailTasks = 5
+        let minH = store.minimumDrawerHeight(for: "todo")
+        // 5 tasks * 32.0 + 4 * 2.5 = 160 + 10 = 170.0
+        #expect(minH == 170.0)
+
+        store.todoMaxRailTasks = 8
+        let expandedMinH = store.minimumDrawerHeight(for: "todo")
+        // 8 tasks * 32.0 + 7 * 2.5 = 256 + 17.5 = 273.5
+        #expect(expandedMinH == 273.5)
+    }
 }

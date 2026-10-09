@@ -215,7 +215,16 @@ public struct AmbientRailStripView: View {
                 Text(plugin.manifest.displayName)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                if let accessory = plugin.makeHeaderAccessoryView(context: context) {
+                    accessory
+                }
+
                 Spacer()
+
+                if let trailing = plugin.makeHeaderTrailingView(context: context) {
+                    trailing
+                }
 
                 Button {
                     store.openPluginSettings(id: pod.id)

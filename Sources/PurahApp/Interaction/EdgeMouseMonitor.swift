@@ -70,11 +70,14 @@ public final class EdgeMouseMonitor {
 
     public func resetEdgeState() {
         cancelInitialDwell()
+        leftExitGraceTask?.cancel()
+        leftExitGraceTask = nil
+        rightExitGraceTask?.cancel()
+        rightExitGraceTask = nil
+        dwellTracker.reset()
         pushAccumulator.reset()
         wasAtAbsoluteBezel = false
         bezelArrivalTime = nil
-        bezelArrivalTime = nil
-        wasAtAbsoluteBezel = false
         lastCandidatePodId = nil
         candidateHoverStartTime = nil
     }
@@ -274,11 +277,11 @@ public final class EdgeMouseMonitor {
         } else if isLeftActiveUnpinned {
             if leftExitGraceTask == nil {
                 leftExitGraceTask = Task { @MainActor [weak self] in
+                    defer { self?.leftExitGraceTask = nil }
                     let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
                     try? await Task.sleep(for: .seconds(graceSec))
                     guard !Task.isCancelled, let self = self else { return }
                     self.coordinator?.dismissDrawer(for: .left)
-                    self.leftExitGraceTask = nil
                 }
             }
         } else {
@@ -295,11 +298,11 @@ public final class EdgeMouseMonitor {
         } else if isRightActiveUnpinned {
             if rightExitGraceTask == nil {
                 rightExitGraceTask = Task { @MainActor [weak self] in
+                    defer { self?.rightExitGraceTask = nil }
                     let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
                     try? await Task.sleep(for: .seconds(graceSec))
                     guard !Task.isCancelled, let self = self else { return }
                     self.coordinator?.dismissDrawer(for: .right)
-                    self.rightExitGraceTask = nil
                 }
             }
         } else {
@@ -512,7 +515,7 @@ public final class EdgeMouseMonitor {
             }
         } else {
             if store.activeDrawerPodId != candidate.id {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                     store.activeDrawerPodId = candidate.id
                     store.activeDrawerItemId = candidate.id
                 }
@@ -529,7 +532,7 @@ public final class EdgeMouseMonitor {
         guard hasActive || hasPinned else { return false }
 
         let totalH = Double(visibleRect.height)
-        let windowW = 340.0
+        let windowW = Double(AmbientRailWindow.maxCanvasWidth)
         let windowMinX = (edge == .right) ? (visibleRect.maxX - windowW) : visibleRect.minX
         let winX = point.x - windowMinX
         let winY = point.y - visibleRect.minY // AppKit coordinate inside window
@@ -537,6 +540,11 @@ public final class EdgeMouseMonitor {
 
         let cardFrames = store.activeDrawerCardFrames(for: edge, totalHeight: totalH, windowWidth: windowW)
         return cardFrames.contains(where: { $0.contains(winPoint) })
+    }
+
+    public enum SeamToleranceConstants {
+        public static let seamGapThreshold: CGFloat = 20.0
+        public static let viewportOverlapMargin: CGFloat = 15.0
     }
 
     /// Determines whether edge is an adjacent inter-screen seam in multi-display setups
@@ -548,16 +556,17 @@ public final class EdgeMouseMonitor {
         for other in screens where other != screen {
             let otherFrame = other.frame
             // Check vertical viewport overlap
-            guard point.y >= otherFrame.minY - 15 && point.y <= otherFrame.maxY + 15 else { continue }
+            guard point.y >= otherFrame.minY - SeamToleranceConstants.viewportOverlapMargin &&
+                  point.y <= otherFrame.maxY + SeamToleranceConstants.viewportOverlapMargin else { continue }
 
             if edge == .right {
                 // Adjacent screen on right side (seam gap <= 20px)
-                if abs(otherFrame.minX - currentFrame.maxX) <= 20 {
+                if abs(otherFrame.minX - currentFrame.maxX) <= SeamToleranceConstants.seamGapThreshold {
                     return true
                 }
             } else {
                 // Adjacent screen on left side (seam gap <= 20px)
-                if abs(currentFrame.minX - otherFrame.maxX) <= 20 {
+                if abs(currentFrame.minX - otherFrame.maxX) <= SeamToleranceConstants.seamGapThreshold {
                     return true
                 }
             }

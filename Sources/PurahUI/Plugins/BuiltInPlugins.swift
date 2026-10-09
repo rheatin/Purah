@@ -34,6 +34,18 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         AnyView(HardwareVitalsDrawerView(state: state, store: context.store))
     }
 
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            Text("CPU \(Int(state.metrics.cpuUsage * 100))%")
+                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                .foregroundColor(context.accentColor)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(context.accentColor.opacity(0.16))
+                .cornerRadius(3)
+        )
+    }
+
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(VitalsPluginSettingsView(state: state, store: store))
     }
@@ -225,6 +237,18 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         AnyView(ScriptRunwayDrawerView(state: state, store: context.store))
     }
 
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            Text("\(state.actions.count) ACTIONS")
+                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                .foregroundColor(context.accentColor)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(context.accentColor.opacity(0.16))
+                .cornerRadius(3)
+        )
+    }
+
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(ScriptsPluginSettingsView(state: state, store: store))
     }
@@ -413,6 +437,18 @@ public struct QuickNotesPlugin: PurahPodPlugin {
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
         AnyView(QuickNoteDrawerView(state: state, store: context.store))
+    }
+
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            Text("\(state.noteContent.text.count)c")
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundColor(context.accentColor.opacity(0.85))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(context.accentColor.opacity(0.12))
+                .cornerRadius(3)
+        )
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
@@ -879,6 +915,7 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
+        store.todoMaxRailTasks = state.maxRailTodos
     }
 
     public func onUnmount(store: PurahWorkspaceStore) {
@@ -887,7 +924,13 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
 
-    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        let maxTasks = max(state.maxRailTodos, 1)
+        let minChipH: CGFloat = 32.0
+        let spacing: CGFloat = 2.5
+        let totalSpacing = CGFloat(maxTasks - 1) * spacing
+        return CGFloat(maxTasks) * minChipH + totalSpacing
+    }
 
     private func effectiveTodos(store: PurahWorkspaceStore) -> [TodoItem] {
         var combined = state.todos
@@ -917,33 +960,35 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public var subItemCount: Int {
         let todos = !state.todos.isEmpty ? state.todos : []
-        return todos.count
+        return min(todos.count, state.maxRailTodos)
     }
 
     public var subItemTitles: [String] {
         let todos = !state.todos.isEmpty ? state.todos : []
-        return todos.map(\.title)
+        return Array(todos.prefix(state.maxRailTodos)).map(\.title)
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        effectiveTodos(store: store).count
+        min(effectiveTodos(store: store).count, store.todoMaxRailTasks)
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
         let todos = effectiveTodos(store: store)
-        guard todos.indices.contains(index) else { return nil }
+        guard index < store.todoMaxRailTasks, todos.indices.contains(index) else { return nil }
         return todos[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
         let todos = effectiveTodos(store: store)
-        guard todos.indices.contains(index) else { return nil }
+        guard index < store.todoMaxRailTasks, todos.indices.contains(index) else { return nil }
         return todos[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let items = effectiveTodos(store: context.store)
-        return items.map { todo in
+        let maxTasks = max(context.store.todoMaxRailTasks, 1)
+        let displayItems = items.prefix(maxTasks)
+        return displayItems.map { todo in
             PurahPluginSubItem(
                 id: todo.id,
                 title: todo.title,
@@ -1199,6 +1244,23 @@ public struct TodoPluginSettingsView: View {
                 }
                 .pickerStyle(.segmented)
             }
+
+            PurahThemedSliderRow(
+                title: "Max Visible Tasks on Rail",
+                subtitle: "Primary tasks shown on bezel before folding into remainder",
+                value: Binding(
+                    get: { Double(state.maxRailTodos) },
+                    set: {
+                        state.maxRailTodos = Int($0)
+                        state.save()
+                        store.todoMaxRailTasks = Int($0)
+                        store.autoLayoutAll()
+                    }
+                ),
+                range: 2...10,
+                step: 1,
+                valueBadgeText: "\(state.maxRailTodos) tasks"
+            )
 
             HStack {
                 Text("Pending Tasks: \(state.todos.filter { !$0.isCompleted }.count)")
@@ -2095,6 +2157,14 @@ public struct TerminalPlugin: PurahPodPlugin {
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
         AnyView(PersistentTerminalDrawerView(state: state, store: context.store))
+    }
+
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        AnyView(TerminalHeaderAccessoryView(state: state, color: context.accentColor))
+    }
+
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        AnyView(TerminalHeaderTrailingToolbarView(state: state))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
