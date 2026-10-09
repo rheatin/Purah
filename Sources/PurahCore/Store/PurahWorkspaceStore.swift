@@ -760,11 +760,17 @@ public final class PurahWorkspaceStore {
 
     public func updatePodRange(id: String, newRange: NormalizedRange) {
         guard let pod = pods.first(where: { $0.id == id }) else { return }
+        let screenH = max(Double(availableScreenHeight(for: pod.edge)), 600.0)
         pods = SpringConstraintSolver.resolve(
             draggedPodId: id,
             newRange: newRange,
             allPods: pods,
-            on: pod.edge
+            on: pod.edge,
+            minRatioProvider: { [weak self] p in
+                guard let self else { return p.minLength }
+                let minH = Double(self.minimumDrawerHeight(for: p.id))
+                return minH / screenH
+            }
         )
     }
 
