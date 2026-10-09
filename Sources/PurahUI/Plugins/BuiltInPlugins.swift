@@ -609,13 +609,22 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
+    private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
+        var combined = state.events
+        for e in store._calendarEvents {
+            if !combined.contains(where: { $0.id == e.id }) {
+                combined.append(e)
+            }
+        }
+        return combined
+    }
+
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
-        return events.contains { store.isItemPinned(id: $0.id) }
+        effectiveEvents(store: store).contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        state.events.contains { $0.id == itemId } || store._calendarEvents.contains { $0.id == itemId }
+        effectiveEvents(store: store).contains { $0.id == itemId }
     }
 
     public var isDecomposed: Bool {
@@ -627,32 +636,34 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public var subItemCount: Int {
-        state.events.count
-    }
-
-    public var subItemTitles: [String] {
-        state.events.map(\.title)
-    }
-
-    public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        let events = !state.events.isEmpty ? state.events : []
         return events.count
     }
 
+    public var subItemTitles: [String] {
+        let events = !state.events.isEmpty ? state.events : []
+        return events.map(\.title)
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        effectiveEvents(store: store).count
+    }
+
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        let events = effectiveEvents(store: store)
         guard events.indices.contains(index) else { return nil }
         return events[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        let events = effectiveEvents(store: store)
         guard events.indices.contains(index) else { return nil }
         return events[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        state.events.map { event in
+        let events = effectiveEvents(store: context.store)
+        return events.map { event in
             let isPast = event.endTime < Date()
             let isOngoing = event.isOngoing
             let isImminent = event.isImminent
@@ -673,7 +684,7 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        let events = !context.store._calendarEvents.isEmpty ? context.store._calendarEvents : state.events
+        let events = effectiveEvents(store: context.store)
         guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.store.isItemPinned(id: subItemId)
         let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
@@ -746,13 +757,22 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
+    private func effectiveTodos(store: PurahWorkspaceStore) -> [TodoItem] {
+        var combined = state.todos
+        for t in store._todos {
+            if !combined.contains(where: { $0.id == t.id }) {
+                combined.append(t)
+            }
+        }
+        return combined
+    }
+
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        let items = !store._todos.isEmpty ? store._todos : state.todos
-        return items.contains { store.isItemPinned(id: $0.id) }
+        effectiveTodos(store: store).contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        state.todos.contains { $0.id == itemId } || store._todos.contains { $0.id == itemId }
+        effectiveTodos(store: store).contains { $0.id == itemId }
     }
 
     public var isDecomposed: Bool {
@@ -764,32 +784,34 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public var subItemCount: Int {
-        state.todos.count
+        let todos = !state.todos.isEmpty ? state.todos : []
+        return todos.count
     }
 
     public var subItemTitles: [String] {
-        state.todos.map(\.title)
+        let todos = !state.todos.isEmpty ? state.todos : []
+        return todos.map(\.title)
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let items = !store._todos.isEmpty ? store._todos : state.todos
-        return items.count
+        effectiveTodos(store: store).count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let items = !store._todos.isEmpty ? store._todos : state.todos
-        guard items.indices.contains(index) else { return nil }
-        return items[index].id
+        let todos = effectiveTodos(store: store)
+        guard todos.indices.contains(index) else { return nil }
+        return todos[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let items = !store._todos.isEmpty ? store._todos : state.todos
-        guard items.indices.contains(index) else { return nil }
-        return items[index].title
+        let todos = effectiveTodos(store: store)
+        guard todos.indices.contains(index) else { return nil }
+        return todos[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        state.todos.map { todo in
+        let items = effectiveTodos(store: context.store)
+        return items.map { todo in
             PurahPluginSubItem(
                 id: todo.id,
                 title: todo.title,
@@ -817,7 +839,7 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        let todos = !context.store._todos.isEmpty ? context.store._todos : state.todos
+        let todos = effectiveTodos(store: context.store)
         guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.store.isItemPinned(id: subItemId)
         let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
