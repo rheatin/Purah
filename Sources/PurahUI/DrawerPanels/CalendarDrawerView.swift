@@ -281,26 +281,59 @@ public struct CalendarDrawerView: View {
 public struct CalendarAgendaOverviewDrawerView: View {
     public let events: [CalendarEventItem]
     public let edge: MountEdge
+    public let state: ItemDrawerState
+    public let isPinned: Bool
     public let slotHeight: CGFloat
     public let store: PurahWorkspaceStore
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
-    private var isPinned: Bool { store.isItemPinned(id: "calendar_more_events") }
 
     public init(
         events: [CalendarEventItem],
         edge: MountEdge,
+        state: ItemDrawerState = .expandedDrawer,
+        isPinned: Bool = false,
         slotHeight: CGFloat,
         store: PurahWorkspaceStore
     ) {
         self.events = events
         self.edge = edge
+        self.state = state
+        self.isPinned = isPinned
         self.slotHeight = slotHeight
         self.store = store
     }
 
+    private var drawerTransition: AnyTransition {
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
+        return .asymmetric(
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
+        )
+    }
+
     public var body: some View {
         let podColor = palette.podColor(for: "calendar")
+        let cardH = max(slotHeight, 32.0)
+
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
+            // 贴边基座色条 (未展开时只显示这条，绝对不弹窗)
+            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
+                .fill(podColor.opacity(0.85))
+                .frame(width: CGFloat(store.railBarWidth), height: cardH)
+
+            // 悬停或固定时才滑出全量日程大抽屉
+            if state == .expandedDrawer {
+                expandedAgendaCard(podColor: podColor)
+                    .transition(drawerTransition)
+            }
+        }
+        .frame(height: cardH)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+    }
+
+    @ViewBuilder
+    private func expandedAgendaCard(podColor: Color) -> some View {
         let floatingEdgePadding: CGFloat = (edge == .left ? 18.0 : 12.0)
         let railEdgePadding: CGFloat = (edge == .left ? 12.0 : 18.0)
 

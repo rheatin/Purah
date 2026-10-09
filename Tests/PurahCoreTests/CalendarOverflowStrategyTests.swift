@@ -123,4 +123,20 @@ struct CalendarOverflowStrategyTests {
         let computedTotal = itemH * CGFloat(count) + totalSpacing
         #expect(computedTotal <= totalHeight + 0.1)
     }
+
+    @Test("CalendarAgendaOverviewDrawerView starts in dockedFlush and only expands when active or pinned")
+    @MainActor
+    func testCalendarAgendaOverviewDrawerViewDockedState() {
+        let store = PurahWorkspaceStore()
+        let view = CalendarAgendaOverviewDrawerView(
+            events: [],
+            edge: .right,
+            state: .dockedFlush,
+            isPinned: false,
+            slotHeight: 36,
+            store: store
+        )
+        #expect(view.state == .dockedFlush)
+        #expect(!view.isPinned)
+    }
 }

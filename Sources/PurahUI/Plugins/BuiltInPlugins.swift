@@ -643,39 +643,63 @@ public struct CalendarPlugin: PurahPodPlugin {
         state.overflowStrategy != .continuousStream
     }
 
-    public var subItemCount: Int {
-        guard state.overflowStrategy != .continuousStream else { return 0 }
-        let count = (!state.events.isEmpty ? state.events.count : 0)
-        if state.overflowStrategy == .smartFold && count > state.maxRailEvents {
-            return state.maxRailEvents
+    private func resolvedSubItemHeaders(store: PurahWorkspaceStore) -> [(id: String, title: String)] {
+        guard state.overflowStrategy != .continuousStream else { return [] }
+        let allEvents = effectiveEvents(store: store)
+        guard !allEvents.isEmpty else { return [] }
+
+        let now = Date()
+        let sortedEvents = allEvents.sorted { a, b in
+            if a.isOngoing != b.isOngoing {
+                return a.isOngoing && !b.isOngoing
+            }
+            if a.isImminent != b.isImminent {
+                return a.isImminent && !b.isImminent
+            }
+            let aPast = a.endTime < now
+            let bPast = b.endTime < now
+            if aPast != bPast {
+                return !aPast && bPast
+            }
+            return a.startTime < b.startTime
         }
-        return count
+
+        let maxLimit = (state.overflowStrategy == .smartFold) ? max(state.maxRailEvents, 2) : sortedEvents.count
+
+        if state.overflowStrategy == .smartFold && sortedEvents.count > maxLimit {
+            let primaryCount = maxLimit - 1
+            var result: [(id: String, title: String)] = sortedEvents.prefix(primaryCount).map { ($0.id, $0.title) }
+            let remaining = sortedEvents.count - primaryCount
+            let moreTitle = String(format: "calendar.overview.moreEvents".localized, remaining)
+            result.append(("calendar_more_events", moreTitle))
+            return result
+        } else {
+            return sortedEvents.map { ($0.id, $0.title) }
+        }
+    }
+
+    public var subItemCount: Int {
+        resolvedSubItemHeaders(store: PurahWorkspaceStore()).count
     }
 
     public var subItemTitles: [String] {
-        let events = !state.events.isEmpty ? state.events : []
-        return events.map(\.title)
+        resolvedSubItemHeaders(store: PurahWorkspaceStore()).map(\.title)
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        guard state.overflowStrategy != .continuousStream else { return 0 }
-        let count = effectiveEvents(store: store).count
-        if state.overflowStrategy == .smartFold && count > state.maxRailEvents {
-            return state.maxRailEvents
-        }
-        return count
+        resolvedSubItemHeaders(store: store).count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let events = effectiveEvents(store: store)
-        guard events.indices.contains(index) else { return nil }
-        return events[index].id
+        let items = resolvedSubItemHeaders(store: store)
+        guard items.indices.contains(index) else { return nil }
+        return items[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let events = effectiveEvents(store: store)
-        guard events.indices.contains(index) else { return nil }
-        return events[index].title
+        let items = resolvedSubItemHeaders(store: store)
+        guard items.indices.contains(index) else { return nil }
+        return items[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
@@ -755,10 +779,14 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
         if subItemId == "calendar_more_events" {
+            let isPinned = context.store.isItemPinned(id: subItemId)
+            let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
             return AnyView(
                 CalendarAgendaOverviewDrawerView(
                     events: effectiveEvents(store: context.store),
                     edge: context.edge,
+                    state: state,
+                    isPinned: isPinned,
                     slotHeight: context.slotHeight,
                     store: context.store
                 )
