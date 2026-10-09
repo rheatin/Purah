@@ -14,6 +14,7 @@ public struct MusicTrackInfo: Codable, Sendable {
     public var waveformSamples: [Double] // 归一化振幅
     public var artworkData: Data?
     public var lyrics: String?
+    public var syncedLyrics: String?
     public var sourceApp: String // "Apple Music", "Spotify", "Chrome", etc.
     public var sourceBundleId: String // "com.apple.Music", etc.
 
@@ -30,6 +31,7 @@ public struct MusicTrackInfo: Codable, Sendable {
         waveformSamples: [Double] = [0.2, 0.5, 0.8, 0.3, 0.9, 0.6, 0.4, 0.7, 0.5, 0.3],
         artworkData: Data? = nil,
         lyrics: String? = nil,
+        syncedLyrics: String? = nil,
         sourceApp: String = "Apple Music",
         sourceBundleId: String = "com.apple.Music"
     ) {
@@ -45,6 +47,7 @@ public struct MusicTrackInfo: Codable, Sendable {
         self.waveformSamples = waveformSamples
         self.artworkData = artworkData
         self.lyrics = lyrics
+        self.syncedLyrics = syncedLyrics
         self.sourceApp = sourceApp
         self.sourceBundleId = sourceBundleId
     }
