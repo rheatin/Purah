@@ -966,10 +966,14 @@ public final class VitalsPluginState: Sendable {
     }
 
     private func appendHistory(_ array: inout [VitalsHistoryPoint], point: VitalsHistoryPoint, maxSamples: Int = 45) {
-        array.append(point)
-        if array.count > maxSamples {
-            array.removeFirst(array.count - maxSamples)
+        if array.capacity < maxSamples + 5 {
+            array.reserveCapacity(maxSamples + 5)
         }
+        if array.count >= maxSamples {
+            let overflow = array.count - maxSamples + 1
+            array.removeFirst(overflow)
+        }
+        array.append(point)
     }
 
     public func load() {
@@ -993,19 +997,11 @@ public final class VitalsPluginState: Sendable {
     }
 
     public func startPolling(interval: TimeInterval = 1.0) {
-        stopPolling()
-        pollingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                guard !Task.isCancelled else { break }
-                self?.refreshMetrics(includeProcesses: false)
-            }
-        }
+        HardwareVitalsService.shared.startMonitoring(interval: interval)
     }
 
     public func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+        HardwareVitalsService.shared.stopMonitoring()
     }
 
     public func refreshMetrics(includeProcesses: Bool = false) {
@@ -1035,7 +1031,6 @@ public final class VitalsPluginState: Sendable {
         self.isDecomposed = store._isVitalsDecomposed
         self.enabledMetrics = store._vitalsEnabledMetrics
         HardwareVitalsService.shared.startMonitoring()
-        startPolling()
     }
 
     public func unmount(store: PurahWorkspaceStore) {

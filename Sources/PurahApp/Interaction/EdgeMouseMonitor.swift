@@ -58,6 +58,9 @@ public final class EdgeMouseMonitor {
             pushAccumulator.reset()
             wasAtAbsoluteBezel = false
             bezelArrivalTime = nil
+            tearDownEventTap()
+        } else {
+            updateEventTapState()
         }
     }
 
@@ -90,7 +93,17 @@ public final class EdgeMouseMonitor {
             self?.handleMouse(event: event)
             return event
         }
-        setupEventTap()
+        updateEventTapState()
+    }
+
+    public func updateEventTapState() {
+        if !isFrozen && !store.isRailsFrozen && store.edgeTriggerMode == .pushForce {
+            if eventTap == nil {
+                setupEventTap()
+            }
+        } else {
+            tearDownEventTap()
+        }
     }
 
     public func stop() {
@@ -125,6 +138,7 @@ public final class EdgeMouseMonitor {
                 guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
                 let monitor = Unmanaged<EdgeMouseMonitor>.fromOpaque(refcon).takeUnretainedValue()
                 let dx = event.getDoubleValueField(.mouseEventDeltaX)
+                guard abs(dx) > 0.05 else { return Unmanaged.passUnretained(event) }
                 let pt = event.location
 
                 if Thread.isMainThread {
@@ -240,6 +254,14 @@ public final class EdgeMouseMonitor {
         customVelocity: CGPoint? = nil
     ) {
         guard !isFrozen, !store.isRailsFrozen else { return }
+
+        if store.edgeTriggerMode == .pushForce {
+            if eventTap == nil {
+                updateEventTapState()
+            }
+        } else if eventTap != nil {
+            tearDownEventTap()
+        }
 
         if customVelocity == nil {
             velocityTracker.add(point: point, timestamp: now)
@@ -526,13 +548,27 @@ public final class EdgeMouseMonitor {
 
     private func isPointInsideAnyDrawerCard(point: NSPoint, visibleRect: CGRect, edge: MountEdge) -> Bool {
         guard !store.isRailsFrozen else { return false }
-        // Fast-path: If no drawer is active and no items are pinned on this edge, return false instantly without computing frames!
+        // Fast-path 1: If no drawer is active and no items are pinned on this edge, return false instantly without computing frames!
         let hasActive = (store.activePod?.edge == edge) && (store.activeDrawerPodId != nil || store.activeDrawerItemId != nil)
         let hasPinned = store.hasPinnedItem(on: edge)
         guard hasActive || hasPinned else { return false }
 
-        let totalH = Double(visibleRect.height)
         let windowW = Double(AmbientRailWindow.maxCanvasWidth)
+
+        // Fast-path 2: Trivial horizontal rejection - if point is outside the maximum canvas boundary, return false instantly!
+        if edge == .left && point.x > (visibleRect.minX + windowW) {
+            return false
+        }
+        if edge == .right && point.x < (visibleRect.maxX - windowW) {
+            return false
+        }
+
+        // Fast-path 3: Trivial vertical rejection - if point is outside visible rect with margin, return false instantly!
+        if point.y < (visibleRect.minY - 20.0) || point.y > (visibleRect.maxY + 20.0) {
+            return false
+        }
+
+        let totalH = Double(visibleRect.height)
         let windowMinX = (edge == .right) ? (visibleRect.maxX - windowW) : visibleRect.minX
         let winX = point.x - windowMinX
         let winY = point.y - visibleRect.minY // AppKit coordinate inside window
