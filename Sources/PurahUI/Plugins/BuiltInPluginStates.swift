@@ -814,6 +814,16 @@ public final class NotesPluginState: Sendable {
     }
 }
 
+// MARK: - Vitals History Data Point
+public struct VitalsHistoryPoint: Sendable {
+    public let timestamp: Date
+    public let value: Double
+    public init(timestamp: Date = Date(), value: Double) {
+        self.timestamp = timestamp
+        self.value = value
+    }
+}
+
 // MARK: - Vitals Plugin State
 @Observable
 @MainActor
@@ -823,6 +833,13 @@ public final class VitalsPluginState: Sendable {
     public var thresholds: VitalsColorThresholds
     public var metrics: HardwareVitalsInfo
     public let storage: any PurahPluginStorage
+
+    public private(set) var cpuHistory: [VitalsHistoryPoint] = []
+    public private(set) var gpuHistory: [VitalsHistoryPoint] = []
+    public private(set) var ramHistory: [VitalsHistoryPoint] = []
+    public private(set) var powerHistory: [VitalsHistoryPoint] = []
+    public private(set) var networkHistory: [VitalsHistoryPoint] = []
+    public private(set) var diskHistory: [VitalsHistoryPoint] = []
 
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -848,6 +865,34 @@ public final class VitalsPluginState: Sendable {
         self.enabledMetrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
         self.thresholds = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
         self.metrics = HardwareVitalsService.shared.metrics
+
+        let now = Date()
+        self.cpuHistory = [VitalsHistoryPoint(timestamp: now, value: self.metrics.cpuUsage)]
+        self.gpuHistory = [VitalsHistoryPoint(timestamp: now, value: self.metrics.gpuUsage)]
+        self.ramHistory = [VitalsHistoryPoint(timestamp: now, value: self.metrics.memoryUsage)]
+        self.powerHistory = [VitalsHistoryPoint(timestamp: now, value: Double(self.metrics.batteryLevel) / 100.0)]
+        let netRatio = min((self.metrics.networkDownSpeed + self.metrics.networkUpSpeed) / 10_485_760.0, 1.0)
+        self.networkHistory = [VitalsHistoryPoint(timestamp: now, value: netRatio)]
+        let diskRatio = self.metrics.diskTotalGB > 0 ? (self.metrics.diskTotalGB - self.metrics.diskFreeGB) / self.metrics.diskTotalGB : 0.5
+        self.diskHistory = [VitalsHistoryPoint(timestamp: now, value: diskRatio)]
+    }
+
+    public func history(for metric: VitalsMetricType) -> [VitalsHistoryPoint] {
+        switch metric {
+        case .cpu: return cpuHistory
+        case .gpu: return gpuHistory
+        case .ram: return ramHistory
+        case .power: return powerHistory
+        case .network: return networkHistory
+        case .disk: return diskHistory
+        }
+    }
+
+    private func appendHistory(_ array: inout [VitalsHistoryPoint], point: VitalsHistoryPoint, maxSamples: Int = 45) {
+        array.append(point)
+        if array.count > maxSamples {
+            array.removeFirst(array.count - maxSamples)
+        }
     }
 
     public func load() {
@@ -885,6 +930,16 @@ public final class VitalsPluginState: Sendable {
     public func refreshMetrics(includeProcesses: Bool = false) {
         HardwareVitalsService.shared.refreshMetrics(includeProcesses: includeProcesses)
         self.metrics = HardwareVitalsService.shared.metrics
+
+        let now = Date()
+        appendHistory(&cpuHistory, point: VitalsHistoryPoint(timestamp: now, value: metrics.cpuUsage))
+        appendHistory(&gpuHistory, point: VitalsHistoryPoint(timestamp: now, value: metrics.gpuUsage))
+        appendHistory(&ramHistory, point: VitalsHistoryPoint(timestamp: now, value: metrics.memoryUsage))
+        appendHistory(&powerHistory, point: VitalsHistoryPoint(timestamp: now, value: Double(metrics.batteryLevel) / 100.0))
+        let netRatio = min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
+        appendHistory(&networkHistory, point: VitalsHistoryPoint(timestamp: now, value: netRatio))
+        let diskRatio = metrics.diskTotalGB > 0 ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB : 0.5
+        appendHistory(&diskHistory, point: VitalsHistoryPoint(timestamp: now, value: diskRatio))
     }
 
     public func resetThresholds() {
