@@ -44,6 +44,8 @@ public struct PluginMarketplaceView: View {
     @State private var feedbackBanner: String? = nil
     @State private var sideloadError: String? = nil
     @State private var showSideloadAlert: Bool = false
+    @State private var isCompiling: Bool = false
+    @State private var activeDevPackageURL: URL? = nil
 
     public let initialPluginId: String?
 
@@ -139,28 +141,61 @@ public struct PluginMarketplaceView: View {
                     .padding(.vertical, 5)
                     .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                     .cornerRadius(6)
-                    .frame(width: 180)
+                    .frame(width: 170)
+                }
 
+                // Active dev package quick rebuild & hot-reload button
+                if let devPkg = activeDevPackageURL {
                     Button {
-                        loadLocalPlugin()
+                        handleSelectedPluginURL(devPkg)
                     } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("Load Local...")
+                        HStack(spacing: 4) {
+                            if isCompiling {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                            Text("Rebuild")
                                 .lineLimit(1)
                         }
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 10)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 9)
                         .padding(.vertical, 5)
                         .background(palette.surfaceBackground)
                         .cornerRadius(6)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
+                                .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
                         )
                     }
                     .buttonStyle(.tactile)
+                    .disabled(isCompiling)
+                    .help("Recompile active local package and hot-reload into Purah")
                 }
+
+                // "Dev: Load..." button always accessible across tabs
+                Button {
+                    loadLocalPlugin()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "hammer.fill")
+                        Text("Dev: Load Package...")
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(palette.surfaceBackground)
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.tactile)
+                .disabled(isCompiling)
+                .help("Select a local Swift Package folder (with Package.swift) to compile & dynamically load")
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)
@@ -495,48 +530,87 @@ public struct PluginMarketplaceView: View {
         )
     }
 
-    // MARK: - Local Side-Loading
+    // MARK: - Local Plugin Development & Side-Loading
     @MainActor
     private func loadLocalPlugin() {
         let panel = NSOpenPanel()
-        panel.title = "Select Local Purah Plugin (.purahplugin or manifest.json)"
+        panel.title = "Select Local Plugin (Folder with Package.swift, .dylib, or manifest.json)"
         panel.prompt = "Load Plugin"
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
 
         if panel.runModal() == .OK, let selectedURL = panel.url {
-            do {
-                let manifestURL: URL
-                var isDir: ObjCBool = false
-                FileManager.default.fileExists(atPath: selectedURL.path, isDirectory: &isDir)
-                if isDir.boolValue {
-                    let manifestCandidate = selectedURL.appendingPathComponent("manifest.json")
-                    let infoCandidate = selectedURL.appendingPathComponent("Info.json")
-                    if FileManager.default.fileExists(atPath: manifestCandidate.path) {
-                        manifestURL = manifestCandidate
-                    } else if FileManager.default.fileExists(atPath: infoCandidate.path) {
-                        manifestURL = infoCandidate
+            handleSelectedPluginURL(selectedURL)
+        }
+    }
+
+    @MainActor
+    private func handleSelectedPluginURL(_ selectedURL: URL) {
+        let packageSwift = selectedURL.appendingPathComponent("Package.swift")
+        let isPackage = FileManager.default.fileExists(atPath: packageSwift.path)
+        let isDylib = selectedURL.pathExtension == "dylib"
+
+        if isPackage || isDylib {
+            isCompiling = true
+            feedbackBanner = isPackage ? "Compiling local Swift package..." : "Loading dynamic library..."
+            Task {
+                do {
+                    let plugin: any PurahPodPlugin
+                    if isPackage {
+                        plugin = try await PluginJITCompiler.shared.buildAndLoad(packageDir: selectedURL, store: store)
+                        activeDevPackageURL = selectedURL
                     } else {
-                        manifestURL = manifestCandidate
+                        plugin = try PluginDynamicLoader.shared.loadPlugin(from: selectedURL)
+                        PluginRegistry.shared.register(plugin, store: store)
+                        store.marketManager.install(id: plugin.manifest.id)
+                        store.autoLayoutAll()
                     }
-                } else {
-                    manifestURL = selectedURL
+                    isCompiling = false
+                    feedbackBanner = "✨ Loaded '\(plugin.manifest.displayName)' dynamically!"
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                        feedbackBanner = nil
+                    }
+                } catch {
+                    isCompiling = false
+                    sideloadError = "Failed to compile/load plugin:\n\(error.localizedDescription)"
+                    showSideloadAlert = true
                 }
-
-                let data = try Data(contentsOf: manifestURL)
-                var manifest = try JSONDecoder().decode(PurahPluginManifest.self, from: data)
-                manifest.isCommunity = true
-
-                marketManager.addCatalogManifest(manifest)
-                PluginRegistry.shared.registerManifestOnly(manifest)
-
-                // Present security confirmation gate for the sideloaded plugin
-                securityReviewManifest = manifest
-            } catch {
-                sideloadError = "Failed to load plugin manifest: \(error.localizedDescription)"
-                showSideloadAlert = true
             }
+            return
+        }
+
+        do {
+            let manifestURL: URL
+            var isDir: ObjCBool = false
+            FileManager.default.fileExists(atPath: selectedURL.path, isDirectory: &isDir)
+            if isDir.boolValue {
+                let manifestCandidate = selectedURL.appendingPathComponent("manifest.json")
+                let infoCandidate = selectedURL.appendingPathComponent("Info.json")
+                if FileManager.default.fileExists(atPath: manifestCandidate.path) {
+                    manifestURL = manifestCandidate
+                } else if FileManager.default.fileExists(atPath: infoCandidate.path) {
+                    manifestURL = infoCandidate
+                } else {
+                    manifestURL = manifestCandidate
+                }
+            } else {
+                manifestURL = selectedURL
+            }
+
+            let data = try Data(contentsOf: manifestURL)
+            var manifest = try JSONDecoder().decode(PurahPluginManifest.self, from: data)
+            manifest.isCommunity = true
+
+            marketManager.addCatalogManifest(manifest)
+            PluginRegistry.shared.registerManifestOnly(manifest)
+
+            // Present security confirmation gate for the sideloaded plugin
+            securityReviewManifest = manifest
+        } catch {
+            sideloadError = "Failed to load plugin manifest: \(error.localizedDescription)"
+            showSideloadAlert = true
         }
     }
 }

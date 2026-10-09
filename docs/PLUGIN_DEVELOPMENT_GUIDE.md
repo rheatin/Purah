@@ -280,7 +280,8 @@ public struct CountDownPlugin: PurahPodPlugin {
 
 ## 8. 插件注册与市场接入
 
-在应用启动时（或第三方插件包动态加载后），通过单例 `PluginRegistry` 完成注册：
+### 8.1 内置静态插件注册
+在应用启动时，通过单例 `PluginRegistry` 完成注册：
 
 ```swift
 // 1. 注册插件实例
@@ -290,6 +291,106 @@ PluginRegistry.shared.register(myPlugin, store: store)
 // 2. 安装至工作区轨条
 store.marketManager.install(id: "countdown")
 ```
+
+---
+
+### 8.2 动态 SPM 插件架构与 ABI C 桥接引擎 (纯 Swift 零依赖)
+
+为了让第三方开发者以最轻量的方式开发插件，Purah 提供了 **纯 Swift 6 / SwiftUI 零依赖动态载入方案**。插件**完全不需要引入庞大的宿主工程依赖**，仅需系统原生的 `SwiftUI` 与 `AppKit`，即可在 1 秒内完成编译并动态挂载！
+
+#### 标准插件工程结构 (`Package.swift`)：
+```swift
+// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "MyCustomPlugin",
+    platforms: [.macOS(.v14)],
+    products: [
+        .library(name: "MyCustomPlugin", type: .dynamic, targets: ["MyCustomPlugin"])
+    ],
+    targets: [
+        .target(name: "MyCustomPlugin", dependencies: []) // 0 外部依赖，编译极速！
+    ]
+)
+```
+
+#### 导出的核心 ABI C 接口：
+```swift
+import SwiftUI
+import AppKit
+
+// 1. 声明静态 JSON 清单
+private let manifestJSON = """
+{
+    "id": "com.myname.custom",
+    "displayName": "My Plugin",
+    "systemIcon": "star.fill",
+    "author": "Community Developer",
+    "version": "1.0.0",
+    "description": "Zero-dependency pure SwiftUI dynamic plugin",
+    "defaultEdge": "right",
+    "preferredZone": "goldenAction",
+    "ergonomicWeight": 30.0,
+    "minLengthRatio": 0.15,
+    "defaultColorHex": "#FF9F0A",
+    "defaultDrawerWidth": 290.0,
+    "category": "Lightweight",
+    "permissions": []
+}
+"""
+
+@_cdecl("purahPluginManifestJSON")
+public func purahPluginManifestJSON() -> UnsafePointer<CChar> {
+    return (manifestJSON as NSString).utf8String!
+}
+
+// 2. 导出轨条小视图 (返回 NSHostingView 原生指针)
+@MainActor
+@_cdecl("purahCreateRailView")
+public func purahCreateRailView() -> UnsafeMutableRawPointer {
+    let host = NSHostingView(rootView: MyRailView())
+    return Unmanaged.passRetained(host).toOpaque()
+}
+
+// 3. 导出抽屉展开卡片视图
+@MainActor
+@_cdecl("purahCreateDrawerView")
+public func purahCreateDrawerView() -> UnsafeMutableRawPointer {
+    let host = NSHostingView(rootView: MyDrawerView())
+    return Unmanaged.passRetained(host).toOpaque()
+}
+
+// 4. (可选) 导出顶栏副标题徽章
+@MainActor
+@_cdecl("purahCreateHeaderAccessoryView")
+public func purahCreateHeaderAccessoryView() -> UnsafeMutableRawPointer {
+    let host = NSHostingView(rootView: Text("PRO").font(.system(size: 8, weight: .bold)))
+    return Unmanaged.passRetained(host).toOpaque()
+}
+
+// 5. (可选) 轨条点击回调
+@MainActor
+@_cdecl("purahOnRailBarTap")
+public func purahOnRailBarTap() {
+    // 处理一键触发逻辑
+}
+```
+
+---
+
+### 8.3 本地开发验证与热重载工作流 (Local Development & Hot Reload)
+
+Purah 内置了直通开发者的即时编译工具链，参考仓库内置的完整范例：**`Examples/PurahExamplePlugin`**：
+
+1. **新建或克隆插件源码**：
+   在任意本地目录准备一个声明了 `.dynamic` library 的 Swift Package（例如 `Examples/PurahExamplePlugin`）。
+2. **在 Purah 中直接加载源码包**：
+   打开 Purah 设置面板 (`Cmd + ,`)，进入 **Plugins** 标签页，点击右上角的 **`Dev: Load Package...`** 按钮，选中插件所在的文件夹（包含 `Package.swift`）。
+3. **即时编译与挂载 (JIT Build & Mount)**：
+   Purah 后台将自动调用系统原生 `swift build -c release --disable-sandbox` 进行秒级编译，并通过 Darwin 原生动态链接器注入当前进程，插件将在瞬间自动出现在屏幕边缘轨道上！
+4. **单键热重载 (One-Click Rebuild)**：
+   在编辑器中修改 SwiftUI 代码后，直接在 Purah 设置面板点击右上角亮起的 **`Rebuild`** 按钮，Purah 将自动增量重编并重新热挂载，最新界面与逻辑在 1 秒内直接呈现于屏幕边缘，极大加速开发调试周期！
 
 ---
 

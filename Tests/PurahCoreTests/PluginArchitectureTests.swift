@@ -1007,4 +1007,63 @@ struct PluginArchitectureTests {
         // 8 tasks * 32.0 + 7 * 2.5 = 256 + 17.5 = 273.5
         #expect(expandedMinH == 273.5)
     }
+
+    @Test("Dynamic Plugin Loader loads compiled example dynamic library and integrates seamlessly")
+    func testPluginDynamicLoaderWithExamplePlugin() throws {
+        let store = PurahWorkspaceStore()
+        let exampleDylibPath = "/Users/char/Repos/Purah/Examples/PurahExamplePlugin/.build/out/Products/Debug/libPurahExamplePlugin.dylib"
+
+        guard FileManager.default.fileExists(atPath: exampleDylibPath) else {
+            return
+        }
+
+        let dylibURL = URL(fileURLWithPath: exampleDylibPath)
+        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylibURL)
+
+        #expect(plugin.manifest.id == "com.example.focus")
+        #expect(plugin.manifest.displayName == "Zen Counter")
+        #expect(PluginDynamicLoader.shared.isDynamicallyLoaded(id: "com.example.focus") == true)
+        #expect(PluginDynamicLoader.shared.loadedPath(for: "com.example.focus") == exampleDylibPath)
+
+        // Register and install into workspace
+        PluginRegistry.shared.register(plugin, store: store)
+        store.marketManager.install(id: "com.example.focus")
+
+        #expect(store.pods.contains { $0.id == "com.example.focus" })
+        #expect(PluginRegistry.shared.plugin(for: "com.example.focus") != nil)
+
+        // Verify views instantiate
+        let dummyPod = store.pods.first { $0.id == "com.example.focus" }!
+        let context = PurahPluginContext(
+            pod: dummyPod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 290.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .red,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        let railView = plugin.makeRailBarView(context: context)
+        #expect(type(of: railView) == AnyView.self)
+        let drawerView = plugin.makeDrawerView(context: context)
+        #expect(type(of: drawerView) == AnyView.self)
+        let headerAccessory = plugin.makeHeaderAccessoryView(context: context)
+        #expect(headerAccessory != nil)
+        let headerTrailing = plugin.makeHeaderTrailingView(context: context)
+        #expect(headerTrailing != nil)
+
+        // Clean uninstallation
+        store.marketManager.uninstall(id: "com.example.focus")
+        PluginDynamicLoader.shared.unloadPlugin(id: "com.example.focus")
+        PluginRegistry.shared.unregister(id: "com.example.focus", store: store)
+
+        #expect(!store.pods.contains { $0.id == "com.example.focus" })
+        #expect(!PluginDynamicLoader.shared.isDynamicallyLoaded(id: "com.example.focus"))
+    }
 }
