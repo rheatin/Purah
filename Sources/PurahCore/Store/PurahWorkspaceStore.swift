@@ -339,11 +339,14 @@ public final class PurahWorkspaceStore {
             let isPodPinned = isItemPinned(id: pod.id)
 
             if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id) {
-                let count = provider.subItemCount(store: self)
-                let safeCount = max(count, 1)
+                let rawCount = provider.subItemCount(store: self)
+                let minChipH = 20.0
                 let spacing = 2.5
+                let maxAllowed = max(Int((item.spanH + spacing) / (minChipH + spacing)), 1)
+                let count = min(rawCount, maxAllowed)
+                let safeCount = max(count, 1)
                 let totalSpacing = spacing * Double(safeCount - 1)
-                let itemH = max((item.spanH - totalSpacing) / Double(safeCount), 24.0)
+                let itemH = max((item.spanH - totalSpacing) / Double(safeCount), minChipH)
                 let cardH = max(itemH, 34.0)
 
                 var matchedSubItem = false

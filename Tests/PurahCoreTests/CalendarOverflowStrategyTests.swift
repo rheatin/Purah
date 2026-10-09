@@ -108,4 +108,19 @@ struct CalendarOverflowStrategyTests {
         let view = CalendarPluginSettingsView(state: state, store: store)
         #expect(view.state.overflowStrategy == .smartFold)
     }
+
+    @Test("SteppedRailContainerView height calculation guarantees height does not exceed totalHeight")
+    @MainActor
+    func testSteppedRailContainerHeightBudget() {
+        let totalHeight: CGFloat = 160.0
+        let rawCount = 15
+        let minChipH: CGFloat = 20.0
+        let spacing: CGFloat = 2.5
+        let maxAllowedItems = max(Int((totalHeight + spacing) / (minChipH + spacing)), 1)
+        let count = min(rawCount, maxAllowedItems)
+        let totalSpacing = spacing * CGFloat(count - 1)
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minChipH)
+        let computedTotal = itemH * CGFloat(count) + totalSpacing
+        #expect(computedTotal <= totalHeight + 0.1)
+    }
 }

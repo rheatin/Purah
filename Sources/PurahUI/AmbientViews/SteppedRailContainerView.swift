@@ -32,12 +32,14 @@ public struct SteppedRailContainerView: View {
     }
 
     public var body: some View {
-        let items = plugin.steppedItems(context: context)
-        let count = max(items.count, 1)
+        let allItems = plugin.steppedItems(context: context)
+        let minChipH: CGFloat = 20.0
         let spacing: CGFloat = 2.5
+        let maxAllowedItems = max(Int((totalHeight + spacing) / (minChipH + spacing)), 1)
+        let items = (allItems.count > maxAllowedItems) ? Array(allItems.prefix(maxAllowedItems)) : allItems
+        let count = max(items.count, 1)
         let totalSpacing = spacing * CGFloat(count - 1)
-        let availablePerItem = (totalHeight - totalSpacing) / CGFloat(count)
-        let itemH = max(availablePerItem, 24.0)
+        let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minChipH)
         let totalSpanH = totalHeight
 
         Group {
@@ -81,6 +83,7 @@ public struct SteppedRailContainerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                 .frame(height: totalSpanH)
+                .clipped()
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
