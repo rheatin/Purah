@@ -8,6 +8,8 @@ public protocol PurahPluginStorage: Sendable {
     func set(_ value: Double, forKey key: String)
     func bool(forKey key: String) -> Bool
     func set(_ value: Bool, forKey key: String)
+    func int(forKey key: String) -> Int
+    func set(_ value: Int, forKey key: String)
     func codable<T: Codable>(forKey key: String, as: T.Type) -> T?
     func setCodable<T: Codable>(_ value: T?, forKey key: String)
     func removeObject(forKey key: String)
@@ -51,6 +53,14 @@ public struct ScopedPluginStorage: PurahPluginStorage {
     }
 
     public func set(_ value: Bool, forKey key: String) {
+        defaults.set(value, forKey: fullKey(key))
+    }
+
+    public func int(forKey key: String) -> Int {
+        defaults.integer(forKey: fullKey(key))
+    }
+
+    public func set(_ value: Int, forKey key: String) {
         defaults.set(value, forKey: fullKey(key))
     }
 

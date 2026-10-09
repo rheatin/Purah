@@ -16,6 +16,8 @@ public final class CalendarPluginState: Sendable {
     public var dismissAlertOnHover: Bool
     public var isEventGlowAlertEnabled: Bool
     public var isEventToastAlertEnabled: Bool
+    public var overflowStrategy: CalendarOverflowStrategy
+    public var maxRailEvents: Int
     public var isUsingRealCalendar: Bool
     public var isSyncing: Bool
     public var acknowledgedAlertIds: Set<String>
@@ -42,6 +44,9 @@ public final class CalendarPluginState: Sendable {
         self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         self.isEventGlowAlertEnabled = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
         self.isEventToastAlertEnabled = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) ?? true
+        self.overflowStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold
+        let savedMax = storage.int(forKey: "maxRailEvents")
+        self.maxRailEvents = (savedMax > 0) ? savedMax : 4
         self.isUsingRealCalendar = false
         self.isSyncing = false
         self.acknowledgedAlertIds = []
@@ -62,6 +67,13 @@ public final class CalendarPluginState: Sendable {
         if let toast = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) {
             self.isEventToastAlertEnabled = toast
         }
+        if let savedStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) {
+            self.overflowStrategy = savedStrategy
+        }
+        let savedMax = storage.int(forKey: "maxRailEvents")
+        if savedMax > 0 {
+            self.maxRailEvents = savedMax
+        }
         if let savedEvents = storage.codable(forKey: "events", as: [CalendarEventItem].self) {
             self.events = savedEvents
         }
@@ -73,6 +85,8 @@ public final class CalendarPluginState: Sendable {
         storage.set(dismissAlertOnHover, forKey: "dismissAlertOnHover")
         storage.setCodable(isEventGlowAlertEnabled, forKey: "isEventGlowAlertEnabled")
         storage.setCodable(isEventToastAlertEnabled, forKey: "isEventToastAlertEnabled")
+        storage.setCodable(overflowStrategy, forKey: "overflowStrategy")
+        storage.set(maxRailEvents, forKey: "maxRailEvents")
         storage.setCodable(events, forKey: "events")
     }
 
