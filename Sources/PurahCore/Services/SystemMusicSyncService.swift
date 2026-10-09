@@ -260,6 +260,38 @@ public final class SystemMusicSyncService {
     }
 
     // MARK: - Artwork Fetching Engine (Local AppleScript + iTunes Catalog Fallback)
+    public func cachedArtwork(for title: String, artist: String) -> Data? {
+        let key = "\(title)|\(artist)"
+        if key == cachedArtworkKey {
+            return cachedArtworkData
+        }
+        return nil
+    }
+
+    public func fetchLocalLyrics() -> String? {
+        guard isMusicAppRunning else { return nil }
+        let script = """
+        tell application "Music"
+            try
+                if player state is not stopped then
+                    set lyr to lyrics of current track
+                    return lyr
+                end if
+            end try
+            return ""
+        end tell
+        """
+        guard let appleScript = NSAppleScript(source: script) else { return nil }
+        var errorInfo: NSDictionary?
+        let descriptor = appleScript.executeAndReturnError(&errorInfo)
+        guard errorInfo == nil else { return nil }
+        let str = descriptor.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let str, !str.isEmpty {
+            return str
+        }
+        return nil
+    }
+
     public func fetchArtwork(title: String, artist: String, album: String) async -> Data? {
         let key = "\(title)|\(artist)"
         if key == cachedArtworkKey, let cached = cachedArtworkData {

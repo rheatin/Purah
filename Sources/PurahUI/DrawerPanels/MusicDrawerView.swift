@@ -12,6 +12,7 @@ public struct MusicDrawerView: View {
     @State private var isPlayPauseHovered: Bool = false
     @State private var isScrubbing: Bool = false
     @State private var scrubbedProgress: Double = 0.0
+    @State private var isShowingLyrics: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -89,13 +90,6 @@ public struct MusicDrawerView: View {
                 .buttonStyle(.plain)
 
                 Spacer(minLength: 4)
-
-                PurahPinButton(
-                    isPinned: store.isItemPinned(id: "music"),
-                    tintColor: musicColor
-                ) {
-                    store.togglePinItem(id: "music")
-                }
             }
 
             // Row 2: Inline Mini Transport Controls + Scrubber + Time
@@ -186,7 +180,7 @@ public struct MusicDrawerView: View {
                                 .lineLimit(1)
 
                             Text(state.track.artist)
-                                .purahBody(size: 10.5, weight: .medium, design: .rounded)
+                                .purahBody(size: 10, weight: .medium, design: .rounded)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
@@ -195,13 +189,6 @@ public struct MusicDrawerView: View {
                 .buttonStyle(.plain)
 
                 Spacer(minLength: 4)
-
-                PurahPinButton(
-                    isPinned: store.isItemPinned(id: "music"),
-                    tintColor: musicColor
-                ) {
-                    store.togglePinItem(id: "music")
-                }
             }
 
             // Row 2: Waveform + Dual Time Labels
@@ -296,7 +283,7 @@ public struct MusicDrawerView: View {
         let dynamicArtSize = min(max((availableHeight - 200) * 0.65, 52.0), 80.0)
 
         VStack(spacing: 8) {
-            // Top Bar: Source Badge + Pin
+            // Top Bar: Source Badge + Lyrics Toggle
             HStack {
                 HStack(spacing: 5) {
                     Image(systemName: sourceIconName(for: state.track.sourceApp))
@@ -311,47 +298,73 @@ public struct MusicDrawerView: View {
                 .background(musicColor.opacity(0.12))
                 .cornerRadius(5)
 
-                Spacer()
-
-                PurahPinButton(
-                    isPinned: store.isItemPinned(id: "music"),
-                    tintColor: musicColor
-                ) {
-                    store.togglePinItem(id: "music")
+                if let lyrics = state.track.lyrics, !lyrics.isEmpty {
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                            isShowingLyrics.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isShowingLyrics ? "music.note" : "quote.bubble.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(isShowingLyrics ? "Artwork" : "Lyrics")
+                                .purahCaption(size: 8.5, weight: .bold, design: .rounded)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(isShowingLyrics ? musicColor.opacity(0.25) : Color.primary.opacity(0.08))
+                        .foregroundColor(isShowingLyrics ? musicColor : .secondary)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Toggle lyrics view")
                 }
+
+                Spacer()
             }
 
             Spacer(minLength: 2)
 
-            // Center Artwork & Ambient Glow Showcase
-            Button {
-                activateMusicPlayerApp()
-            } label: {
-                VStack(spacing: 6) {
-                    ZStack {
-                        // Ambient dynamic radial glow
-                        Circle()
-                            .fill(musicColor.opacity(isPlaying ? 0.32 : 0.12))
-                            .frame(width: dynamicArtSize + 8, height: dynamicArtSize + 8)
-                            .blur(radius: 12)
+            if isShowingLyrics, let lyrics = state.track.lyrics, !lyrics.isEmpty {
+                LyricsDisplayView(
+                    lyrics: lyrics,
+                    accentColor: musicColor,
+                    palette: palette,
+                    maxHeight: max(availableHeight - 140, 100)
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else {
+                // Center Artwork & Ambient Glow Showcase
+                Button {
+                    activateMusicPlayerApp()
+                } label: {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            // Ambient dynamic radial glow
+                            Circle()
+                                .fill(musicColor.opacity(isPlaying ? 0.32 : 0.12))
+                                .frame(width: dynamicArtSize + 8, height: dynamicArtSize + 8)
+                                .blur(radius: 12)
 
-                        artworkThumbnail(size: dynamicArtSize, cornerRadius: 10)
-                    }
+                            artworkThumbnail(size: dynamicArtSize, cornerRadius: 10)
+                        }
 
-                    VStack(spacing: 2) {
-                        Text(state.track.title)
-                            .purahTitle(size: 13, weight: .bold, design: .rounded)
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .lineLimit(1)
+                        VStack(spacing: 2) {
+                            Text(state.track.title)
+                                .purahTitle(size: 13, weight: .bold, design: .rounded)
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
 
-                        Text(state.track.artist)
-                            .purahBody(size: 10.5, weight: .medium, design: .rounded)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                            Text(state.track.artist)
+                                .purahBody(size: 10.5, weight: .medium, design: .rounded)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
-            .buttonStyle(.plain)
 
             Spacer(minLength: 2)
 
@@ -488,7 +501,7 @@ public struct MusicDrawerView: View {
         } else if lower.contains("chrome") || lower.contains("safari") || lower.contains("browser") {
             return "globe"
         } else {
-            return "apple.logo"
+            return "music.note"
         }
     }
 
@@ -645,5 +658,48 @@ public struct FluidWaveformScrubber: View {
             )
         }
         .frame(height: waveformHeight)
+    }
+}
+
+// MARK: - Native Flowing Lyrics View (Pure local, zero network)
+public struct LyricsDisplayView: View {
+    public let lyrics: String
+    public let accentColor: Color
+    public let palette: ThemePalette
+    public let maxHeight: CGFloat
+
+    public init(lyrics: String, accentColor: Color, palette: ThemePalette, maxHeight: CGFloat) {
+        self.lyrics = lyrics
+        self.accentColor = accentColor
+        self.palette = palette
+        self.maxHeight = maxHeight
+    }
+
+    public var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(lyrics.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        Text(trimmed)
+                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary.opacity(0.88) : Color.white.opacity(0.88))
+                            .lineSpacing(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Spacer().frame(height: 4)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .frame(maxHeight: maxHeight)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 0.8)
+        )
     }
 }
