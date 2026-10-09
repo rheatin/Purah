@@ -5,7 +5,7 @@ public enum SpringConstraintSolver {
     public static let defaultBounds: ClosedRange<Double> = 0.01...0.99
     public static let minSpacing: Double = 0.008
 
-    /// 求解当某个 Pod 被拖拽/改变尺寸时的全轨道防重叠物理状态
+    /// Solves the full rail physical non-overlapping state when a pod is dragged or resized
     public static func resolve(
         draggedPodId: String,
         newRange: NormalizedRange,
@@ -31,7 +31,7 @@ public enum SpringConstraintSolver {
         let isResizingOnly = abs(newRange.start - edgePods[targetIndex].range.start) < 0.0001
         let targetMinLength = effectiveMin(for: edgePods[targetIndex])
 
-        // 1. 计算被拖拽 Pod 前方所有 Predecessors 与后方所有 Successors 的刚性最小空间
+        // 1. Calculate rigid minimum space needed by predecessors above and successors below
         var minSpaceAbove: Double = 0.0
         if targetIndex > 0 {
             for i in 0..<targetIndex {
@@ -53,7 +53,7 @@ public enum SpringConstraintSolver {
         var clampedLength = newRange.length
 
         if !isResizingOnly {
-            // 整体上下移动：严格受制于前后所有模块最小尺寸边界，绝不骑到上方或下方模块头上
+            // Vertical repositioning: strictly bounded by predecessor/successor minimums, preventing overlap
             clampedStart = min(max(newRange.start, absoluteMinStart), max(absoluteMaxEnd - targetMinLength, absoluteMinStart))
             let maxAllowedLength = max(absoluteMaxEnd - clampedStart, targetMinLength)
             clampedLength = min(max(newRange.length, targetMinLength), maxAllowedLength)
@@ -61,7 +61,7 @@ public enum SpringConstraintSolver {
                 clampedStart = max(absoluteMaxEnd - clampedLength, absoluteMinStart)
             }
         } else {
-            // 纯单向底部缩放：顶部坐标绝对锁死，向下拉伸不能挤出下方所有模块的最小底线
+            // Unidirectional bottom resize: top coordinate anchored, downward stretch cannot push successors past minimums
             clampedStart = edgePods[targetIndex].range.start
             let maxAllowedLength = max(absoluteMaxEnd - clampedStart, targetMinLength)
             clampedLength = min(max(newRange.length, targetMinLength), maxAllowedLength)
@@ -69,7 +69,7 @@ public enum SpringConstraintSolver {
 
         edgePods[targetIndex].range = NormalizedRange(start: clampedStart, length: clampedLength)
 
-        // 2. 向上弹性推挤 (Predecessors: stride backwards from targetIndex - 1 down to 0)
+        // 2. Elastic upward push (Predecessors: stride backwards from targetIndex - 1 down to 0)
         if !isResizingOnly && targetIndex > 0 {
             for i in stride(from: targetIndex - 1, through: 0, by: -1) {
                 let rightBound = edgePods[i + 1].range.start - minSpacing
@@ -91,7 +91,7 @@ public enum SpringConstraintSolver {
             }
         }
 
-        // 3. 向下弹性推挤 (Successors: targetIndex + 1 up to count - 1)
+        // 3. Elastic downward push (Successors: targetIndex + 1 up to count - 1)
         if targetIndex < edgePods.count - 1 {
             for i in (targetIndex + 1)..<edgePods.count {
                 let leftBound = edgePods[i - 1].range.end + minSpacing
@@ -112,7 +112,7 @@ public enum SpringConstraintSolver {
             }
         }
 
-        // 4. 合并回全量 Pods 并维持其他轨道未变
+        // 4. Merge back to all pods preserving un-mutated rails
         var resultMap = Dictionary(uniqueKeysWithValues: allPods.map { ($0.id, $0) })
         for updated in edgePods {
             resultMap[updated.id] = updated
