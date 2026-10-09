@@ -236,12 +236,36 @@ public struct CalendarDrawerView: View {
                     .font(.system(size: 9.5, weight: .medium))
                     .foregroundColor(.secondary)
 
+                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+                    Button {
+                        Task {
+                            let granted = await PermissionManager.shared.requestCalendarAccess()
+                            if granted {
+                                SystemCalendarSyncService.shared.syncEvents(into: store)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 7))
+                                .foregroundColor(.orange)
+                            Text("Sample · Connect")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(.orange)
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.15))
+                        .cornerRadius(3)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Using sample events. Click to connect system Apple Calendar")
+                }
+
                 Spacer()
 
                 Button {
-                    if let url = URL(string: "ical://") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    openInSystemCalendar()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.up.forward.app")
@@ -344,16 +368,37 @@ public struct CalendarDrawerView: View {
         .cornerRadius(6)
     }
 
-    private func openInSystemCalendar(event: CalendarEventItem) {
-        let timestamp = event.startTime.timeIntervalSinceReferenceDate
-        if let url = URL(string: "calshow:\(timestamp)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     private func formattedTime(event: CalendarEventItem) -> String {
         if event.isAllDay { return "All Day" }
         return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
+    if let calAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+        NSWorkspace.shared.openApplication(at: calAppURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+    } else if let fallback = URL(string: "ical://") {
+        NSWorkspace.shared.open(fallback)
+    }
+
+    if let event {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateStr = formatter.string(from: event.startTime)
+        let script = """
+        tell application "Calendar"
+            activate
+            switch view to day view
+            view calendar at date "\(dateStr)"
+        end tell
+        """
+        DispatchQueue.global(qos: .userInteractive).async {
+            var error: NSDictionary?
+            if let appleScript = NSAppleScript(source: script) {
+                appleScript.executeAndReturnError(&error)
+            }
+        }
     }
 }
 
@@ -396,7 +441,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
         let podColor = palette.podColor(for: "calendar")
         let cardH = max(slotHeight, 32.0)
 
-        ZStack(alignment: edge == .right ? .trailing : .leading) {
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // 贴边基座色条 (未展开时只显示这条，绝对不弹窗)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(podColor.opacity(0.85))
@@ -408,7 +453,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                     .transition(drawerTransition)
             }
         }
-        .frame(height: cardH)
+        .frame(height: cardH, alignment: .top)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
     }
 
@@ -437,7 +482,43 @@ public struct CalendarAgendaOverviewDrawerView: View {
                     .background(podColor.opacity(0.18))
                     .cornerRadius(4)
 
+                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+                    Button {
+                        Task {
+                            let granted = await PermissionManager.shared.requestCalendarAccess()
+                            if granted {
+                                SystemCalendarSyncService.shared.syncEvents(into: store)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 7))
+                                .foregroundColor(.orange)
+                            Text("Sample · Connect")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(.orange)
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.15))
+                        .cornerRadius(3)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Using sample events. Click to connect system Apple Calendar")
+                }
+
                 Spacer()
+
+                Button {
+                    store.openPluginSettings(id: "calendar")
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.tactile)
+                .help("Open Calendar Settings")
 
                 PurahPinButton(isPinned: isPinned, tintColor: podColor) {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
@@ -498,11 +579,31 @@ public struct CalendarAgendaOverviewDrawerView: View {
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 10)
-        .frame(width: 320)
+        .frame(width: 320, height: max(slotHeight, 140.0))
         .liquidCardBackground(
             cornerRadius: 10,
             strokeColor: podColor.opacity(0.8)
         )
+        .contextMenu {
+            Button {
+                store.openPluginSettings(id: "calendar")
+            } label: {
+                Label("Configure Calendar...", systemImage: "gearshape")
+            }
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    store.togglePinItem(id: "calendar_more_events")
+                }
+            } label: {
+                Label(isPinned ? "Unpin Agenda" : "Pin Agenda", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+            Divider()
+            Button {
+                openInSystemCalendar()
+            } label: {
+                Label("Open in Apple Calendar", systemImage: "calendar")
+            }
+        }
     }
 
     @ViewBuilder
@@ -588,5 +689,13 @@ public struct CalendarAgendaOverviewDrawerView: View {
     private func formattedTime(event: CalendarEventItem) -> String {
         if event.isAllDay { return "All Day" }
         return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
+    }
+
+    private func openInSystemCalendar(event: CalendarEventItem? = nil) {
+        if let calAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.openApplication(at: calAppURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        } else if let fallback = URL(string: "ical://") {
+            NSWorkspace.shared.open(fallback)
+        }
     }
 }

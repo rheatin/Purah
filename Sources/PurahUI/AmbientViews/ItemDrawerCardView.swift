@@ -131,6 +131,18 @@ public struct TodoItemDrawerView: View {
         .padding(.vertical, 6)
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: listColor.opacity(isDone ? 0.35 : 1.0))
+        .contextMenu {
+            Button {
+                store.openPluginSettings(id: "todo")
+            } label: {
+                Label("Configure Reminders...", systemImage: "gearshape")
+            }
+            Button {
+                onTogglePin()
+            } label: {
+                Label(isPinned ? "Unpin Task" : "Pin Task", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+        }
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -156,7 +168,19 @@ public struct TodoItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
+        HStack(spacing: 4) {
+            Button {
+                store.openPluginSettings(id: "todo")
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.tactile)
+            .help("Open Reminders Settings")
+
+            PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
+        }
     }}
 
 public struct CalendarItemDrawerView: View {
@@ -272,11 +296,29 @@ public struct CalendarItemDrawerView: View {
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 10)
-        .frame(width: effectiveW)
+        .frame(width: effectiveW, height: max(cardH, 120.0))
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85))
         )
+        .contextMenu {
+            Button {
+                store.openPluginSettings(id: "calendar")
+            } label: {
+                Label("Configure Calendar...", systemImage: "gearshape")
+            }
+            Button {
+                onTogglePin()
+            } label: {
+                Label(isPinned ? "Unpin Event" : "Pin Event", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+            Divider()
+            Button {
+                openInSystemCalendar(event: event)
+            } label: {
+                Label("Open in Apple Calendar", systemImage: "calendar")
+            }
+        }
     }
 
     @ViewBuilder
@@ -546,6 +588,32 @@ public struct CalendarItemDrawerView: View {
                 .frame(width: 5, height: 5)
             Text(event.calendarTitle)
                 .purahBadge(size: 8.5, weight: .bold)
+
+            if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+                Button {
+                    Task {
+                        let granted = await PermissionManager.shared.requestCalendarAccess()
+                        if granted {
+                            SystemCalendarSyncService.shared.syncEvents(into: store)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 7))
+                            .foregroundColor(.orange)
+                        Text("Sample · Connect")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.15))
+                    .cornerRadius(3)
+                }
+                .buttonStyle(.plain)
+                .help("Using sample events. Click to connect system Apple Calendar")
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
@@ -601,7 +669,19 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func pinButton(calColor: Color) -> some View {
-        PurahPinButton(isPinned: isPinned, tintColor: calColor, action: onTogglePin)
+        HStack(spacing: 4) {
+            Button {
+                store.openPluginSettings(id: "calendar")
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.tactile)
+            .help("Open Calendar Settings")
+
+            PurahPinButton(isPinned: isPinned, tintColor: calColor, action: onTogglePin)
+        }
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -629,9 +709,28 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {
-        let timestamp = event.startTime.timeIntervalSinceReferenceDate
-        if let url = URL(string: "calshow:\(timestamp)") {
-            NSWorkspace.shared.open(url)
+        if let calAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.openApplication(at: calAppURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        } else if let fallback = URL(string: "ical://") {
+            NSWorkspace.shared.open(fallback)
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateStr = formatter.string(from: event.startTime)
+        let script = """
+        tell application "Calendar"
+            activate
+            switch view to day view
+            view calendar at date "\(dateStr)"
+        end tell
+        """
+        DispatchQueue.global(qos: .userInteractive).async {
+            var error: NSDictionary?
+            if let appleScript = NSAppleScript(source: script) {
+                appleScript.executeAndReturnError(&error)
+            }
         }
     }
 
@@ -756,6 +855,18 @@ public struct VitalsItemDrawerView: View {
         .padding(.vertical, 8)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
+        .contextMenu {
+            Button {
+                store.openPluginSettings(id: "vitals")
+            } label: {
+                Label("Configure Hardware Vitals...", systemImage: "gearshape")
+            }
+            Button {
+                onTogglePin()
+            } label: {
+                Label(isPinned ? "Unpin Metric" : "Pin Metric", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+        }
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -779,7 +890,19 @@ public struct VitalsItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        PurahPinButton(isPinned: isPinned, tintColor: telemetryColor, action: onTogglePin)
+        HStack(spacing: 4) {
+            Button {
+                store.openPluginSettings(id: "vitals")
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.tactile)
+            .help("Open Vitals Settings")
+
+            PurahPinButton(isPinned: isPinned, tintColor: telemetryColor, action: onTogglePin)
+        }
     }}
 
 // MARK: - Decomposed Scripts Item Stepped Drawer View
@@ -978,6 +1101,18 @@ public struct ScriptItemDrawerView: View {
         .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
+        .contextMenu {
+            Button {
+                store.openPluginSettings(id: "scripts")
+            } label: {
+                Label("Configure Scripts Runway...", systemImage: "gearshape")
+            }
+            Button {
+                onTogglePin()
+            } label: {
+                Label(isPinned ? "Unpin Action" : "Pin Action", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+        }
     }
 
     private var drawerShape: UnevenRoundedRectangle {
@@ -1001,7 +1136,19 @@ public struct ScriptItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
+        HStack(spacing: 4) {
+            Button {
+                store.openPluginSettings(id: "scripts")
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.tactile)
+            .help("Open Scripts Settings")
+
+            PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
+        }
     }
 
     private func badgeText(for type: ScriptCommandType) -> String {

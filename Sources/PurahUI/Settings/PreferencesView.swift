@@ -42,14 +42,20 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
 public struct PreferencesView: View {
     public let store: PurahWorkspaceStore
     @State public var selectedTab: PreferencesTab = .layout
+    public let initialPluginId: String?
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
-    public init(store: PurahWorkspaceStore, initialTab: PreferencesTab = .layout) {
+    public init(store: PurahWorkspaceStore, initialTab: PreferencesTab = .layout, initialPluginId: String? = nil) {
         self.store = store
-        self._selectedTab = State(initialValue: initialTab)
+        self.initialPluginId = initialPluginId
+        if initialPluginId != nil {
+            self._selectedTab = State(initialValue: .plugins)
+        } else {
+            self._selectedTab = State(initialValue: initialTab)
+        }
     }
 
     public var body: some View {
@@ -106,7 +112,7 @@ public struct PreferencesView: View {
                 case .layout:
                     VisualLayoutSimulatorView(store: store)
                 case .plugins:
-                    PluginMarketplaceView(store: store)
+                    PluginMarketplaceView(store: store, initialPluginId: initialPluginId)
                 case .permissions:
                     SystemAccessSettingsView(store: store)
                 case .diagnostics:

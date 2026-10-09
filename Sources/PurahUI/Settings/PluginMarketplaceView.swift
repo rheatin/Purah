@@ -45,13 +45,19 @@ public struct PluginMarketplaceView: View {
     @State private var sideloadError: String? = nil
     @State private var showSideloadAlert: Bool = false
 
+    public let initialPluginId: String?
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
-    public init(store: PurahWorkspaceStore, marketManager: PluginMarketManager? = nil) {
+    public init(store: PurahWorkspaceStore, marketManager: PluginMarketManager? = nil, initialPluginId: String? = nil) {
         self.store = store
         self.marketManager = marketManager ?? store.marketManager
+        self.initialPluginId = initialPluginId
+        if initialPluginId != nil {
+            self._selectedTab = State(initialValue: .installed)
+        }
     }
 
     private var allCatalog: [PurahPluginManifest] {
@@ -166,7 +172,7 @@ public struct PluginMarketplaceView: View {
                 .background(palette.borderColor.opacity(0.4))
 
             if selectedTab == .installed {
-                PluginCenterSettingsView(store: store)
+                PluginCenterSettingsView(store: store, initialPluginId: initialPluginId)
             } else {
                 catalogView
             }
