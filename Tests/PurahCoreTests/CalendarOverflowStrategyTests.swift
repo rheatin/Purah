@@ -99,4 +99,13 @@ struct CalendarOverflowStrategyTests {
         #expect(plugin.ownsSubItemId("calendar_more_events", store: store) == true)
         #expect(plugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: context) != nil)
     }
+
+    @Test("CalendarPluginSettingsView instantiates and reflects state changes")
+    @MainActor
+    func testCalendarPluginSettingsView() {
+        let state = CalendarPluginState()
+        let store = PurahWorkspaceStore()
+        let view = CalendarPluginSettingsView(state: state, store: store)
+        #expect(view.state.overflowStrategy == .smartFold)
+    }
 }
