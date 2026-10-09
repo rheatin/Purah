@@ -607,7 +607,13 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
 
-    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if state.overflowStrategy == .continuousStream {
+            return 140.0
+        }
+        let count = min(effectiveEvents(store: store).count, state.maxRailEvents)
+        return max(CGFloat(max(count, 1)) * 32.0, 100.0)
+    }
 
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
         var combined = state.events
@@ -620,24 +626,30 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        effectiveEvents(store: store).contains { store.isItemPinned(id: $0.id) }
+        if store.isItemPinned(id: "calendar_more_events") { return true }
+        return effectiveEvents(store: store).contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        effectiveEvents(store: store).contains { $0.id == itemId }
+        if itemId == "calendar_more_events" { return true }
+        return effectiveEvents(store: store).contains { $0.id == itemId }
     }
 
     public var isDecomposed: Bool {
-        true
+        state.overflowStrategy != .continuousStream
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        true
+        state.overflowStrategy != .continuousStream
     }
 
     public var subItemCount: Int {
-        let events = !state.events.isEmpty ? state.events : []
-        return events.count
+        guard state.overflowStrategy != .continuousStream else { return 0 }
+        let count = (!state.events.isEmpty ? state.events.count : 0)
+        if state.overflowStrategy == .smartFold && count > state.maxRailEvents {
+            return state.maxRailEvents
+        }
+        return count
     }
 
     public var subItemTitles: [String] {
@@ -646,7 +658,12 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        effectiveEvents(store: store).count
+        guard state.overflowStrategy != .continuousStream else { return 0 }
+        let count = effectiveEvents(store: store).count
+        if state.overflowStrategy == .smartFold && count > state.maxRailEvents {
+            return state.maxRailEvents
+        }
+        return count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
@@ -662,28 +679,92 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        let events = effectiveEvents(store: context.store)
-        return events.map { event in
-            let isPast = event.endTime < Date()
+        guard state.overflowStrategy != .continuousStream else { return [] }
+        let allEvents = effectiveEvents(store: context.store)
+        guard !allEvents.isEmpty else { return [] }
+
+        let now = Date()
+        let sortedEvents = allEvents.sorted { a, b in
+            if a.isOngoing != b.isOngoing {
+                return a.isOngoing && !b.isOngoing
+            }
+            if a.isImminent != b.isImminent {
+                return a.isImminent && !b.isImminent
+            }
+            let aPast = a.endTime < now
+            let bPast = b.endTime < now
+            if aPast != bPast {
+                return !aPast && bPast
+            }
+            return a.startTime < b.startTime
+        }
+
+        let maxLimit = (state.overflowStrategy == .smartFold) ? max(state.maxRailEvents, 2) : sortedEvents.count
+
+        var visibleEvents: [CalendarEventItem]
+        var remainingCount: Int = 0
+
+        if state.overflowStrategy == .smartFold && sortedEvents.count > maxLimit {
+            let primaryCount = maxLimit - 1
+            visibleEvents = Array(sortedEvents.prefix(primaryCount))
+            remainingCount = sortedEvents.count - primaryCount
+        } else {
+            visibleEvents = sortedEvents
+        }
+
+        var subItems = visibleEvents.map { event in
+            let isPast = event.endTime < now
             let isOngoing = event.isOngoing
             let isImminent = event.isImminent
-            let state: RailItemActivityState = isOngoing ? .ongoing : (isImminent ? .alerting : (isPast ? .inactive : .normal))
+            let itemState: RailItemActivityState = isOngoing ? .ongoing : (isImminent ? .alerting : (isPast ? .inactive : .normal))
             return PurahPluginSubItem(
                 id: event.id,
                 title: event.title,
                 subtitle: event.location,
                 systemIcon: "calendar",
                 badge: isOngoing ? "NOW" : (isImminent ? "SOON" : nil),
-                state: state,
+                state: itemState,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
                 tintColorHex: event.colorHex,
                 isPinned: context.store.isItemPinned(id: event.id)
             )
         }
+
+        if remainingCount > 0 {
+            let isPinned = context.store.isItemPinned(id: "calendar_more_events")
+            let moreTitle = String(format: "calendar.overview.moreEvents".localized, remainingCount)
+            subItems.append(
+                PurahPluginSubItem(
+                    id: "calendar_more_events",
+                    title: moreTitle,
+                    subtitle: "calendar.overview.title".localized,
+                    systemIcon: "ellipsis.circle.fill",
+                    badge: "\(remainingCount)",
+                    state: .normal,
+                    gaugeRatio: nil,
+                    gaugeStyle: .none,
+                    tintColorHex: "#FF9F0A",
+                    isPinned: isPinned
+                )
+            )
+        }
+
+        return subItems
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        if subItemId == "calendar_more_events" {
+            return AnyView(
+                CalendarAgendaOverviewDrawerView(
+                    events: effectiveEvents(store: context.store),
+                    edge: context.edge,
+                    slotHeight: context.slotHeight,
+                    store: context.store
+                )
+            )
+        }
+
         let events = effectiveEvents(store: context.store)
         guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.store.isItemPinned(id: subItemId)
