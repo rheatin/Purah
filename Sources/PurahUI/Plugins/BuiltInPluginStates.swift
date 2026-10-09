@@ -434,6 +434,35 @@ public final class MusicPluginState: Sendable {
 
         startListening()
         SystemMusicSyncService.shared.startListening(into: store)
+
+        // Initial fetch of artwork and local lyrics if not yet cached
+        let currentTitle = self.track.title
+        let currentArtist = self.track.artist
+        let currentAlbum = self.track.album
+        if self.track.artworkData == nil {
+            Task { [weak self] in
+                if let art = await SystemMusicSyncService.shared.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
+                    await MainActor.run {
+                        if self?.track.title == currentTitle {
+                            self?.track.artworkData = art
+                            self?.boundStore?._musicTrack.artworkData = art
+                        }
+                    }
+                }
+            }
+        }
+        if self.track.lyrics == nil {
+            Task { [weak self] in
+                if let lyr = SystemMusicSyncService.shared.fetchLocalLyrics() {
+                    await MainActor.run {
+                        if self?.track.title == currentTitle {
+                            self?.track.lyrics = lyr
+                            self?.boundStore?._musicTrack.lyrics = lyr
+                        }
+                    }
+                }
+            }
+        }
     }
 
     public func unmount(store: PurahWorkspaceStore) {
@@ -499,6 +528,22 @@ public final class MusicPluginState: Sendable {
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
 
+        // Retain existing artwork if same track, or check cache
+        let isSameTrack = (self.track.title == title && self.track.artist == artist)
+        let existingArtwork: Data? = {
+            if isSameTrack && self.track.artworkData != nil {
+                return self.track.artworkData
+            }
+            return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
+        }()
+
+        let existingLyrics: String? = {
+            if isSameTrack && self.track.lyrics != nil {
+                return self.track.lyrics
+            }
+            return nil
+        }()
+
         self.track = MusicTrackInfo(
             title: title,
             artist: artist,
@@ -510,11 +555,45 @@ public final class MusicPluginState: Sendable {
             lastUpdated: Date(),
             playbackRate: isPlaying ? 1.0 : 0.0,
             waveformSamples: samples,
+            artworkData: existingArtwork,
+            lyrics: existingLyrics,
             sourceApp: "Apple Music",
             sourceBundleId: "com.apple.Music"
         )
         if let store = boundStore {
             store._musicTrack = self.track
+        }
+
+        // Fetch artwork if not cached
+        if existingArtwork == nil {
+            Task { [weak self] in
+                if let art = await SystemMusicSyncService.shared.fetchArtwork(title: title, artist: artist, album: album) {
+                    await MainActor.run {
+                        if self?.track.title == title && self?.track.artist == artist {
+                            self?.track.artworkData = art
+                            if let store = self?.boundStore {
+                                store._musicTrack.artworkData = art
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fetch local lyrics from Music.app (pure local, zero network)
+        if existingLyrics == nil {
+            Task { [weak self] in
+                if let lyr = SystemMusicSyncService.shared.fetchLocalLyrics() {
+                    await MainActor.run {
+                        if self?.track.title == title && self?.track.artist == artist {
+                            self?.track.lyrics = lyr
+                            if let store = self?.boundStore {
+                                store._musicTrack.lyrics = lyr
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -532,6 +611,14 @@ public final class MusicPluginState: Sendable {
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
 
+        let isSameTrack = (self.track.title == title && self.track.artist == artist)
+        let existingArtwork: Data? = {
+            if isSameTrack && self.track.artworkData != nil {
+                return self.track.artworkData
+            }
+            return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
+        }()
+
         self.track = MusicTrackInfo(
             title: title,
             artist: artist,
@@ -543,11 +630,28 @@ public final class MusicPluginState: Sendable {
             lastUpdated: Date(),
             playbackRate: isPlaying ? 1.0 : 0.0,
             waveformSamples: samples,
+            artworkData: existingArtwork,
+            lyrics: nil,
             sourceApp: "Spotify",
             sourceBundleId: "com.spotify.client"
         )
         if let store = boundStore {
             store._musicTrack = self.track
+        }
+
+        if existingArtwork == nil {
+            Task { [weak self] in
+                if let art = await SystemMusicSyncService.shared.fetchArtwork(title: title, artist: artist, album: album) {
+                    await MainActor.run {
+                        if self?.track.title == title && self?.track.artist == artist {
+                            self?.track.artworkData = art
+                            if let store = self?.boundStore {
+                                store._musicTrack.artworkData = art
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

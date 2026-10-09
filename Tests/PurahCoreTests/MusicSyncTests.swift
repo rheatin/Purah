@@ -41,4 +41,20 @@ struct MusicSyncTests {
         service.togglePlayPause(store: store)
         #expect(store._musicTrack.isPlaying != originalState)
     }
+
+    @Test("MusicTrackInfo supports local lyrics property and artwork caching")
+    func testMusicTrackLyricsAndArtwork() {
+        var track = MusicTrackInfo(
+            title: "会呼吸的痛",
+            artist: "梁静茹",
+            album: "崇拜",
+            lyrics: "在东京铁塔 第一次眺望\n看灯火模仿 坠落的星光"
+        )
+        #expect(track.lyrics != nil)
+        #expect(track.lyrics?.contains("东京铁塔") == true)
+
+        let dummyData = "mock-artwork-bytes".data(using: .utf8)
+        track.artworkData = dummyData
+        #expect(track.artworkData == dummyData)
+    }
 }
