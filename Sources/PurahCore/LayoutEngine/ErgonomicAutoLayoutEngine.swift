@@ -67,6 +67,85 @@ public enum ErgonomicAutoLayoutEngine {
         return resolvedPods
     }
 
+    /// 最优双轨人机工程学自动排版 (Optimal Bilateral Ergonomic Layout Optimizer)
+    /// 针对所有已启用的插件，智能分配左右导轨（双轨平衡），并严格按照三大舒适区（瞥视/黄金/速滑）与权重排布
+    public static func optimizeBilateralLayout(
+        pods: [SlotPod],
+        availableHeight: Double = 800.0,
+        safeBounds: ClosedRange<Double> = defaultSafeBounds,
+        gap: Double = defaultGap
+    ) -> [SlotPod] {
+        let enabledPods = pods.filter { $0.isEnabled }
+        guard !enabledPods.isEmpty else { return pods }
+
+        func preferredEdge(for pod: SlotPod) -> MountEdge {
+            switch pod.id {
+            case "vitals", "shelf", "notes", "terminal", "docker":
+                return .left
+            case "calendar", "todo", "music", "weather":
+                return .right
+            default:
+                return pod.edge
+            }
+        }
+
+        func zone(for pod: SlotPod) -> ZoneType {
+            switch pod.id {
+            case "vitals", "weather":
+                return .glance
+            case "calendar", "todo", "music", "terminal", "docker":
+                return .goldenAction
+            case "shelf", "notes", "scripts", "git-radar":
+                return .quickFlick
+            default:
+                return pod.preferredZone
+            }
+        }
+
+        var leftCandidates: [SlotPod] = []
+        var rightCandidates: [SlotPod] = []
+
+        for var pod in enabledPods {
+            let targetEdge = preferredEdge(for: pod)
+            pod.edge = targetEdge
+            pod.preferredZone = zone(for: pod)
+            if targetEdge == .left {
+                leftCandidates.append(pod)
+            } else {
+                rightCandidates.append(pod)
+            }
+        }
+
+        // 双轨负载均衡：如果一侧模块数过多，将灵活性最高的模块平衡迁移到另一侧
+        let flexibleShiftOrder = ["scripts", "notes", "shelf", "music", "git-radar"]
+        while leftCandidates.count > rightCandidates.count + 2 {
+            if let shiftIdx = leftCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
+                var shifted = leftCandidates.remove(at: shiftIdx)
+                shifted.edge = .right
+                rightCandidates.append(shifted)
+            } else {
+                break
+            }
+        }
+
+        while rightCandidates.count > leftCandidates.count + 2 {
+            if let shiftIdx = rightCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
+                var shifted = rightCandidates.remove(at: shiftIdx)
+                shifted.edge = .left
+                leftCandidates.append(shifted)
+            } else {
+                break
+            }
+        }
+
+        // 对左右双轨分别执行严密的人机工学区间排序与空间比例分配
+        let laidOutLeft = layout(pods: leftCandidates, on: .left, safeBounds: safeBounds, gap: gap)
+        let laidOutRight = layout(pods: rightCandidates, on: .right, safeBounds: safeBounds, gap: gap)
+
+        let map = Dictionary(uniqueKeysWithValues: (laidOutLeft + laidOutRight).map { ($0.id, $0) })
+        return pods.map { map[$0.id] ?? $0 }
+    }
+
     /// 严格物理零重叠导轨链式求解器 (Strict Physical Non-Overlapping Rail Solver)
     public static func resolvePhysicalRailLayout(
         pods: [SlotPod],

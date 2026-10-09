@@ -70,4 +70,35 @@ struct ErgonomicAutoLayoutEngineTests {
         #expect(result[1].id == "action")
         #expect(result[2].id == "flick")
     }
+
+    @Test("Optimizes bilateral layout across left and right rails for enabled pods")
+    func testOptimizeBilateralLayout() {
+        let vitals = SlotPod(
+            id: "vitals", name: "Vitals", systemIcon: "waveform", edge: .right,
+            range: .init(start: 0.1, length: 0.1), ambientStyle: .ghostDot,
+            preferredZone: .quickFlick, ergonomicWeight: 30, isEnabled: true
+        )
+        let calendar = SlotPod(
+            id: "calendar", name: "Calendar", systemIcon: "calendar", edge: .left,
+            range: .init(start: 0.1, length: 0.1), ambientStyle: .progressTimeline,
+            preferredZone: .glance, ergonomicWeight: 40, isEnabled: true
+        )
+        let disabledMusic = SlotPod(
+            id: "music", name: "Music", systemIcon: "music.note", edge: .left,
+            range: .init(start: 0.1, length: 0.1), ambientStyle: .waveLevelMeter,
+            preferredZone: .quickFlick, ergonomicWeight: 20, isEnabled: false
+        )
+
+        let optimized = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(pods: [vitals, calendar, disabledMusic])
+
+        let optVitals = optimized.first(where: { $0.id == "vitals" })
+        let optCal = optimized.first(where: { $0.id == "calendar" })
+        let optMusic = optimized.first(where: { $0.id == "music" })
+
+        #expect(optVitals?.edge == .left)
+        #expect(optVitals?.preferredZone == .glance)
+        #expect(optCal?.edge == .right)
+        #expect(optCal?.preferredZone == .goldenAction)
+        #expect(optMusic?.isEnabled == false)
+    }
 }
