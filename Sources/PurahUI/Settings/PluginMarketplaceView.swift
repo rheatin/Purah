@@ -436,7 +436,6 @@ public struct PluginMarketplaceView: View {
     @ViewBuilder
     private func pluginCard(for manifest: PurahPluginManifest) -> some View {
         let isInstalled = marketManager.isInstalled(id: manifest.id)
-        let isEnabled = marketManager.isEnabled(id: manifest.id)
         let podColor = palette.podColor(for: manifest.id, store: store)
 
         VStack(alignment: .leading, spacing: 10) {
@@ -544,39 +543,19 @@ public struct PluginMarketplaceView: View {
             Divider()
                 .background(palette.borderColor.opacity(0.3))
 
-            // Row 4: Action Controls
+            // Row 4: Clean Store Actions (Install / Uninstall only)
             HStack {
                 if isInstalled {
-                    // Active toggle
-                    Toggle("Active", isOn: Binding(
-                        get: { isEnabled },
-                        set: { _ in
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                marketManager.toggleEnabled(id: manifest.id)
-                            }
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .scaleEffect(0.7)
-                    .font(.system(size: 10))
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.green)
+                        Text("Installed")
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
 
                     Spacer()
-
-                    // Configure button
-                    Button {
-                        configuringPluginId = IdentifiablePluginId(id: manifest.id)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "gearshape.fill")
-                            Text("Configure")
-                        }
-                        .font(.system(size: 10, weight: .medium))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.06))
-                        .cornerRadius(5)
-                    }
-                    .buttonStyle(.tactile)
 
                     // Uninstall button with 2-step spring confirmation
                     if confirmingUninstallId == manifest.id {
@@ -597,10 +576,10 @@ public struct PluginMarketplaceView: View {
                             }
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4.5)
                             .background(Color.red)
-                            .cornerRadius(5)
+                            .cornerRadius(6)
                         }
                         .buttonStyle(.tactile)
                     } else {
@@ -620,16 +599,15 @@ public struct PluginMarketplaceView: View {
                                 Text("Uninstall")
                             }
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.red.opacity(0.9))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
+                            .foregroundColor(.red.opacity(0.85))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4.5)
                             .background(Color.red.opacity(0.08))
-                            .cornerRadius(5)
+                            .cornerRadius(6)
                         }
                         .buttonStyle(.tactile)
                     }
                 } else {
-                    // Available item: Install button
                     if manifest.isCommunity {
                         HStack(spacing: 4) {
                             Image(systemName: "shield.ruler")
@@ -665,7 +643,7 @@ public struct PluginMarketplaceView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(palette.primaryAccent)
-                        .cornerRadius(5)
+                        .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
                 }
