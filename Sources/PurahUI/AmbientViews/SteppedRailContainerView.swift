@@ -41,7 +41,7 @@ public struct SteppedRailContainerView: View {
         let totalSpacing = spacing * CGFloat(count - 1)
         let maxChipH: CGFloat = 160.0
         let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), minChipH), maxChipH)
-        let totalSpanH = totalHeight
+        let actualSpanH = CGFloat(items.count) * itemH + spacing * CGFloat(max(items.count - 1, 0))
 
         Group {
             if items.isEmpty {
@@ -83,7 +83,7 @@ public struct SteppedRailContainerView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)
-                .frame(height: totalSpanH, alignment: .top)
+                .frame(height: actualSpanH, alignment: .top)
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)

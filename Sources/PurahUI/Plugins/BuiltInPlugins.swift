@@ -599,6 +599,7 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
+        store.calendarMaxRailEvents = state.maxRailEvents
     }
 
     public func onUnmount(store: PurahWorkspaceStore) {
@@ -616,8 +617,11 @@ public struct CalendarPlugin: PurahPodPlugin {
         if state.overflowStrategy == .continuousStream {
             return 140.0
         }
-        let count = min(effectiveEvents(store: store).count, state.maxRailEvents)
-        return max(CGFloat(max(count, 1)) * 32.0, 100.0)
+        let maxEvents = max(state.maxRailEvents, 1)
+        let minChipH: CGFloat = 40.0
+        let spacing: CGFloat = 2.5
+        let totalSpacing = CGFloat(maxEvents - 1) * spacing
+        return CGFloat(maxEvents) * minChipH + totalSpacing
     }
 
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
@@ -1082,6 +1086,8 @@ public struct CalendarPluginSettingsView: View {
                             set: {
                                 state.maxRailEvents = Int($0)
                                 state.save()
+                                store.calendarMaxRailEvents = Int($0)
+                                store.autoLayoutAll()
                             }
                         ),
                         range: 2...6,

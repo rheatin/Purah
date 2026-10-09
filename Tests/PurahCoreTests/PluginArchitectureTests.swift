@@ -795,6 +795,7 @@ struct PluginArchitectureTests {
     @Test("PluginMarketManager community catalog installation and zero-footprint lifecycle")
     @MainActor
     func testCommunityPluginMarketplaceLifecycle() {
+        _ = PluginRegistry.shared
         UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
         UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         defer {
