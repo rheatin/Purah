@@ -288,10 +288,10 @@ public struct CalendarItemDrawerView: View {
         let railEdgePadding: CGFloat = (edge == .left ? 12.0 : 18.0)
 
         Group {
-            if cardH < 65.0 {
+            if cardH < 70.0 {
                 compactEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
-            } else if cardH < 110.0 {
-                standardEventCard(isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
+            } else if cardH < 130.0 {
+                standardEventCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             } else {
                 flagshipEventCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
             }
@@ -299,7 +299,7 @@ public struct CalendarItemDrawerView: View {
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 8)
-        .frame(width: effectiveW, height: max(cardH, 120.0), alignment: .top)
+        .frame(width: effectiveW, height: cardH, alignment: .top)
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85))
@@ -384,12 +384,12 @@ public struct CalendarItemDrawerView: View {
     }
 
     @ViewBuilder
-    private func standardEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func standardEventCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: cardH > 95.0 ? 6 : 4) {
             // Row 1: Header (Category + Status + Pin)
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11.5, weight: .semibold))
                     .foregroundColor(calColor)
 
                 categoryTag(calColor: calColor, isPast: isPast)
@@ -430,33 +430,39 @@ public struct CalendarItemDrawerView: View {
                         Text(event.title)
                             .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
                             .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
-                            .lineLimit(1)
+                            .lineLimit(cardH > 85.0 ? 2 : 1)
+                            .multilineTextAlignment(.leading)
                     }
                     .buttonStyle(.plain)
 
                     HStack(spacing: 5) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(calColor)
                         Text(formattedTime(event: event))
                             .font(palette.fontMono)
-                            .font(.system(size: 9))
+                            .font(.system(size: 8.5))
                             .foregroundColor(isPast ? calColor.opacity(0.35) : .secondary)
 
                         if !event.location.isEmpty && event.location != "Apple Calendar" {
                             Text("•")
                                 .foregroundColor(.gray)
                             Text(event.location)
-                                .font(.system(size: 9))
+                                .font(.system(size: 8.5))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 if let url = event.url {
                     joinMeetingButton(url: url, isOngoing: isOngoing, isAlerting: isAlerting, calColor: calColor)
                 }
             }
+
+            Spacer(minLength: 0)
         }
     }
 

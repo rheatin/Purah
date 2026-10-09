@@ -38,18 +38,44 @@ public enum ErgonomicAutoLayoutEngine {
         let totalGaps = Double(sortedPods.count - 1) * gap
         let availableHeight = max(totalSpan - totalGaps, 0.05)
 
-        // 3. 计算权重分配
+        // 3. 计算权重分配，初步计算目标高度
         let totalWeight = sortedPods.reduce(0.0) { $0 + max($1.ergonomicWeight, 1.0) }
         var targetLengths: [Double] = sortedPods.map { pod in
             let rawLength = availableHeight * (max(pod.ergonomicWeight, 1.0) / totalWeight)
             return max(rawLength, pod.minLength)
         }
 
-        // 若因最小高度限制超出净空间，进行等比压缩缩放
-        let sumLengths = targetLengths.reduce(0.0, +)
-        if sumLengths > availableHeight {
-            let scale = availableHeight / sumLengths
-            targetLengths = targetLengths.map { $0 * scale }
+        // 4. 若超出可用空间，优先压缩有富余空间的弹性模块，严密保卫各模块的 minLength 刚性底线！
+        let excess = targetLengths.reduce(0.0, +) - availableHeight
+        if excess > 0 {
+            // 计算所有高于其 minLength 的可压缩弹性余量总和
+            let compressableSlack = targetLengths.enumerated().reduce(0.0) { total, item in
+                let podMin = sortedPods[item.offset].minLength
+                return total + max(item.element - podMin, 0.0)
+            }
+
+            if compressableSlack >= excess && compressableSlack > 0 {
+                // 弹性余量充足：仅压缩有富余空间的模块，绝对不侵犯已在 minLength 底线的刚性模块！
+                for i in targetLengths.indices {
+                    let podMin = sortedPods[i].minLength
+                    let slack = max(targetLengths[i] - podMin, 0.0)
+                    if slack > 0 {
+                        let reduction = excess * (slack / compressableSlack)
+                        targetLengths[i] = max(targetLengths[i] - reduction, podMin)
+                    }
+                }
+            } else {
+                // 弹性余量不足（轨道物理超载）：先将所有模块压缩至其各自的 minLength 底线
+                for i in targetLengths.indices {
+                    targetLengths[i] = sortedPods[i].minLength
+                }
+                // 超载情况下按比例保底适配可用屏幕
+                let minSum = targetLengths.reduce(0.0, +)
+                if minSum > availableHeight && minSum > 0 {
+                    let overflowScale = availableHeight / minSum
+                    targetLengths = targetLengths.map { $0 * overflowScale }
+                }
+            }
         }
 
         // 4. 从安全区起点顺序安放每个 Pod
