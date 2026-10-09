@@ -3,6 +3,17 @@
 import AppKit
 import Observation
 
+// MARK: - Online Lyrics Data Structure
+public struct OnlineLyricsResult: Sendable {
+    public let plainLyrics: String?
+    public let syncedLyrics: String?
+
+    public init(plainLyrics: String?, syncedLyrics: String?) {
+        self.plainLyrics = plainLyrics
+        self.syncedLyrics = syncedLyrics
+    }
+}
+
 @Observable
 @MainActor
 public final class SystemMusicSyncService {
@@ -13,7 +24,7 @@ public final class SystemMusicSyncService {
     @ObservationIgnored private var cachedArtworkKey: String?
     @ObservationIgnored private var cachedArtworkData: Data?
     @ObservationIgnored private var cachedLyricsKey: String?
-    @ObservationIgnored private var cachedLyricsText: String?
+    @ObservationIgnored private var cachedLyricsResult: OnlineLyricsResult?
     @ObservationIgnored private var playbackTimer: Timer?
 
     public private(set) var isMusicAppConnected: Bool = false
@@ -271,18 +282,18 @@ public final class SystemMusicSyncService {
     }
 
     // MARK: - Online Lyrics Fetching Engine (LRCLIB + NetEase Open APIs)
-    public func cachedLyrics(for title: String, artist: String) -> String? {
+    public func cachedLyrics(for title: String, artist: String) -> OnlineLyricsResult? {
         let key = "\(title)|\(artist)"
         if key == cachedLyricsKey {
-            return cachedLyricsText
+            return cachedLyricsResult
         }
         return nil
     }
 
-    public func fetchOnlineLyrics(title: String, artist: String) async -> String? {
+    public func fetchOnlineLyrics(title: String, artist: String) async -> OnlineLyricsResult? {
         guard !title.isEmpty && !artist.isEmpty else { return nil }
         let key = "\(title)|\(artist)"
-        if key == cachedLyricsKey, let cached = cachedLyricsText {
+        if key == cachedLyricsKey, let cached = cachedLyricsResult {
             return cached
         }
 
@@ -296,17 +307,13 @@ public final class SystemMusicSyncService {
             if let (data, resp) = try? await URLSession.shared.data(for: request),
                let http = resp as? HTTPURLResponse, http.statusCode == 200,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let plain = json["plainLyrics"] as? String, !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let plain = (json["plainLyrics"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let synced = (json["syncedLyrics"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if (plain != nil && !plain!.isEmpty) || (synced != nil && !synced!.isEmpty) {
+                    let result = OnlineLyricsResult(plainLyrics: plain, syncedLyrics: synced)
                     cachedLyricsKey = key
-                    cachedLyricsText = plain
-                    return plain
-                } else if let synced = json["syncedLyrics"] as? String, !synced.isEmpty {
-                    let cleaned = cleanLrcTimestamps(synced)
-                    if !cleaned.isEmpty {
-                        cachedLyricsKey = key
-                        cachedLyricsText = cleaned
-                        return cleaned
-                    }
+                    cachedLyricsResult = result
+                    return result
                 }
             }
         }
@@ -334,9 +341,10 @@ public final class SystemMusicSyncService {
                        let rawLrc = lrcObj["lyric"] as? String {
                         let cleaned = cleanLrcTimestamps(rawLrc)
                         if !cleaned.isEmpty {
+                            let result = OnlineLyricsResult(plainLyrics: cleaned, syncedLyrics: rawLrc)
                             cachedLyricsKey = key
-                            cachedLyricsText = cleaned
-                            return cleaned
+                            cachedLyricsResult = result
+                            return result
                         }
                     }
                 }

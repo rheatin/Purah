@@ -329,11 +329,18 @@ public struct MusicDrawerView: View {
                     }
                     .padding(.horizontal, 2)
 
+                    let lyricsText = state.track.syncedLyrics ?? state.track.lyrics ?? lyrics
                     LyricsDisplayView(
-                        lyrics: lyrics,
+                        rawLyrics: lyricsText,
+                        currentTime: displaySec,
+                        duration: max(state.track.durationSeconds, 1.0),
+                        isPlaying: isPlaying,
                         accentColor: musicColor,
                         palette: palette,
-                        maxHeight: max(availableHeight - 170, 110)
+                        maxHeight: max(availableHeight - 170, 110),
+                        onSeek: { targetProg in
+                            state.seek(to: targetProg, store: store)
+                        }
                     )
                 }
                 .transition(.opacity)
@@ -665,45 +672,169 @@ public struct FluidWaveformScrubber: View {
     }
 }
 
-// MARK: - Native Flowing Lyrics View (Pure local, zero network)
+// MARK: - Native Flowing Time-Synced Lyrics View (Apple Music Style Auto-Scroll)
+public struct ParsedLyricLine: Identifiable, Sendable {
+    public let id: Int
+    public let time: TimeInterval
+    public let text: String
+
+    public init(id: Int, time: TimeInterval, text: String) {
+        self.id = id
+        self.time = time
+        self.text = text
+    }
+}
+
 public struct LyricsDisplayView: View {
-    public let lyrics: String
+    public let rawLyrics: String
+    public let currentTime: Double
+    public let duration: Double
+    public let isPlaying: Bool
     public let accentColor: Color
     public let palette: ThemePalette
     public let maxHeight: CGFloat
+    public let onSeek: (Double) -> Void
 
-    public init(lyrics: String, accentColor: Color, palette: ThemePalette, maxHeight: CGFloat) {
-        self.lyrics = lyrics
+    private var parsedLines: [ParsedLyricLine] {
+        Self.parseLyrics(rawLyrics)
+    }
+
+    private var activeLineIndex: Int {
+        guard !parsedLines.isEmpty else { return 0 }
+        var active = 0
+        for (idx, line) in parsedLines.enumerated() {
+            if line.time <= currentTime + 0.25 {
+                active = idx
+            } else {
+                break
+            }
+        }
+        return active
+    }
+
+    public init(
+        rawLyrics: String,
+        currentTime: Double = 0.0,
+        duration: Double = 1.0,
+        isPlaying: Bool = true,
+        accentColor: Color,
+        palette: ThemePalette,
+        maxHeight: CGFloat,
+        onSeek: @escaping (Double) -> Void = { _ in }
+    ) {
+        self.rawLyrics = rawLyrics
+        self.currentTime = currentTime
+        self.duration = duration
+        self.isPlaying = isPlaying
         self.accentColor = accentColor
         self.palette = palette
         self.maxHeight = maxHeight
+        self.onSeek = onSeek
     }
 
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 7) {
-                ForEach(Array(lyrics.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty {
-                        Text(trimmed)
-                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary.opacity(0.88) : Color.white.opacity(0.88))
-                            .lineSpacing(2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Spacer().frame(height: 4)
+        let lines = parsedLines
+
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Top breathing room
+                    Spacer().frame(height: 12)
+
+                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                        let isCurrent = (index == activeLineIndex)
+
+                        Button {
+                            if line.time > 0 && duration > 0 {
+                                onSeek(min(max(line.time / duration, 0.0), 1.0))
+                            }
+                        } label: {
+                            Text(line.text)
+                                .font(.system(size: isCurrent ? 13.5 : 11.5, weight: isCurrent ? .bold : .medium, design: .rounded))
+                                .foregroundColor(isCurrent ? .white : .white.opacity(0.35))
+                                .lineSpacing(2)
+                                .scaleEffect(isCurrent ? 1.03 : 1.0, anchor: .leading)
+                                .shadow(color: isCurrent ? accentColor.opacity(0.55) : .clear, radius: 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .id(line.id)
+                    }
+
+                    // Bottom breathing room
+                    Spacer().frame(height: 18)
+                }
+                .padding(.horizontal, 6)
+            }
+            .frame(maxHeight: maxHeight)
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: .black, location: 0.12),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .onChange(of: activeLineIndex) { _, newIndex in
+                if lines.indices.contains(newIndex) {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                        proxy.scrollTo(lines[newIndex].id, anchor: .center)
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .onAppear {
+                if lines.indices.contains(activeLineIndex) {
+                    proxy.scrollTo(lines[activeLineIndex].id, anchor: .center)
+                }
+            }
         }
-        .frame(maxHeight: maxHeight)
-        .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 0.8)
-        )
+    }
+
+    public static func parseLyrics(_ raw: String) -> [ParsedLyricLine] {
+        let rawLines = raw.components(separatedBy: .newlines)
+        var parsed: [ParsedLyricLine] = []
+        let regex = try? NSRegularExpression(pattern: "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\]", options: [])
+
+        var lineId = 0
+        for line in rawLines {
+            let nsLine = line as NSString
+            if let regex {
+                let matches = regex.matches(in: line, options: [], range: NSRange(location: 0, length: nsLine.length))
+                if let firstMatch = matches.first, firstMatch.numberOfRanges >= 3 {
+                    let minStr = nsLine.substring(with: firstMatch.range(at: 1))
+                    let secStr = nsLine.substring(with: firstMatch.range(at: 2))
+                    var ms: Double = 0.0
+                    if firstMatch.numberOfRanges >= 4 && firstMatch.range(at: 3).location != NSNotFound {
+                        let msStr = nsLine.substring(with: firstMatch.range(at: 3))
+                        let msVal = Double(msStr) ?? 0.0
+                        ms = msStr.count == 2 ? (msVal / 100.0) : (msVal / 1000.0)
+                    }
+                    let minutes = Double(minStr) ?? 0.0
+                    let seconds = Double(secStr) ?? 0.0
+                    let totalTime = minutes * 60.0 + seconds + ms
+                    let text = nsLine.substring(from: firstMatch.range.location + firstMatch.range.length).trimmingCharacters(in: .whitespaces)
+
+                    if !text.isEmpty {
+                        parsed.append(ParsedLyricLine(id: lineId, time: totalTime, text: text))
+                        lineId += 1
+                    }
+                    continue
+                }
+            }
+
+            // Fallback for non-timestamped lyrics lines
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty && !trimmed.hasPrefix("[ti:") && !trimmed.hasPrefix("[ar:") && !trimmed.hasPrefix("[al:") && !trimmed.hasPrefix("[by:") {
+                parsed.append(ParsedLyricLine(id: lineId, time: 0, text: trimmed))
+                lineId += 1
+            }
+        }
+
+        return parsed.sorted(by: { $0.time < $1.time })
     }
 }

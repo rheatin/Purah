@@ -453,11 +453,13 @@ public final class MusicPluginState: Sendable {
         }
         if self.track.lyrics == nil {
             Task { [weak self] in
-                if let lyr = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
+                if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
                     await MainActor.run {
                         if self?.track.title == currentTitle {
-                            self?.track.lyrics = lyr
-                            self?.boundStore?._musicTrack.lyrics = lyr
+                            self?.track.lyrics = lyrResult.plainLyrics
+                            self?.track.syncedLyrics = lyrResult.syncedLyrics
+                            self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
+                            self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
                         }
                     }
                 }
@@ -583,12 +585,14 @@ public final class MusicPluginState: Sendable {
         // Fetch online lyrics
         if existingLyrics == nil {
             Task { [weak self] in
-                if let lyr = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
+                if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
                         if self?.track.title == title && self?.track.artist == artist {
-                            self?.track.lyrics = lyr
+                            self?.track.lyrics = lyrResult.plainLyrics
+                            self?.track.syncedLyrics = lyrResult.syncedLyrics
                             if let store = self?.boundStore {
-                                store._musicTrack.lyrics = lyr
+                                store._musicTrack.lyrics = lyrResult.plainLyrics
+                                store._musicTrack.syncedLyrics = lyrResult.syncedLyrics
                             }
                         }
                     }
@@ -663,12 +667,14 @@ public final class MusicPluginState: Sendable {
 
         if existingLyrics == nil {
             Task { [weak self] in
-                if let lyr = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
+                if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
                         if self?.track.title == title && self?.track.artist == artist {
-                            self?.track.lyrics = lyr
+                            self?.track.lyrics = lyrResult.plainLyrics
+                            self?.track.syncedLyrics = lyrResult.syncedLyrics
                             if let store = self?.boundStore {
-                                store._musicTrack.lyrics = lyr
+                                store._musicTrack.lyrics = lyrResult.plainLyrics
+                                store._musicTrack.syncedLyrics = lyrResult.syncedLyrics
                             }
                         }
                     }
