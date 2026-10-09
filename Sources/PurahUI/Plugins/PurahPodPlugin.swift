@@ -10,6 +10,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
+    @ViewBuilder func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView?
 
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
@@ -43,20 +44,15 @@ public extension PurahPodPlugin {
     var podId: String { manifest.id }
     var isDecomposed: Bool { supportedDrawerModes.contains(.stepped) }
 
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool { isDecomposed }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 120.0 }
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { itemId.hasPrefix("\(manifest.id)-") }
-    func activeSubItemFrames(
-        item: ResolvedPodLayoutItem,
-        store: PurahWorkspaceStore,
-        totalHeight: Double,
-        windowWidth: Double,
-        corridor: Double
-    ) -> [CGRect]? { nil }
 
     func onMount(store: PurahWorkspaceStore) {}
     func onUnmount(store: PurahWorkspaceStore) {}
     func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? { nil }
+    func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
 
     func dynamicBarColor(context: PurahPluginContext) -> Color? { nil }
     var supportedDrawerModes: Set<PurahDrawerMode> { [.composite] }

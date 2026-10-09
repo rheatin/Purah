@@ -3,6 +3,7 @@ import SwiftUI
 import PurahCore
 
 public struct HardwareVitalsDrawerView: View {
+    public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
     private var vitals: HardwareVitalsService {
         HardwareVitalsService.shared
@@ -10,17 +11,26 @@ public struct HardwareVitalsDrawerView: View {
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
+    private var effectiveThresholds: VitalsColorThresholds {
+        state.thresholds
+    }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
     }
 
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
+        self.init(state: pluginState, store: store)
+    }
+
     public var body: some View {
-        let metrics = vitals.metrics
-        let cpuColor = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
-        let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
-        let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
-        let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let metrics = state.metrics
+        let cpuColor = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
+        let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
+        let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
+        let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 8) {
@@ -227,9 +237,11 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.vertical, 2)
         }
         .onAppear {
+            state.mount(store: store)
             vitals.startMonitoring()
             Task {
                 await vitals.refreshMetricsAsync(includeProcesses: true)
+                state.refreshMetrics(includeProcesses: true)
             }
         }
     }
@@ -249,17 +261,25 @@ public struct HardwareVitalsDrawerView: View {
 // MARK: - Focused Decomposed Vitals Drawer View
 public struct VitalsFocusedDrawerView: View {
     public let metric: VitalsMetricType
+    public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
     private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
     private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var effectiveThresholds: VitalsColorThresholds { state.thresholds }
 
-    public init(metric: VitalsMetricType, store: PurahWorkspaceStore) {
+    public init(metric: VitalsMetricType, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.metric = metric
+        self.state = state
         self.store = store
     }
 
+    public init(metric: VitalsMetricType, store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
+        self.init(metric: metric, state: pluginState, store: store)
+    }
+
     public var body: some View {
-        let metrics = vitals.metrics
+        let metrics = state.metrics
 
         VStack(alignment: .leading, spacing: 4) {
             switch metric {
@@ -287,7 +307,7 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("CPU Activity", systemImage: "cpu")
@@ -337,7 +357,7 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func gpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let color = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let gpuRatio = max(min(metrics.gpuUsage, 1.0), 0.0)
 
         VStack(alignment: .leading, spacing: 4) {
@@ -375,7 +395,7 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("Memory (RAM)", systemImage: "memorychip")
@@ -413,7 +433,7 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("Battery & Power", systemImage: "bolt.batteryblock.fill")
@@ -441,7 +461,7 @@ public struct VitalsFocusedDrawerView: View {
                 Spacer()
                 HStack(spacing: 3) {
                     Circle()
-                        .fill(Double(metrics.batteryLevel) / 100.0 <= store.vitalsThresholds.batteryLow ? palette.dangerAccent : Color.green)
+                        .fill(Double(metrics.batteryLevel) / 100.0 <= effectiveThresholds.batteryLow ? palette.dangerAccent : Color.green)
                         .frame(width: 4, height: 4)
                     Text(metrics.isCharging ? "Charging" : "Normal")
                         .font(.system(size: 8))
@@ -453,12 +473,12 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func networkFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let color = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let totalSpeed = metrics.networkDownSpeed + metrics.networkUpSpeed
         let totalMB = totalSpeed / 1_048_576.0
-        let dangerMB = max(store.vitalsThresholds.networkDangerMB, 1.0)
+        let dangerMB = max(effectiveThresholds.networkDangerMB, 1.0)
         let networkRatio = min(totalMB / dangerMB, 1.0)
-
+        
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("Network I/O", systemImage: "network")
@@ -501,7 +521,7 @@ public struct VitalsFocusedDrawerView: View {
 
     @ViewBuilder
     private func diskFocusedView(metrics: HardwareVitalsInfo) -> some View {
-        let color = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: store.vitalsThresholds, palette: palette)
+        let color = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
 
         VStack(alignment: .leading, spacing: 4) {

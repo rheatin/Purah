@@ -26,19 +26,19 @@ struct MusicSyncTests {
 
         service.handlePlayerInfo(notification: notification, store: store)
 
-        #expect(store.musicTrack.title == "Ballad of the Goddess")
-        #expect(store.musicTrack.artist == "Koji Kondo")
-        #expect(store.musicTrack.isPlaying == true)
-        #expect(abs(store.musicTrack.playbackProgress - 0.5) < 0.05)
+        #expect(store._musicTrack.title == "Ballad of the Goddess")
+        #expect(store._musicTrack.artist == "Koji Kondo")
+        #expect(store._musicTrack.isPlaying == true)
+        #expect(abs(store._musicTrack.playbackProgress - 0.5) < 0.05)
     }
 
     @Test("Toggles play pause in-memory fallback")
     func testPlayPauseFallback() {
         let store = PurahWorkspaceStore()
         let service = SystemMusicSyncService()
-        let originalState = store.musicTrack.isPlaying
+        let originalState = store._musicTrack.isPlaying
 
         service.togglePlayPause(store: store)
-        #expect(store.musicTrack.isPlaying != originalState)
+        #expect(store._musicTrack.isPlaying != originalState)
     }
 }

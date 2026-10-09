@@ -92,7 +92,7 @@ public struct PreferencesView: View {
                 case .layout:
                     VisualLayoutSimulatorView(store: store)
                 case .plugins:
-                    PluginCenterSettingsView(store: store)
+                    PluginMarketplaceView(store: store)
                 case .permissions:
                     SystemAccessSettingsView(store: store)
                 case .diagnostics:

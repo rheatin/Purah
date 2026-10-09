@@ -77,7 +77,7 @@ public final class SystemCalendarSyncService {
                 if let targetStore = self.boundStore {
                     targetStore.calendarScope = targetScope
                     targetStore.isUsingRealCalendar = true
-                    targetStore.calendarEvents = deduplicated
+                    targetStore._calendarEvents = deduplicated
                 }
                 self.calendarCount = allCalendars.count
                 self.lastSyncDate = Date()

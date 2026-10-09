@@ -4,6 +4,7 @@ import AppKit
 import PurahCore
 
 public struct PersistentTerminalDrawerView: View {
+    public let state: TerminalPluginState
     public let store: PurahWorkspaceStore
 
     @ObservedObject private var manager = TerminalManager.shared
@@ -16,8 +17,14 @@ public struct PersistentTerminalDrawerView: View {
         palette.podColor(for: "terminal", store: store)
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: TerminalPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "terminal") as? TerminalPlugin)?.state ?? TerminalPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
@@ -49,9 +56,9 @@ public struct PersistentTerminalDrawerView: View {
                 // Font size quick adjuster
                 HStack(spacing: 2) {
                     Button {
-                        if store.terminalFontSize > 9.0 {
-                            store.terminalFontSize -= 0.5
-                            store.savePersistentState()
+                        if state.fontSize > 9.0 {
+                            state.fontSize -= 0.5
+                            state.save()
                         }
                     } label: {
                         Text("A-")
@@ -64,9 +71,9 @@ public struct PersistentTerminalDrawerView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        if store.terminalFontSize < 22.0 {
-                            store.terminalFontSize += 0.5
-                            store.savePersistentState()
+                        if state.fontSize < 22.0 {
+                            state.fontSize += 0.5
+                            state.save()
                         }
                     } label: {
                         Text("A+")
@@ -105,8 +112,8 @@ public struct PersistentTerminalDrawerView: View {
 
                 Button {
                     manager.restartShell(
-                        fontFamily: store.terminalFontFamily,
-                        fontSize: CGFloat(store.terminalFontSize),
+                        fontFamily: state.fontFamily,
+                        fontSize: CGFloat(state.fontSize),
                         palette: palette
                     )
                 } label: {
@@ -121,8 +128,8 @@ public struct PersistentTerminalDrawerView: View {
 
             // Row 2: In-Screen Interactive SwiftTerm Terminal (GPU Accelerated, TrueColor, Starship Support)
             SwiftTermRepresentable(
-                fontFamily: store.terminalFontFamily,
-                fontSize: store.terminalFontSize,
+                fontFamily: state.fontFamily,
+                fontSize: state.fontSize,
                 palette: palette
             )
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -138,7 +145,7 @@ public struct PersistentTerminalDrawerView: View {
                     .font(.system(size: 7.5, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
                 Spacer()
-                Text("\(String(format: "%.1f", store.terminalFontSize))pt")
+                Text("\(String(format: "%.1f", state.fontSize))pt")
                     .font(.system(size: 7.5, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.6))
             }

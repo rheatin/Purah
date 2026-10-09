@@ -63,7 +63,7 @@ struct CalendarSyncTests {
 
         // Verify activating occurrence1 does not activate occurrence2
         let store = PurahWorkspaceStore()
-        store.calendarEvents = [occurrence1, occurrence2, occurrence3]
+        store._calendarEvents = [occurrence1, occurrence2, occurrence3]
         store.activateDrawer(podId: "calendar", itemId: occurrence1.id)
 
         #expect(store.activeDrawerItemId == occurrence1.id)

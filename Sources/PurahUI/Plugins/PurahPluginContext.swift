@@ -14,7 +14,12 @@ public struct PurahPluginContext: Sendable {
     public let isPinned: Bool
     public let accentColor: Color
     public let palette: ThemePalette
-    public let store: PurahWorkspaceStore
+    public let storage: any PurahPluginStorage
+    private let _store: PurahWorkspaceStore?
+
+    public var store: PurahWorkspaceStore {
+        _store ?? PurahWorkspaceStore()
+    }
 
     public let requestExpand: @MainActor () -> Void
     public let requestDismiss: @MainActor () -> Void
@@ -34,7 +39,8 @@ public struct PurahPluginContext: Sendable {
         isPinned: Bool,
         accentColor: Color,
         palette: ThemePalette,
-        store: PurahWorkspaceStore,
+        storage: (any PurahPluginStorage)? = nil,
+        store: PurahWorkspaceStore? = nil,
         requestExpand: @escaping @MainActor () -> Void,
         requestDismiss: @escaping @MainActor () -> Void,
         togglePin: @escaping @MainActor () -> Void,
@@ -51,7 +57,8 @@ public struct PurahPluginContext: Sendable {
         self.isPinned = isPinned
         self.accentColor = accentColor
         self.palette = palette
-        self.store = store
+        self.storage = storage ?? ScopedPluginStorage(pluginId: pod.id)
+        self._store = store
         self.requestExpand = requestExpand
         self.requestDismiss = requestDismiss
         self.togglePin = togglePin
@@ -59,7 +66,7 @@ public struct PurahPluginContext: Sendable {
         if let showToast {
             self.showToast = showToast
         } else {
-            self.showToast = { [weak store] msg, icon in
+            self.showToast = { [weak store = _store] msg, icon in
                 let text = (icon != nil) ? "\(icon!) \(msg)" : msg
                 store?.onCapacityWarningToast?(text)
             }
@@ -68,7 +75,7 @@ public struct PurahPluginContext: Sendable {
         if let showWarning {
             self.showWarning = showWarning
         } else {
-            self.showWarning = { [weak store] msg in
+            self.showWarning = { [weak store = _store] msg in
                 store?.onCapacityWarningToast?(msg)
             }
         }

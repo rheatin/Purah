@@ -20,49 +20,103 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         defaultColorHex: "#00E5A3"
     )
 
-    public init() {}
+    public let state: VitalsPluginState
+
+    public init(state: VitalsPluginState = VitalsPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(VitalsRailBarPluginView(context: context))
+        AnyView(VitalsRailBarPluginView(context: context, state: state))
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(HardwareVitalsDrawerView(store: context.store))
+        AnyView(HardwareVitalsDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(VitalsPluginSettingsView(store: store))
+        AnyView(VitalsPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store.isVitalsDecomposed {
-            let count = max(store.vitalsEnabledMetrics.count, 1)
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        if isDecomp {
+            let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
+            let count = max(metrics.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         return 300.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
+        return metrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
         itemId.hasPrefix("vitals-")
     }
 
+    public var isDecomposed: Bool {
+        state.isDecomposed
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        state.isDecomposed || store._isVitalsDecomposed
+    }
+
+    public var subItemCount: Int {
+        state.isDecomposed ? state.enabledMetrics.count : 0
+    }
+
+    public var subItemTitles: [String] {
+        state.isDecomposed ? state.enabledMetrics.map(\.displayName) : []
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        guard isDecomp else { return 0 }
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
+        return metrics.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        guard isDecomp else { return nil }
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
+        guard metrics.indices.contains(index) else { return nil }
+        return "vitals-\(metrics[index].rawValue)"
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        guard isDecomp else { return nil }
+        let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
+        guard metrics.indices.contains(index) else { return nil }
+        return metrics[index].displayName
+    }
+
     public func dynamicBarColor(context: PurahPluginContext) -> Color? {
         VitalsColorResolver.overallVitalsColor(
-            vitals: HardwareVitalsService.shared.metrics,
-            thresholds: context.store.vitalsThresholds,
+            vitals: state.metrics,
+            thresholds: state.thresholds,
             palette: context.palette
         )
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        let metrics = HardwareVitalsService.shared.metrics
-        return context.store.vitalsEnabledMetrics.map { metric in
+        let metrics = state.metrics
+        return state.enabledMetrics.map { metric in
             let ratio: Double = {
                 switch metric {
                 case .cpu: return metrics.cpuUsage
@@ -74,9 +128,9 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
                     return metrics.diskTotalGB > 0 ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB : 0.5
                 }
             }()
-            let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: context.store.vitalsThresholds, palette: context.palette)
-            let isAlerting = (metric == .cpu && metrics.cpuUsage > context.store.vitalsThresholds.cpuDanger) ||
-                             (metric == .ram && metrics.memoryUsage > context.store.vitalsThresholds.ramDanger)
+            let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: state.thresholds, palette: context.palette)
+            let isAlerting = (metric == .cpu && metrics.cpuUsage > state.thresholds.cpuDanger) ||
+                             (metric == .ram && metrics.memoryUsage > state.thresholds.ramDanger)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
                 title: metric.displayName,
@@ -89,18 +143,41 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
             )
         }
     }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let metricKey = subItemId.replacingOccurrences(of: "vitals-", with: "")
+        guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            VitalsItemDrawerView(
+                metric: metric,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
+    }
 }
 
 public struct VitalsRailBarPluginView: View {
     public let context: PurahPluginContext
-    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
+    public let state: VitalsPluginState
 
-    public init(context: PurahPluginContext) {
+    public init(context: PurahPluginContext, state: VitalsPluginState? = nil) {
         self.context = context
+        self.state = state ?? (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
     }
 
     public var body: some View {
-        let cpu = vitals.metrics.cpuUsage
+        let cpu = state.metrics.cpuUsage
         let isPulsing = cpu > 0.85
         let radius = min(context.railWidth / 2, 4)
 
@@ -134,42 +211,97 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         defaultColorHex: "#A78BFA"
     )
 
-    public init() {}
+    public let state: ScriptsPluginState
+
+    public init(state: ScriptsPluginState = ScriptsPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(ScriptsRailBarPluginView(context: context))
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(ScriptRunwayDrawerView(store: context.store))
+        AnyView(ScriptRunwayDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(ScriptsPluginSettingsView(store: store))
+        AnyView(ScriptsPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store.isScriptsDecomposed {
-            let count = max(store.scriptsEnabledActions.count, 1)
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
+        if isDecomp {
+            let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+            let count = max(actions.count, 1)
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         return 160.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.scriptsEnabledActions.contains { store.isItemPinned(id: "scripts-\($0.id)") }
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        return actions.contains { store.isItemPinned(id: "scripts-\($0.id)") }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
         itemId.hasPrefix("scripts-")
     }
 
+    public var isDecomposed: Bool {
+        state.isDecomposed
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        state.isDecomposed || store._isScriptsDecomposed
+    }
+
+    public var subItemCount: Int {
+        state.isDecomposed ? state.enabledActions.count : 0
+    }
+
+    public var subItemTitles: [String] {
+        state.isDecomposed ? state.enabledActions.map(\.name) : []
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
+        guard isDecomp else { return 0 }
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        return actions.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
+        guard isDecomp else { return nil }
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        guard actions.indices.contains(index) else { return nil }
+        return "scripts-\(actions[index].id)"
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
+        guard isDecomp else { return nil }
+        let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
+        guard actions.indices.contains(index) else { return nil }
+        return actions[index].name
+    }
+
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let runway = ScriptRunwayService.shared
-        return context.store.scriptsEnabledActions.map { action in
-            let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
+        return state.enabledActions.map { action in
+            let isRunning = (state.isRunning && state.lastExecutedActionId == action.id) ||
+                            (runway.isRunning && runway.lastExecutedActionId == action.id)
             return PurahPluginSubItem(
                 id: "scripts-\(action.id)",
                 title: action.name,
@@ -187,10 +319,10 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         if let subId = subItemId?.replacingOccurrences(of: "scripts-", with: ""),
-           let action = ScriptRunwayService.shared.action(for: subId) {
+           let action = state.action(for: subId) ?? ScriptRunwayService.shared.action(for: subId) {
             context.performHaptic(.levelChange)
             Task {
-                let res = await ScriptRunwayService.shared.executeAction(action)
+                let res = await state.executeAction(action, store: context.store)
                 if action.showNotification {
                     if res.success {
                         context.performHaptic(.alignment)
@@ -205,6 +337,28 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         } else {
             context.requestExpand()
         }
+    }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let actionId = subItemId.replacingOccurrences(of: "scripts-", with: "")
+        guard let action = state.action(for: actionId) ?? ScriptRunwayService.shared.action(for: actionId) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            ScriptItemDrawerView(
+                action: action,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
     }
 }
 
@@ -239,13 +393,17 @@ public struct QuickNotesPlugin: PurahPodPlugin {
         defaultColorHex: "#FFD60A"
     )
 
-    public init() {}
+    public let state: NotesPluginState
+
+    public init(state: NotesPluginState = NotesPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
             RailBarAmbientView(
                 type: .notes,
-                hasContent: !context.store.quickNote.text.isEmpty,
+                hasContent: !state.noteContent.text.isEmpty,
                 color: context.accentColor,
                 barWidth: context.railWidth
             )
@@ -254,11 +412,19 @@ public struct QuickNotesPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(QuickNoteDrawerView(store: context.store))
+        AnyView(QuickNoteDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(NotesPluginSettingsView(store: store))
+        AnyView(NotesPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
@@ -280,13 +446,17 @@ public struct DropShelfPlugin: PurahPodPlugin {
         defaultColorHex: "#BF5AF2"
     )
 
-    public init() {}
+    public let state: ShelfPluginState
+
+    public init(state: ShelfPluginState = ShelfPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
             RailBarAmbientView(
                 type: .shelf,
-                hasContent: !context.store.shelfFiles.isEmpty,
+                hasContent: !state.files.isEmpty,
                 color: context.accentColor,
                 barWidth: context.railWidth
             )
@@ -295,11 +465,19 @@ public struct DropShelfPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(DropShelfDrawerView(store: context.store))
+        AnyView(DropShelfDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(ShelfPluginSettingsView(store: store))
+        AnyView(ShelfPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
@@ -311,19 +489,9 @@ public struct DropShelfPlugin: PurahPodPlugin {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 if let url = url {
                     Task { @MainActor in
-                        let name = url.lastPathComponent
-                        let ext = url.pathExtension
-                        let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
-                        let size = (attr?[.size] as? Int64) ?? 0
-                        let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-                        context.store.shelfFiles.append(ShelfFileItem(
-                            name: name,
-                            sizeDescription: sizeDesc,
-                            fileExtension: ext,
-                            filePath: url.path
-                        ))
+                        state.addFile(url: url)
                         context.performHaptic(.alignment)
-                        context.showToast("Stashed \(name)", "tray.and.arrow.down.fill")
+                        context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
                     }
                 }
             }
@@ -348,14 +516,18 @@ public struct MusicPlugin: PurahPodPlugin {
         defaultColorHex: "#FF375F"
     )
 
-    public init() {}
+    public let state: MusicPluginState
+
+    public init(state: MusicPluginState = MusicPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
             WaveMeterAmbientView(
-                samples: context.store.musicTrack.waveformSamples,
-                isPlaying: context.store.musicTrack.isPlaying,
-                isAnimated: context.store.isMusicWaveformAnimationEnabled,
+                samples: state.waveformSamples,
+                isPlaying: state.isPlaying,
+                isAnimated: state.isWaveformAnimationEnabled,
                 height: context.slotHeight
             )
             .frame(width: context.railWidth, height: context.slotHeight)
@@ -363,18 +535,26 @@ public struct MusicPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(MusicDrawerView(store: context.store))
+        AnyView(MusicDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(MusicPluginSettingsView(store: store))
+        AnyView(MusicPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 110.0 }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         context.performHaptic(.alignment)
-        SystemMusicSyncService.shared.togglePlayPause(store: context.store)
+        state.togglePlayPause(store: context.store)
     }
 }
 
@@ -394,7 +574,11 @@ public struct CalendarPlugin: PurahPodPlugin {
         defaultColorHex: "#FF9F0A"
     )
 
-    public init() {}
+    public let state: CalendarPluginState
+
+    public init(state: CalendarPluginState = CalendarPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
@@ -406,11 +590,19 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(CalendarDrawerView(store: context.store))
+        AnyView(CalendarDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(CalendarPluginSettingsView(store: store))
+        AnyView(CalendarPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
@@ -418,15 +610,49 @@ public struct CalendarPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.calendarEvents.contains { store.isItemPinned(id: $0.id) }
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        return events.contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        store.calendarEvents.contains { $0.id == itemId }
+        state.events.contains { $0.id == itemId } || store._calendarEvents.contains { $0.id == itemId }
+    }
+
+    public var isDecomposed: Bool {
+        true
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        true
+    }
+
+    public var subItemCount: Int {
+        state.events.count
+    }
+
+    public var subItemTitles: [String] {
+        state.events.map(\.title)
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        return events.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        guard events.indices.contains(index) else { return nil }
+        return events[index].id
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let events = !store._calendarEvents.isEmpty ? store._calendarEvents : state.events
+        guard events.indices.contains(index) else { return nil }
+        return events[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        context.store.calendarEvents.map { event in
+        state.events.map { event in
             let isPast = event.endTime < Date()
             let isOngoing = event.isOngoing
             let isImminent = event.isImminent
@@ -444,6 +670,28 @@ public struct CalendarPlugin: PurahPodPlugin {
                 isPinned: context.store.isItemPinned(id: event.id)
             )
         }
+    }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let events = !context.store._calendarEvents.isEmpty ? context.store._calendarEvents : state.events
+        guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            CalendarItemDrawerView(
+                event: event,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
     }
 }
 
@@ -463,7 +711,11 @@ public struct TodoPlugin: PurahPodPlugin {
         defaultColorHex: "#30D158"
     )
 
-    public init() {}
+    public let state: TodoPluginState
+
+    public init(state: TodoPluginState = TodoPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         let radius = min(context.railWidth / 2, 4)
@@ -475,11 +727,19 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(TodoDrawerView(store: context.store))
+        AnyView(TodoDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(TodoPluginSettingsView(store: store))
+        AnyView(TodoPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
@@ -487,15 +747,49 @@ public struct TodoPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.todos.contains { store.isItemPinned(id: $0.id) }
+        let items = !store._todos.isEmpty ? store._todos : state.todos
+        return items.contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        store.todos.contains { $0.id == itemId }
+        state.todos.contains { $0.id == itemId } || store._todos.contains { $0.id == itemId }
+    }
+
+    public var isDecomposed: Bool {
+        true
+    }
+
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        true
+    }
+
+    public var subItemCount: Int {
+        state.todos.count
+    }
+
+    public var subItemTitles: [String] {
+        state.todos.map(\.title)
+    }
+
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let items = !store._todos.isEmpty ? store._todos : state.todos
+        return items.count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let items = !store._todos.isEmpty ? store._todos : state.todos
+        guard items.indices.contains(index) else { return nil }
+        return items[index].id
+    }
+
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let items = !store._todos.isEmpty ? store._todos : state.todos
+        guard items.indices.contains(index) else { return nil }
+        return items[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        context.store.todos.map { todo in
+        state.todos.map { todo in
             PurahPluginSubItem(
                 id: todo.id,
                 title: todo.title,
@@ -515,21 +809,50 @@ public struct TodoPlugin: PurahPodPlugin {
         if let id = subItemId {
             context.performHaptic(.levelChange)
             Task {
-                await SystemRemindersSyncService.shared.toggleCompletion(id: id, into: context.store)
+                await state.toggleCompletion(id: id, store: context.store)
             }
         } else {
             context.requestExpand()
         }
+    }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let todos = !context.store._todos.isEmpty ? context.store._todos : state.todos
+        guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        return AnyView(
+            TodoItemDrawerView(
+                todo: todo,
+                edge: context.edge,
+                state: state,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
+        )
     }
 }
 
 // MARK: - Plugin Settings Views
 
 public struct CalendarPluginSettingsView: View {
+    public let state: CalendarPluginState
     public let store: PurahWorkspaceStore
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: CalendarPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "calendar") as? CalendarPlugin)?.state ?? CalendarPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
@@ -539,10 +862,12 @@ public struct CalendarPluginSettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Picker("", selection: Binding(
-                    get: { store.calendarScope },
+                    get: { state.scope },
                     set: { newScope in
+                        state.scope = newScope
+                        state.save()
                         store.calendarScope = newScope
-                        SystemCalendarSyncService.shared.syncEvents(into: store, scope: newScope)
+                        state.syncEvents(into: store)
                     }
                 )) {
                     ForEach(CalendarTimeScope.allCases) { scope in
@@ -560,8 +885,11 @@ public struct CalendarPluginSettingsView: View {
                 PurahThemedSegmentedPicker(
                     options: PluginAlertStyle.allCases,
                     selection: Binding(
-                        get: { store.alertStyle },
+                        get: { state.alertStyle },
                         set: {
+                            state.alertStyle = $0
+                            state.isEventGlowAlertEnabled = ($0 != .off)
+                            state.save()
                             store.alertStyle = $0
                             store.isEventGlowAlertEnabled = ($0 != .off)
                             store.savePersistentState()
@@ -571,8 +899,10 @@ public struct CalendarPluginSettingsView: View {
                 )
 
                 Toggle("Dismiss dynamic animation on mouse hover", isOn: Binding(
-                    get: { store.dismissAlertOnHover },
+                    get: { state.dismissAlertOnHover },
                     set: {
+                        state.dismissAlertOnHover = $0
+                        state.save()
                         store.dismissAlertOnHover = $0
                         store.savePersistentState()
                     }
@@ -580,8 +910,10 @@ public struct CalendarPluginSettingsView: View {
                 .font(.caption)
 
                 Toggle("Show Toast notification when events start", isOn: Binding(
-                    get: { store.isEventToastAlertEnabled },
+                    get: { state.isEventToastAlertEnabled },
                     set: {
+                        state.isEventToastAlertEnabled = $0
+                        state.save()
                         store.isEventToastAlertEnabled = $0
                         store.savePersistentState()
                     }
@@ -593,10 +925,17 @@ public struct CalendarPluginSettingsView: View {
 }
 
 public struct TodoPluginSettingsView: View {
+    public let state: TodoPluginState
     public let store: PurahWorkspaceStore
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state ?? TodoPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
@@ -606,11 +945,13 @@ public struct TodoPluginSettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Picker("", selection: Binding(
-                    get: { store.remindersScope },
+                    get: { state.scope },
                     set: { newScope in
+                        state.scope = newScope
+                        state.save()
                         store.remindersScope = newScope
                         Task {
-                            await SystemRemindersSyncService.shared.syncReminders(into: store, scope: newScope)
+                            await state.syncReminders(into: store)
                         }
                     }
                 )) {
@@ -622,13 +963,13 @@ public struct TodoPluginSettingsView: View {
             }
 
             HStack {
-                Text("Pending Tasks: \(store.todos.filter { !$0.isCompleted }.count)")
+                Text("Pending Tasks: \(state.todos.filter { !$0.isCompleted }.count)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 Button("Sync Reminders") {
                     Task {
-                        await SystemRemindersSyncService.shared.syncReminders(into: store)
+                        await state.syncReminders(into: store)
                     }
                 }
                 .buttonStyle(.plain)
@@ -640,47 +981,67 @@ public struct TodoPluginSettingsView: View {
 }
 
 public struct MusicPluginSettingsView: View {
+    public let state: MusicPluginState
     public let store: PurahWorkspaceStore
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: MusicPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "music") as? MusicPlugin)?.state ?? MusicPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle("Live 120FPS Waveform Animation", isOn: Binding(
-                get: { store.isMusicWaveformAnimationEnabled },
-                set: { store.isMusicWaveformAnimationEnabled = $0 }
+                get: { state.isWaveformAnimationEnabled },
+                set: {
+                    state.isWaveformAnimationEnabled = $0
+                    state.save()
+                    store.isMusicWaveformAnimationEnabled = $0
+                }
             ))
             .font(.subheadline)
 
             HStack {
-                Text("Audio Source: \(store.musicTrack.sourceApp)")
+                Text("Audio Source: \(state.track.sourceApp)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(store.musicTrack.isPlaying ? "Playing" : "Paused")
+                Text(state.track.isPlaying ? "Playing" : "Paused")
                     .font(.caption.weight(.medium))
-                    .foregroundColor(store.musicTrack.isPlaying ? .green : .secondary)
+                    .foregroundColor(state.track.isPlaying ? .green : .secondary)
             }
         }
     }
 }
 
 public struct VitalsPluginSettingsView: View {
+    public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
     }
 
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
+        self.init(state: pluginState, store: store)
+    }
+
     public var body: some View {
-        let vitals = HardwareVitalsService.shared.metrics
+        let vitals = state.metrics
         VStack(alignment: .leading, spacing: 12) {
             Toggle("Decompose into Stepped Metric Rail Chips", isOn: Binding(
-                get: { store.isVitalsDecomposed },
+                get: { state.isDecomposed },
                 set: {
-                    store.isVitalsDecomposed = $0
+                    state.isDecomposed = $0
+                    state.save()
+                    store._isVitalsDecomposed = $0
                     store.savePersistentState()
                 }
             ))
@@ -690,22 +1051,24 @@ public struct VitalsPluginSettingsView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
-            if store.isVitalsDecomposed {
+            if state.isDecomposed {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Visible Sub-Metrics")
                         .font(.caption.weight(.bold))
 
                     ForEach(VitalsMetricType.allCases) { metric in
-                        let isIncluded = store.vitalsEnabledMetrics.contains(metric)
+                        let isIncluded = state.enabledMetrics.contains(metric)
                         Button {
                             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                                 if isIncluded {
-                                    if store.vitalsEnabledMetrics.count > 1 {
-                                        store.vitalsEnabledMetrics.removeAll { $0 == metric }
+                                    if state.enabledMetrics.count > 1 {
+                                        state.enabledMetrics.removeAll { $0 == metric }
                                     }
                                 } else {
-                                    store.vitalsEnabledMetrics.append(metric)
+                                    state.enabledMetrics.append(metric)
                                 }
+                                state.save()
+                                store._vitalsEnabledMetrics = state.enabledMetrics
                                 store.savePersistentState()
                             }
                         } label: {
@@ -739,7 +1102,8 @@ public struct VitalsPluginSettingsView: View {
                     Spacer()
                     Button("Reset Thresholds to Defaults") {
                         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                            store.vitalsThresholds = VitalsColorThresholds()
+                            state.resetThresholds()
+                            store._vitalsThresholds = state.thresholds
                             store.savePersistentState()
                         }
                     }
@@ -755,15 +1119,15 @@ public struct VitalsPluginSettingsView: View {
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("0% → \(Int(store.vitalsThresholds.cpuWarning * 100))% → \(Int(store.vitalsThresholds.cpuDanger * 100))% → 100%")
+                        Text("0% → \(Int(state.thresholds.cpuWarning * 100))% → \(Int(state.thresholds.cpuDanger * 100))% → 100%")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
 
                     GeometryReader { geo in
                         let totalWidth = geo.size.width
-                        let warnRatio = max(min(CGFloat(store.vitalsThresholds.cpuWarning), 1.0), 0.0)
-                        let dangerRatio = max(min(CGFloat(store.vitalsThresholds.cpuDanger), 1.0), warnRatio)
+                        let warnRatio = max(min(CGFloat(state.thresholds.cpuWarning), 1.0), 0.0)
+                        let dangerRatio = max(min(CGFloat(state.thresholds.cpuDanger), 1.0), warnRatio)
                         let wGreen = warnRatio * totalWidth
                         let wAmber = max((dangerRatio - warnRatio) * totalWidth, 0)
                         let wRed = max(totalWidth - wGreen - wAmber, 0)
@@ -786,21 +1150,21 @@ public struct VitalsPluginSettingsView: View {
                     HStack {
                         HStack(spacing: 4) {
                             Circle().fill(VitalsColorResolver.healthyGreen).frame(width: 8, height: 8)
-                            Text("Green (< \(Int(store.vitalsThresholds.cpuWarning * 100))%)")
+                            Text("Green (< \(Int(state.thresholds.cpuWarning * 100))%)")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
                         HStack(spacing: 4) {
                             Circle().fill(VitalsColorResolver.warningYellow).frame(width: 8, height: 8)
-                            Text("Amber (\(Int(store.vitalsThresholds.cpuWarning * 100))% ~ \(Int(store.vitalsThresholds.cpuDanger * 100))%)")
+                            Text("Amber (\(Int(state.thresholds.cpuWarning * 100))% ~ \(Int(state.thresholds.cpuDanger * 100))%)")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
                         HStack(spacing: 4) {
                             Circle().fill(VitalsColorResolver.dangerRed).frame(width: 8, height: 8)
-                            Text("Red (> \(Int(store.vitalsThresholds.cpuDanger * 100))%)")
+                            Text("Red (> \(Int(state.thresholds.cpuDanger * 100))%)")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
@@ -815,10 +1179,10 @@ public struct VitalsPluginSettingsView: View {
                     // CPU Warning % (10% ~ 90%) & Danger % (50% ~ 99%)
                     thresholdRow(
                         title: "CPU Load",
-                        warningLabel: "\(Int(store.vitalsThresholds.cpuWarning * 100))%",
+                        warningLabel: "\(Int(state.thresholds.cpuWarning * 100))%",
                         warningValue: percentageBinding(for: \.cpuWarning, cappedBy: \.cpuDanger, isWarning: true),
                         warningRange: 10...90,
-                        dangerLabel: "\(Int(store.vitalsThresholds.cpuDanger * 100))%",
+                        dangerLabel: "\(Int(state.thresholds.cpuDanger * 100))%",
                         dangerValue: percentageBinding(for: \.cpuDanger, cappedBy: \.cpuWarning, isWarning: false),
                         dangerRange: 50...99
                     )
@@ -826,10 +1190,10 @@ public struct VitalsPluginSettingsView: View {
                     // GPU Warning % (10% ~ 90%) & Danger % (50% ~ 99%)
                     thresholdRow(
                         title: "GPU Activity",
-                        warningLabel: "\(Int(store.vitalsThresholds.gpuWarning * 100))%",
+                        warningLabel: "\(Int(state.thresholds.gpuWarning * 100))%",
                         warningValue: percentageBinding(for: \.gpuWarning, cappedBy: \.gpuDanger, isWarning: true),
                         warningRange: 10...90,
-                        dangerLabel: "\(Int(store.vitalsThresholds.gpuDanger * 100))%",
+                        dangerLabel: "\(Int(state.thresholds.gpuDanger * 100))%",
                         dangerValue: percentageBinding(for: \.gpuDanger, cappedBy: \.gpuWarning, isWarning: false),
                         dangerRange: 50...99
                     )
@@ -837,10 +1201,10 @@ public struct VitalsPluginSettingsView: View {
                     // RAM Warning % (20% ~ 90%) & Danger % (60% ~ 99%)
                     thresholdRow(
                         title: "Memory (RAM)",
-                        warningLabel: "\(Int(store.vitalsThresholds.ramWarning * 100))%",
+                        warningLabel: "\(Int(state.thresholds.ramWarning * 100))%",
                         warningValue: percentageBinding(for: \.ramWarning, cappedBy: \.ramDanger, isWarning: true),
                         warningRange: 20...90,
-                        dangerLabel: "\(Int(store.vitalsThresholds.ramDanger * 100))%",
+                        dangerLabel: "\(Int(state.thresholds.ramDanger * 100))%",
                         dangerValue: percentageBinding(for: \.ramDanger, cappedBy: \.ramWarning, isWarning: false),
                         dangerRange: 60...99
                     )
@@ -851,7 +1215,7 @@ public struct VitalsPluginSettingsView: View {
                             Text("Battery Low Warning")
                                 .font(.caption.weight(.medium))
                             Spacer()
-                            Text("\(Int(store.vitalsThresholds.batteryLow * 100))%")
+                            Text("\(Int(state.thresholds.batteryLow * 100))%")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(VitalsColorResolver.warningYellow)
                         }
@@ -863,9 +1227,11 @@ public struct VitalsPluginSettingsView: View {
                                 .frame(width: 32, alignment: .leading)
                             Slider(
                                 value: Binding(
-                                    get: { store.vitalsThresholds.batteryLow * 100.0 },
+                                    get: { state.thresholds.batteryLow * 100.0 },
                                     set: {
-                                        store.vitalsThresholds.batteryLow = $0 / 100.0
+                                        state.thresholds.batteryLow = $0 / 100.0
+                                        state.save()
+                                        store._vitalsThresholds.batteryLow = state.thresholds.batteryLow
                                         store.savePersistentState()
                                     }
                                 ),
@@ -881,13 +1247,13 @@ public struct VitalsPluginSettingsView: View {
                             Text("Network Throughput")
                                 .font(.caption.weight(.medium))
                             Spacer()
-                            Text("Warn: \(Int(store.vitalsThresholds.networkWarningMB)) MB/s")
+                            Text("Warn: \(Int(state.thresholds.networkWarningMB)) MB/s")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(VitalsColorResolver.warningYellow)
                             Text("•")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
-                            Text("Danger: \(Int(store.vitalsThresholds.networkDangerMB)) MB/s")
+                            Text("Danger: \(Int(state.thresholds.networkDangerMB)) MB/s")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(VitalsColorResolver.dangerRed)
                         }
@@ -899,9 +1265,11 @@ public struct VitalsPluginSettingsView: View {
                                 .frame(width: 32, alignment: .leading)
                             Slider(
                                 value: Binding(
-                                    get: { store.vitalsThresholds.networkWarningMB },
+                                    get: { state.thresholds.networkWarningMB },
                                     set: {
-                                        store.vitalsThresholds.networkWarningMB = min($0, store.vitalsThresholds.networkDangerMB - 1.0)
+                                        state.thresholds.networkWarningMB = min($0, state.thresholds.networkDangerMB - 1.0)
+                                        state.save()
+                                        store._vitalsThresholds.networkWarningMB = state.thresholds.networkWarningMB
                                         store.savePersistentState()
                                     }
                                 ),
@@ -915,9 +1283,11 @@ public struct VitalsPluginSettingsView: View {
                                 .frame(width: 42, alignment: .leading)
                             Slider(
                                 value: Binding(
-                                    get: { store.vitalsThresholds.networkDangerMB },
+                                    get: { state.thresholds.networkDangerMB },
                                     set: {
-                                        store.vitalsThresholds.networkDangerMB = max($0, store.vitalsThresholds.networkWarningMB + 1.0)
+                                        state.thresholds.networkDangerMB = max($0, state.thresholds.networkWarningMB + 1.0)
+                                        state.save()
+                                        store._vitalsThresholds.networkDangerMB = state.thresholds.networkDangerMB
                                         store.savePersistentState()
                                     }
                                 ),
@@ -943,7 +1313,7 @@ public struct VitalsPluginSettingsView: View {
                     .font(.caption.monospaced())
                 Spacer()
                 Button("Refresh") {
-                    HardwareVitalsService.shared.refreshMetrics(includeProcesses: true)
+                    state.refreshMetrics(includeProcesses: true)
                 }
                 .buttonStyle(.tactile)
                 .font(.caption.weight(.medium))
@@ -959,11 +1329,13 @@ public struct VitalsPluginSettingsView: View {
         isWarning: Bool
     ) -> Binding<Double> {
         Binding(
-            get: { store.vitalsThresholds[keyPath: keyPath] * 100.0 },
+            get: { state.thresholds[keyPath: keyPath] * 100.0 },
             set: { newVal in
                 let val = newVal / 100.0
-                let limit = store.vitalsThresholds[keyPath: limitKeyPath]
-                store.vitalsThresholds[keyPath: keyPath] = isWarning ? min(val, limit - 0.05) : max(val, limit + 0.05)
+                let limit = state.thresholds[keyPath: limitKeyPath]
+                state.thresholds[keyPath: keyPath] = isWarning ? min(val, limit - 0.05) : max(val, limit + 0.05)
+                state.save()
+                store._vitalsThresholds[keyPath: keyPath] = state.thresholds[keyPath: keyPath]
                 store.savePersistentState()
             }
         )
@@ -1013,6 +1385,7 @@ public struct VitalsPluginSettingsView: View {
 }
 
 public struct ScriptsPluginSettingsView: View {
+    public let state: ScriptsPluginState
     public let store: PurahWorkspaceStore
     private var runway: ScriptRunwayService { ScriptRunwayService.shared }
 
@@ -1032,23 +1405,31 @@ public struct ScriptsPluginSettingsView: View {
     @State private var editDescription: String = ""
     @State private var editShowNotification: Bool = true
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: ScriptsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
     }
 
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "scripts") as? ScriptRunwayPlugin)?.state ?? ScriptsPluginState()
+        self.init(state: pluginState, store: store)
+    }
+
     private var effectiveEnabledActionIds: [String] {
-        if store.scriptsEnabledActionIds.isEmpty {
-            return runway.actions.map(\.id)
+        if state.enabledActionIds.isEmpty {
+            return state.actions.map(\.id)
         }
-        return store.scriptsEnabledActionIds
+        return state.enabledActionIds
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle("Decompose into Stepped Script Rail Chips", isOn: Binding(
-                get: { store.isScriptsDecomposed },
+                get: { state.isDecomposed },
                 set: {
-                    store.isScriptsDecomposed = $0
+                    state.isDecomposed = $0
+                    state.save()
+                    store._isScriptsDecomposed = $0
                     store.savePersistentState()
                 }
             ))
@@ -1058,14 +1439,14 @@ public struct ScriptsPluginSettingsView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
-            if store.isScriptsDecomposed {
+            if state.isDecomposed {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Visible Stepped Action Chips")
                         .font(.caption.weight(.bold))
 
                     let currentEnabled = effectiveEnabledActionIds
 
-                    ForEach(runway.actions) { action in
+                    ForEach(state.actions) { action in
                         let isIncluded = currentEnabled.contains(action.id)
                         Button {
                             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
@@ -1073,12 +1454,16 @@ public struct ScriptsPluginSettingsView: View {
                                 if isIncluded {
                                     if updated.count > 1 {
                                         updated.removeAll { $0 == action.id }
-                                        store.scriptsEnabledActionIds = updated
+                                        state.enabledActionIds = updated
+                                        state.save()
+                                        store._scriptsEnabledActionIds = updated
                                         store.savePersistentState()
                                     }
                                 } else {
                                     updated.append(action.id)
-                                    store.scriptsEnabledActionIds = updated
+                                    state.enabledActionIds = updated
+                                    state.save()
+                                    store._scriptsEnabledActionIds = updated
                                     store.savePersistentState()
                                 }
                             }
@@ -1106,7 +1491,7 @@ public struct ScriptsPluginSettingsView: View {
             Divider()
 
             HStack {
-                Text("Actions & Shortcuts (\(runway.actions.count))")
+                Text("Actions & Shortcuts (\(state.actions.count))")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -1125,9 +1510,9 @@ public struct ScriptsPluginSettingsView: View {
 
                 Button("Reset Defaults") {
                     withAnimation {
-                        runway.resetToDefaults()
+                        state.resetToDefaults()
                         editingActionId = nil
-                        store.scriptsEnabledActionIds = runway.actions.map(\.id)
+                        store._scriptsEnabledActionIds = state.enabledActionIds
                         store.savePersistentState()
                     }
                 }
@@ -1188,11 +1573,9 @@ public struct ScriptsPluginSettingsView: View {
                                 showNotification: newShowNotification
                             )
                             withAnimation {
-                                runway.addAction(item)
-                                if !store.scriptsEnabledActionIds.isEmpty {
-                                    store.scriptsEnabledActionIds.append(item.id)
-                                    store.savePersistentState()
-                                }
+                                state.addAction(item)
+                                store._scriptsEnabledActionIds = state.enabledActionIds
+                                store.savePersistentState()
                                 newActionName = ""
                                 newScriptContent = ""
                                 newDescription = ""
@@ -1211,7 +1594,7 @@ public struct ScriptsPluginSettingsView: View {
             }
 
             VStack(spacing: 6) {
-                ForEach(runway.actions) { action in
+                ForEach(state.actions) { action in
                     VStack(spacing: 0) {
                         HStack(spacing: 8) {
                             Image(systemName: action.systemIcon)
@@ -1269,11 +1652,9 @@ public struct ScriptsPluginSettingsView: View {
                                     if editingActionId == action.id {
                                         editingActionId = nil
                                     }
-                                    runway.removeAction(id: action.id)
-                                    if store.scriptsEnabledActionIds.contains(action.id) {
-                                        store.scriptsEnabledActionIds.removeAll { $0 == action.id }
-                                        store.savePersistentState()
-                                    }
+                                    state.removeAction(id: action.id)
+                                    store._scriptsEnabledActionIds = state.enabledActionIds
+                                    store.savePersistentState()
                                 }
                             } label: {
                                 Image(systemName: "trash")
@@ -1352,7 +1733,7 @@ public struct ScriptsPluginSettingsView: View {
                                             showNotification: editShowNotification
                                         )
                                         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                            ScriptRunwayService.shared.updateAction(updated)
+                                            state.updateAction(updated)
                                             editingActionId = nil
                                         }
                                     }
@@ -1382,21 +1763,29 @@ public struct ScriptsPluginSettingsView: View {
 }
 
 public struct ShelfPluginSettingsView: View {
+    public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: ShelfPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "shelf") as? DropShelfPlugin)?.state ?? ShelfPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         HStack {
-            Text("Stashed Files: \(store.shelfFiles.count) item(s)")
+            Text("Stashed Files: \(state.files.count) item(s)")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
-            if !store.shelfFiles.isEmpty {
+            if !state.files.isEmpty {
                 Button("Clear Shelf") {
-                    store.shelfFiles.removeAll()
+                    state.clear()
+                    store._shelfFiles.removeAll()
                 }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.medium))
@@ -1407,21 +1796,29 @@ public struct ShelfPluginSettingsView: View {
 }
 
 public struct NotesPluginSettingsView: View {
+    public let state: NotesPluginState
     public let store: PurahWorkspaceStore
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: NotesPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "notes") as? QuickNotesPlugin)?.state ?? NotesPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         HStack {
-            Text("Scratchpad length: \(store.quickNote.text.count) character(s)")
+            Text("Scratchpad length: \(state.noteContent.text.count) character(s)")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
             Button("Clear Notes") {
-                store.quickNote.text = ""
-                store.quickNote.lastModified = Date()
+                state.clear()
+                store._quickNote.text = ""
+                store._quickNote.lastModified = Date()
                 store.savePersistentState()
             }
             .buttonStyle(.plain)
@@ -1444,21 +1841,34 @@ public struct TerminalPlugin: PurahPodPlugin {
         preferredZone: .goldenAction,
         ergonomicWeight: 35.0,
         minLengthRatio: 0.20,
-        defaultColorHex: "#00F5D4"
+        defaultColorHex: "#00F5D4",
+        defaultDrawerWidth: 520.0
     )
 
-    public init() {}
+    public let state: TerminalPluginState
+
+    public init(state: TerminalPluginState = TerminalPluginState()) {
+        self.state = state
+    }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(TerminalRailBarPluginView(context: context))
+        AnyView(TerminalRailBarPluginView(context: context, state: state))
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        AnyView(PersistentTerminalDrawerView(store: context.store))
+        AnyView(PersistentTerminalDrawerView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(TerminalPluginSettingsView(store: store))
+        AnyView(TerminalPluginSettingsView(state: state, store: store))
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -1473,12 +1883,14 @@ public struct TerminalPlugin: PurahPodPlugin {
 
 public struct TerminalRailBarPluginView: View {
     public let context: PurahPluginContext
+    public let state: TerminalPluginState
     private var manager: TerminalManager {
         TerminalManager.shared
     }
 
-    public init(context: PurahPluginContext) {
+    public init(context: PurahPluginContext, state: TerminalPluginState? = nil) {
         self.context = context
+        self.state = state ?? (PluginRegistry.shared.plugin(for: "terminal") as? TerminalPlugin)?.state ?? TerminalPluginState()
     }
 
     public var body: some View {
@@ -1488,7 +1900,7 @@ public struct TerminalRailBarPluginView: View {
                 .fill(context.accentColor.opacity(0.85))
                 .frame(width: context.railWidth, height: context.slotHeight)
 
-            if manager.isProcessRunning {
+            if state.isProcessRunning {
                 Circle()
                     .fill(Color.green)
                     .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
@@ -1500,6 +1912,7 @@ public struct TerminalRailBarPluginView: View {
 }
 
 public struct TerminalPluginSettingsView: View {
+    public let state: TerminalPluginState
     public let store: PurahWorkspaceStore
     private var manager: TerminalManager {
         TerminalManager.shared
@@ -1509,8 +1922,14 @@ public struct TerminalPluginSettingsView: View {
         TerminalFontManager.availableFamilies()
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: TerminalPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "terminal") as? TerminalPlugin)?.state ?? TerminalPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
@@ -1524,9 +1943,11 @@ public struct TerminalPluginSettingsView: View {
                     .font(.caption.weight(.bold))
 
                 Picker("Font", selection: Binding(
-                    get: { store.terminalFontFamily },
+                    get: { state.fontFamily },
                     set: {
-                        store.terminalFontFamily = $0
+                        state.fontFamily = $0
+                        state.save()
+                        store._terminalFontFamily = $0
                         store.savePersistentState()
                     }
                 )) {
@@ -1541,15 +1962,17 @@ public struct TerminalPluginSettingsView: View {
                     .foregroundColor(.secondary)
 
                 HStack {
-                    Text("Font Size: \(String(format: "%.1f", store.terminalFontSize))pt")
+                    Text("Font Size: \(String(format: "%.1f", state.fontSize))pt")
                         .font(.caption)
                     Spacer()
                 }
 
                 Slider(value: Binding(
-                    get: { store.terminalFontSize },
+                    get: { state.fontSize },
                     set: {
-                        store.terminalFontSize = $0
+                        state.fontSize = $0
+                        state.save()
+                        store._terminalFontSize = $0
                         store.savePersistentState()
                     }
                 ), in: 9.0...20.0, step: 0.5)
@@ -1562,15 +1985,15 @@ public struct TerminalPluginSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Shell Binary")
                     .font(.caption.weight(.bold))
-                Text(manager.shellName.uppercased())
+                Text(state.shellName.uppercased())
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(manager.isProcessRunning ? Color.green : Color.red)
+                        .fill(state.isProcessRunning ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
-                    Text(manager.isProcessRunning ? "Active & Running in Background (Metal GPU Rendered)" : "Exited")
+                    Text(state.isProcessRunning ? "Active & Running in Background (Metal GPU Rendered)" : "Exited")
                         .font(.caption)
                 }
             }
@@ -1580,16 +2003,12 @@ public struct TerminalPluginSettingsView: View {
 
             HStack(spacing: 10) {
                 Button("Restart Shell") {
-                    manager.restartShell(
-                        fontFamily: store.terminalFontFamily,
-                        fontSize: CGFloat(store.terminalFontSize),
-                        palette: ThemePalette.palette(for: .native)
-                    )
+                    state.restartShell(palette: ThemePalette.palette(for: .native))
                 }
                 .buttonStyle(.bordered)
 
                 Button("Clear Output Buffer") {
-                    manager.clearScreen()
+                    state.clearScreen()
                 }
                 .buttonStyle(.bordered)
             }

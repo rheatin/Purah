@@ -4,6 +4,7 @@ import AppKit
 import PurahCore
 
 public struct CalendarDrawerView: View {
+    public let state: CalendarPluginState
     public let store: PurahWorkspaceStore
     @State private var activeIndex: Int = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -16,13 +17,19 @@ public struct CalendarDrawerView: View {
         palette.podColor(for: "calendar") // 日程专属珊瑚红橙
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: CalendarPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "calendar") as? CalendarPlugin)?.state ?? CalendarPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         Group {
-            if store.calendarEvents.isEmpty {
+            if state.events.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
                     Image(systemName: "calendar.badge.clock")
@@ -39,7 +46,7 @@ public struct CalendarDrawerView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let activeEvent = store.calendarEvents.first(where: { $0.id == store.activeDrawerItemId }) {
+            } else if let activeEvent = state.events.first(where: { $0.id == store.activeDrawerItemId }) {
                 // 【单个日程弹出模式】：充裕高度与精美排版，绝不糊在一起
                 singleEventCard(event: activeEvent)
             } else {
@@ -48,7 +55,7 @@ public struct CalendarDrawerView: View {
             }
         }
         .task {
-            SystemCalendarSyncService.shared.syncEvents(into: store, scope: store.calendarScope)
+            state.syncEvents(into: store)
         }
     }
 
@@ -58,8 +65,8 @@ public struct CalendarDrawerView: View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
-        let isAcknowledged = store.isAlertAcknowledged(id: event.id)
-        let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled && !isAcknowledged
+        let isAcknowledged = state.isAlertAcknowledged(id: event.id) || store.isAlertAcknowledged(id: event.id)
+        let isAlerting = (isOngoing || isImminent) && (state.isEventGlowAlertEnabled || store.isEventGlowAlertEnabled) && !isAcknowledged
 
         HStack(alignment: .top, spacing: 8) {
             if isAlerting && !reduceMotion {
@@ -191,7 +198,8 @@ public struct CalendarDrawerView: View {
             strokeColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8))
         )
         .onAppear {
-            if (event.isOngoing || event.isImminent) && store.dismissAlertOnHover {
+            if (event.isOngoing || event.isImminent) && (state.dismissAlertOnHover || store.dismissAlertOnHover) {
+                state.acknowledgeAlert(id: event.id)
                 store.acknowledgeAlert(id: event.id)
             }
         }
@@ -202,15 +210,15 @@ public struct CalendarDrawerView: View {
     private func steppedEventList() -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .trailing, spacing: 6) {
-                ForEach(store.calendarEvents.indices, id: \.self) { i in
-                    let event = store.calendarEvents[i]
-                    let state = ItemSteppedDrawerCalculator.state(
+                ForEach(state.events.indices, id: \.self) { i in
+                    let event = state.events[i]
+                    let drawerState = ItemSteppedDrawerCalculator.state(
                         for: i,
                         activeIndex: activeIndex,
-                        totalCount: store.calendarEvents.count
+                        totalCount: state.events.count
                     )
 
-                    steppedEventRow(event: event, index: i, state: state)
+                    steppedEventRow(event: event, index: i, state: drawerState)
                 }
             }
             .padding(.vertical, 4)
