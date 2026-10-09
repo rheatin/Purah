@@ -116,6 +116,14 @@ public final class TerminalManager: ObservableObject {
         isProcessRunning = true
     }
 
+    public func stopProcess() {
+        terminalView?.terminate()
+        terminalView?.removeFromSuperview()
+        terminalView = nil
+        isProcessRunning = false
+        terminalTitle = "Terminal"
+    }
+
     public func restartShell(fontFamily: String, fontSize: CGFloat, palette: ThemePalette) {
         terminalView?.terminate()
         terminalView?.removeFromSuperview()

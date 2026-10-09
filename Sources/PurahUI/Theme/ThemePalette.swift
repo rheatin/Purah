@@ -41,7 +41,7 @@ public struct ThemePalette: Sendable {
             return Color(red: 1.0, green: 0.82, blue: 0.15) // Warm Gold
         case "vitals":
             // Hardware Vitals: Dynamic color resolved via VitalsColorResolver
-            let thresholds = store?.vitalsThresholds ?? VitalsColorThresholds()
+            let thresholds = store?._vitalsThresholds ?? VitalsColorThresholds()
             return VitalsColorResolver.overallVitalsColor(
                 vitals: HardwareVitalsService.shared.metrics,
                 thresholds: thresholds,

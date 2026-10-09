@@ -514,45 +514,13 @@ public final class EdgeMouseMonitor {
         let spanH = max(CGFloat(matched.spanH), 0.001)
         let podRelativeY = min(max((currentWindowY - CGFloat(matched.startY)) / spanH, 0.0), 0.999)
 
-        if candidate.id == "todo" && !store.todos.isEmpty {
-            let count = max(store.todos.count, 1)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
-            let item = store.todos[itemIdx]
-            if store.activeDrawerItemId != item.id {
+        if let provider = store.capabilityProvider(for: candidate.id), provider.isDecomposed(store: store) {
+            let subItemCount = max(provider.subItemCount(store: store), 1)
+            let itemIdx = min(max(Int(podRelativeY * Double(subItemCount)), 0), subItemCount - 1)
+            let subItemId = provider.subItemId(at: itemIdx, store: store) ?? candidate.id
+            if store.activeDrawerItemId != subItemId {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = item.id
-                    store.activeDrawerPodId = candidate.id
-                }
-            }
-        } else if candidate.id == "calendar" && !store.calendarEvents.isEmpty {
-            let count = max(store.calendarEvents.count, 1)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
-            let item = store.calendarEvents[itemIdx]
-            if store.activeDrawerItemId != item.id {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = item.id
-                    store.activeDrawerPodId = candidate.id
-                }
-            }
-        } else if candidate.id == "vitals" && store.isVitalsDecomposed && !store.vitalsEnabledMetrics.isEmpty {
-            let count = max(store.vitalsEnabledMetrics.count, 1)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
-            let metric = store.vitalsEnabledMetrics[itemIdx]
-            let itemId = "vitals-\(metric.rawValue)"
-            if store.activeDrawerItemId != itemId {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = itemId
-                    store.activeDrawerPodId = candidate.id
-                }
-            }
-        } else if candidate.id == "scripts" && store.isScriptsDecomposed && !store.scriptsEnabledActions.isEmpty {
-            let count = max(store.scriptsEnabledActions.count, 1)
-            let itemIdx = min(max(Int(podRelativeY * Double(count)), 0), count - 1)
-            let action = store.scriptsEnabledActions[itemIdx]
-            let itemId = "scripts-\(action.id)"
-            if store.activeDrawerItemId != itemId {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                    store.activeDrawerItemId = itemId
+                    store.activeDrawerItemId = subItemId
                     store.activeDrawerPodId = candidate.id
                 }
             }

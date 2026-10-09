@@ -4,6 +4,7 @@ import AppKit
 import PurahCore
 
 public struct DropShelfDrawerView: View {
+    public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
     @State private var isTargeted: Bool = false
 
@@ -15,13 +16,19 @@ public struct DropShelfDrawerView: View {
         palette.podColor(for: "shelf")
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(state: ShelfPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
         self.store = store
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "shelf") as? DropShelfPlugin)?.state ?? ShelfPluginState()
+        self.init(state: pluginState, store: store)
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if store.shelfFiles.isEmpty {
+            if state.files.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
                     Image(systemName: "tray.and.arrow.down.fill")
@@ -48,7 +55,7 @@ public struct DropShelfDrawerView: View {
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 5) {
-                        ForEach(store.shelfFiles) { file in
+                        ForEach(state.files) { file in
                             HStack(spacing: 8) {
                                 Button {
                                     if let path = file.filePath {
@@ -89,7 +96,8 @@ public struct DropShelfDrawerView: View {
                                 }
 
                                 Button {
-                                    store.shelfFiles.removeAll { $0.id == file.id }
+                                    state.removeFile(id: file.id)
+                                    store._shelfFiles.removeAll { $0.id == file.id }
                                 } label: {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 9))
@@ -106,12 +114,13 @@ public struct DropShelfDrawerView: View {
                 }
 
                 HStack {
-                    Text("\(store.shelfFiles.count) item(s)")
+                    Text("\(state.files.count) item(s)")
                         .font(.system(size: 9))
                         .foregroundColor(.gray)
                     Spacer()
                     Button("Clear All") {
-                        store.shelfFiles.removeAll()
+                        state.clear()
+                        store._shelfFiles.removeAll()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 9))
@@ -125,17 +134,7 @@ public struct DropShelfDrawerView: View {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     if let url = url {
                         Task { @MainActor in
-                            let name = url.lastPathComponent
-                            let ext = url.pathExtension
-                            let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
-                            let size = (attr?[.size] as? Int64) ?? 0
-                            let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-                            store.shelfFiles.append(ShelfFileItem(
-                                name: name,
-                                sizeDescription: sizeDesc,
-                                fileExtension: ext,
-                                filePath: url.path
-                            ))
+                            state.addFile(url: url)
                         }
                     }
                 }

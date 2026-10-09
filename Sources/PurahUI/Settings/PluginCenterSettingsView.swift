@@ -11,9 +11,11 @@ public struct PluginCenterSettingsView: View {
         ThemeManager.shared.palette
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(store: PurahWorkspaceStore, initialPluginId: String? = nil) {
         self.store = store
-        if let first = PluginRegistry.shared.allPlugins.first?.manifest.id {
+        if let id = initialPluginId {
+            self._selectedPluginId = State(initialValue: id)
+        } else if let first = PluginRegistry.shared.allPlugins.first?.manifest.id {
             self._selectedPluginId = State(initialValue: first)
         }
     }
