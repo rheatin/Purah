@@ -132,7 +132,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 defer: false
             )
             window.minSize = NSSize(width: 700, height: 620)
-            window.title = "Purah Pad - " + "simulator.title".localized
+            window.title = "Purah - " + "settings.title".localized
             window.center()
             window.hidesOnDeactivate = false
             window.contentView = NSHostingView(rootView: prefView)

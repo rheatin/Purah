@@ -28,10 +28,12 @@ public struct VisualLayoutSimulatorView: View {
                             Text("simulator.title".localized)
                                 .font(.title3.weight(.bold))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
                         }
                         Text("simulator.subtitle".localized)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
 
                     Spacer()
@@ -98,7 +100,44 @@ public struct VisualLayoutSimulatorView: View {
                     )
                 }
 
-                // 1. Rail & Drawer Geometry Card
+                // 1. Mini Screen Simulation (Top Primary Focus)
+                ScreenSimulationCanvas(store: store)
+
+                // 2. Presets Card
+                settingsCard(title: "simulator.presets".localized, icon: "sparkle") {
+                    HStack(spacing: 12) {
+                        ForEach(PodPreset.allCases) { preset in
+                            Button {
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                    store.applyPreset(preset)
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(preset.defaultTitle)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(store.currentPreset == preset ? palette.primaryAccent : (palette.style == .native ? Color.primary : .white))
+                                        .lineLimit(1)
+                                    Text(preset.defaultDescription)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(3)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, minHeight: 75, alignment: .topLeading)
+                                .background(store.currentPreset == preset ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(store.currentPreset == preset ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: 1.5)
+                                )
+                            }
+                            .buttonStyle(.tactile)
+                        }
+                    }
+                }
+
+                // 3. Rail & Drawer Geometry Card
                 settingsCard(title: "Rail & Drawer Geometry", icon: "ruler.fill") {
                     VStack(spacing: 16) {
                         // Rail bar width
@@ -427,42 +466,6 @@ public struct VisualLayoutSimulatorView: View {
                         }
                     }
                 }
-
-                // 5. Mini Screen Simulation
-                ScreenSimulationCanvas(store: store)
-
-                // 6. Presets Card
-                settingsCard(title: "Ergonomic Presets", icon: "sparkle") {
-                    HStack(spacing: 12) {
-                        ForEach(PodPreset.allCases) { preset in
-                            Button {
-                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                    store.applyPreset(preset)
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(preset.defaultTitle)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(store.currentPreset == preset ? palette.primaryAccent : (palette.style == .native ? Color.primary : .white))
-                                    Text(preset.defaultDescription)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(3)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                .padding(12)
-                                .frame(maxWidth: .infinity, minHeight: 75, alignment: .topLeading)
-                                .background(store.currentPreset == preset ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor).opacity(0.4))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(store.currentPreset == preset ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: 1.5)
-                                )
-                            }
-                            .buttonStyle(.tactile)
-                        }
-                    }
-                }
             }
             .padding(24)
             .frame(width: 680)
@@ -481,6 +484,7 @@ public struct VisualLayoutSimulatorView: View {
                 Text(title)
                     .font(.headline)
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
             }
 
             content()

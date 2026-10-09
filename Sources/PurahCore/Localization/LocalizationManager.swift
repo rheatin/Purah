@@ -5,6 +5,7 @@ import Observation
 public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
     case system
     case english = "en"
+    case chinese = "zh-Hans"
 
     public var id: String { rawValue }
 
@@ -12,6 +13,7 @@ public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
         switch self {
         case .system: return "System Default"
         case .english: return "English"
+        case .chinese: return "简体中文"
         }
     }
 }
@@ -28,6 +30,10 @@ public final class LocalizationManager {
     public var resolvedLanguage: AppLanguage {
         if currentLanguage != .system {
             return currentLanguage
+        }
+        let preferred = Locale.preferredLanguages.first?.lowercased() ?? ""
+        if preferred.hasPrefix("zh") {
+            return .chinese
         }
         return .english
     }
@@ -47,10 +53,21 @@ public final class LocalizationManager {
         .english: [
             "app.name": "Purah Pad",
             "app.tagline": "macOS Magnetic Edge Rails & Ergonomic Assembly Kernel",
-            "menu.openSimulator": "Open Layout Simulator...",
+            "menu.openSimulator": "Settings...",
+            "menu.settings": "Settings...",
             "menu.autoLayout": "Magic Ergonomics Auto-Layout",
             "menu.checkUpdates": "Check for Updates...",
             "menu.quit": "Quit Purah",
+
+            // Tabs
+            "tab.layout": "Layout",
+            "tab.plugins": "Plugins",
+            "tab.permissions": "Permissions",
+            "tab.diagnostics": "Diagnostics",
+
+            // Marketplace Tabs
+            "marketplace.tab.market": "Market",
+            "marketplace.tab.installed": "Installed",
 
             // Zones
             "zone.glance": "Glance Zone (0% ~ 20%)",
@@ -73,8 +90,10 @@ public final class LocalizationManager {
             "preset.media.desc": "Audio wave meter on left, minimal glance calendar on right.",
 
             // Actions & UI
-            "simulator.title": "Purah Edge Rail Layout Simulator",
-            "simulator.subtitle": "Bilateral Magnetic Rails · Ergonomic Auto-Fitting & Spring Collision Avoidance",
+            "simulator.title": "Settings",
+            "simulator.subtitle": "Bilateral Magnetic Rails & Ergonomic Assembly",
+            "settings.title": "Settings",
+            "settings.subtitle": "Bilateral Magnetic Rails & Ergonomic Assembly",
             "simulator.magicButton": "Magic Ergonomics",
             "simulator.presets": "Ergonomic Presets",
             "updater.title": "Software Update",
@@ -83,6 +102,59 @@ public final class LocalizationManager {
             "updater.button.update": "Update Now",
             "updater.button.later": "Later",
             "updater.button.check": "Check for Updates"
+        ],
+        .chinese: [
+            "app.name": "Purah Pad",
+            "app.tagline": "macOS 磁吸边缘轨道与人体工程学内核",
+            "menu.openSimulator": "设置...",
+            "menu.settings": "设置...",
+            "menu.autoLayout": "智能自适应布局",
+            "menu.checkUpdates": "检查更新...",
+            "menu.quit": "退出 Purah",
+
+            // Tabs
+            "tab.layout": "布局",
+            "tab.plugins": "插件",
+            "tab.permissions": "权限",
+            "tab.diagnostics": "诊断",
+
+            // Marketplace Tabs
+            "marketplace.tab.market": "市场",
+            "marketplace.tab.installed": "已安装",
+
+            // Zones
+            "zone.glance": "瞥视区 (0% ~ 20%)",
+            "zone.goldenAction": "黄金操作区 (20% ~ 75%)",
+            "zone.quickFlick": "速滑区 (75% ~ 100%)",
+
+            // Pods
+            "pod.calendar": "日历日程",
+            "pod.todo": "快捷待办",
+            "pod.music": "律动音乐",
+            "pod.shelf": "拖拽暂存架",
+            "pod.notes": "即时便签",
+
+            // Presets
+            "preset.balanced.title": "平衡人体工学",
+            "preset.balanced.desc": "左右双轨均匀分布。右轨承载日程与待办，左轨承载暂存架与便签，音乐居于底部。",
+            "preset.sprint.title": "冲刺生产力",
+            "preset.sprint.desc": "左轨聚焦暂存与代码草稿，右轨全力聚焦日程时间线与待办任务。",
+            "preset.media.title": "沉浸式影音",
+            "preset.media.desc": "左轨全尺寸律动波形表，右轨极简微光日历。",
+
+            // Actions & UI
+            "simulator.title": "设置",
+            "simulator.subtitle": "双侧磁吸轨道与人体工程学空间装配",
+            "settings.title": "设置",
+            "settings.subtitle": "双侧磁吸轨道与人体工程学空间装配",
+            "simulator.magicButton": "智能编排",
+            "simulator.presets": "预设方案",
+            "updater.title": "软件更新",
+            "updater.upToDate": "已经是最新版本！Purah Pad 运行在最新系统内核。",
+            "updater.newVersion": "发现 Purah Pad 全新版本！",
+            "updater.button.update": "立即更新",
+            "updater.button.later": "稍后",
+            "updater.button.check": "检查更新"
         ]
     ]
 }

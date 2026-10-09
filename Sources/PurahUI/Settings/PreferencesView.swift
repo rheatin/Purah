@@ -12,10 +12,20 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
 
     public var title: String {
         switch self {
-        case .layout: return "Layout & Rails"
+        case .layout: return "Layout"
         case .plugins: return "Plugins"
-        case .permissions: return "Permissions & Access"
-        case .diagnostics: return "Diagnostics & Health"
+        case .permissions: return "Permissions"
+        case .diagnostics: return "Diagnostics"
+        }
+    }
+
+    @MainActor
+    public var localizedTitle: String {
+        switch self {
+        case .layout: return "tab.layout".localized
+        case .plugins: return "tab.plugins".localized
+        case .permissions: return "tab.permissions".localized
+        case .diagnostics: return "tab.diagnostics".localized
         }
     }
 
@@ -45,26 +55,30 @@ public struct PreferencesView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Segmented Top Tab Bar
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(PreferencesTab.allCases) { tab in
+                    let isSelected = selectedTab == tab
                     Button {
                         selectedTab = tab
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: tab.icon)
-                            Text(tab.title)
-                                .fontWeight(.medium)
+                                .font(.system(size: 12.5, weight: .semibold))
+                            Text(tab.localizedTitle)
+                                .font(.system(size: 12.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
-                        .foregroundColor(selectedTab == tab ? palette.primaryAccent : .gray)
-                        .padding(.vertical, 8)
+                        .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : .white) : .secondary)
+                        .padding(.vertical, 7)
                         .padding(.horizontal, 14)
                         .background(
-                            selectedTab == tab ? palette.surfaceBackground : Color.clear
+                            isSelected ? palette.surfaceBackground : Color.clear
                         )
                         .cornerRadius(8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(selectedTab == tab ? palette.borderColor : Color.clear, lineWidth: 1)
+                                .stroke(isSelected ? palette.borderColor : Color.clear, lineWidth: 1)
                         )
                     }
                     .buttonStyle(.tactile)
