@@ -4,34 +4,24 @@ import AppKit
 import UniformTypeIdentifiers
 import PurahCore
 
-public enum PluginMarketFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case available = "Get"
-    case installed = "Installed"
-    case community = "Community"
+public enum PluginCenterTab: String, CaseIterable, Identifiable, Sendable {
+    case marketplace = "market"
+    case installed = "installed"
 
-    public var id: String { rawValue }
+    nonisolated public var id: String { rawValue }
 
-    public var icon: String {
+    nonisolated public var icon: String {
         switch self {
-        case .all: return "sparkles"
-        case .available: return "arrow.down.circle.fill"
+        case .marketplace: return "sparkles"
         case .installed: return "checkmark.circle.fill"
-        case .community: return "person.2.fill"
         }
     }
-}
 
-public enum MarketplaceViewMode: String, CaseIterable, Identifiable {
-    case catalog = "Explore Marketplace"
-    case settings = "Plugin Settings"
-
-    public var id: String { rawValue }
-
-    public var icon: String {
+    @MainActor
+    public var localizedTitle: String {
         switch self {
-        case .catalog: return "square.grid.2x2.fill"
-        case .settings: return "slider.horizontal.3"
+        case .marketplace: return "marketplace.tab.market".localized
+        case .installed: return "marketplace.tab.installed".localized
         }
     }
 }
@@ -46,9 +36,8 @@ public struct PluginMarketplaceView: View {
     public let store: PurahWorkspaceStore
     public let marketManager: PluginMarketManager
 
-    @State private var selectedFilter: PluginMarketFilter = .all
+    @State private var selectedTab: PluginCenterTab = .marketplace
     @State private var searchFilter: String = ""
-    @State private var viewMode: MarketplaceViewMode = .catalog
     @State private var securityReviewManifest: PurahPluginManifest? = nil
     @State private var configuringPluginId: IdentifiablePluginId? = nil
     @State private var confirmingUninstallId: String? = nil
@@ -69,59 +58,8 @@ public struct PluginMarketplaceView: View {
         marketManager.availableCatalog
     }
 
-    private var installedCount: Int {
-        marketManager.installedPluginIds.count
-    }
-
-    private var availableCount: Int {
-        allCatalog.filter { !marketManager.isInstalled(id: $0.id) }.count
-    }
-
-    private var heavyGpuCount: Int {
-        allCatalog.filter { $0.category == .heavyGPU }.count
-    }
-
-    private var communityCount: Int {
-        allCatalog.filter { $0.isCommunity }.count
-    }
-
-    private var activeHeavyCount: Int {
-        allCatalog.filter {
-            $0.category == .heavyGPU &&
-            marketManager.isInstalled(id: $0.id) &&
-            marketManager.isEnabled(id: $0.id)
-        }.count
-    }
-
-    private var activeServiceCount: Int {
-        allCatalog.filter {
-            $0.category == .systemService &&
-            marketManager.isInstalled(id: $0.id) &&
-            marketManager.isEnabled(id: $0.id)
-        }.count
-    }
-
-    private var activeLightweightCount: Int {
-        allCatalog.filter {
-            $0.category == .lightweight &&
-            marketManager.isInstalled(id: $0.id) &&
-            marketManager.isEnabled(id: $0.id)
-        }.count
-    }
-
     private var filteredManifests: [PurahPluginManifest] {
-        let base: [PurahPluginManifest]
-        switch selectedFilter {
-        case .all:
-            base = allCatalog
-        case .installed:
-            base = allCatalog.filter { marketManager.isInstalled(id: $0.id) }
-        case .available:
-            base = allCatalog.filter { !marketManager.isInstalled(id: $0.id) }
-        case .community:
-            base = allCatalog.filter { $0.isCommunity }
-        }
-
+        let base = allCatalog
         let query = searchFilter.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty {
             return base
@@ -137,29 +75,75 @@ public struct PluginMarketplaceView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Top Mode Switcher Bar
+            // Top Mode Switcher Bar - Just Two Tabs: 市场 (Marketplace) & 已安装 (Installed)
             HStack(spacing: 12) {
-                Picker("", selection: $viewMode) {
-                    ForEach(MarketplaceViewMode.allCases) { mode in
-                        HStack(spacing: 4) {
-                            Image(systemName: mode.icon)
-                            Text(mode.rawValue)
+                HStack(spacing: 4) {
+                    ForEach(PluginCenterTab.allCases) { tab in
+                        let isSelected = selectedTab == tab
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                                selectedTab = tab
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(tab.localizedTitle)
+                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium, design: .rounded))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : .white) : .secondary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(isSelected ? palette.surfaceBackground : Color.clear)
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(isSelected ? palette.borderColor.opacity(0.8) : Color.clear, lineWidth: 1)
+                            )
                         }
-                        .tag(mode)
+                        .buttonStyle(.tactile)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 250)
+                .padding(2)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(8)
 
                 Spacer()
 
-                if viewMode == .catalog {
+                if selectedTab == .marketplace {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Search plugins, tags...", text: $searchFilter)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                        if !searchFilter.isEmpty {
+                            Button {
+                                searchFilter = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .cornerRadius(6)
+                    .frame(width: 180)
+
                     Button {
                         loadLocalPlugin()
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Image(systemName: "plus.circle.fill")
-                            Text("Load Local Plugin...")
+                            Text("Load Local...")
+                                .lineLimit(1)
                         }
                         .font(.system(size: 11, weight: .medium))
                         .padding(.horizontal, 10)
@@ -175,13 +159,13 @@ public struct PluginMarketplaceView: View {
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
 
             Divider()
                 .background(palette.borderColor.opacity(0.4))
 
-            if viewMode == .settings {
+            if selectedTab == .installed {
                 PluginCenterSettingsView(store: store)
             } else {
                 catalogView
@@ -216,17 +200,8 @@ public struct PluginMarketplaceView: View {
 
     // MARK: - Catalog View
     private var catalogView: some View {
-        VStack(spacing: 12) {
-            // 1. Top Stats Bar
-            statsBar
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-
-            // 2. Filter & Search Controls
-            filterAndSearchBar
-                .padding(.horizontal, 18)
-
-            // 3. Optional Feedback Banner
+        VStack(spacing: 0) {
+            // 1. Optional Feedback Banner
             if let feedback = feedbackBanner {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
@@ -253,10 +228,11 @@ public struct PluginMarketplaceView: View {
                         .stroke(Color.green.opacity(0.35), lineWidth: 1)
                 )
                 .padding(.horizontal, 18)
+                .padding(.top, 10)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // 4. Cards Scroll View
+            // 2. Cards Scroll View
             ScrollView(.vertical, showsIndicators: true) {
                 if filteredManifests.isEmpty {
                     VStack(spacing: 10) {
@@ -264,7 +240,7 @@ public struct PluginMarketplaceView: View {
                         Image(systemName: "puzzlepiece.extension")
                             .font(.system(size: 32))
                             .foregroundColor(.secondary)
-                        Text("No plugins match the current filter")
+                        Text("No plugins match the current search")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Spacer(minLength: 40)
@@ -282,150 +258,10 @@ public struct PluginMarketplaceView: View {
                         }
                     }
                     .padding(.horizontal, 18)
+                    .padding(.top, feedbackBanner == nil ? 14 : 6)
                     .padding(.bottom, 18)
                 }
             }
-        }
-    }
-
-    // MARK: - Stats Bar
-    private var statsBar: some View {
-        HStack(spacing: 12) {
-            // Card 1: Installed plugins count
-            statCard(
-                icon: "puzzlepiece.extension.fill",
-                iconColor: palette.primaryAccent,
-                title: "\(installedCount) / \(allCatalog.count) Installed",
-                subtitle: "\(store.pods.filter(\.isEnabled).count) Active on Rails"
-            )
-
-            // Card 2: Active footprint status
-            let isHeavy = activeHeavyCount > 0
-            statCard(
-                icon: "bolt.badge.clock.fill",
-                iconColor: isHeavy ? Color.orange : Color.green,
-                title: isHeavy ? "\(activeHeavyCount) Heavy Metal GPU" : "Optimal Footprint",
-                subtitle: "\(activeServiceCount) Services · \(activeLightweightCount) Lean"
-            )
-
-            // Card 3: Rail Height Budget
-            let leftReq = Int(store.totalRequiredHeight(for: .left))
-            let rightReq = Int(store.totalRequiredHeight(for: .right))
-            let avail = Int(store.availableScreenHeight(for: .left))
-            let isOverload = store.isRailOverloaded(edge: .left) || store.isRailOverloaded(edge: .right)
-
-            statCard(
-                icon: "ruler.fill",
-                iconColor: isOverload ? Color.red : Color.blue,
-                title: "L: \(leftReq)pt · R: \(rightReq)pt",
-                subtitle: "Avail: \(avail)pt (\(isOverload ? "⚠️ Overload" : "Budget OK"))"
-            )
-        }
-    }
-
-    private func statCard(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(iconColor.opacity(0.16))
-                    .frame(width: 30, height: 30)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(iconColor)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.system(size: 9.5))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(palette.surfaceBackground)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Filter & Search Controls
-    private var filterAndSearchBar: some View {
-        HStack(spacing: 12) {
-            // Segmented Picker
-            HStack(spacing: 4) {
-                ForEach(PluginMarketFilter.allCases) { filter in
-                    let isSelected = selectedFilter == filter
-                    Button {
-                        selectedFilter = filter
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: filter.icon)
-                                .font(.system(size: 9.5))
-                            Text(filterTitle(filter))
-                                .font(.system(size: 10.5, weight: isSelected ? .bold : .medium))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                        .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : .white) : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(isSelected ? palette.surfaceBackground : Color.clear)
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(isSelected ? palette.borderColor.opacity(0.7) : Color.clear, lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                }
-            }
-            .padding(2)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
-
-            Spacer()
-
-            // Search Bar
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("Search title, author, tags...", text: $searchFilter)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11))
-                if !searchFilter.isEmpty {
-                    Button {
-                        searchFilter = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            .cornerRadius(6)
-            .frame(width: 170)
-        }
-    }
-
-    private func filterTitle(_ filter: PluginMarketFilter) -> String {
-        switch filter {
-        case .all: return "All (\(allCatalog.count))"
-        case .available: return "Available (\(availableCount))"
-        case .installed: return "Installed (\(installedCount))"
-        case .community: return "Community (\(communityCount))"
         }
     }
 

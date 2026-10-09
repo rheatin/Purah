@@ -191,6 +191,7 @@ public struct PluginCenterSettingsView: View {
                                 Label("Theme Accent Color", systemImage: "paintpalette.fill")
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
 
                                 Spacer()
 
@@ -283,9 +284,10 @@ public struct PluginCenterSettingsView: View {
                         // Dedicated Isolated Plugin Settings View
                         if let customSettings = activePlugin.makeSettingsView(store: store) {
                             VStack(alignment: .leading, spacing: 10) {
-                                Label("Plugin Configuration", systemImage: "gearshape.2.fill")
+                                Label("settings.title".localized, systemImage: "gearshape.2.fill")
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
 
                                 Divider()
                                     .background(palette.borderColor.opacity(0.3))
@@ -306,6 +308,7 @@ public struct PluginCenterSettingsView: View {
                             Label("Management", systemImage: "trash")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
 
                             Divider()
                                 .background(palette.borderColor.opacity(0.3))
