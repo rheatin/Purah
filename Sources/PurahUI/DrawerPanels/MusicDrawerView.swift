@@ -283,7 +283,7 @@ public struct MusicDrawerView: View {
         let dynamicArtSize = min(max((availableHeight - 200) * 0.65, 52.0), 80.0)
 
         VStack(spacing: 8) {
-            // Top Bar: Source Badge + Lyrics Toggle
+            // Top Bar: Source Badge
             HStack {
                 HStack(spacing: 5) {
                     Image(systemName: sourceIconName(for: state.track.sourceApp))
@@ -298,41 +298,45 @@ public struct MusicDrawerView: View {
                 .background(musicColor.opacity(0.12))
                 .cornerRadius(5)
 
-                if let lyrics = state.track.lyrics, !lyrics.isEmpty {
-                    Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                            isShowingLyrics.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: isShowingLyrics ? "music.note" : "quote.bubble.fill")
-                                .font(.system(size: 8, weight: .bold))
-                            Text(isShowingLyrics ? "Artwork" : "Lyrics")
-                                .purahCaption(size: 8.5, weight: .bold, design: .rounded)
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(isShowingLyrics ? musicColor.opacity(0.25) : Color.primary.opacity(0.08))
-                        .foregroundColor(isShowingLyrics ? musicColor : .secondary)
-                        .cornerRadius(5)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Toggle lyrics view")
-                }
-
                 Spacer()
             }
 
             Spacer(minLength: 2)
 
-            if isShowingLyrics, let lyrics = state.track.lyrics, !lyrics.isEmpty {
-                LyricsDisplayView(
-                    lyrics: lyrics,
-                    accentColor: musicColor,
-                    palette: palette,
-                    maxHeight: max(availableHeight - 140, 100)
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            if let lyrics = state.track.lyrics, !lyrics.isEmpty {
+                // Direct Lyrics Showcase: Compact Track Bar + Flowing Lyrics Sheet
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        artworkThumbnail(size: 34, cornerRadius: 6)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(state.track.title)
+                                .purahTitle(size: 11.5, weight: .bold, design: .rounded)
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .lineLimit(1)
+
+                            Text(state.track.artist)
+                                .purahBody(size: 9.5, weight: .medium, design: .rounded)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "quote.bubble.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(musicColor)
+                    }
+                    .padding(.horizontal, 2)
+
+                    LyricsDisplayView(
+                        lyrics: lyrics,
+                        accentColor: musicColor,
+                        palette: palette,
+                        maxHeight: max(availableHeight - 170, 110)
+                    )
+                }
+                .transition(.opacity)
             } else {
                 // Center Artwork & Ambient Glow Showcase
                 Button {
@@ -363,7 +367,7 @@ public struct MusicDrawerView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .transition(.opacity)
             }
 
             Spacer(minLength: 2)
