@@ -111,11 +111,18 @@ public struct PodCapsuleView: View {
                         )
                         onMove(dampedStart)
                     }
-                    .onEnded { _ in
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                            let safeBounds: ClosedRange<Double> = 0.02...max(0.98 - pod.range.length, 0.02)
-                            let finalStart = min(max(pod.range.start, safeBounds.lowerBound), safeBounds.upperBound)
-                            onMove(finalStart)
+                    .onEnded { value in
+                        let horizontalDistance = value.translation.width
+                        if (pod.edge == .left && horizontalDistance > 75.0) || (pod.edge == .right && horizontalDistance < -75.0) {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                onTransferEdge()
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                let safeBounds: ClosedRange<Double> = 0.02...max(0.98 - pod.range.length, 0.02)
+                                let finalStart = min(max(pod.range.start, safeBounds.lowerBound), safeBounds.upperBound)
+                                onMove(finalStart)
+                            }
                         }
                         dragInitialStart = nil
                     }

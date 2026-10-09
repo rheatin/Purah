@@ -71,8 +71,8 @@ struct ErgonomicAutoLayoutEngineTests {
         #expect(result[2].id == "flick")
     }
 
-    @Test("Optimizes bilateral layout across left and right rails for enabled pods")
-    func testOptimizeBilateralLayout() {
+    @Test("Optimizes bilateral layout respecting user edge assignments by default")
+    func testOptimizeBilateralLayoutPreservesUserEdges() {
         let vitals = SlotPod(
             id: "vitals", name: "Vitals", systemIcon: "waveform", edge: .right,
             range: .init(start: 0.1, length: 0.1), ambientStyle: .ghostDot,
@@ -89,16 +89,24 @@ struct ErgonomicAutoLayoutEngineTests {
             preferredZone: .quickFlick, ergonomicWeight: 20, isEnabled: false
         )
 
-        let optimized = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(pods: [vitals, calendar, disabledMusic])
+        // Default reassignEdges = false: user-assigned edges are 100% strictly respected!
+        let userAssigned = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(pods: [vitals, calendar, disabledMusic], reassignEdges: false)
 
-        let optVitals = optimized.first(where: { $0.id == "vitals" })
-        let optCal = optimized.first(where: { $0.id == "calendar" })
-        let optMusic = optimized.first(where: { $0.id == "music" })
+        let userVitals = userAssigned.first(where: { $0.id == "vitals" })
+        let userCal = userAssigned.first(where: { $0.id == "calendar" })
+        let userMusic = userAssigned.first(where: { $0.id == "music" })
+
+        #expect(userVitals?.edge == .right) // Vitals can be on the right!
+        #expect(userCal?.edge == .left) // Calendar can be on the left!
+        #expect(userMusic?.isEnabled == false)
+
+        // Explicit reassignEdges = true: resets to default ergonomic partitions
+        let repartitioned = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(pods: [vitals, calendar, disabledMusic], reassignEdges: true)
+
+        let optVitals = repartitioned.first(where: { $0.id == "vitals" })
+        let optCal = repartitioned.first(where: { $0.id == "calendar" })
 
         #expect(optVitals?.edge == .left)
-        #expect(optVitals?.preferredZone == .glance)
         #expect(optCal?.edge == .right)
-        #expect(optCal?.preferredZone == .goldenAction)
-        #expect(optMusic?.isEnabled == false)
     }
 }

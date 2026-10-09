@@ -68,9 +68,11 @@ public enum ErgonomicAutoLayoutEngine {
     }
 
     /// 最优双轨人机工程学自动排版 (Optimal Bilateral Ergonomic Layout Optimizer)
-    /// 针对所有已启用的插件，智能分配左右导轨（双轨平衡），并严格按照三大舒适区（瞥视/黄金/速滑）与权重排布
+    /// 针对所有已启用的插件，按其所在导轨执行人机工学舒适区与权重排布
+    /// - Parameter reassignEdges: 是否全局重排分配左右导轨（默认 false：绝对尊重用户的左右侧归属，任何插件均可自由安放在左轨或右轨）
     public static func optimizeBilateralLayout(
         pods: [SlotPod],
+        reassignEdges: Bool = false,
         availableHeight: Double = 800.0,
         safeBounds: ClosedRange<Double> = defaultSafeBounds,
         gap: Double = defaultGap
@@ -78,63 +80,60 @@ public enum ErgonomicAutoLayoutEngine {
         let enabledPods = pods.filter { $0.isEnabled }
         guard !enabledPods.isEmpty else { return pods }
 
-        func preferredEdge(for pod: SlotPod) -> MountEdge {
-            switch pod.id {
-            case "vitals", "shelf", "notes", "terminal", "docker":
-                return .left
-            case "calendar", "todo", "music", "weather":
-                return .right
-            default:
-                return pod.edge
-            }
-        }
-
-        func zone(for pod: SlotPod) -> ZoneType {
-            switch pod.id {
-            case "vitals", "weather":
-                return .glance
-            case "calendar", "todo", "music", "terminal", "docker":
-                return .goldenAction
-            case "shelf", "notes", "scripts", "git-radar":
-                return .quickFlick
-            default:
-                return pod.preferredZone
-            }
-        }
-
         var leftCandidates: [SlotPod] = []
         var rightCandidates: [SlotPod] = []
 
-        for var pod in enabledPods {
-            let targetEdge = preferredEdge(for: pod)
-            pod.edge = targetEdge
-            pod.preferredZone = zone(for: pod)
-            if targetEdge == .left {
-                leftCandidates.append(pod)
-            } else {
-                rightCandidates.append(pod)
+        if reassignEdges {
+            func preferredEdge(for pod: SlotPod) -> MountEdge {
+                switch pod.id {
+                case "vitals", "shelf", "notes", "terminal", "docker":
+                    return .left
+                case "calendar", "todo", "music", "weather":
+                    return .right
+                default:
+                    return pod.edge
+                }
             }
-        }
 
-        // 双轨负载均衡：如果一侧模块数过多，将灵活性最高的模块平衡迁移到另一侧
-        let flexibleShiftOrder = ["scripts", "notes", "shelf", "music", "git-radar"]
-        while leftCandidates.count > rightCandidates.count + 2 {
-            if let shiftIdx = leftCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
-                var shifted = leftCandidates.remove(at: shiftIdx)
-                shifted.edge = .right
-                rightCandidates.append(shifted)
-            } else {
-                break
+            for var pod in enabledPods {
+                let targetEdge = preferredEdge(for: pod)
+                pod.edge = targetEdge
+                if targetEdge == .left {
+                    leftCandidates.append(pod)
+                } else {
+                    rightCandidates.append(pod)
+                }
             }
-        }
 
-        while rightCandidates.count > leftCandidates.count + 2 {
-            if let shiftIdx = rightCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
-                var shifted = rightCandidates.remove(at: shiftIdx)
-                shifted.edge = .left
-                leftCandidates.append(shifted)
-            } else {
-                break
+            // 双轨负载均衡：如果一侧模块数过多，将灵活性最高的模块平衡迁移到另一侧
+            let flexibleShiftOrder = ["scripts", "notes", "shelf", "music", "git-radar"]
+            while leftCandidates.count > rightCandidates.count + 2 {
+                if let shiftIdx = leftCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
+                    var shifted = leftCandidates.remove(at: shiftIdx)
+                    shifted.edge = .right
+                    rightCandidates.append(shifted)
+                } else {
+                    break
+                }
+            }
+
+            while rightCandidates.count > leftCandidates.count + 2 {
+                if let shiftIdx = rightCandidates.firstIndex(where: { flexibleShiftOrder.contains($0.id) }) {
+                    var shifted = rightCandidates.remove(at: shiftIdx)
+                    shifted.edge = .left
+                    leftCandidates.append(shifted)
+                } else {
+                    break
+                }
+            }
+        } else {
+            // 严密尊重用户对每个插件的左/右导轨归属指定！绝对不强行篡改用户指定的 edge！
+            for pod in enabledPods {
+                if pod.edge == .left {
+                    leftCandidates.append(pod)
+                } else {
+                    rightCandidates.append(pod)
+                }
             }
         }
 
