@@ -216,6 +216,17 @@ public struct AmbientRailStripView: View {
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                 Spacer()
+
+                Button {
+                    store.openPluginSettings(id: pod.id)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.tactile)
+                .help("Open \(plugin.manifest.displayName) Settings")
+
                 pinButton(id: pod.id, isPinned: isPinned, color: color)
             }
             plugin.makeDrawerView(context: context)
@@ -223,6 +234,24 @@ public struct AmbientRailStripView: View {
         .padding(8)
         .frame(width: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), height: totalHeight)
         .liquidDrawerBackground(shape: drawerShape, accentColor: color)
+        .contextMenu {
+            Button {
+                store.openPluginSettings(id: pod.id)
+            } label: {
+                Label("Configure \(plugin.manifest.displayName)...", systemImage: "gearshape")
+            }
+            Button {
+                store.togglePinItem(id: pod.id)
+            } label: {
+                Label(isPinned ? "Unpin Drawer" : "Pin Drawer", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+            Divider()
+            Button(role: .destructive) {
+                store.togglePodEnabled(id: pod.id)
+            } label: {
+                Label("Unmount from Rail", systemImage: "xmark.circle")
+            }
+        }
     }
 
     @ViewBuilder

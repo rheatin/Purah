@@ -993,6 +993,37 @@ public struct CalendarPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // 0. Sample Calendar Notice (if not connected)
+            if !state.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.subheadline)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Currently Displaying Sample Calendar")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Connect Apple Calendar for live events")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button("Connect") {
+                        Task {
+                            let granted = await PermissionManager.shared.requestCalendarAccess()
+                            if granted {
+                                state.syncEvents(into: store)
+                                SystemCalendarSyncService.shared.syncEvents(into: store)
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.12))
+                .cornerRadius(8)
+            }
+
             // 1. Calendar Scope
             VStack(alignment: .leading, spacing: 4) {
                 Text("Calendar Scope")

@@ -36,6 +36,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             TransientHUDController.shared.showWarning(message: message)
         }
 
+        // 注册直达插件设置的回调
+        store.onRequestOpenPluginSettings = { [weak self] pluginId in
+            self?.showPreferences(initialTab: .plugins, initialPluginId: pluginId)
+        }
+
         // 注册全局冻结/激活快捷键
         GlobalHotKeyManager.shared.register(shortcut: store.hotKeyShortcut) { [weak self] in
             self?.toggleFreezeMode()
@@ -122,9 +127,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         showPreferences(initialTab: .permissions)
     }
 
-    private func showPreferences(initialTab: PreferencesTab) {
+    private func showPreferences(initialTab: PreferencesTab, initialPluginId: String? = nil) {
         if preferencesWindow == nil {
-            let prefView = PreferencesView(store: store, initialTab: initialTab)
+            let prefView = PreferencesView(store: store, initialTab: initialTab, initialPluginId: initialPluginId)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 680),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -139,7 +144,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isReleasedWhenClosed = false
             preferencesWindow = window
         } else {
-            let prefView = PreferencesView(store: store, initialTab: initialTab)
+            let prefView = PreferencesView(store: store, initialTab: initialTab, initialPluginId: initialPluginId)
             preferencesWindow?.contentView = NSHostingView(rootView: prefView)
         }
         preferencesWindow?.makeKeyAndOrderFront(nil)

@@ -31,6 +31,13 @@ public final class PurahWorkspaceStore {
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
 
     @ObservationIgnored
+    public var onRequestOpenPluginSettings: (@MainActor (String) -> Void)?
+
+    public func openPluginSettings(id: String) {
+        onRequestOpenPluginSettings?(id)
+    }
+
+    @ObservationIgnored
     private var capabilityProviders: [String: any PurahPodCapabilityProvider] = [:]
 
     @ObservationIgnored
