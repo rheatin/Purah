@@ -10,6 +10,7 @@ public struct PodCapsuleView: View {
     public let onResize: (Double) -> Void
     public let onTransferEdge: () -> Void
     public let onFillRail: () -> Void
+    public let onDisable: () -> Void
 
     @State private var dragInitialStart: Double? = nil
     @State private var resizeInitialLength: Double? = nil
@@ -31,7 +32,8 @@ public struct PodCapsuleView: View {
         onMove: @escaping (Double) -> Void,
         onResize: @escaping (Double) -> Void,
         onTransferEdge: @escaping () -> Void,
-        onFillRail: @escaping () -> Void
+        onFillRail: @escaping () -> Void,
+        onDisable: @escaping () -> Void = {}
     ) {
         self.pod = pod
         self.canvasHeight = canvasHeight
@@ -40,6 +42,7 @@ public struct PodCapsuleView: View {
         self.onResize = onResize
         self.onTransferEdge = onTransferEdge
         self.onFillRail = onFillRail
+        self.onDisable = onDisable
     }
 
     public var body: some View {
@@ -47,13 +50,13 @@ public struct PodCapsuleView: View {
 
         VStack(spacing: 0) {
             // 1. Move Header (Drag to move pod vertically)
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: pod.systemIcon)
                     .font(.system(size: 11))
                     .foregroundColor(podColor)
 
                 Text(pod.name)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
 
@@ -62,7 +65,7 @@ public struct PodCapsuleView: View {
                 // Fill rail button
                 Button(action: onFillRail) {
                     Image(systemName: "arrow.up.and.down")
-                        .font(.system(size: 9))
+                        .font(.system(size: 8.5))
                         .foregroundColor(podColor.opacity(0.85))
                 }
                 .buttonStyle(.tactile)
@@ -71,11 +74,20 @@ public struct PodCapsuleView: View {
                 // Transfer edge button
                 Button(action: onTransferEdge) {
                     Image(systemName: pod.edge == .left ? "arrow.right.circle.fill" : "arrow.left.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundColor(palette.warningAccent)
                 }
                 .buttonStyle(.tactile)
                 .help(pod.edge == .left ? "Move to Right Rail" : "Move to Left Rail")
+
+                // Disable / unmount button
+                Button(action: onDisable) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.red.opacity(0.85))
+                }
+                .buttonStyle(.tactile)
+                .help("Disable module (unmount from rail)")
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)

@@ -2059,7 +2059,7 @@ public struct TerminalPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        360.0
+        60.0
     }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
