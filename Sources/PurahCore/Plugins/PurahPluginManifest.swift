@@ -141,7 +141,14 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         minLengthRatio = try container.decode(Double.self, forKey: .minLengthRatio)
         defaultColorHex = try container.decode(String.self, forKey: .defaultColorHex)
         defaultDrawerWidth = try container.decodeIfPresent(Double.self, forKey: .defaultDrawerWidth) ?? 260.0
-        category = try container.decodeIfPresent(PluginFootprintCategory.self, forKey: .category) ?? .lightweight
+        if let cat = try? container.decodeIfPresent(PluginFootprintCategory.self, forKey: .category) {
+            category = cat
+        } else if let catStr = try? container.decodeIfPresent(String.self, forKey: .category),
+                  let match = PluginFootprintCategory.allCases.first(where: { $0.rawValue.localizedCaseInsensitiveCompare(catStr) == .orderedSame }) {
+            category = match
+        } else {
+            category = .lightweight
+        }
         permissions = try container.decodeIfPresent([PluginPermission].self, forKey: .permissions) ?? []
         website = try container.decodeIfPresent(String.self, forKey: .website)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
