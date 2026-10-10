@@ -2617,8 +2617,8 @@ public struct ClipboardItemDrawerView: View {
                             .foregroundColor(.secondary)
                     }
 
-                case .image(let path, let w, let h, _):
-                    if let nsImg = NSImage(contentsOfFile: path) {
+                case .image(let path, let thumbPath, let w, let h, _):
+                    if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -2702,6 +2702,23 @@ public struct ClipboardItemDrawerView: View {
                 }
             }
         }
+        .onHover { isHovering in
+            if let item = item {
+                if isHovering {
+                    ClipboardHoverPreviewController.shared.show(
+                        item: item,
+                        edge: edge,
+                        palette: palette,
+                        drawerWidth: 290.0
+                    )
+                } else {
+                    ClipboardHoverPreviewController.shared.hide()
+                }
+            }
+        }
+        .onDisappear {
+            ClipboardHoverPreviewController.shared.hide()
+        }
     }
 
     private func makeDragProvider(for item: ClipboardItem) -> NSItemProvider {
@@ -2710,7 +2727,7 @@ public struct ClipboardItemDrawerView: View {
             return NSItemProvider(object: text as NSString)
         case .color(let hex, _, _, _, _):
             return NSItemProvider(object: hex as NSString)
-        case .image(let path, _, _, _):
+        case .image(let path, _, _, _, _):
             return NSItemProvider(contentsOf: URL(fileURLWithPath: path)) ?? NSItemProvider()
         }
     }
@@ -2721,6 +2738,7 @@ public struct ClipboardFullDrawerView: View {
     public let state: ClipboardPluginState
     public let context: PurahPluginContext
     @State private var hoveredItemId: String? = nil
+    @State private var isBreathing: Bool = false
 
     private var palette: ThemePalette {
         context.palette
@@ -2734,16 +2752,17 @@ public struct ClipboardFullDrawerView: View {
                         Circle()
                             .fill(
                                 RadialGradient(
-                                    colors: [Color(hex: "#FF9F0A").opacity(0.22), Color.clear],
+                                    colors: [Color(hex: "#FF9F0A").opacity(isBreathing ? 0.38 : 0.12), Color.clear],
                                     center: .center,
                                     startRadius: 0,
-                                    endRadius: 32
+                                    endRadius: isBreathing ? 38 : 26
                                 )
                             )
-                            .frame(width: 64, height: 64)
+                            .frame(width: 76, height: 76)
+                            .scaleEffect(isBreathing ? 1.08 : 0.94)
 
                         Image(systemName: "doc.on.clipboard.fill")
-                            .font(.system(size: 24))
+                            .font(.system(size: 26))
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: [Color(hex: "#FFB340"), Color(hex: "#FF9F0A")],
@@ -2751,8 +2770,14 @@ public struct ClipboardFullDrawerView: View {
                                     endPoint: .bottom
                                 )
                             )
+                            .shadow(color: Color(hex: "#FF9F0A").opacity(isBreathing ? 0.65 : 0.20), radius: isBreathing ? 10 : 3, x: 0, y: 2)
                     }
                     .padding(.top, 4)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                            isBreathing = true
+                        }
+                    }
 
                     Text("No Clippings Yet")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -2880,9 +2905,9 @@ public struct ClipboardFullDrawerView: View {
                     }
                 }
 
-            case .image(let path, let w, let h, let bytes):
+            case .image(let path, let thumbPath, let w, let h, let bytes):
                 HStack(spacing: 12) {
-                    if let nsImg = NSImage(contentsOfFile: path) {
+                    if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -3021,7 +3046,7 @@ public struct ClipboardFullDrawerView: View {
             return NSItemProvider(object: text as NSString)
         case .color(let hex, _, _, _, _):
             return NSItemProvider(object: hex as NSString)
-        case .image(let path, _, _, _):
+        case .image(let path, _, _, _, _):
             return NSItemProvider(contentsOf: URL(fileURLWithPath: path)) ?? NSItemProvider()
         }
     }

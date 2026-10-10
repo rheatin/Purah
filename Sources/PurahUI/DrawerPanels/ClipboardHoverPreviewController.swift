@@ -13,7 +13,7 @@ public struct ClipboardHoverApertureView: View {
             switch item.type {
             case .color(let hex, let r, let g, let b, let a):
                 colorPreview(hex: hex, r: r, g: g, b: b, a: a)
-            case .image(let path, let w, let h, let bytes):
+            case .image(let path, _, let w, let h, let bytes):
                 imagePreview(path: path, w: w, h: h, bytes: bytes)
             case .text(let text):
                 textPreview(text: text)

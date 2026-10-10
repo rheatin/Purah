@@ -233,6 +233,14 @@ public final class PurahWorkspaceStore {
                 return 380.0
             }
         }
+        if podId == "shelf" || text == "Drop Shelf" || text.hasPrefix("shelf") {
+            switch drawerWidthMode {
+            case .fixed:
+                return CGFloat(max(fixedDrawerWidth, 340.0))
+            case .adaptive:
+                return 360.0
+            }
+        }
         if baseWidth >= 400.0 {
             switch drawerWidthMode {
             case .fixed:

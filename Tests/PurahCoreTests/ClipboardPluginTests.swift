@@ -76,7 +76,7 @@ struct ClipboardPluginTests {
 
         service.checkPasteboard()
 
-        guard let latest = service.history.first, case .image(let path, let w, let h, _) = latest.type else {
+        guard let latest = service.history.first, case .image(let path, let thumbPath, let w, let h, _) = latest.type else {
             #expect(Bool(false), "Expected image item in clipboard history")
             return
         }
@@ -84,10 +84,12 @@ struct ClipboardPluginTests {
         #expect(w >= 100)
         #expect(h >= 100)
         #expect(FileManager.default.fileExists(atPath: path))
+        #expect(FileManager.default.fileExists(atPath: thumbPath))
 
         // Delete item cleans up disk tmp file
         service.deleteItem(id: latest.id)
         #expect(!FileManager.default.fileExists(atPath: path), "Tmp file must be removed when clipboard item is deleted")
+        #expect(!FileManager.default.fileExists(atPath: thumbPath), "Thumbnail tmp file must be removed")
     }
 
     @Test("ClipboardPlugin conforms to PurahPodPlugin with pure physical rail shape")

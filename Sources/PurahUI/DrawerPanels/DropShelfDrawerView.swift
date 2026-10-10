@@ -82,15 +82,31 @@ public struct DropShelfDrawerView: View {
 
                 HStack {
                     Text("\(state.files.count) item(s)")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9.5))
                         .foregroundColor(.gray)
                     Spacer()
+
+                    Button {
+                        let urls = state.files.compactMap { $0.filePath.map { URL(fileURLWithPath: $0) } }
+                        DropShelfDrawerView.shareViaAirDrop(urls: urls)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "airdrop")
+                                .font(.system(size: 9.5))
+                            Text("AirDrop")
+                                .font(.system(size: 9.5, weight: .medium))
+                        }
+                        .foregroundColor(shelfColor)
+                    }
+                    .buttonStyle(.plain)
+                    .help("AirDrop all stashed files to nearby Apple devices")
+
                     Button("Clear All") {
                         state.clear()
                         store._shelfFiles.removeAll()
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 9))
+                    .font(.system(size: 9.5))
                     .foregroundColor(palette.dangerAccent)
                 }
             }
@@ -123,6 +139,16 @@ public struct DropShelfDrawerView: View {
         case "mp3", "m4a", "wav", "flac": return "music.note"
         case "mp4", "mov", "mkv": return "film.fill"
         default: return "doc.fill"
+        }
+    }
+
+    /// Invokes native macOS AirDrop sheet for the given file URLs
+    public static func shareViaAirDrop(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        if let service = NSSharingService(named: .sendViaAirDrop) {
+            if service.canPerform(withItems: urls) {
+                service.perform(withItems: urls)
+            }
         }
     }
 }
@@ -184,7 +210,17 @@ public struct ShelfFileRowView: View {
 
             Spacer()
 
-            if file.filePath != nil {
+            if let path = file.filePath {
+                Button {
+                    DropShelfDrawerView.shareViaAirDrop(urls: [URL(fileURLWithPath: path)])
+                } label: {
+                    Image(systemName: "airdrop")
+                        .font(.system(size: 11))
+                        .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
+                }
+                .buttonStyle(.plain)
+                .help("AirDrop file to nearby Apple device")
+
                 Button(action: onReveal) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 9))

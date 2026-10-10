@@ -1066,4 +1066,68 @@ struct PluginArchitectureTests {
         #expect(!store.pods.contains { $0.id == "com.example.focus" })
         #expect(!PluginDynamicLoader.shared.isDynamicallyLoaded(id: "com.example.focus"))
     }
+
+    @Test("Comprehensive Plugin Decoupling and Isolation Test Matrix")
+    func testPluginDecouplingAndIsolationMatrix() {
+        let registry = PluginRegistry.shared
+        let allPlugins = registry.allCatalogPlugins
+        #expect(!allPlugins.isEmpty, "Catalog must contain registered plugins")
+
+        var seenIds = Set<String>()
+
+        for plugin in allPlugins {
+            let manifest = plugin.manifest
+            // 1. Unique, valid ID and metadata
+            #expect(!manifest.id.isEmpty)
+            #expect(!manifest.displayName.isEmpty)
+            #expect(manifest.defaultColorHex.hasPrefix("#"))
+            #expect(!seenIds.contains(manifest.id), "Plugin ID '\(manifest.id)' must be globally unique")
+            seenIds.insert(manifest.id)
+
+            // 2. Storage isolation: write to scoped storage, verify strictly isolated
+            let storage = ScopedPluginStorage(pluginId: manifest.id)
+            let testKey = "decoupling_probe_\(manifest.id)"
+            storage.set("probe_val_\(manifest.id)", forKey: testKey)
+            #expect(storage.string(forKey: testKey) == "probe_val_\(manifest.id)")
+
+            let otherStorage = ScopedPluginStorage(pluginId: "other_foreign_plugin")
+            #expect(otherStorage.string(forKey: testKey) == nil, "Plugin storage must be strictly isolated")
+
+            // 3. View decoupling: makeRailBarView and makeDrawerView produce valid AnyViews without crashing
+            let dummyStore = PurahWorkspaceStore()
+            let dummyPod = manifest.makeDefaultSlotPod()
+            let context = PurahPluginContext(
+                pod: dummyPod,
+                edge: manifest.defaultEdge,
+                railWidth: 8.0,
+                slotHeight: 80.0,
+                drawerWidth: 260.0,
+                isExpanded: true,
+                isPinned: false,
+                accentColor: Color(hex: manifest.defaultColorHex),
+                palette: ThemeManager.shared.palette,
+                store: dummyStore,
+                requestExpand: {},
+                requestDismiss: {},
+                togglePin: {}
+            )
+
+            let railView = plugin.makeRailBarView(context: context)
+            #expect(type(of: railView) == AnyView.self)
+
+            let drawerView = plugin.makeDrawerView(context: context)
+            #expect(type(of: drawerView) == AnyView.self)
+
+            // 4. Lifecycle decoupling: onMount and onUnmount run without corrupting host store
+            plugin.onMount(store: dummyStore)
+            plugin.onUnmount(store: dummyStore)
+
+            // 5. Capability provider decoupling & height bounds
+            let minH = plugin.minimumDrawerHeight(store: dummyStore)
+            #expect(minH >= 40.0, "Plugin '\(manifest.id)' minimumDrawerHeight must be at least 40pt")
+            if plugin.isDecomposed(store: dummyStore) {
+                #expect(plugin.subItemCount(store: dummyStore) >= 0)
+            }
+        }
+    }
 }

@@ -4,7 +4,7 @@ import Foundation
 public enum ClipboardContentType: Codable, Sendable, Equatable {
     case text(String)
     case color(hex: String, red: Double, green: Double, blue: Double, alpha: Double)
-    case image(filePath: String, pixelWidth: Int, pixelHeight: Int, byteSize: Int)
+    case image(filePath: String, thumbnailPath: String, pixelWidth: Int, pixelHeight: Int, byteSize: Int)
 
     public var summary: String {
         switch self {
@@ -13,7 +13,7 @@ public enum ClipboardContentType: Codable, Sendable, Equatable {
             return trimmed.isEmpty ? "Empty Text" : String(trimmed.prefix(32))
         case .color(let hex, _, _, _, _):
             return hex.uppercased()
-        case .image(_, let w, let h, let bytes):
+        case .image(_, _, let w, let h, let bytes):
             let kb = max(bytes / 1024, 1)
             return "\(w)×\(h) (\(kb) KB)"
         }
@@ -79,7 +79,7 @@ public struct ClipboardItem: Identifiable, Codable, Sendable, Equatable {
             return str
         case .color(let hex, _, _, _, _):
             return hex.uppercased()
-        case .image(let path, _, _, _):
+        case .image(let path, _, _, _, _):
             return path
         }
     }

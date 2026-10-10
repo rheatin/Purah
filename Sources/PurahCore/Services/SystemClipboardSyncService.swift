@@ -83,7 +83,7 @@ public final class SystemClipboardSyncService {
             pb.setString(text, forType: .string)
         case .color(let hex, _, _, _, _):
             pb.setString(hex.uppercased(), forType: .string)
-        case .image(let path, _, _, _):
+        case .image(let path, _, _, _, _):
             if let img = NSImage(contentsOfFile: path), let tiff = img.tiffRepresentation {
                 pb.setData(tiff, forType: .tiff)
             }
@@ -94,9 +94,10 @@ public final class SystemClipboardSyncService {
     public func deleteItem(id: String) {
         if let idx = history.firstIndex(where: { $0.id == id }) {
             let removed = history.remove(at: idx)
-            // Cleanup disk tmp image if applicable
-            if case .image(let path, _, _, _) = removed.type {
+            // Cleanup disk tmp image & thumbnail
+            if case .image(let path, let thumbPath, _, _, _) = removed.type {
                 try? FileManager.default.removeItem(atPath: path)
+                try? FileManager.default.removeItem(atPath: thumbPath)
             }
         }
     }
@@ -104,8 +105,9 @@ public final class SystemClipboardSyncService {
     public func clearAll(keepPinned: Bool = true) {
         let itemsToDelete = keepPinned ? history.filter { !$0.isPinned } : history
         for item in itemsToDelete {
-            if case .image(let path, _, _, _) = item.type {
+            if case .image(let path, let thumbPath, _, _, _) = item.type {
                 try? FileManager.default.removeItem(atPath: path)
+                try? FileManager.default.removeItem(atPath: thumbPath)
             }
         }
         history = keepPinned ? history.filter(\.isPinned) : []
@@ -124,8 +126,9 @@ public final class SystemClipboardSyncService {
         if history.count > 20 {
             let overflow = history.suffix(from: 20)
             for oldItem in overflow where !oldItem.isPinned {
-                if case .image(let path, _, _, _) = oldItem.type {
+                if case .image(let path, let thumbPath, _, _, _) = oldItem.type {
                     try? FileManager.default.removeItem(atPath: path)
+                    try? FileManager.default.removeItem(atPath: thumbPath)
                 }
             }
             history = Array(history.prefix(20))
@@ -158,15 +161,52 @@ public final class SystemClipboardSyncService {
         let h = rep.pixelsHigh
         guard w > 0 && h > 0 else { return nil }
 
-        let filename = "\(UUID().uuidString).png"
-        let fileURL = diskCacheDirectory.appendingPathComponent(filename)
+        let id = UUID().uuidString
+        let fullFilename = "\(id)_full.png"
+        let thumbFilename = "\(id)_thumb.png"
+        let fullFileURL = diskCacheDirectory.appendingPathComponent(fullFilename)
+        let thumbFileURL = diskCacheDirectory.appendingPathComponent(thumbFilename)
 
         guard let pngData = rep.representation(using: .png, properties: [:]) else { return nil }
         do {
-            try pngData.write(to: fileURL)
+            try pngData.write(to: fullFileURL)
+
+            // Generate lightweight downsampled thumbnail (120x120 max, ~50KB) to guarantee 0MB memory bloating
+            let maxDim: CGFloat = 120.0
+            let scale = min(maxDim / CGFloat(w), maxDim / CGFloat(h), 1.0)
+            let thumbW = max(Int(CGFloat(w) * scale), 1)
+            let thumbH = max(Int(CGFloat(h) * scale), 1)
+
+            let thumbRep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: thumbW,
+                pixelsHigh: thumbH,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .calibratedRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+
+            NSGraphicsContext.saveGraphicsState()
+            if let context = thumbRep.flatMap({ NSGraphicsContext(bitmapImageRep: $0) }) {
+                NSGraphicsContext.current = context
+                context.imageInterpolation = .high
+                if let srcImg = NSImage(data: pngData) {
+                    srcImg.draw(in: NSRect(x: 0, y: 0, width: thumbW, height: thumbH))
+                }
+            }
+            NSGraphicsContext.restoreGraphicsState()
+
+            let thumbData = thumbRep?.representation(using: .png, properties: [:]) ?? pngData
+            try thumbData.write(to: thumbFileURL)
+
             return ClipboardItem(
                 type: .image(
-                    filePath: fileURL.path,
+                    filePath: fullFileURL.path,
+                    thumbnailPath: thumbFileURL.path,
                     pixelWidth: w,
                     pixelHeight: h,
                     byteSize: pngData.count
