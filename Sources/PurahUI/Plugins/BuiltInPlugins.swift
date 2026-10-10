@@ -2324,3 +2324,478 @@ public struct TerminalPluginSettingsView: View {
         .padding()
     }
 }
+
+// MARK: - Clipboard Sidecar Plugin
+public struct ClipboardPlugin: PurahPodPlugin {
+    public nonisolated let manifest = PurahPluginManifest(
+        id: "clipboard",
+        displayName: "Clipboard",
+        systemIcon: "doc.on.clipboard.fill",
+        author: "Project Purah",
+        version: "0.1.0",
+        description: "Zero-memory transient clipboard history, color specialist & disk cache",
+        defaultEdge: .left,
+        preferredZone: .goldenAction,
+        ergonomicWeight: 30.0,
+        minLengthRatio: 0.16,
+        defaultColorHex: "#FF9F0A",
+        defaultDrawerWidth: 260.0,
+        category: .lightweight,
+        permissions: [.pasteboard, .fileSystem]
+    )
+
+    public let state: ClipboardPluginState
+
+    public init(state: ClipboardPluginState = ClipboardPluginState()) {
+        self.state = state
+    }
+
+    public func onMount(store: PurahWorkspaceStore) {
+        state.mount(store: store)
+    }
+
+    public func onUnmount(store: PurahWorkspaceStore) {
+        state.unmount(store: store)
+    }
+
+    public func dynamicBarColor(context: PurahPluginContext) -> Color? {
+        if let latestColor = state.items.first?.type.colorHex {
+            return Color(hex: latestColor)
+        }
+        return nil
+    }
+
+    // 1. In-rail view: Pure physical geometric pill shape without any distracting icons
+    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
+        let activeColor = dynamicBarColor(context: context) ?? context.accentColor
+        return AnyView(
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            activeColor.opacity(context.isExpanded ? 0.95 : 0.75),
+                            activeColor.opacity(context.isExpanded ? 0.80 : 0.55)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: context.railWidth, height: context.slotHeight)
+                .contentShape(Rectangle())
+        )
+    }
+
+    // 2. Capability Provider: Decomposed Mode
+    public var podId: String { "clipboard" }
+    public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
+    public var isDecomposed: Bool { state.isDecomposed }
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool { state.isDecomposed }
+    public func subItemCount(store: PurahWorkspaceStore) -> Int { min(state.items.count, 4) }
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        guard index >= 0 && index < state.items.count else { return nil }
+        return state.items[index].id
+    }
+    public func minimumSubItemHeight(store: PurahWorkspaceStore) -> Double { 42.0 }
+    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
+
+    // 3. Stepped Rail Chip (Decomposed)
+    public func makeSteppedRailBarView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        guard let item = state.items.first(where: { $0.id == subItemId }) else { return nil }
+        let itemColor: Color = {
+            if case .color(let hex, _, _, _, _) = item.type {
+                return Color(hex: hex)
+            }
+            return context.accentColor
+        }()
+
+        // Pure physical pill without icons
+        return AnyView(
+            Capsule()
+                .fill(itemColor.opacity(context.isExpanded ? 0.95 : 0.70))
+                .frame(width: context.railWidth, height: context.slotHeight)
+                .contentShape(Rectangle())
+        )
+    }
+
+    // 4. Stepped Drawer View (Single item popout)
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        guard let item = state.items.first(where: { $0.id == subItemId }) else { return nil }
+        return AnyView(
+            ClipboardSteppedDrawerView(item: item, state: state, context: context)
+        )
+    }
+
+    // 5. Full Drawer View (Composite)
+    public func makeDrawerView(context: PurahPluginContext) -> AnyView {
+        AnyView(
+            ClipboardFullDrawerView(state: state, context: context)
+        )
+    }
+
+    // 6. Settings View
+    public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
+        AnyView(
+            ClipboardPluginSettingsView(state: state, store: store)
+        )
+    }
+}
+
+// MARK: - Clipboard Stepped Drawer View
+public struct ClipboardSteppedDrawerView: View {
+    public let item: ClipboardItem
+    public let state: ClipboardPluginState
+    public let context: PurahPluginContext
+
+    public var body: some View {
+        HStack(spacing: 8) {
+            switch item.type {
+            case .color(let hex, _, _, _, _):
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(hex: hex))
+                    .frame(width: 24, height: 24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hex.uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    Text("Click to copy Hex • Drag into editor")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            case .image(let path, let w, let h, _):
+                if let nsImage = NSImage(contentsOfFile: path) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 28, height: 28)
+                        .cornerRadius(4)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Image (\(w)×\(h))")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    Text("Click to copy • Drag file out")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            case .text(let text):
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(text.prefix(60))
+                        .font(.system(size: 11, design: .monospaced))
+                        .lineLimit(2)
+                    Text("\(text.count) characters • Click to copy")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                state.copyItem(item)
+                context.performHaptic(.levelChange)
+                context.showToast("Copied to Clipboard", nil)
+                context.requestDismiss()
+            } label: {
+                Image(systemName: "doc.on.doc.fill")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.tactile)
+            .help("Copy to Clipboard")
+        }
+        .padding(8)
+        .onDrag {
+            makeDragProvider(for: item)
+        }
+        .onTapGesture {
+            state.copyItem(item)
+            context.performHaptic(.levelChange)
+            context.showToast("Copied to Clipboard", nil)
+            context.requestDismiss()
+        }
+    }
+
+    private func makeDragProvider(for item: ClipboardItem) -> NSItemProvider {
+        switch item.type {
+        case .text(let text):
+            return NSItemProvider(object: text as NSString)
+        case .color(let hex, _, _, _, _):
+            return NSItemProvider(object: hex as NSString)
+        case .image(let path, _, _, _):
+            return NSItemProvider(contentsOf: URL(fileURLWithPath: path)) ?? NSItemProvider()
+        }
+    }
+}
+
+// MARK: - Clipboard Full Drawer View
+public struct ClipboardFullDrawerView: View {
+    public let state: ClipboardPluginState
+    public let context: PurahPluginContext
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header stats & clear action
+            HStack {
+                Text("\(state.items.count) Items in History")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                if !state.items.isEmpty {
+                    Button(role: .destructive) {
+                        state.clearAll()
+                        context.performHaptic(.alignment)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "trash")
+                            Text("Clear")
+                        }
+                        .font(.system(size: 10))
+                    }
+                    .buttonStyle(.tactile)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            Divider()
+                .opacity(0.3)
+
+            if state.items.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.title2)
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("Clipboard is Empty")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Copied text, hex colors, and images will appear here")
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 20)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 8) {
+                        ForEach(state.items) { item in
+                            clipboardCard(item: item)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func clipboardCard(item: ClipboardItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            switch item.type {
+            case .color(let hex, _, _, _, _):
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(hex: hex))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(hex.uppercased())
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            Text("Color")
+                                .font(.system(size: 9, design: .monospaced))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color(hex: hex).opacity(0.2))
+                                .foregroundColor(Color(hex: hex))
+                                .cornerRadius(3)
+                        }
+
+                        if let snippet = item.swiftUIColorSnippet {
+                            Text(snippet)
+                                .font(.system(size: 9.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Quick Copy SwiftUI Code button
+                    if let snippet = item.swiftUIColorSnippet {
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(snippet, forType: .string)
+                            context.performHaptic(.levelChange)
+                            context.showToast("Copied SwiftUI Code", nil)
+                            context.requestDismiss()
+                        } label: {
+                            Text("SwiftUI")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                        .buttonStyle(.tactile)
+                        .help("Copy as \(snippet)")
+                    }
+                }
+
+            case .image(let path, let w, let h, let bytes):
+                HStack(spacing: 10) {
+                    if let nsImg = NSImage(contentsOfFile: path) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 44, height: 44)
+                            .cornerRadius(6)
+                            .clipped()
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.title2)
+                            .frame(width: 44, height: 44)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Image (\(w)×\(h))")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("\(max(bytes / 1024, 1)) KB • PNG Disk Cache")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Text("Drag out directly to Finder / Chat")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+
+                    Spacer()
+                }
+
+            case .text(let text):
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(text)
+                        .font(.system(size: 11, design: .monospaced))
+                        .lineLimit(4)
+                        .foregroundColor(.primary)
+
+                    HStack {
+                        Text("\(text.count) chars")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("Click to copy • Drag snippet")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(6)
+        .contentShape(Rectangle())
+        .onDrag {
+            makeDragProvider(for: item)
+        }
+        .onTapGesture {
+            state.copyItem(item)
+            context.performHaptic(.levelChange)
+            context.showToast("Copied to Clipboard", nil)
+            context.requestDismiss()
+        }
+        .contextMenu {
+            Button("Copy to Clipboard") {
+                state.copyItem(item)
+                context.showToast("Copied to Clipboard", nil)
+            }
+            if let snippet = item.swiftUIColorSnippet {
+                Button("Copy as SwiftUI Code (\(snippet))") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(snippet, forType: .string)
+                    context.showToast("Copied SwiftUI Code", nil)
+                }
+            }
+            Divider()
+            Button(role: .destructive) {
+                state.deleteItem(id: item.id)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func makeDragProvider(for item: ClipboardItem) -> NSItemProvider {
+        switch item.type {
+        case .text(let text):
+            return NSItemProvider(object: text as NSString)
+        case .color(let hex, _, _, _, _):
+            return NSItemProvider(object: hex as NSString)
+        case .image(let path, _, _, _):
+            return NSItemProvider(contentsOf: URL(fileURLWithPath: path)) ?? NSItemProvider()
+        }
+    }
+}
+
+// MARK: - Clipboard Plugin Settings View
+public struct ClipboardPluginSettingsView: View {
+    public let state: ClipboardPluginState
+    public let store: PurahWorkspaceStore
+
+    public init(state: ClipboardPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+        self.state = state
+        self.store = store
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Clipboard Sidecar Settings")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Decomposed Rail Chips (多步进微芯片分解模式)", isOn: Binding(
+                    get: { state.isDecomposed },
+                    set: {
+                        state.isDecomposed = $0
+                        state.save()
+                    }
+                ))
+                .toggleStyle(.switch)
+                Text("When enabled, the rail displays recent copied items as discrete tactile chips for instant zero-drawer switching.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .padding(10)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Zero-Memory Image Cache")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text("All copied screenshot bitmaps are automatically flushed to temporary disk files (~/tmp). Only lightweight metadata resides in RAM, guaranteeing zero memory bloating.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Text("History Size: \(state.items.count) / 20 items")
+                        .font(.caption)
+                    Spacer()
+                    Button("Clear Cache Now", role: .destructive) {
+                        state.clearAll()
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+                }
+                .padding(.top, 4)
+            }
+            .padding(10)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+        }
+        .padding()
+    }
+}

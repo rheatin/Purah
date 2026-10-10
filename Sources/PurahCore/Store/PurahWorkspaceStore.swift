@@ -808,7 +808,8 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.36, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16, defaultColorHex: "#2ED573"),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.58, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.15, defaultColorHex: "#FFD166"),
             SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.78, length: 0.16), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.16, defaultColorHex: "#6C5CE7"),
-            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.88, length: 0.08), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.05, isEnabled: false, drawerWidth: 520, defaultColorHex: "#00F5D4")
+            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.88, length: 0.08), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.05, isEnabled: false, drawerWidth: 520, defaultColorHex: "#00F5D4"),
+            SlotPod(id: "clipboard", name: "Clipboard", systemIcon: "doc.on.clipboard.fill", edge: .left, range: .init(start: 0.88, length: 0.08), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.08, isEnabled: false, drawerWidth: 260, defaultColorHex: "#FF9F0A")
         ]
     }
 }

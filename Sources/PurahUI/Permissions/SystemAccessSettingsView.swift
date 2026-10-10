@@ -15,8 +15,23 @@ public struct SystemAccessSettingsView: View {
         self.store = store
     }
 
+    private var groupedPermissions: [(permission: PluginPermission, manifests: [PurahPluginManifest])] {
+        let allManifests = PluginRegistry.shared.allCatalogPlugins.map(\.manifest)
+        var map: [PluginPermission: [PurahPluginManifest]] = [:]
+        for manifest in allManifests {
+            for perm in manifest.permissions {
+                map[perm, default: []].append(manifest)
+            }
+        }
+        // Ordered by case order in PluginPermission
+        return PluginPermission.allCases.compactMap { perm in
+            guard let manifests = map[perm], !manifests.isEmpty else { return nil }
+            return (perm, manifests)
+        }
+    }
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             // Header
             HStack(spacing: 12) {
                 Image(systemName: "lock.shield.fill")
@@ -25,10 +40,10 @@ public struct SystemAccessSettingsView: View {
                     .modifier(OptionalGlow(color: palette.primaryAccent, enabled: palette.useGlow))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Native App Permissions & Access")
+                    Text("Plugin Permissions & Privacy Matrix")
                         .font(palette.fontTitle)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text("Grant access for real-time synchronization with Calendar, Reminders, and Music")
+                    Text("Dynamic inspection of system capabilities required by installed plugins and functional impacts when denied")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -42,93 +57,22 @@ public struct SystemAccessSettingsView: View {
                         .foregroundColor(palette.primaryAccent)
                 }
                 .buttonStyle(.plain)
+                .help("Refresh permission statuses")
             }
 
             Divider()
                 .background(palette.borderColor)
 
-            // Permission Cards
-            VStack(spacing: 12) {
-                // 1. Apple Calendar
-                permissionRow(
-                    icon: "calendar",
-                    title: "Apple Calendar",
-                    purpose: "Reads events and meetings to power timeline rails and calendar drawers",
-                    status: permissions.calendarStatus,
-                    onGrant: {
-                        Task {
-                            let granted = await permissions.requestCalendarAccess()
-                            if granted {
-                                SystemCalendarSyncService.shared.syncEvents(into: store)
-                            }
-                        }
-                    },
-                    onOpenSettings: {
-                        permissions.openSystemSettings(for: "Privacy_Calendars")
+            // Dynamic Permission Cards List
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 12) {
+                    ForEach(groupedPermissions, id: \.permission.rawValue) { item in
+                        dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
                     }
-                )
-
-                // 2. Apple Reminders
-                permissionRow(
-                    icon: "checklist",
-                    title: "Apple Reminders",
-                    purpose: "Synchronizes tasks into tactile segments with quick completion support",
-                    status: permissions.remindersStatus,
-                    onGrant: {
-                        Task {
-                            let granted = await permissions.requestRemindersAccess()
-                            if granted {
-                                await SystemRemindersSyncService.shared.syncReminders(into: store)
-                            }
-                        }
-                    },
-                    onOpenSettings: {
-                        permissions.openSystemSettings(for: "Privacy_Reminders")
-                    }
-                )
-
-                // 3. Apple Music
-                HStack(spacing: 14) {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 22))
-                        .foregroundColor(palette.primaryAccent)
-                        .frame(width: 32)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text("Apple Music")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            Text("Always Available")
-                                .font(.system(size: 10, design: .monospaced))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.green.opacity(0.15))
-                                .foregroundColor(.green)
-                                .cornerRadius(4)
-                        }
-                        Text("Automatically observes track and playback state via macOS notifications")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.title3)
                 }
-                .padding(12)
-                .background(palette.surfaceBackground)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-                )
+                .padding(.trailing, 4)
             }
-
-            Spacer()
+            .frame(maxHeight: 280)
 
             Divider()
                 .background(palette.borderColor)
@@ -136,7 +80,7 @@ public struct SystemAccessSettingsView: View {
             // Bottom action: Guarantee Access to All
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Permission Status")
+                    Text("Permission Summary")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
@@ -174,75 +118,131 @@ public struct SystemAccessSettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 580, height: 420)
+        .frame(width: 580, height: 440)
     }
 
     private var summaryText: String {
         let calOk = permissions.calendarStatus.isGranted
         let remOk = permissions.remindersStatus.isGranted
         if calOk && remOk {
-            return "All native services authorized with live synchronization."
+            return "All sensitive native services authorized with live synchronization."
         } else if calOk || remOk {
             return "Partial access granted. Click to complete authorization."
         } else {
-            return "Permissions not granted yet. Using local sample data."
+            return "Some permissions pending. Affected plugins will run with degraded features."
         }
     }
 
     @ViewBuilder
-    private func permissionRow(
-        icon: String,
-        title: String,
-        purpose: String,
-        status: AccessStatus,
-        onGrant: @escaping () -> Void,
-        onOpenSettings: @escaping () -> Void
+    private func dynamicPermissionCard(
+        permission: PluginPermission,
+        manifests: [PurahPluginManifest]
     ) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 22))
-                .foregroundColor(palette.primaryAccent)
-                .frame(width: 32)
+        let status = permissions.status(for: permission)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+        VStack(alignment: .leading, spacing: 8) {
+            // Row 1: Icon + Title + Status + Action
+            HStack(spacing: 12) {
+                Image(systemName: permission.icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(palette.primaryAccent)
+                    .frame(width: 28)
 
-                    Text(status.title)
-                        .font(.system(size: 10, design: .monospaced))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(statusColor(status).opacity(0.15))
-                        .foregroundColor(statusColor(status))
-                        .cornerRadius(4)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(permission.rawValue)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                        Text(status.title)
+                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(statusColor(status).opacity(0.15))
+                            .foregroundColor(statusColor(status))
+                            .cornerRadius(4)
+                    }
+
+                    Text(permission.securityDescription)
+                        .font(.caption2)
+                        .foregroundColor(.gray)
                 }
 
-                Text(purpose)
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-                    .lineLimit(2)
-            }
+                Spacer()
 
-            Spacer()
-
-            if status.isGranted {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                    .font(.title3)
-            } else if status == .denied {
-                Button("Settings", action: onOpenSettings)
-                    .buttonStyle(.bordered)
-                    .font(.caption)
-            } else {
-                Button("Grant Access", action: onGrant)
+                if status.isGranted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.title3)
+                } else if status == .denied {
+                    if let anchor = permission.privacySettingsAnchor {
+                        Button("Settings") {
+                            permissions.openSystemSettings(for: anchor)
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.caption)
+                    } else {
+                        Text("Denied")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                } else {
+                    Button("Grant Access") {
+                        Task {
+                            _ = await permissions.requestAccess(for: permission)
+                            if permission == .calendar {
+                                SystemCalendarSyncService.shared.syncEvents(into: store)
+                            } else if permission == .reminders {
+                                await SystemRemindersSyncService.shared.syncReminders(into: store)
+                            }
+                        }
+                    }
                     .buttonStyle(.borderedProminent)
                     .tint(palette.primaryAccent)
                     .font(.caption)
                     .foregroundColor(palette.style == .native ? Color.white : Color.black)
+                }
             }
+
+            // Row 2: Requesting Plugins Badges
+            HStack(spacing: 6) {
+                Text("Requested by:")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                ForEach(manifests) { manifest in
+                    HStack(spacing: 4) {
+                        Image(systemName: manifest.systemIcon)
+                            .font(.system(size: 8.5))
+                        Text(manifest.displayName)
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.12))
+                    .cornerRadius(4)
+                    .foregroundColor(palette.style == .native ? .primary : .white)
+                }
+            }
+
+            // Row 3: Consequence / What won't work if denied
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(status.isGranted ? .secondary : .orange)
+                    .padding(.top, 1)
+
+                Text(permission.deniedImpactDescription)
+                    .font(.system(size: 10))
+                    .foregroundColor(status.isGranted ? .secondary : .orange)
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(status.isGranted ? Color.secondary.opacity(0.06) : Color.orange.opacity(0.10))
+            .cornerRadius(6)
         }
         .padding(12)
         .background(palette.surfaceBackground)

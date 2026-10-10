@@ -24,6 +24,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         register(MusicPlugin())
         register(CalendarPlugin())
         register(TodoPlugin())
+        register(ClipboardPlugin())
 
         for manifest in PurahPluginManifest.communityCatalog {
             catalogPlugins[manifest.id] = CommunityPodPlugin(manifest: manifest)

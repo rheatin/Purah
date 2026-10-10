@@ -30,6 +30,7 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
     case shellExecution = "Shell Execution"
     case machTelemetry = "Mach Telemetry"
     case fileSystem = "File System"
+    case pasteboard = "Clipboard"
 
     public var icon: String {
         switch self {
@@ -39,6 +40,7 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
         case .shellExecution: return "terminal.fill"
         case .machTelemetry: return "waveform.path.ecg"
         case .fileSystem: return "folder.fill"
+        case .pasteboard: return "doc.on.clipboard.fill"
         }
     }
 
@@ -56,6 +58,46 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
             return "Queries Mach kernel APIs for processor and memory telemetry."
         case .fileSystem:
             return "Reads or writes files on your local drive."
+        case .pasteboard:
+            return "Observes system copy events to capture snippets, colors, and images."
+        }
+    }
+
+    /// Explains specifically which functions will fail if this permission is not granted
+    public var deniedImpactDescription: String {
+        switch self {
+        case .calendar:
+            return "If denied, Calendar cannot load upcoming events or meetings into your timeline, and one-tap meeting join links will be disabled."
+        case .reminders:
+            return "If denied, Reminders cannot sync tasks into edge chips, and ticking completed items will not reflect in Apple Reminders."
+        case .appleMusic:
+            return "If denied, track metadata, album artwork, and real-time audio wave meters will remain unavailable."
+        case .shellExecution:
+            return "If denied, one-tap runway maintenance scripts and the persistent terminal shell cannot run."
+        case .machTelemetry:
+            return "If denied, hardware vitals cannot read real-time CPU, GPU, memory, and battery metrics from Darwin kernel APIs."
+        case .fileSystem:
+            return "If denied, drag-and-drop shelf files cannot be accessed, and clipboard image disk caches cannot be written."
+        case .pasteboard:
+            return "If denied, the clipboard sidecar cannot detect copied items, disabling history recording, color conversion, and image clipping."
+        }
+    }
+
+    public var isTCCRestricted: Bool {
+        switch self {
+        case .calendar, .reminders, .fileSystem:
+            return true
+        case .appleMusic, .shellExecution, .machTelemetry, .pasteboard:
+            return false
+        }
+    }
+
+    public var privacySettingsAnchor: String? {
+        switch self {
+        case .calendar: return "Privacy_Calendars"
+        case .reminders: return "Privacy_Reminders"
+        case .fileSystem: return "Privacy_FilesAndFolders"
+        default: return nil
         }
     }
 }
@@ -331,6 +373,23 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             category: .systemService,
             permissions: [.reminders],
             tags: ["todo", "reminders", "tasks", "checklist"]
+        ),
+        PurahPluginManifest(
+            id: "clipboard",
+            displayName: "Clipboard",
+            systemIcon: "doc.on.clipboard.fill",
+            author: "Project Purah",
+            version: "0.1.0",
+            description: "Zero-memory transient clipboard history, color specialist & disk cache",
+            defaultEdge: .left,
+            preferredZone: .goldenAction,
+            ergonomicWeight: 30.0,
+            minLengthRatio: 0.16,
+            defaultColorHex: "#FF9F0A",
+            defaultDrawerWidth: 260.0,
+            category: .lightweight,
+            permissions: [.pasteboard, .fileSystem],
+            tags: ["clipboard", "history", "colors", "snippets"]
         )
     ]
 

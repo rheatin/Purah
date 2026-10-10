@@ -51,6 +51,24 @@ public final class PermissionManager {
         self.musicStatus = .authorized
     }
 
+    public func status(for permission: PluginPermission) -> AccessStatus {
+        switch permission {
+        case .calendar: return calendarStatus
+        case .reminders: return remindersStatus
+        case .appleMusic: return musicStatus
+        case .pasteboard, .machTelemetry, .shellExecution, .fileSystem:
+            return .authorized
+        }
+    }
+
+    public func requestAccess(for permission: PluginPermission) async -> Bool {
+        switch permission {
+        case .calendar: return await requestCalendarAccess()
+        case .reminders: return await requestRemindersAccess()
+        default: return true
+        }
+    }
+
     public static func status(from ekStatus: EKAuthorizationStatus) -> AccessStatus {
         switch ekStatus {
         case .notDetermined: .notDetermined

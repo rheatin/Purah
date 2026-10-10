@@ -51,14 +51,14 @@ struct PluginArchitectureTests {
     @Test("PluginRegistry registers all standard built-in plugins on startup")
     func testBuiltInPluginsRegistered() throws {
         let registry = PluginRegistry.shared
-        let expectedIds = ["vitals", "scripts", "terminal", "notes", "shelf", "music", "calendar", "todo"]
+        let expectedIds = ["vitals", "scripts", "terminal", "notes", "shelf", "music", "calendar", "todo", "clipboard"]
 
         for id in expectedIds {
             let plugin = try #require(registry.plugin(for: id), "Expected built-in plugin '\(id)' to be registered")
             #expect(plugin.manifest.id == id)
             #expect(!plugin.manifest.displayName.isEmpty)
         }
-        #expect(registry.allPlugins.count >= 8)
+        #expect(registry.allPlugins.count >= 9)
     }
 
     @Test("Custom plugin can be registered and unregistered with lifecycle callbacks")
@@ -681,7 +681,7 @@ struct PluginArchitectureTests {
 
         let store = PurahWorkspaceStore()
         let market = PluginMarketManager(store: store)
-        market.lifecycleDelegate = PluginRegistry.shared
+        PluginRegistry.shared.bindStore(store, marketManager: market)
 
         #expect(market.isInstalled(id: "notes"))
         #expect(market.isEnabled(id: "notes"))

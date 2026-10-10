@@ -1263,3 +1263,63 @@ public final class TerminalPluginState: Sendable {
         }
     }
 }
+
+// MARK: - Clipboard Plugin State
+@Observable
+@MainActor
+public final class ClipboardPluginState: Sendable {
+    public var isDecomposed: Bool
+    public var items: [ClipboardItem]
+    public let storage: any PurahPluginStorage
+    @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+
+    public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "clipboard")) {
+        self.storage = storage
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            self.isDecomposed = true // Default decomposed principle
+        }
+        self.items = storage.codable(forKey: "history", as: [ClipboardItem].self) ?? []
+    }
+
+    public func mount(store: PurahWorkspaceStore) {
+        self.boundStore = store
+        SystemClipboardSyncService.shared.startListening()
+        SystemClipboardSyncService.shared.onItemAdded = { [weak self] _ in
+            self?.items = SystemClipboardSyncService.shared.history
+            self?.save()
+        }
+        self.items = SystemClipboardSyncService.shared.history
+    }
+
+    public func unmount(store: PurahWorkspaceStore) {
+        SystemClipboardSyncService.shared.stopListening()
+        SystemClipboardSyncService.shared.onItemAdded = nil
+        save()
+        if boundStore === store {
+            boundStore = nil
+        }
+    }
+
+    public func save() {
+        storage.set(isDecomposed, forKey: "isDecomposed")
+        storage.setCodable(items, forKey: "history")
+    }
+
+    public func copyItem(_ item: ClipboardItem) {
+        SystemClipboardSyncService.shared.copyToPasteboard(item)
+    }
+
+    public func deleteItem(id: String) {
+        SystemClipboardSyncService.shared.deleteItem(id: id)
+        self.items = SystemClipboardSyncService.shared.history
+        save()
+    }
+
+    public func clearAll() {
+        SystemClipboardSyncService.shared.clearAll()
+        self.items = SystemClipboardSyncService.shared.history
+        save()
+    }
+}

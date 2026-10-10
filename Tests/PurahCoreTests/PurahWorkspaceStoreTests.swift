@@ -10,7 +10,7 @@ struct PurahWorkspaceStoreTests {
     @Test("Initializes with standard built-in pods including vitals and scripts")
     func testDefaultPods() {
         let store = PurahWorkspaceStore()
-        #expect(store.pods.count == 8)
+        #expect(store.pods.count == 9)
         #expect(store.pods.contains(where: { $0.id == "calendar" }))
         #expect(store.pods.contains(where: { $0.id == "todo" }))
         #expect(store.pods.contains(where: { $0.id == "music" }))
@@ -19,6 +19,7 @@ struct PurahWorkspaceStoreTests {
         #expect(store.pods.contains(where: { $0.id == "vitals" }))
         #expect(store.pods.contains(where: { $0.id == "scripts" }))
         #expect(store.pods.contains(where: { $0.id == "terminal" }))
+        #expect(store.pods.contains(where: { $0.id == "clipboard" }))
     }
 
     @Test("Applies Sprint Productivity preset properly")
