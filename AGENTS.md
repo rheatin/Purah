@@ -124,6 +124,10 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 3. **Hard Capacity Ceiling & Mounting Rejection (溢出拒载与 Toast 报警法则 - Mandatory)**:
    - When enabling or installing a new plugin, if adding its required minimum height causes the total required height on that rail to exceed the screen's available height budget (`totalRequiredHeight > availableScreenHeight`), the system **MUST NOT load or mount the plugin**.
    - Instead of squashing existing plugins below their ergonomic minimums, keep the plugin disabled, cancel mounting, and immediately fire an ergonomic warning toast notification (`onCapacityWarningToast`).
+4. **Adaptive Mode Minimum Height Grace Rule (自适应模式极限高度下完美视图呈现法则 - Mandatory)**:
+   - For all plugins operating in adaptive width or dynamic height modes: **The view MUST render with absolute visual perfection even at its absolute minimum height bound (`minimumDrawerHeight`)**.
+   - No content may ever clip, overflow beyond card boundaries, overlap headers, or awkwardly truncate essential UI elements.
+   - Text boxes, thumbnails, and preview panes must cleanly adopt internal scroll views (`ScrollView`) with subtle scrollbars or dynamic size adaptations when height is at the minimum threshold, ensuring that minimum height bounds never compromise aesthetics or usability.
 
 ### 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
 1. **Unified Card Anatomy**:

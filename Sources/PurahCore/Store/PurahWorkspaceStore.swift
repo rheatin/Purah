@@ -225,6 +225,14 @@ public final class PurahWorkspaceStore {
     public var customPodColors: [String: String] = [:]
 
     public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0, podId: String = "") -> CGFloat {
+        if podId == "clipboard" || text == "Clipboard" {
+            switch drawerWidthMode {
+            case .fixed:
+                return CGFloat(max(fixedDrawerWidth, 360.0))
+            case .adaptive:
+                return 380.0
+            }
+        }
         if baseWidth >= 400.0 {
             switch drawerWidthMode {
             case .fixed:
