@@ -161,14 +161,10 @@ public final class ScreenEdgeCoordinator {
 
     public func setInteractive(_ interactive: Bool, for edge: MountEdge) {
         guard !isFrozen else { return }
-        if interactive {
-            expandCanvas(for: edge)
+        if edge == .left {
+            leftRailWindow?.setInteractive(interactive)
         } else {
-            if edge == .left {
-                leftRailWindow?.setInteractive(false)
-            } else {
-                rightRailWindow?.setInteractive(false)
-            }
+            rightRailWindow?.setInteractive(interactive)
         }
     }
 

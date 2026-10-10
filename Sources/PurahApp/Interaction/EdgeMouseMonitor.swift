@@ -325,6 +325,9 @@ public final class EdgeMouseMonitor {
             leftExitGraceTask?.cancel()
             leftExitGraceTask = nil
             coordinator?.setInteractive(false, for: .left)
+            if !isLeftActiveUnpinned && !store.hasPinnedItem(on: .left) {
+                coordinator?.collapseCanvas(for: .left)
+            }
         }
 
         // 2. Manage Right Rail independence
@@ -346,6 +349,9 @@ public final class EdgeMouseMonitor {
             rightExitGraceTask?.cancel()
             rightExitGraceTask = nil
             coordinator?.setInteractive(false, for: .right)
+            if !isRightActiveUnpinned && !store.hasPinnedItem(on: .right) {
+                coordinator?.collapseCanvas(for: .right)
+            }
         }
 
         // If mouse is neither on a rail nor inside an active/pinned drawer card on either side
@@ -558,6 +564,7 @@ public final class EdgeMouseMonitor {
                 }
             }
         }
+        coordinator?.expandCanvas(for: edge)
         coordinator?.setInteractive(true, for: edge)
     }
 

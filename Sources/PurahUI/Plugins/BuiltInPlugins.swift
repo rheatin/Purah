@@ -2746,57 +2746,18 @@ public struct ClipboardFullDrawerView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if state.items.isEmpty {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 14)
+                VStack(spacing: 10) {
+                    Spacer()
 
-                    // Poised, calm icon container with generous negative space (no flashing)
-                    ZStack {
-                        Circle()
-                            .fill(Color(hex: "#FF9F0A").opacity(0.12))
-                            .frame(width: 56, height: 56)
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.system(size: 32, weight: .regular))
+                        .foregroundColor(Color(hex: "#FF9F0A"))
 
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundColor(Color(hex: "#FF9F0A"))
-                    }
-                    .padding(.bottom, 12)
+                    Text("No contextclipping yet")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("No Clippings Yet")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(palette.style == .native ? .primary : .white)
-                        .padding(.bottom, 5)
-
-                    Text("Text snippets, hex colors, and screenshots\nyou copy on your Mac will float here.")
-                        .font(.system(size: 11))
-                        .lineSpacing(3.5)
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 24)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 14)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "command")
-                            .font(.system(size: 9))
-                        Text("C to copy")
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                        Text("•")
-                            .font(.system(size: 8.5))
-                            .opacity(0.6)
-                        Text("Click or drag to use")
-                            .font(.system(size: 9.5))
-                    }
-                    .foregroundColor(Color(hex: "#FF9F0A"))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4.5)
-                    .background(Color(hex: "#FF9F0A").opacity(0.10))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(hex: "#FF9F0A").opacity(0.20), lineWidth: 0.5)
-                    )
-
-                    Spacer(minLength: 16)
+                    Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

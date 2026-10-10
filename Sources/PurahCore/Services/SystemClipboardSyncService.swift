@@ -23,6 +23,19 @@ public final class SystemClipboardSyncService {
 
     public init() {
         lastChangeCount = NSPasteboard.general.changeCount
+        purgeOrphanedTmpFiles()
+    }
+
+    private func purgeOrphanedTmpFiles() {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: diskCacheDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let now = Date()
+        for file in files {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
+               let modDate = attrs[.modificationDate] as? Date,
+               now.timeIntervalSince(modDate) > 3600.0 {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
     }
 
     public func startListening() {
