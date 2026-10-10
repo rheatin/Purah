@@ -24,6 +24,8 @@ public final class EdgeMouseMonitor {
     private var currentDwellEdge: MountEdge?
     private var lastCandidatePodId: String?
     private var candidateHoverStartTime: Date?
+    private var lastCandidateSubItemId: String?
+    private var candidateSubItemHoverStartTime: Date?
     private var wasAtAbsoluteBezel: Bool = false
     private var bezelArrivalTime: Date? = nil
     private var isRunning: Bool = false
@@ -84,6 +86,8 @@ public final class EdgeMouseMonitor {
         bezelArrivalTime = nil
         lastCandidatePodId = nil
         candidateHoverStartTime = nil
+        lastCandidateSubItemId = nil
+        candidateSubItemHoverStartTime = nil
     }
 
     public func start() {
@@ -543,15 +547,37 @@ public final class EdgeMouseMonitor {
     }
 
     public func activatePodDrawer(candidate: SlotPod, matched: ResolvedPodLayoutItem, currentWindowY: CGFloat, edge: MountEdge) {
-        let spanH = max(CGFloat(matched.spanH), 0.001)
-        let podRelativeY = min(max((currentWindowY - CGFloat(matched.startY)) / spanH, 0.0), 0.999)
-
         if let provider = store.capabilityProvider(for: candidate.id), provider.isDecomposed(store: store) {
-            let subItemCount = max(provider.subItemCount(store: store), 1)
-            let itemIdx = min(max(Int(podRelativeY * Double(subItemCount)), 0), subItemCount - 1)
+            let rawCount = provider.subItemCount(store: store)
+            let minChipH: CGFloat = 20.0
+            let spacing: CGFloat = 2.5
+            let maxAllowed = max(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), 1)
+            let count = min(rawCount, maxAllowed)
+            let safeCount = max(count, 1)
+            let totalSpacing = spacing * CGFloat(safeCount - 1)
+            let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), 185.0)
+            let itemPitch = itemH + spacing
+            let podY = max(currentWindowY - CGFloat(matched.startY), 0.0)
+            let itemIdx = min(max(Int(podY / itemPitch), 0), count - 1)
             let subItemId = provider.subItemId(at: itemIdx, store: store) ?? candidate.id
-            if store.activeDrawerItemId != subItemId {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+
+            let now = Date()
+            // Sub-item intentional dwell gate (80ms): protects against rapid oscillation and jitter
+            if store.activeDrawerPodId == candidate.id, store.activeDrawerItemId != subItemId {
+                if subItemId != lastCandidateSubItemId {
+                    lastCandidateSubItemId = subItemId
+                    candidateSubItemHoverStartTime = now
+                    return
+                }
+                let subItemHoverDuration = now.timeIntervalSince(candidateSubItemHoverStartTime ?? now)
+                guard subItemHoverDuration >= 0.08 else { return }
+            } else {
+                lastCandidateSubItemId = subItemId
+                candidateSubItemHoverStartTime = now
+            }
+
+            if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                     store.activeDrawerItemId = subItemId
                     store.activeDrawerPodId = candidate.id
                 }

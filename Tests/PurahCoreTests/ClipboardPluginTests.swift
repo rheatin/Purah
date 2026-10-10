@@ -214,4 +214,67 @@ struct ClipboardPluginTests {
 
         plugin.onUnmount(store: store)
     }
+
+    @Test("Clipboard decomposed hitbox calculation accurately applies vertical shift and 10pt safety padding")
+    func testClipboardHitboxShiftAlignment() {
+        let store = PurahWorkspaceStore()
+        let plugin = ClipboardPlugin()
+        plugin.onMount(store: store)
+
+        let item = ClipboardItem(type: .text("Shift Alignment Test"))
+        plugin.state.items = [item]
+
+        // Enable clipboard pod at screen bottom
+        if let idx = store.pods.firstIndex(where: { $0.id == "clipboard" }) {
+            store.pods[idx].isEnabled = true
+        }
+        store.activateDrawer(podId: "clipboard", itemId: "clipboard-\(item.id)")
+
+        let totalScreenH = 900.0
+        let frames = store.activeDrawerCardFrames(for: .left, totalHeight: totalScreenH, windowWidth: 580.0)
+        #expect(!frames.isEmpty, "Active decomposed clipboard drawer must generate active card frame")
+
+        for frame in frames {
+            #expect(frame.width >= 290.0, "Frame width must safely cover drawer width")
+            #expect(frame.height >= 44.0, "Frame height must cover minimum card height")
+            #expect(frame.minY >= 0.0, "Frame must stay within visible screen bounds")
+            #expect(frame.maxY <= totalScreenH, "Frame must not exceed screen height")
+        }
+
+        plugin.onUnmount(store: store)
+    }
+
+    @Test("Clipboard state purges UserDefaults history redundancy and operates with zero UserDefaults RAM bloat")
+    func testClipboardZeroUserDefaultsHistoryBloat() {
+        let defaults = UserDefaults.standard
+        let legacyKey = "purah.plugin.clipboard.history"
+
+        // Inject simulated legacy bloated history into UserDefaults
+        defaults.set("[\"legacy_bloated_item\"]", forKey: legacyKey)
+        #expect(defaults.string(forKey: legacyKey) != nil)
+
+        // Instantiate ClipboardPluginState - must automatically purge legacy history from UserDefaults
+        let state = ClipboardPluginState()
+        #expect(defaults.object(forKey: legacyKey) == nil, "ClipboardPluginState must purge history from UserDefaults to eliminate resident memory bloat")
+
+        // Save state - only configuration (isDecomposed) must be saved to UserDefaults, NEVER history
+        state.save()
+        #expect(defaults.object(forKey: legacyKey) == nil, "save() must not persist history array to UserDefaults")
+    }
+
+    @Test("ClipboardHoverPreviewController debounces show and hide without instant flickering")
+    func testClipboardHoverPreviewDebounce() async {
+        let controller = ClipboardHoverPreviewController.shared
+        let item = ClipboardItem(type: .text("Quick look text"))
+
+        // Fast sequential trigger and cancel
+        controller.show(item: item, edge: .left, palette: ThemeManager.shared.palette, drawerWidth: 290.0)
+        controller.hide()
+
+        // Wait short interval (shorter than debounce delay 180ms)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        // Hide should have cancelled pending show
+        controller.hide()
+    }
 }

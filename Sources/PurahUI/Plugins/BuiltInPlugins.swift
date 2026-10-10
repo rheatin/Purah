@@ -2577,7 +2577,8 @@ public struct ClipboardItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, 42.0)
+        let isExpanded = (state == .expandedDrawer)
+        let cardH = max(height, 44.0)
         let itemColor: Color = {
             if let item = item, case .color(let hex, _, _, _, _) = item.type {
                 return Color(hex: hex)
@@ -2589,15 +2590,16 @@ public struct ClipboardItemDrawerView: View {
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Pure physical in-rail capsule (co-planar, NO icons)
             Capsule()
-                .fill(itemColor.opacity(state == .expandedDrawer ? 0.95 : 0.70))
-                .frame(width: barW, height: cardH)
+                .fill(itemColor.opacity(isExpanded ? 0.95 : 0.70))
+                .frame(width: barW, height: isExpanded ? cardH : height)
 
-            if state == .expandedDrawer {
+            if isExpanded {
                 steppedCard(cardH: cardH, itemColor: itemColor)
                     .transition(itemDrawerTransition)
             }
         }
-        .frame(height: cardH)
+        .frame(height: isExpanded ? cardH : height)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
     }
 
     @ViewBuilder
@@ -2624,6 +2626,7 @@ public struct ClipboardItemDrawerView: View {
 
                 case .image(let path, let thumbPath, let w, let h, _):
                     if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
+                        let _ = { nsImg.cacheMode = .never }()
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -2864,6 +2867,7 @@ public struct ClipboardFullDrawerView: View {
             case .image(let path, let thumbPath, let w, let h, let bytes):
                 HStack(spacing: 12) {
                     if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
+                        let _ = { nsImg.cacheMode = .never }()
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)

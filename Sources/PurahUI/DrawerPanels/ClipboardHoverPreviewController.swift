@@ -116,6 +116,7 @@ public struct ClipboardHoverApertureView: View {
             }
 
             if let nsImg = NSImage(contentsOfFile: path) {
+                let _ = { nsImg.cacheMode = .never }()
                 Image(nsImage: nsImg)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -198,6 +199,7 @@ public final class ClipboardHoverPreviewController {
 
     private var panel: NSPanel?
     private var activeItemId: String?
+    private var showWorkItem: DispatchWorkItem?
     private var hideWorkItem: DispatchWorkItem?
 
     private init() {}
@@ -209,6 +211,19 @@ public final class ClipboardHoverPreviewController {
         if activeItemId == item.id, panel?.isVisible == true {
             return
         }
+
+        showWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.performShow(item: item, edge: edge, palette: palette, drawerWidth: drawerWidth)
+            }
+        }
+        showWorkItem = work
+        // Intentional hover dwell (180ms) avoids aggressive popping & flickering on casual pointer pass-through
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+    }
+
+    private func performShow(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
         activeItemId = item.id
 
         let targetPanel = getOrCreatePanel()
@@ -251,6 +266,8 @@ public final class ClipboardHoverPreviewController {
     }
 
     public func hide() {
+        showWorkItem?.cancel()
+        showWorkItem = nil
         hideWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             Task { @MainActor [weak self] in

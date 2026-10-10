@@ -410,7 +410,7 @@ public final class PurahWorkspaceStore {
                 let totalSpacing = spacing * Double(safeCount - 1)
                 let maxChipH = 185.0
                 let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), minChipH), maxChipH)
-                let cardH = max(itemH, 34.0)
+                let cardH = max(itemH, 44.0)
 
                 var matchedSubItem = false
                 for idx in 0..<count {
@@ -428,8 +428,8 @@ public final class PurahWorkspaceStore {
 
                         let appKitTop = totalHeight - effTop
                         let appKitBottom = appKitTop - cardH
-                        let minY = max(appKitBottom - 6.0, 0.0)
-                        let maxY = min(appKitTop + 6.0, totalHeight)
+                        let minY = max(appKitBottom - 10.0, 0.0)
+                        let maxY = min(appKitTop + 10.0, totalHeight)
 
                         let subTitle = provider.subItemTitle(at: idx, store: self) ?? ""
                         let drawerW = min(effectiveDrawerWidth(for: subTitle, baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
@@ -745,8 +745,14 @@ public final class PurahWorkspaceStore {
                 return
             }
             pods[index].isEnabled = true
+            if id == "clipboard" {
+                SystemClipboardSyncService.shared.startListening()
+            }
         } else {
             pods[index].isEnabled = false
+            if id == "clipboard" {
+                SystemClipboardSyncService.shared.stopListening()
+            }
         }
         autoLayoutAll()
     }

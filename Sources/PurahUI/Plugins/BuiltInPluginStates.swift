@@ -1280,15 +1280,19 @@ public final class ClipboardPluginState: Sendable {
         } else {
             self.isDecomposed = true // Default decomposed principle
         }
-        self.items = storage.codable(forKey: "history", as: [ClipboardItem].self) ?? []
+        // Purge legacy bloated JSON history from UserDefaults to release resident process memory
+        storage.removeObject(forKey: "history")
+        self.items = SystemClipboardSyncService.shared.history
     }
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        SystemClipboardSyncService.shared.startListening()
+        // Lazy lifecycle: Only initiate pasteboard polling when the clipboard pod is active/enabled
+        if store.pods.first(where: { $0.id == "clipboard" })?.isEnabled == true {
+            SystemClipboardSyncService.shared.startListening()
+        }
         SystemClipboardSyncService.shared.onItemAdded = { [weak self] _ in
             self?.items = SystemClipboardSyncService.shared.history
-            self?.save()
         }
         self.items = SystemClipboardSyncService.shared.history
     }
@@ -1304,7 +1308,6 @@ public final class ClipboardPluginState: Sendable {
 
     public func save() {
         storage.set(isDecomposed, forKey: "isDecomposed")
-        storage.setCodable(items, forKey: "history")
     }
 
     public func copyItem(_ item: ClipboardItem) {
@@ -1314,12 +1317,10 @@ public final class ClipboardPluginState: Sendable {
     public func deleteItem(id: String) {
         SystemClipboardSyncService.shared.deleteItem(id: id)
         self.items = SystemClipboardSyncService.shared.history
-        save()
     }
 
     public func clearAll() {
         SystemClipboardSyncService.shared.clearAll()
         self.items = SystemClipboardSyncService.shared.history
-        save()
     }
 }

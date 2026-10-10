@@ -10,6 +10,8 @@ public struct SteppedRailContainerView: View {
     public let totalHeight: CGFloat
     public let edge: MountEdge
     public let store: PurahWorkspaceStore
+    public let startY: CGFloat
+    public let screenHeight: CGFloat
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -21,7 +23,9 @@ public struct SteppedRailContainerView: View {
         context: PurahPluginContext,
         totalHeight: CGFloat,
         edge: MountEdge? = nil,
-        store: PurahWorkspaceStore? = nil
+        store: PurahWorkspaceStore? = nil,
+        startY: CGFloat = 0.0,
+        screenHeight: CGFloat = 900.0
     ) {
         self.plugin = plugin
         self.pod = pod
@@ -29,6 +33,8 @@ public struct SteppedRailContainerView: View {
         self.totalHeight = totalHeight
         self.edge = edge ?? context.edge
         self.store = store ?? context.store
+        self.startY = startY
+        self.screenHeight = screenHeight
     }
 
     public var body: some View {
@@ -49,14 +55,22 @@ public struct SteppedRailContainerView: View {
                     .frame(width: CGFloat(store.railBarWidth), height: totalHeight)
             } else {
                 VStack(spacing: spacing) {
-                    ForEach(items) { subItem in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, subItem in
                         let isPinned = store.isItemPinned(id: subItem.id)
                         let isActive = (subItem.id == store.activeDrawerItemId || isPinned)
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
+                        // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
+                        let cardH = max(itemH, 44.0)
+                        let itemTop = startY + CGFloat(idx) * (itemH + spacing)
+                        let itemBottom = itemTop + cardH
+                        let maxAllowedY = screenHeight - 12.0
+                        let shift = isActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
+
                         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
                             subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: itemH)
                                 .id(subItem.id)
+                                .offset(y: -shift)
                                 .onHover { isHovered in
                                     if isHovered {
                                         if store.dismissAlertOnHover && subItem.state == .alerting {
@@ -80,6 +94,7 @@ public struct SteppedRailContainerView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)
                         .frame(height: itemH, alignment: .top)
+                        .zIndex(isActive ? 100 : Double(10 - idx))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)

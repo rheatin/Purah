@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Observation
+import ImageIO
 
 @Observable
 @MainActor
@@ -160,8 +161,8 @@ public final class SystemClipboardSyncService {
         case .color(let hex, _, _, _, _):
             pb.setString(hex.uppercased(), forType: .string)
         case .image(let path, _, _, _, _):
-            if let img = NSImage(contentsOfFile: path), let tiff = img.tiffRepresentation {
-                pb.setData(tiff, forType: .tiff)
+            if let imgData = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                pb.setData(imgData, forType: .png)
             }
         }
         lastChangeCount = pb.changeCount
@@ -232,68 +233,70 @@ public final class SystemClipboardSyncService {
     }
 
     private func processImage(pasteboard: NSPasteboard) -> ClipboardItem? {
-        guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff),
-              let rep = NSBitmapImageRep(data: data) else {
-            return nil
-        }
-
-        let w = rep.pixelsWide
-        let h = rep.pixelsHigh
-        guard w > 0 && h > 0 else { return nil }
-
-        let id = UUID().uuidString
-        let fullFilename = "\(id)_full.png"
-        let thumbFilename = "\(id)_thumb.png"
-        let fullFileURL = imagesDirectory.appendingPathComponent(fullFilename)
-        let thumbFileURL = thumbnailsDirectory.appendingPathComponent(thumbFilename)
-
-        guard let pngData = rep.representation(using: .png, properties: [:]) else { return nil }
-        do {
-            try pngData.write(to: fullFileURL)
-
-            // Ultra-compressed downsampled thumbnail (max 100x100px, ~15KB disk, ~40KB RAM)
-            let maxDim: CGFloat = 100.0
-            let scale = min(maxDim / CGFloat(w), maxDim / CGFloat(h), 1.0)
-            let thumbW = max(Int(CGFloat(w) * scale), 1)
-            let thumbH = max(Int(CGFloat(h) * scale), 1)
-
-            let thumbRep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: thumbW,
-                pixelsHigh: thumbH,
-                bitsPerSample: 8,
-                samplesPerPixel: 4,
-                hasAlpha: true,
-                isPlanar: false,
-                colorSpaceName: .calibratedRGB,
-                bytesPerRow: 0,
-                bitsPerPixel: 0
-            )
-
-            NSGraphicsContext.saveGraphicsState()
-            if let context = thumbRep.flatMap({ NSGraphicsContext(bitmapImageRep: $0) }) {
-                NSGraphicsContext.current = context
-                context.imageInterpolation = .high
-                if let srcImg = NSImage(data: pngData) {
-                    srcImg.draw(in: NSRect(x: 0, y: 0, width: thumbW, height: thumbH))
-                }
+        autoreleasepool {
+            guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) else {
+                return nil
             }
-            NSGraphicsContext.restoreGraphicsState()
 
-            let thumbData = thumbRep?.representation(using: .png, properties: [:]) ?? pngData
-            try thumbData.write(to: thumbFileURL)
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+                return nil
+            }
 
-            return ClipboardItem(
-                type: .image(
-                    filePath: fullFileURL.path,
-                    thumbnailPath: thumbFileURL.path,
-                    pixelWidth: w,
-                    pixelHeight: h,
-                    byteSize: pngData.count
+            guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let w = properties[kCGImagePropertyPixelWidth] as? Int,
+                  let h = properties[kCGImagePropertyPixelHeight] as? Int,
+                  w > 0, h > 0 else {
+                return nil
+            }
+
+            let id = UUID().uuidString
+            let fullFilename = "\(id)_full.png"
+            let thumbFilename = "\(id)_thumb.png"
+            let fullFileURL = imagesDirectory.appendingPathComponent(fullFilename)
+            let thumbFileURL = thumbnailsDirectory.appendingPathComponent(thumbFilename)
+
+            do {
+                // If clipboard data is already PNG, write it directly without re-encoding to save CPU & RAM!
+                if pasteboard.data(forType: .png) != nil {
+                    try data.write(to: fullFileURL)
+                } else {
+                    guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+                    let rep = NSBitmapImageRep(cgImage: cgImage)
+                    guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
+                    try png.write(to: fullFileURL)
+                }
+
+                // Streaming downsample to max 100px thumbnail using ImageIO
+                // Decodes ONLY thumbnail dimensions directly, NEVER allocating the full 4K / 30MB raw bitmap in RAM!
+                let thumbOptions: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 100
+                ]
+
+                guard let thumbCGImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+                    return nil
+                }
+
+                let thumbRep = NSBitmapImageRep(cgImage: thumbCGImage)
+                guard let thumbData = thumbRep.representation(using: .png, properties: [:]) else { return nil }
+                try thumbData.write(to: thumbFileURL)
+
+                let byteSize = (try? Data(contentsOf: fullFileURL).count) ?? data.count
+
+                return ClipboardItem(
+                    type: .image(
+                        filePath: fullFileURL.path,
+                        thumbnailPath: thumbFileURL.path,
+                        pixelWidth: w,
+                        pixelHeight: h,
+                        byteSize: byteSize
+                    )
                 )
-            )
-        } catch {
-            return nil
+            } catch {
+                return nil
+            }
         }
     }
 
