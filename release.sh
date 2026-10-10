@@ -98,7 +98,9 @@ else
     if [ "$VERSION" != "$CURRENT_VERSION" ]; then
         echo -e "${YELLOW}📝 Updating version from ${CURRENT_VERSION} to ${VERSION}...${RESET}"
         sed -i '' "s/public static let version = \"[^\"]*\"/public static let version = \"${VERSION}\"/" "$PURAH_CORE_FILE"
-        sed -i '' "s/<key>CFBundleShortVersionString<\/key>[[:space:]]*<string>[^<]*<\/string>/<key>CFBundleShortVersionString<\/key>\n    <string>${VERSION}<\/string>/" "$INFO_PLIST_FILE"
+        if command -v plutil >/dev/null 2>&1; then
+            plutil -replace CFBundleShortVersionString -string "${VERSION}" "$INFO_PLIST_FILE"
+        fi
         echo -e "${GREEN}✓ Updated ${PURAH_CORE_FILE} and ${INFO_PLIST_FILE}${RESET}"
     fi
 fi

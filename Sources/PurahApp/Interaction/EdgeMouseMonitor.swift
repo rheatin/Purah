@@ -26,6 +26,7 @@ public final class EdgeMouseMonitor {
     private var candidateHoverStartTime: Date?
     private var wasAtAbsoluteBezel: Bool = false
     private var bezelArrivalTime: Date? = nil
+    private var isRunning: Bool = false
     public private(set) var isFrozen: Bool = false
     public static weak var shared: EdgeMouseMonitor?
 
@@ -86,6 +87,8 @@ public final class EdgeMouseMonitor {
     }
 
     public func start() {
+        stop()
+        isRunning = true
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
             self?.handleMouse(event: event)
         }
@@ -97,6 +100,10 @@ public final class EdgeMouseMonitor {
     }
 
     public func updateEventTapState() {
+        guard isRunning else {
+            tearDownEventTap()
+            return
+        }
         if !isFrozen && !store.isRailsFrozen && store.edgeTriggerMode == .pushForce {
             if eventTap == nil {
                 setupEventTap()
@@ -107,6 +114,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func stop() {
+        isRunning = false
         leftExitGraceTask?.cancel()
         leftExitGraceTask = nil
         rightExitGraceTask?.cancel()
@@ -135,8 +143,13 @@ public final class EdgeMouseMonitor {
             options: .listenOnly,
             eventsOfInterest: CGEventMask(eventMask),
             callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
-                guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+                guard let refcon = refcon, let sharedMonitor = EdgeMouseMonitor.shared else {
+                    return Unmanaged.passUnretained(event)
+                }
                 let monitor = Unmanaged<EdgeMouseMonitor>.fromOpaque(refcon).takeUnretainedValue()
+                guard monitor === sharedMonitor else {
+                    return Unmanaged.passUnretained(event)
+                }
                 let dx = event.getDoubleValueField(.mouseEventDeltaX)
                 guard abs(dx) > 0.05 else { return Unmanaged.passUnretained(event) }
                 let pt = event.location
@@ -255,12 +268,14 @@ public final class EdgeMouseMonitor {
     ) {
         guard !isFrozen, !store.isRailsFrozen else { return }
 
-        if store.edgeTriggerMode == .pushForce {
-            if eventTap == nil {
-                updateEventTapState()
+        if isRunning {
+            if store.edgeTriggerMode == .pushForce {
+                if eventTap == nil {
+                    updateEventTapState()
+                }
+            } else if eventTap != nil {
+                tearDownEventTap()
             }
-        } else if eventTap != nil {
-            tearDownEventTap()
         }
 
         if customVelocity == nil {

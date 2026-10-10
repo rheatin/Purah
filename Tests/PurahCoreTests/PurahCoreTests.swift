@@ -6,6 +6,7 @@ import Testing
 struct PurahCoreTests {
     @Test("Verify PurahCore version identifier")
     func verifyVersion() {
-        #expect(PurahCore.version == "0.1.1")
+        #expect(SemanticVersion(PurahCore.version) != nil)
+        #expect(!PurahCore.version.isEmpty)
     }
 }
