@@ -432,7 +432,7 @@ public final class PurahWorkspaceStore {
                         let maxY = min(appKitTop + 6.0, totalHeight)
 
                         let subTitle = provider.subItemTitle(at: idx, store: self) ?? ""
-                        let drawerW = min(effectiveDrawerWidth(for: subTitle, baseWidth: pod.drawerWidth) + corridor, windowWidth)
+                        let drawerW = min(effectiveDrawerWidth(for: subTitle, baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
                         let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                         frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
                     }
@@ -443,7 +443,7 @@ public final class PurahWorkspaceStore {
                     let bottomOfPodY = topOfPodY - item.spanH
                     let minY = max(bottomOfPodY - 6.0, 0.0)
                     let maxY = min(topOfPodY + 6.0, totalHeight)
-                    let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth) + corridor, windowWidth)
+                    let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
                     let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                     frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
                 }

@@ -171,7 +171,8 @@ public struct LiquidCardBackgroundModifier: ViewModifier {
         let secondary = accent.harmonicSecondary()
 
         ZStack {
-            NativeVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+            // Pure SwiftUI translucent fill for inner rows to eliminate redundant nested 4MB WindowServer blur buffers
+            Color(NSColor.controlBackgroundColor).opacity(colorScheme == .dark ? 0.45 : 0.65)
 
             LinearGradient(
                 stops: [

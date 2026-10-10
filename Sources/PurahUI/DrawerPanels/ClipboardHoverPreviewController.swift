@@ -198,10 +198,14 @@ public final class ClipboardHoverPreviewController {
 
     private var panel: NSPanel?
     private var activeItemId: String?
+    private var hideWorkItem: DispatchWorkItem?
 
     private init() {}
 
     public func show(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+
         if activeItemId == item.id, panel?.isVisible == true {
             return
         }
@@ -247,6 +251,17 @@ public final class ClipboardHoverPreviewController {
     }
 
     public func hide() {
+        hideWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.performHide()
+            }
+        }
+        hideWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14, execute: work)
+    }
+
+    private func performHide() {
         guard let panel = panel, panel.isVisible else {
             activeItemId = nil
             return

@@ -2403,6 +2403,11 @@ public struct ClipboardPlugin: PurahPodPlugin {
         guard index >= 0 && index < state.items.count else { return nil }
         return "clipboard-\(state.items[index].id)"
     }
+    public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        if state.items.isEmpty { return "Clipboard Empty" }
+        guard index >= 0 && index < state.items.count else { return nil }
+        return state.items[index].type.summary
+    }
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
         itemId.hasPrefix("clipboard-") || itemId == "clipboard"
     }
