@@ -44,6 +44,14 @@ public final class SystemMusicSyncService {
             center.removeObserver(obs)
             spotifyObserver = nil
         }
+        clearArtworkCache()
+    }
+
+    public func clearArtworkCache() {
+        cachedArtworkKey = nil
+        cachedArtworkData = nil
+        cachedLyricsKey = nil
+        cachedLyricsResult = nil
     }
 
     public func startListening(into store: PurahWorkspaceStore? = nil) {

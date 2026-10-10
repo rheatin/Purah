@@ -8,7 +8,7 @@ import Observation
 public final class SystemRemindersSyncService {
     public static let shared = SystemRemindersSyncService()
 
-    private var eventStore = EKEventStore()
+    @ObservationIgnored private lazy var eventStore = EKEventStore()
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?

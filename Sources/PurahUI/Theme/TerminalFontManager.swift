@@ -22,9 +22,14 @@ public enum TerminalFontManager: Sendable {
         "Courier New"
     ]
 
+    @MainActor private static var cachedAvailableFamilies: [String]?
+
     /// Detects all installed monospace and Nerd Font families on this Mac
     @MainActor
     public static func availableFamilies() -> [String] {
+        if let cached = cachedAvailableFamilies {
+            return cached
+        }
         let installed = Set(NSFontManager.shared.availableFontFamilies)
         var result: [String] = ["Auto (Nerd Font)"]
 
@@ -46,6 +51,7 @@ public enum TerminalFontManager: Sendable {
         }.sorted()
 
         result.append(contentsOf: other)
+        cachedAvailableFamilies = result
         return result
     }
 

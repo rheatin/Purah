@@ -8,7 +8,7 @@ import Observation
 public final class SystemCalendarSyncService {
     public static let shared = SystemCalendarSyncService()
 
-    private var eventStore = EKEventStore()
+    private var eventStore: EKEventStore?
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
@@ -28,7 +28,7 @@ public final class SystemCalendarSyncService {
 
     /// Refreshes the underlying EventStore so permission changes take effect immediately
     public func resetStore() {
-        self.eventStore = EKEventStore()
+        self.eventStore = nil
     }
 
     /// Calculates normalized day elapsed progress (0.0 to 1.0)

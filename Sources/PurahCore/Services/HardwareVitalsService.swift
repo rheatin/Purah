@@ -95,12 +95,12 @@ public final class HardwareVitalsService {
     }
 
     public init() {
+        // Collect initial baseline snapshot on startup without kicking off continuous kernel polling
         refreshMetrics(includeProcesses: false)
-        startMonitoring(interval: 1.0)
     }
 
     public func startMonitoring(interval: TimeInterval = 1.0) {
-        monitorTask?.cancel()
+        guard monitorTask == nil else { return }
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self = self else { break }

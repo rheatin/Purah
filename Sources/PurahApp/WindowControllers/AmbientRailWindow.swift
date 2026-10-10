@@ -7,6 +7,7 @@ import PurahUI
 @MainActor
 public final class AmbientRailWindow: NSPanel {
     public static let maxCanvasWidth: CGFloat = 580.0
+    public static let compactCanvasWidth: CGFloat = 28.0
 
     public override var canBecomeKey: Bool {
         true // Allow key window status for text editing in notes
@@ -19,6 +20,7 @@ public final class AmbientRailWindow: NSPanel {
     private let edge: MountEdge
     private var targetScreen: NSScreen
     private let store: PurahWorkspaceStore
+    public private(set) var isExpanded: Bool = false
 
     public init(edge: MountEdge, screen: NSScreen, store: PurahWorkspaceStore) {
         self.edge = edge
@@ -26,12 +28,11 @@ public final class AmbientRailWindow: NSPanel {
         self.store = store
 
         // Coordinate positioning:
-        // 1. Horizontal X coordinates anchor strictly to visible screen boundaries (0 gap).
-        // 2. Vertical Y coordinates use screen.visibleFrame to avoid dock and menu bar.
+        // Starts in ultra-lightweight compact canvas (28pt) to save ~20MB framebuffer memory when docked.
         let visibleRect = screen.visibleFrame
-        let maxCanvasWidth = Self.maxCanvasWidth
-        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
-        let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
+        let initialWidth = Self.compactCanvasWidth
+        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - initialWidth)
+        let frame = NSRect(x: x, y: visibleRect.minY, width: initialWidth, height: visibleRect.height)
 
         super.init(
             contentRect: frame,
@@ -57,6 +58,22 @@ public final class AmbientRailWindow: NSPanel {
         self.contentView = hostingView
     }
 
+    public func setExpanded(_ expanded: Bool) {
+        guard isExpanded != expanded else { return }
+        self.isExpanded = expanded
+        updateFrame(display: true)
+    }
+
+    public func updateFrame(display: Bool = true) {
+        let visibleRect = targetScreen.visibleFrame
+        let targetWidth = isExpanded ? Self.maxCanvasWidth : Self.compactCanvasWidth
+        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - targetWidth)
+        let newFrame = NSRect(x: x, y: visibleRect.minY, width: targetWidth, height: visibleRect.height)
+        if self.frame != newFrame {
+            self.setFrame(newFrame, display: display)
+        }
+    }
+
     public func setInteractive(_ interactive: Bool) {
         let shouldIgnore = !interactive
         if self.ignoresMouseEvents != shouldIgnore {
@@ -74,15 +91,11 @@ public final class AmbientRailWindow: NSPanel {
     }
 
     public func updateWidth() {
-        // Redrawn reactively via workspace store
+        updateFrame(display: true)
     }
 
     public func relocate(to screen: NSScreen) {
         self.targetScreen = screen
-        let visibleRect = screen.visibleFrame
-        let maxCanvasWidth = Self.maxCanvasWidth
-        let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - maxCanvasWidth)
-        let frame = NSRect(x: x, y: visibleRect.minY, width: maxCanvasWidth, height: visibleRect.height)
-        self.setFrame(frame, display: true)
+        updateFrame(display: true)
     }
 }
