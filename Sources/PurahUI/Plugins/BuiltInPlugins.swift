@@ -17,7 +17,8 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         preferredZone: .glance,
         ergonomicWeight: 35.0,
         minLengthRatio: 0.22,
-        defaultColorHex: "#00E5A3"
+        defaultColorHex: "#00E5A3",
+        permissions: [.machTelemetry]
     )
 
     public let state: VitalsPluginState
@@ -220,7 +221,8 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         preferredZone: .quickFlick,
         ergonomicWeight: 30.0,
         minLengthRatio: 0.18,
-        defaultColorHex: "#A78BFA"
+        defaultColorHex: "#A78BFA",
+        permissions: [.shellExecution]
     )
 
     public let state: ScriptsPluginState
@@ -479,7 +481,8 @@ public struct DropShelfPlugin: PurahPodPlugin {
         preferredZone: .quickFlick,
         ergonomicWeight: 35.0,
         minLengthRatio: 0.16,
-        defaultColorHex: "#BF5AF2"
+        defaultColorHex: "#BF5AF2",
+        permissions: [.fileSystem]
     )
 
     public let state: ShelfPluginState
@@ -549,7 +552,8 @@ public struct MusicPlugin: PurahPodPlugin {
         preferredZone: .goldenAction,
         ergonomicWeight: 25.0,
         minLengthRatio: 0.14,
-        defaultColorHex: "#FF375F"
+        defaultColorHex: "#FF375F",
+        permissions: [.appleMusic]
     )
 
     public let state: MusicPluginState
@@ -607,7 +611,8 @@ public struct CalendarPlugin: PurahPodPlugin {
         preferredZone: .goldenAction,
         ergonomicWeight: 45.0,
         minLengthRatio: 0.16,
-        defaultColorHex: "#FF9F0A"
+        defaultColorHex: "#FF9F0A",
+        permissions: [.calendar]
     )
 
     public let state: CalendarPluginState
@@ -887,7 +892,8 @@ public struct TodoPlugin: PurahPodPlugin {
         preferredZone: .goldenAction,
         ergonomicWeight: 40.0,
         minLengthRatio: 0.15,
-        defaultColorHex: "#30D158"
+        defaultColorHex: "#30D158",
+        permissions: [.reminders]
     )
 
     public let state: TodoPluginState
@@ -2142,7 +2148,8 @@ public struct TerminalPlugin: PurahPodPlugin {
         ergonomicWeight: 35.0,
         minLengthRatio: 0.20,
         defaultColorHex: "#00F5D4",
-        defaultDrawerWidth: 520.0
+        defaultDrawerWidth: 520.0,
+        permissions: [.shellExecution]
     )
 
     public let state: TerminalPluginState
@@ -2390,7 +2397,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
     public var isDecomposed: Bool { state.isDecomposed }
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool { state.isDecomposed }
-    public func subItemCount(store: PurahWorkspaceStore) -> Int { max(min(state.items.count, 4), 1) }
+    public func subItemCount(store: PurahWorkspaceStore) -> Int { max(min(state.items.count, store.clipboardMaxRailItems), 1) }
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
         if state.items.isEmpty { return "clipboard-empty" }
         guard index >= 0 && index < state.items.count else { return nil }
@@ -2400,14 +2407,55 @@ public struct ClipboardPlugin: PurahPodPlugin {
         itemId.hasPrefix("clipboard-") || itemId == "clipboard"
     }
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        isDecomposed ? CGFloat(subItemCount(store: store)) * 44.0 : 120.0
+        if isDecomposed(store: store) {
+            let count = max(min(state.items.count, store.clipboardMaxRailItems), 1)
+            return CGFloat(count) * 42.0 + CGFloat(count - 1) * 2.5
+        } else {
+            return 160.0
+        }
     }
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store.pinnedDrawerItemIds.contains { $0.hasPrefix("clipboard-") }
     }
 
-    // 3. Stepped Items for SteppedRailContainerView
+    // 3. Header Accessory & Trailing Tools (Directly integrated into Card Header Row 1)
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            Text("\(state.items.count)")
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .foregroundColor(Color(hex: "#FF9F0A"))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color(hex: "#FF9F0A").opacity(0.18))
+                .cornerRadius(4)
+        )
+    }
+
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        if !state.items.isEmpty {
+            return AnyView(
+                Button(role: .destructive) {
+                    state.clearAll()
+                    context.performHaptic(.alignment)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 9.5))
+                        Text("Clear")
+                            .font(.system(size: 9.5, weight: .medium))
+                    }
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.tactile)
+                .help("Clear Clipboard History")
+            )
+        }
+        return nil
+    }
+
+    // 4. Stepped Items for SteppedRailContainerView
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        let maxItems = context.store.clipboardMaxRailItems
         if state.items.isEmpty {
             return [
                 PurahPluginSubItem(
@@ -2422,7 +2470,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
                 )
             ]
         }
-        return state.items.prefix(4).map { item in
+        return state.items.prefix(maxItems).map { item in
             let subId = "clipboard-\(item.id)"
             let icon: String = {
                 switch item.type {
@@ -2450,7 +2498,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
         }
     }
 
-    // 4. Stepped Drawer View (Single item popout with co-planar rail indicator and physical divider)
+    // 5. Stepped Drawer View (Single item popout with co-planar rail indicator and physical divider)
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
         let cleanId = subItemId.replacingOccurrences(of: "clipboard-", with: "")
         let item = state.items.first(where: { $0.id == cleanId || $0.id == subItemId })
@@ -2476,14 +2524,14 @@ public struct ClipboardPlugin: PurahPodPlugin {
         )
     }
 
-    // 5. Full Drawer View (Composite)
+    // 6. Full Drawer View (Composite)
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
         AnyView(
             ClipboardFullDrawerView(state: state, context: context)
         )
     }
 
-    // 6. Settings View
+    // 7. Settings View
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(
             ClipboardPluginSettingsView(state: state, store: store)
@@ -2678,66 +2726,24 @@ public struct ClipboardFullDrawerView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Header: Icon + Title + Count Badge + Clear Button
-            HStack(spacing: 8) {
-                Image(systemName: "doc.on.clipboard.fill")
-                    .foregroundColor(Color(hex: "#FF9F0A"))
-                    .font(.caption)
-
-                Text("Clipboard History")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? .primary : .white)
-
-                Text("\(state.items.count)")
-                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1.5)
-                    .background(Color(hex: "#FF9F0A").opacity(0.18))
-                    .foregroundColor(Color(hex: "#FF9F0A"))
-                    .cornerRadius(4)
-
-                Spacer()
-
-                if !state.items.isEmpty {
-                    Button(role: .destructive) {
-                        state.clearAll()
-                        context.performHaptic(.alignment)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 9.5))
-                            Text("Clear")
-                                .font(.system(size: 10, weight: .medium))
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.tactile)
-                    .help("Clear unpinned history")
-                }
-            }
-            .padding(.horizontal, 4)
-
-            Divider()
-                .opacity(0.3)
-
+        VStack(alignment: .leading, spacing: 6) {
             if state.items.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 32))
+                        .font(.system(size: 28))
                         .foregroundColor(.secondary.opacity(0.4))
-                        .padding(.top, 16)
+                        .padding(.top, 12)
                     Text("Clipboard is Empty")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                         .foregroundColor(.secondary)
                     Text("Copied text snippets, hex colors, and screenshots will seamlessly appear here")
-                        .font(.system(size: 10))
+                        .font(.system(size: 9.5))
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary.opacity(0.7))
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 16)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 24)
+                .padding(.vertical, 14)
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 8) {
@@ -2985,6 +2991,31 @@ public struct ClipboardPluginSettingsView: View {
                 ))
                 .toggleStyle(.switch)
                 Text("When enabled, recent items are displayed as discrete physical chips along the rail edge for zero-drawer switching.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                Divider()
+                    .opacity(0.3)
+                    .padding(.vertical, 2)
+
+                HStack {
+                    Text("Max In-Rail Items")
+                        .font(.subheadline)
+                    Spacer()
+                    Text("\(store.clipboardMaxRailItems) Chips")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(hex: "#FF9F0A"))
+                }
+
+                Slider(value: Binding(
+                    get: { Double(store.clipboardMaxRailItems) },
+                    set: {
+                        store.clipboardMaxRailItems = Int($0)
+                        store.savePersistentState()
+                    }
+                ), in: 2...8, step: 1)
+
+                Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

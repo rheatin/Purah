@@ -112,14 +112,18 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
 ### 5. Physical Ergonomic Minimum Height & Dynamic Rail Capacity Rule (Mandatory)
 1. **Tiered Ergonomic Sub-Item Minimum**:
-   - **Full-Pod Composite Drawers** (Music, Shelf, Notes, Terminal): **MUST enforce $\ge 120\text{pt}$** (Terminal preserves $\ge 520\text{pt}$ width).
+   - **Full-Pod Composite Drawers** (Music, Shelf, Notes, Terminal, Clipboard): **MUST enforce $\ge 120\text{pt}$** (Terminal preserves $\ge 520\text{pt}$ width, Clipboard composite $\ge 150\text{pt}$).
    - **Tactile Metrics & Actions** (split hardware metric chips, script runway action buttons): **MUST enforce $\ge 56\text{pt}$** to ensure precise fingertip/cursor click hitboxes.
    - **Compact Calendar Event Chips** (`compactEventCard`): enforce **$40\text{pt}$ baseline** with configurable `calendarMaxRailEvents` (2~6 events), optimizing high-density multi-event glanceability without overflowing the rail.
    - **Compact Reminder/Todo Task Chips** (`compactTodoCard`): enforce **$32\text{pt}$ baseline** with configurable `todoMaxRailTasks` (2~10 tasks) for concise task completion and fast-tick workflows.
-   - Infinite downward compression that squashes typography, clips buttons, or shrinks click hitboxes is strictly forbidden.
+   - **Compact Clipboard Chips** (`compactClipboardCard`): enforce **$42\text{pt}$ baseline** with configurable `clipboardMaxRailItems` (2~8 items).
+   - Infinite downward compression that squashes typography, clips buttons, or shrinks click hitboxes is strictly forbidden. Every single plugin MUST enforce an ergonomic minimum height for both composite and decomposed modes.
 2. **Dynamic Height Budgeting & In-Rail Capacity**:
-   - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts bounded by `calendarMaxRailEvents` and `todoMaxRailTasks`.
-   - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at their respective tier minimums ($\ge 56\text{pt}$, $\ge 40\text{pt}$, or $\ge 32\text{pt}$).
+   - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts bounded by `calendarMaxRailEvents`, `todoMaxRailTasks`, and `clipboardMaxRailItems`.
+   - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at their respective tier minimums ($\ge 56\text{pt}$, $\ge 42\text{pt}$, $\ge 40\text{pt}$, or $\ge 32\text{pt}$).
+3. **Hard Capacity Ceiling & Mounting Rejection (溢出拒载与 Toast 报警法则 - Mandatory)**:
+   - When enabling or installing a new plugin, if adding its required minimum height causes the total required height on that rail to exceed the screen's available height budget (`totalRequiredHeight > availableScreenHeight`), the system **MUST NOT load or mount the plugin**.
+   - Instead of squashing existing plugins below their ergonomic minimums, keep the plugin disabled, cancel mounting, and immediately fire an ergonomic warning toast notification (`onCapacityWarningToast`).
 
 ### 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
 1. **Unified Card Anatomy**:

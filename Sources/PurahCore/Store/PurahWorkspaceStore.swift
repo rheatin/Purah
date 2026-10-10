@@ -214,6 +214,7 @@ public final class PurahWorkspaceStore {
     public var remindersScope: RemindersScope = .allIncomplete
     public var calendarMaxRailEvents: Int = 4
     public var todoMaxRailTasks: Int = 6
+    public var clipboardMaxRailItems: Int = 4
     public var isMusicWaveformAnimationEnabled: Bool = true
     public var isEventGlowAlertEnabled: Bool = true
 
@@ -612,6 +613,11 @@ public final class PurahWorkspaceStore {
             self.todoMaxRailTasks = savedMaxTodo
         }
 
+        let savedMaxClip = defaults.integer(forKey: "purah.clipboardMaxRailItems")
+        if savedMaxClip > 0 {
+            self.clipboardMaxRailItems = savedMaxClip
+        }
+
         if let presetStr = defaults.string(forKey: "purah.currentPreset"),
            let preset = PodPreset(rawValue: presetStr) {
             self.currentPreset = preset
@@ -672,6 +678,7 @@ public final class PurahWorkspaceStore {
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
         defaults.set(calendarMaxRailEvents, forKey: "purah.calendarMaxRailEvents")
         defaults.set(todoMaxRailTasks, forKey: "purah.todoMaxRailTasks")
+        defaults.set(clipboardMaxRailItems, forKey: "purah.clipboardMaxRailItems")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
@@ -709,7 +716,22 @@ public final class PurahWorkspaceStore {
 
     public func togglePodEnabled(id: String) {
         guard let index = pods.firstIndex(where: { $0.id == id }) else { return }
-        pods[index].isEnabled.toggle()
+        let pod = pods[index]
+        if !pod.isEnabled {
+            // Guard minimum height: reject enabling if required height overflows screen budget
+            let currentReq = totalRequiredHeight(for: pod.edge)
+            let additional = minimumDrawerHeight(for: pod.id) + 10.0
+            let available = availableScreenHeight(for: pod.edge)
+            if (currentReq + additional) > available {
+                let reqTotal = Int(currentReq + additional)
+                let availInt = Int(available)
+                onCapacityWarningToast?("⚠️ Insufficient rail capacity (\(reqTotal)pt / \(availInt)pt). Cannot mount \(pod.name) without squashing existing pods.")
+                return
+            }
+            pods[index].isEnabled = true
+        } else {
+            pods[index].isEnabled = false
+        }
         autoLayoutAll()
     }
 
