@@ -2730,21 +2730,60 @@ public struct ClipboardFullDrawerView: View {
         VStack(alignment: .leading, spacing: 6) {
             if state.items.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 28))
-                        .foregroundColor(.secondary.opacity(0.4))
-                        .padding(.top, 12)
-                    Text("Clipboard is Empty")
-                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                        .foregroundColor(.secondary)
-                    Text("Copied text snippets, hex colors, and screenshots will seamlessly appear here")
-                        .font(.system(size: 9.5))
+                    ZStack {
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [Color(hex: "#FF9F0A").opacity(0.22), Color.clear],
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: 32
+                                )
+                            )
+                            .frame(width: 64, height: 64)
+
+                        Image(systemName: "doc.on.clipboard.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color(hex: "#FFB340"), Color(hex: "#FF9F0A")],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    }
+                    .padding(.top, 4)
+
+                    Text("No Clippings Yet")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(palette.style == .native ? .primary : .white)
+
+                    Text("Copy text, hex colors, or screenshots\nanything copied will float here.")
+                        .font(.system(size: 10.5))
                         .multilineTextAlignment(.center)
-                        .foregroundColor(.secondary.opacity(0.7))
-                        .padding(.horizontal, 16)
+                        .foregroundColor(.secondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 5) {
+                        Image(systemName: "command")
+                            .font(.system(size: 9))
+                        Text("C to copy")
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        Text("•")
+                            .font(.system(size: 9))
+                        Text("Click or drag to use")
+                            .font(.system(size: 9.5))
+                    }
+                    .foregroundColor(Color(hex: "#FF9F0A"))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(hex: "#FF9F0A").opacity(0.12))
+                    .cornerRadius(12)
+                    .padding(.top, 2)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, 10)
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 8) {
@@ -2754,6 +2793,9 @@ public struct ClipboardFullDrawerView: View {
                     }
                     .padding(.vertical, 2)
                     .padding(.trailing, 2)
+                }
+                .onDisappear {
+                    ClipboardHoverPreviewController.shared.hide()
                 }
             }
         }
@@ -2767,157 +2809,134 @@ public struct ClipboardFullDrawerView: View {
         VStack(alignment: .leading, spacing: 8) {
             switch item.type {
             case .color(let hex, let r, let g, let b, let a):
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        // Tactile glass swatch
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(hex: hex))
-                            .frame(width: isHovered ? 48 : 42, height: isHovered ? 48 : 42)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                            )
-                            .shadow(color: Color(hex: hex).opacity(0.35), radius: isHovered ? 6 : 3, x: 0, y: 1.5)
+                HStack(spacing: 12) {
+                    // Tactile glass swatch
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(hex: hex))
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                        )
+                        .shadow(color: Color(hex: hex).opacity(0.35), radius: 3, x: 0, y: 1.5)
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(hex.uppercased())
-                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                    .foregroundColor(palette.style == .native ? .primary : .white)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(hex.uppercased())
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.style == .native ? .primary : .white)
 
-                                Text("COLOR")
-                                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Color(hex: hex).opacity(0.2))
-                                    .foregroundColor(Color(hex: hex))
-                                    .cornerRadius(3)
-                            }
-
-                            Text("RGB(\(Int(r * 255)), \(Int(g * 255)), \(Int(b * 255)))" + (a < 0.999 ? " • \(Int(a * 100))%" : ""))
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundColor(.secondary)
+                            Text("COLOR")
+                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color(hex: hex).opacity(0.2))
+                                .foregroundColor(Color(hex: hex))
+                                .cornerRadius(3)
                         }
 
-                        Spacer()
+                        Text("RGB(\(Int(r * 255)), \(Int(g * 255)), \(Int(b * 255)))" + (a < 0.999 ? " • \(Int(a * 100))%" : ""))
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
 
-                        // Quick Action Buttons
-                        HStack(spacing: 6) {
+                    Spacer()
+
+                    // Quick Action Buttons
+                    HStack(spacing: 6) {
+                        Button {
+                            state.copyItem(item)
+                            context.performHaptic(.levelChange)
+                            context.showToast("Copied Hex", nil)
+                            context.requestDismiss()
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "number")
+                                    .font(.system(size: 8.5))
+                                Text("Hex")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                            }
+                        }
+                        .buttonStyle(.tactile)
+
+                        if let snippet = item.swiftUIColorSnippet {
                             Button {
-                                state.copyItem(item)
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(snippet, forType: .string)
                                 context.performHaptic(.levelChange)
-                                context.showToast("Copied Hex", nil)
+                                context.showToast("Copied SwiftUI Code", nil)
                                 context.requestDismiss()
                             } label: {
                                 HStack(spacing: 3) {
-                                    Image(systemName: "number")
+                                    Image(systemName: "swift")
                                         .font(.system(size: 8.5))
-                                    Text("Hex")
+                                    Text("SwiftUI")
                                         .font(.system(size: 9.5, weight: .semibold))
                                 }
                             }
                             .buttonStyle(.tactile)
-
-                            if let snippet = item.swiftUIColorSnippet {
-                                Button {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(snippet, forType: .string)
-                                    context.performHaptic(.levelChange)
-                                    context.showToast("Copied SwiftUI Code", nil)
-                                    context.requestDismiss()
-                                } label: {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "swift")
-                                            .font(.system(size: 8.5))
-                                        Text("SwiftUI")
-                                            .font(.system(size: 9.5, weight: .semibold))
-                                    }
-                                }
-                                .buttonStyle(.tactile)
-                                .help("Copy as \(snippet)")
-                            }
+                            .help("Copy as \(snippet)")
                         }
                     }
                 }
 
             case .image(let path, let w, let h, let bytes):
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        if let nsImg = NSImage(contentsOfFile: path) {
-                            Image(nsImage: nsImg)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 46, height: 46)
-                                .cornerRadius(8)
-                                .clipped()
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                )
-                        } else {
-                            Image(systemName: "photo")
-                                .font(.title3)
-                                .frame(width: 46, height: 46)
-                                .background(Color.secondary.opacity(0.12))
-                                .cornerRadius(8)
-                        }
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text("Image Clip")
-                                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                                    .foregroundColor(palette.style == .native ? .primary : .white)
-
-                                Text("PNG")
-                                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Color.blue.opacity(0.15))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(3)
-                            }
-
-                            Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundColor(.secondary)
-
-                            Text(isHovered ? "Drag thumbnail directly to Finder or Chat" : "Hover to enlarge • Drag to export")
-                                .font(.system(size: 8.5))
-                                .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
-                        }
-
-                        Spacer()
-
-                        Image(systemName: isHovered ? "arrow.up.left.and.arrow.down.right" : "arrow.up.and.down.and.arrow.left.and.right")
-                            .font(.system(size: 11))
-                            .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.6))
-                    }
-
-                    // Hover to Enlarge: Smoothly unfolds high-resolution image preview!
-                    if isHovered, let nsImg = NSImage(contentsOfFile: path) {
+                HStack(spacing: 12) {
+                    if let nsImg = NSImage(contentsOfFile: path) {
                         Image(nsImage: nsImg)
                             .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .frame(maxHeight: 220)
-                            .background(Color.black.opacity(0.35))
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 46, height: 46)
                             .cornerRadius(8)
+                            .clipped()
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
                             )
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
-                                removal: .opacity
-                            ))
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.title3)
+                            .frame(width: 46, height: 46)
+                            .background(Color.secondary.opacity(0.12))
+                            .cornerRadius(8)
                     }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text("Image Clip")
+                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(palette.style == .native ? .primary : .white)
+
+                            Text("PNG")
+                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.blue.opacity(0.15))
+                                .foregroundColor(.blue)
+                                .cornerRadius(3)
+                        }
+
+                        Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(.secondary)
+
+                        Text("Hover for detached Quick Look • Drag to export")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isHovered ? "eye.fill" : "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.system(size: 11))
+                        .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.6))
                 }
 
             case .text(let text):
                 VStack(alignment: .leading, spacing: 5) {
                     Text(text)
                         .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(isHovered ? 16 : 3)
+                        .lineLimit(3)
                         .lineSpacing(2)
                         .foregroundColor(palette.style == .native ? .primary : .white)
 
@@ -2935,7 +2954,7 @@ public struct ClipboardFullDrawerView: View {
 
                         Spacer()
 
-                        Text(isHovered ? "Click to copy • Drag snippet" : "Hover to read full snippet")
+                        Text(isHovered ? "Hover for full text • Tap to copy" : "Click to copy • Drag snippet")
                             .font(.system(size: 8.5))
                             .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.7))
                     }
@@ -2954,8 +2973,15 @@ public struct ClipboardFullDrawerView: View {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                 if isHovering {
                     hoveredItemId = item.id
+                    ClipboardHoverPreviewController.shared.show(
+                        item: item,
+                        edge: context.edge,
+                        palette: palette,
+                        drawerWidth: context.drawerWidth
+                    )
                 } else if hoveredItemId == item.id {
                     hoveredItemId = nil
+                    ClipboardHoverPreviewController.shared.hide()
                 }
             }
         }
