@@ -6,7 +6,8 @@ import PurahCore
 public struct DropShelfDrawerView: View {
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
-    @State private var isTargeted: Bool = false
+    @State private var isStashTargeted: Bool = false
+    @State private var isAirDropTargeted: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -29,32 +30,76 @@ public struct DropShelfDrawerView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if state.files.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(shelfColor.opacity(0.8))
-                        .modifier(OptionalGlow(color: shelfColor, enabled: isTargeted))
+                // Two dedicated spacious drop zones: Stash & Direct AirDrop
+                VStack(spacing: 10) {
+                    // Zone 1: Stash Holding Area
+                    VStack(spacing: 6) {
+                        Image(systemName: "tray.and.arrow.down.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(shelfColor.opacity(0.85))
 
-                    Text("Drag and drop files from Finder to stash")
-                        .purahBody(size: 11, weight: .medium, design: .rounded)
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        Text("Drop to Stash Files")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("Supports images, documents, and code")
-                        .purahCaption(size: 9)
-                        .foregroundColor(.gray)
-                    Spacer()
+                        Text("Hold files for dragging out into other apps or chat")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(isStashTargeted ? shelfColor.opacity(0.15) : shelfColor.opacity(0.04))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                isStashTargeted ? shelfColor : shelfColor.opacity(0.35),
+                                style: StrokeStyle(lineWidth: isStashTargeted ? 1.8 : 1.2, dash: [4, 4])
+                            )
+                    )
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.fileURL], isTargeted: $isStashTargeted) { providers in
+                        handleStashDrop(providers: providers)
+                        return true
+                    }
+
+                    // Zone 2: Instant AirDrop Target
+                    VStack(spacing: 6) {
+                        Image(systemName: "airdrop")
+                            .font(.system(size: 24))
+                            .foregroundColor(Color.blue)
+
+                        Text("Drop to AirDrop Directly")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                        Text("Immediately beam to nearby iPhone, iPad, or Mac")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.05))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
+                                style: StrokeStyle(lineWidth: isAirDropTargeted ? 1.8 : 1.2, dash: [4, 4])
+                            )
+                    )
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.fileURL], isTargeted: $isAirDropTargeted) { providers in
+                        handleAirDropDrop(providers: providers)
+                        return true
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(isTargeted ? shelfColor.opacity(0.12) : Color.clear)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(shelfColor.opacity(isTargeted ? 1.0 : 0.3), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                )
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 5) {
+                    VStack(spacing: 6) {
                         ForEach(state.files) { file in
                             ShelfFileRowView(
                                 file: file,
@@ -80,26 +125,53 @@ public struct DropShelfDrawerView: View {
                     .padding(.vertical, 2)
                 }
 
+                // Dedicated Instant AirDrop Bar
+                HStack(spacing: 8) {
+                    Image(systemName: "airdrop")
+                        .font(.system(size: 14))
+                        .foregroundColor(isAirDropTargeted ? .cyan : .blue)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(isAirDropTargeted ? "Release to AirDrop instantly!" : "Drag file here to AirDrop immediately")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(isAirDropTargeted ? .cyan : (palette.style == .native ? .primary : .white))
+                        Text("Or tap to AirDrop all \(state.files.count) stashed items")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.blue.opacity(0.8))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.06))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
+                            style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
+                        )
+                )
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: $isAirDropTargeted) { providers in
+                    handleAirDropDrop(providers: providers)
+                    return true
+                }
+                .onTapGesture {
+                    let urls = state.files.compactMap { $0.filePath.map { URL(fileURLWithPath: $0) } }
+                    DropShelfDrawerView.shareViaAirDrop(urls: urls)
+                }
+
                 HStack {
-                    Text("\(state.files.count) item(s)")
+                    Text("\(state.files.count) item(s) stashed")
                         .font(.system(size: 9.5))
                         .foregroundColor(.gray)
                     Spacer()
-
-                    Button {
-                        let urls = state.files.compactMap { $0.filePath.map { URL(fileURLWithPath: $0) } }
-                        DropShelfDrawerView.shareViaAirDrop(urls: urls)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "airdrop")
-                                .font(.system(size: 9.5))
-                            Text("AirDrop")
-                                .font(.system(size: 9.5, weight: .medium))
-                        }
-                        .foregroundColor(shelfColor)
-                    }
-                    .buttonStyle(.plain)
-                    .help("AirDrop all stashed files to nearby Apple devices")
 
                     Button("Clear All") {
                         state.clear()
@@ -109,20 +181,32 @@ public struct DropShelfDrawerView: View {
                     .font(.system(size: 9.5))
                     .foregroundColor(palette.dangerAccent)
                 }
+                .padding(.top, 2)
             }
         }
-        // Native drag-and-drop file ingestion support
-        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-            for provider in providers {
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    if let url = url {
-                        Task { @MainActor in
-                            state.addFile(url: url)
-                        }
+    }
+
+    private func handleStashDrop(providers: [NSItemProvider]) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url = url {
+                    Task { @MainActor in
+                        state.addFile(url: url)
                     }
                 }
             }
-            return true
+        }
+    }
+
+    private func handleAirDropDrop(providers: [NSItemProvider]) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url = url {
+                    Task { @MainActor in
+                        DropShelfDrawerView.shareViaAirDrop(urls: [url])
+                    }
+                }
+            }
         }
     }
 

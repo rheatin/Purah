@@ -2738,7 +2738,6 @@ public struct ClipboardFullDrawerView: View {
     public let state: ClipboardPluginState
     public let context: PurahPluginContext
     @State private var hoveredItemId: String? = nil
-    @State private var isBreathing: Bool = false
 
     private var palette: ThemePalette {
         context.palette
@@ -2747,68 +2746,59 @@ public struct ClipboardFullDrawerView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if state.items.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 14)
+
+                    // Poised, calm icon container with generous negative space (no flashing)
                     ZStack {
                         Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [Color(hex: "#FF9F0A").opacity(isBreathing ? 0.38 : 0.12), Color.clear],
-                                    center: .center,
-                                    startRadius: 0,
-                                    endRadius: isBreathing ? 38 : 26
-                                )
-                            )
-                            .frame(width: 76, height: 76)
-                            .scaleEffect(isBreathing ? 1.08 : 0.94)
+                            .fill(Color(hex: "#FF9F0A").opacity(0.12))
+                            .frame(width: 56, height: 56)
 
-                        Image(systemName: "doc.on.clipboard.fill")
-                            .font(.system(size: 26))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Color(hex: "#FFB340"), Color(hex: "#FF9F0A")],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .shadow(color: Color(hex: "#FF9F0A").opacity(isBreathing ? 0.65 : 0.20), radius: isBreathing ? 10 : 3, x: 0, y: 2)
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(Color(hex: "#FF9F0A"))
                     }
-                    .padding(.top, 4)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                            isBreathing = true
-                        }
-                    }
+                    .padding(.bottom, 12)
 
                     Text("No Clippings Yet")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(palette.style == .native ? .primary : .white)
+                        .padding(.bottom, 5)
 
-                    Text("Copy text, hex colors, or screenshots\nanything copied will float here.")
-                        .font(.system(size: 10.5))
+                    Text("Text snippets, hex colors, and screenshots\nyou copy on your Mac will float here.")
+                        .font(.system(size: 11))
+                        .lineSpacing(3.5)
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
-                        .lineSpacing(3)
+                        .padding(.horizontal, 24)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 14)
 
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Image(systemName: "command")
                             .font(.system(size: 9))
                         Text("C to copy")
-                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
                         Text("•")
-                            .font(.system(size: 9))
+                            .font(.system(size: 8.5))
+                            .opacity(0.6)
                         Text("Click or drag to use")
                             .font(.system(size: 9.5))
                     }
                     .foregroundColor(Color(hex: "#FF9F0A"))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color(hex: "#FF9F0A").opacity(0.12))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4.5)
+                    .background(Color(hex: "#FF9F0A").opacity(0.10))
                     .cornerRadius(12)
-                    .padding(.top, 2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(hex: "#FF9F0A").opacity(0.20), lineWidth: 0.5)
+                    )
+
+                    Spacer(minLength: 16)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 10)
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 8) {
