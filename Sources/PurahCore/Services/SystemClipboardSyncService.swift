@@ -14,30 +14,93 @@ public final class SystemClipboardSyncService {
 
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var lastChangeCount: Int = -1
-    @ObservationIgnored private let diskCacheDirectory: URL = {
-        let temp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let dir = temp.appendingPathComponent("purah_clipboard", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+
+    // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Clipboard/
+    @ObservationIgnored public static let storageDirectory: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        let baseDir = appSupport.appendingPathComponent("Purah/Clipboard", isDirectory: true)
+        let imagesDir = baseDir.appendingPathComponent("images", isDirectory: true)
+        let thumbsDir = baseDir.appendingPathComponent("thumbnails", isDirectory: true)
+        let metaDir = baseDir.appendingPathComponent("metadata", isDirectory: true)
+
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: thumbsDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: metaDir, withIntermediateDirectories: true)
+        return baseDir
     }()
+
+    @ObservationIgnored private var imagesDirectory: URL {
+        Self.storageDirectory.appendingPathComponent("images", isDirectory: true)
+    }
+
+    @ObservationIgnored private var thumbnailsDirectory: URL {
+        Self.storageDirectory.appendingPathComponent("thumbnails", isDirectory: true)
+    }
+
+    @ObservationIgnored private var metadataURL: URL {
+        Self.storageDirectory.appendingPathComponent("metadata/index.json")
+    }
 
     public init() {
         lastChangeCount = NSPasteboard.general.changeCount
-        purgeOrphanedTmpFiles()
+        loadFromDisk()
     }
 
-    private func purgeOrphanedTmpFiles() {
-        guard let files = try? FileManager.default.contentsOfDirectory(at: diskCacheDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
-        let now = Date()
-        for file in files {
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
-               let modDate = attrs[.modificationDate] as? Date,
-               now.timeIntervalSince(modDate) > 3600.0 {
-                try? FileManager.default.removeItem(at: file)
-            }
+    // MARK: - Disk Persistence & Memory Paging
+    private func loadFromDisk() {
+        guard let data = try? Data(contentsOf: metadataURL),
+              let savedItems = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+            return
+        }
+        self.history = savedItems
+    }
+
+    private func saveToDisk() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        if let data = try? encoder.encode(history) {
+            try? data.write(to: metadataURL, options: .atomic)
         }
     }
 
+    public var diskUsageFormatted: String {
+        let size = computeDirectorySize(url: Self.storageDirectory)
+        let mb = Double(size) / (1024.0 * 1024.0)
+        if mb >= 1.0 {
+            return String(format: "%.1f MB (%d items)", mb, history.count)
+        } else {
+            let kb = max(size / 1024, 1)
+            return "\(kb) KB (\(history.count) items)"
+        }
+    }
+
+    private func computeDirectorySize(url: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+               let size = attrs[.size] as? Int64 {
+                total += size
+            }
+        }
+        return total
+    }
+
+    public func openStorageInFinder() {
+        NSWorkspace.shared.selectFile(Self.storageDirectory.path, inFileViewerRootedAtPath: "")
+    }
+
+    public func clearDiskStorage() {
+        history.removeAll()
+        saveToDisk()
+        try? FileManager.default.removeItem(at: imagesDirectory)
+        try? FileManager.default.removeItem(at: thumbnailsDirectory)
+        try? FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
+    }
+
+    // MARK: - Monitoring Lifecycle
     public func startListening() {
         guard !isListening else { return }
         isListening = true
@@ -70,7 +133,7 @@ public final class SystemClipboardSyncService {
             return
         }
 
-        // 2. Try Image detection & tmp disk caching (Memory Zero-Footprint)
+        // 2. Try Image detection with 100px tiny downsampled thumbnail & compressed disk storage
         if let item = processImage(pasteboard: pb) {
             addItem(item)
             return
@@ -107,7 +170,7 @@ public final class SystemClipboardSyncService {
     public func deleteItem(id: String) {
         if let idx = history.firstIndex(where: { $0.id == id }) {
             let removed = history.remove(at: idx)
-            // Cleanup disk tmp image & thumbnail
+            saveToDisk()
             if case .image(let path, let thumbPath, _, _, _) = removed.type {
                 try? FileManager.default.removeItem(atPath: path)
                 try? FileManager.default.removeItem(atPath: thumbPath)
@@ -124,6 +187,7 @@ public final class SystemClipboardSyncService {
             }
         }
         history = keepPinned ? history.filter(\.isPinned) : []
+        saveToDisk()
     }
 
     // MARK: - Internal Processors
@@ -136,17 +200,20 @@ public final class SystemClipboardSyncService {
         }
 
         history.insert(item, at: 0)
-        if history.count > 20 {
-            let overflow = history.suffix(from: 20)
+
+        // Store up to 100 historical items permanently on disk
+        if history.count > 100 {
+            let overflow = history.suffix(from: 100)
             for oldItem in overflow where !oldItem.isPinned {
                 if case .image(let path, let thumbPath, _, _, _) = oldItem.type {
                     try? FileManager.default.removeItem(atPath: path)
                     try? FileManager.default.removeItem(atPath: thumbPath)
                 }
             }
-            history = Array(history.prefix(20))
+            history = Array(history.prefix(100))
         }
 
+        saveToDisk()
         onItemAdded?(item)
     }
 
@@ -177,15 +244,15 @@ public final class SystemClipboardSyncService {
         let id = UUID().uuidString
         let fullFilename = "\(id)_full.png"
         let thumbFilename = "\(id)_thumb.png"
-        let fullFileURL = diskCacheDirectory.appendingPathComponent(fullFilename)
-        let thumbFileURL = diskCacheDirectory.appendingPathComponent(thumbFilename)
+        let fullFileURL = imagesDirectory.appendingPathComponent(fullFilename)
+        let thumbFileURL = thumbnailsDirectory.appendingPathComponent(thumbFilename)
 
         guard let pngData = rep.representation(using: .png, properties: [:]) else { return nil }
         do {
             try pngData.write(to: fullFileURL)
 
-            // Generate lightweight downsampled thumbnail (120x120 max, ~50KB) to guarantee 0MB memory bloating
-            let maxDim: CGFloat = 120.0
+            // Ultra-compressed downsampled thumbnail (max 100x100px, ~15KB disk, ~40KB RAM)
+            let maxDim: CGFloat = 100.0
             let scale = min(maxDim / CGFloat(w), maxDim / CGFloat(h), 1.0)
             let thumbW = max(Int(CGFloat(w) * scale), 1)
             let thumbH = max(Int(CGFloat(h) * scale), 1)

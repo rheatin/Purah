@@ -85,6 +85,8 @@ struct ClipboardPluginTests {
         #expect(h >= 100)
         #expect(FileManager.default.fileExists(atPath: path))
         #expect(FileManager.default.fileExists(atPath: thumbPath))
+        #expect(!service.diskUsageFormatted.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: SystemClipboardSyncService.storageDirectory.path))
 
         // Delete item cleans up disk tmp file
         service.deleteItem(id: latest.id)

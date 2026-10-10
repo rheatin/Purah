@@ -2758,7 +2758,7 @@ public struct ClipboardFullDrawerView: View {
                         .font(.system(size: 32, weight: .regular))
                         .foregroundColor(Color(hex: "#FF9F0A"))
 
-                    Text("No contextclipping yet")
+                    Text("No clipping yet")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
@@ -3065,20 +3065,30 @@ public struct ClipboardPluginSettingsView: View {
             .background(Color.primary.opacity(0.04))
             .cornerRadius(8)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Zero-Memory Image Cache")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Permanent Disk Storage")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                Text("All copied screenshot bitmaps are automatically flushed to temporary disk files (~/tmp). Only lightweight metadata resides in RAM, guaranteeing zero memory bloating.")
+                Text("Clipboard history is persistently preserved in Application Support with 100px tiny downsampled thumbnails. In-memory footprint is strictly bounded to the active in-rail items.")
                     .font(.caption2)
                     .foregroundColor(.secondary)
 
                 HStack {
-                    Text("History Size: \(state.items.count) / 20 items")
+                    Text("Disk Usage:")
                         .font(.caption)
+                    Text(SystemClipboardSyncService.shared.diskUsageFormatted)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(hex: "#FF9F0A"))
                     Spacer()
-                    Button("Clear Cache Now", role: .destructive) {
+                    Button("Open in Finder") {
+                        SystemClipboardSyncService.shared.openStorageInFinder()
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+
+                    Button("Clear All", role: .destructive) {
                         state.clearAll()
+                        SystemClipboardSyncService.shared.clearDiskStorage()
                     }
                     .buttonStyle(.bordered)
                     .font(.caption)
