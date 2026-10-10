@@ -26,6 +26,7 @@ struct PermissionTests {
     @Test("Music permission is naturally granted without TCC calendar restrictions")
     func testMusicStatus() {
         let manager = PermissionManager()
-        #expect(manager.musicStatus == .authorized)
+        #expect(manager.musicStatus == .standardCapability)
+        #expect(manager.musicStatus.isGranted == true)
     }
 }

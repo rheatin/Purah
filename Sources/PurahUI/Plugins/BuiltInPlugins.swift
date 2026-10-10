@@ -2390,38 +2390,89 @@ public struct ClipboardPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
     public var isDecomposed: Bool { state.isDecomposed }
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool { state.isDecomposed }
-    public func subItemCount(store: PurahWorkspaceStore) -> Int { min(state.items.count, 4) }
+    public func subItemCount(store: PurahWorkspaceStore) -> Int { max(min(state.items.count, 4), 1) }
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        if state.items.isEmpty { return "clipboard-empty" }
         guard index >= 0 && index < state.items.count else { return nil }
-        return state.items[index].id
+        return "clipboard-\(state.items[index].id)"
     }
-    public func minimumSubItemHeight(store: PurahWorkspaceStore) -> Double { 42.0 }
-    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
-
-    // 3. Stepped Rail Chip (Decomposed)
-    public func makeSteppedRailBarView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        guard let item = state.items.first(where: { $0.id == subItemId }) else { return nil }
-        let itemColor: Color = {
-            if case .color(let hex, _, _, _, _) = item.type {
-                return Color(hex: hex)
-            }
-            return context.accentColor
-        }()
-
-        // Pure physical pill without icons
-        return AnyView(
-            Capsule()
-                .fill(itemColor.opacity(context.isExpanded ? 0.95 : 0.70))
-                .frame(width: context.railWidth, height: context.slotHeight)
-                .contentShape(Rectangle())
-        )
+    public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        itemId.hasPrefix("clipboard-") || itemId == "clipboard"
+    }
+    public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        isDecomposed ? CGFloat(subItemCount(store: store)) * 44.0 : 120.0
+    }
+    public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        store.pinnedDrawerItemIds.contains { $0.hasPrefix("clipboard-") }
     }
 
-    // 4. Stepped Drawer View (Single item popout)
+    // 3. Stepped Items for SteppedRailContainerView
+    public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        if state.items.isEmpty {
+            return [
+                PurahPluginSubItem(
+                    id: "clipboard-empty",
+                    title: "Clipboard Empty",
+                    systemIcon: "doc.on.clipboard",
+                    state: .normal,
+                    gaugeRatio: nil,
+                    gaugeStyle: .solid,
+                    tintColorHex: nil,
+                    isPinned: context.store.isItemPinned(id: "clipboard-empty")
+                )
+            ]
+        }
+        return state.items.prefix(4).map { item in
+            let subId = "clipboard-\(item.id)"
+            let icon: String = {
+                switch item.type {
+                case .color: return "paintpalette.fill"
+                case .image: return "photo.fill"
+                case .text: return "doc.text.fill"
+                }
+            }()
+            let colorHex: String? = {
+                if case .color(let hex, _, _, _, _) = item.type {
+                    return hex
+                }
+                return nil
+            }()
+            return PurahPluginSubItem(
+                id: subId,
+                title: item.type.summary,
+                systemIcon: icon,
+                state: .normal,
+                gaugeRatio: nil,
+                gaugeStyle: .solid,
+                tintColorHex: colorHex,
+                isPinned: context.store.isItemPinned(id: subId)
+            )
+        }
+    }
+
+    // 4. Stepped Drawer View (Single item popout with co-planar rail indicator and physical divider)
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        guard let item = state.items.first(where: { $0.id == subItemId }) else { return nil }
+        let cleanId = subItemId.replacingOccurrences(of: "clipboard-", with: "")
+        let item = state.items.first(where: { $0.id == cleanId || $0.id == subItemId })
+        let isPinned = context.store.isItemPinned(id: subItemId)
+        let drawerState: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+
         return AnyView(
-            ClipboardSteppedDrawerView(item: item, state: state, context: context)
+            ClipboardItemDrawerView(
+                item: item,
+                subItemId: subItemId,
+                edge: context.edge,
+                state: drawerState,
+                isPinned: isPinned,
+                height: context.slotHeight,
+                pluginState: self.state,
+                store: context.store,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.store.togglePinItem(id: subItemId)
+                    }
+                }
+            )
         )
     }
 
@@ -2440,79 +2491,168 @@ public struct ClipboardPlugin: PurahPodPlugin {
     }
 }
 
-// MARK: - Clipboard Stepped Drawer View
-public struct ClipboardSteppedDrawerView: View {
-    public let item: ClipboardItem
-    public let state: ClipboardPluginState
-    public let context: PurahPluginContext
+// MARK: - Clipboard Stepped Item Drawer View
+public struct ClipboardItemDrawerView: View {
+    public let item: ClipboardItem?
+    public let subItemId: String
+    public let edge: MountEdge
+    public let state: ItemDrawerState
+    public let isPinned: Bool
+    public let height: CGFloat
+    public let pluginState: ClipboardPluginState
+    public let store: PurahWorkspaceStore
+    public let onTogglePin: () -> Void
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    private var drawerShape: UnevenRoundedRectangle {
+        if edge == .right {
+            return UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
+        } else {
+            return UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 10, topTrailingRadius: 10, style: .continuous)
+        }
+    }
+
+    private var itemDrawerTransition: AnyTransition {
+        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
+        return .asymmetric(
+            insertion: .move(edge: edgeDirection),
+            removal: .move(edge: edgeDirection)
+        )
+    }
 
     public var body: some View {
-        HStack(spacing: 8) {
-            switch item.type {
-            case .color(let hex, _, _, _, _):
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: hex))
-                    .frame(width: 24, height: 24)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(hex.uppercased())
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    Text("Click to copy Hex • Drag into editor")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+        let cardH = max(height, 42.0)
+        let itemColor: Color = {
+            if let item = item, case .color(let hex, _, _, _, _) = item.type {
+                return Color(hex: hex)
+            }
+            return Color(hex: "#FF9F0A")
+        }()
+        let barW = CGFloat(store.railBarWidth)
+
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
+            // Pure physical in-rail capsule (co-planar, NO icons)
+            Capsule()
+                .fill(itemColor.opacity(state == .expandedDrawer ? 0.95 : 0.70))
+                .frame(width: barW, height: cardH)
+
+            if state == .expandedDrawer {
+                steppedCard(cardH: cardH, itemColor: itemColor)
+                    .transition(itemDrawerTransition)
+            }
+        }
+        .frame(height: cardH)
+    }
+
+    @ViewBuilder
+    private func steppedCard(cardH: CGFloat, itemColor: Color) -> some View {
+        HStack(spacing: 10) {
+            if let item = item {
+                switch item.type {
+                case .color(let hex, _, _, _, _):
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color(hex: hex))
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(hex.uppercased())
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(palette.style == .native ? .primary : .white)
+                        Text("Click to copy Hex • Drag into editor")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+
+                case .image(let path, let w, let h, _):
+                    if let nsImg = NSImage(contentsOfFile: path) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 32, height: 32)
+                            .cornerRadius(6)
+                            .clipped()
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.system(size: 14))
+                            .frame(width: 32, height: 32)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Image (\(w)×\(h))")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(palette.style == .native ? .primary : .white)
+                        Text("Click to copy • Drag file out")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+
+                case .text(let text):
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(text.prefix(70))
+                            .font(.system(size: 11, design: .monospaced))
+                            .lineLimit(2)
+                            .foregroundColor(palette.style == .native ? .primary : .white)
+                        Text("\(text.count) characters • Click to copy")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
                 }
-            case .image(let path, let w, let h, _):
-                if let nsImage = NSImage(contentsOfFile: path) {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 28, height: 28)
-                        .cornerRadius(4)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Image (\(w)×\(h))")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    Text("Click to copy • Drag file out")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
-            case .text(let text):
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(text.prefix(60))
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(2)
-                    Text("\(text.count) characters • Click to copy")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
+            } else {
+                Text("Clipboard is Empty")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
 
-            Button {
-                state.copyItem(item)
-                context.performHaptic(.levelChange)
-                context.showToast("Copied to Clipboard", nil)
-                context.requestDismiss()
-            } label: {
-                Image(systemName: "doc.on.doc.fill")
-                    .font(.system(size: 11))
+            if let item = item {
+                Button {
+                    pluginState.copyItem(item)
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                        store.activeDrawerItemId = nil
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(palette.style == .native ? .primary : .white)
+                }
+                .buttonStyle(.tactile)
+                .help("Copy to Clipboard")
             }
-            .buttonStyle(.tactile)
-            .help("Copy to Clipboard")
+
+            PurahPinButton(isPinned: isPinned, tintColor: itemColor) {
+                onTogglePin()
+            }
         }
-        .padding(8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(width: 290, height: max(cardH, 44.0))
+        .liquidDrawerBackground(
+            shape: drawerShape,
+            accentColor: itemColor
+        )
         .onDrag {
-            makeDragProvider(for: item)
+            if let item = item {
+                return makeDragProvider(for: item)
+            }
+            return NSItemProvider()
         }
         .onTapGesture {
-            state.copyItem(item)
-            context.performHaptic(.levelChange)
-            context.showToast("Copied to Clipboard", nil)
-            context.requestDismiss()
+            if let item = item {
+                pluginState.copyItem(item)
+                NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                    store.activeDrawerItemId = nil
+                }
+            }
         }
     }
 
@@ -2528,18 +2668,34 @@ public struct ClipboardSteppedDrawerView: View {
     }
 }
 
-// MARK: - Clipboard Full Drawer View
+// MARK: - Clipboard Full Drawer View (Polished Apple Design)
 public struct ClipboardFullDrawerView: View {
     public let state: ClipboardPluginState
     public let context: PurahPluginContext
 
+    private var palette: ThemePalette {
+        context.palette
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Header stats & clear action
-            HStack {
-                Text("\(state.items.count) Items in History")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
+            // Header: Icon + Title + Count Badge + Clear Button
+            HStack(spacing: 8) {
+                Image(systemName: "doc.on.clipboard.fill")
+                    .foregroundColor(Color(hex: "#FF9F0A"))
+                    .font(.caption)
+
+                Text("Clipboard History")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? .primary : .white)
+
+                Text("\(state.items.count)")
+                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Color(hex: "#FF9F0A").opacity(0.18))
+                    .foregroundColor(Color(hex: "#FF9F0A"))
+                    .cornerRadius(4)
 
                 Spacer()
 
@@ -2550,11 +2706,14 @@ public struct ClipboardFullDrawerView: View {
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "trash")
+                                .font(.system(size: 9.5))
                             Text("Clear")
+                                .font(.system(size: 10, weight: .medium))
                         }
-                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                     }
                     .buttonStyle(.tactile)
+                    .help("Clear unpinned history")
                 }
             }
             .padding(.horizontal, 4)
@@ -2563,19 +2722,22 @@ public struct ClipboardFullDrawerView: View {
                 .opacity(0.3)
 
             if state.items.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Image(systemName: "doc.on.clipboard")
-                        .font(.title2)
-                        .foregroundColor(.secondary.opacity(0.5))
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary.opacity(0.4))
+                        .padding(.top, 16)
                     Text("Clipboard is Empty")
-                        .font(.caption)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundColor(.secondary)
-                    Text("Copied text, hex colors, and images will appear here")
-                        .font(.caption2)
+                    Text("Copied text snippets, hex colors, and screenshots will seamlessly appear here")
+                        .font(.system(size: 10))
+                        .multilineTextAlignment(.center)
                         .foregroundColor(.secondary.opacity(0.7))
+                        .padding(.horizontal, 20)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 20)
+                .padding(.vertical, 24)
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 8) {
@@ -2584,6 +2746,7 @@ public struct ClipboardFullDrawerView: View {
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.trailing, 2)
                 }
             }
         }
@@ -2592,24 +2755,28 @@ public struct ClipboardFullDrawerView: View {
 
     @ViewBuilder
     private func clipboardCard(item: ClipboardItem) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             switch item.type {
-            case .color(let hex, _, _, _, _):
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 6)
+            case .color(let hex, let r, let g, let b, _):
+                HStack(spacing: 12) {
+                    // Tactile glass swatch
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color(hex: hex))
-                        .frame(width: 38, height: 38)
+                        .frame(width: 42, height: 42)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
                         )
+                        .shadow(color: Color(hex: hex).opacity(0.3), radius: 3, x: 0, y: 1.5)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(hex.uppercased())
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            Text("Color")
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.style == .native ? .primary : .white)
+
+                            Text("COLOR")
+                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
                                 .background(Color(hex: hex).opacity(0.2))
@@ -2617,86 +2784,139 @@ public struct ClipboardFullDrawerView: View {
                                 .cornerRadius(3)
                         }
 
-                        if let snippet = item.swiftUIColorSnippet {
-                            Text(snippet)
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
+                        Text("RGB(\(Int(r * 255)), \(Int(g * 255)), \(Int(b * 255)))")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(.secondary)
                     }
 
                     Spacer()
 
-                    // Quick Copy SwiftUI Code button
-                    if let snippet = item.swiftUIColorSnippet {
+                    // Quick Action Buttons
+                    HStack(spacing: 6) {
                         Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(snippet, forType: .string)
+                            state.copyItem(item)
                             context.performHaptic(.levelChange)
-                            context.showToast("Copied SwiftUI Code", nil)
+                            context.showToast("Copied Hex", nil)
                             context.requestDismiss()
                         } label: {
-                            Text("SwiftUI")
-                                .font(.system(size: 9, weight: .semibold))
+                            HStack(spacing: 3) {
+                                Image(systemName: "number")
+                                    .font(.system(size: 8.5))
+                                Text("Hex")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                            }
                         }
                         .buttonStyle(.tactile)
-                        .help("Copy as \(snippet)")
+
+                        if let snippet = item.swiftUIColorSnippet {
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(snippet, forType: .string)
+                                context.performHaptic(.levelChange)
+                                context.showToast("Copied SwiftUI Code", nil)
+                                context.requestDismiss()
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "swift")
+                                        .font(.system(size: 8.5))
+                                    Text("SwiftUI")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                }
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Copy as \(snippet)")
+                        }
                     }
                 }
 
             case .image(let path, let w, let h, let bytes):
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     if let nsImg = NSImage(contentsOfFile: path) {
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 44, height: 44)
-                            .cornerRadius(6)
+                            .frame(width: 46, height: 46)
+                            .cornerRadius(8)
                             .clipped()
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
                     } else {
                         Image(systemName: "photo")
-                            .font(.title2)
-                            .frame(width: 44, height: 44)
-                            .background(Color.secondary.opacity(0.1))
-                            .cornerRadius(6)
+                            .font(.title3)
+                            .frame(width: 46, height: 46)
+                            .background(Color.secondary.opacity(0.12))
+                            .cornerRadius(8)
                     }
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Image (\(w)×\(h))")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("\(max(bytes / 1024, 1)) KB • PNG Disk Cache")
-                            .font(.system(size: 9, design: .monospaced))
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text("Image Clip")
+                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(palette.style == .native ? .primary : .white)
+
+                            Text("PNG")
+                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.blue.opacity(0.15))
+                                .foregroundColor(.blue)
+                                .cornerRadius(3)
+                        }
+
+                        Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
+                            .font(.system(size: 9.5, design: .monospaced))
                             .foregroundColor(.secondary)
-                        Text("Drag out directly to Finder / Chat")
+
+                        Text("Drag thumbnail directly to Finder or Chat")
                             .font(.system(size: 8.5))
                             .foregroundColor(.secondary.opacity(0.8))
                     }
 
                     Spacer()
+
+                    Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.6))
                 }
 
             case .text(let text):
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(text)
                         .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(4)
-                        .foregroundColor(.primary)
+                        .lineLimit(3)
+                        .lineSpacing(2)
+                        .foregroundColor(palette.style == .native ? .primary : .white)
 
                     HStack {
                         Text("\(text.count) chars")
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundColor(.secondary)
+
+                        let lines = text.split(separator: "\n").count
+                        if lines > 1 {
+                            Text("• \(lines) lines")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
                         Spacer()
+
                         Text("Click to copy • Drag snippet")
                             .font(.system(size: 8.5))
-                            .foregroundColor(.secondary.opacity(0.8))
+                            .foregroundColor(.secondary.opacity(0.7))
                     }
                 }
             }
         }
-        .padding(8)
+        .padding(10)
         .background(Color.secondary.opacity(0.08))
-        .cornerRadius(6)
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+        )
         .contentShape(Rectangle())
         .onDrag {
             makeDragProvider(for: item)
@@ -2740,7 +2960,7 @@ public struct ClipboardFullDrawerView: View {
     }
 }
 
-// MARK: - Clipboard Plugin Settings View
+// MARK: - Clipboard Plugin Settings View (100% English)
 public struct ClipboardPluginSettingsView: View {
     public let state: ClipboardPluginState
     public let store: PurahWorkspaceStore
@@ -2756,7 +2976,7 @@ public struct ClipboardPluginSettingsView: View {
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Decomposed Rail Chips (多步进微芯片分解模式)", isOn: Binding(
+                Toggle("Decomposed Rail Chips", isOn: Binding(
                     get: { state.isDecomposed },
                     set: {
                         state.isDecomposed = $0
@@ -2764,7 +2984,7 @@ public struct ClipboardPluginSettingsView: View {
                     }
                 ))
                 .toggleStyle(.switch)
-                Text("When enabled, the rail displays recent copied items as discrete tactile chips for instant zero-drawer switching.")
+                Text("When enabled, recent items are displayed as discrete physical chips along the rail edge for zero-drawer switching.")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

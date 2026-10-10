@@ -156,7 +156,58 @@ struct ClipboardPluginTests {
         #expect(type(of: view) == SystemAccessSettingsView.self)
 
         let permissions = PermissionManager.shared
-        #expect(permissions.status(for: .pasteboard) == .authorized)
-        #expect(permissions.status(for: .appleMusic) == .authorized)
+        #expect(permissions.status(for: .pasteboard) == .standardCapability)
+        #expect(permissions.status(for: .appleMusic) == .standardCapability)
+        #expect(permissions.status(for: .pasteboard).isGranted == true)
+    }
+
+    @Test("ClipboardPlugin decomposed mode generates stepped chips and responds to ownsSubItemId")
+    func testClipboardDecomposedMode() {
+        let store = PurahWorkspaceStore()
+        let plugin = ClipboardPlugin()
+        plugin.onMount(store: store)
+
+        // Seed with test clipboard items
+        let item1 = ClipboardItem(type: .color(hex: "#00E5A3", red: 0, green: 0.9, blue: 0.6, alpha: 1.0))
+        let item2 = ClipboardItem(type: .text("npm install"))
+        plugin.state.items = [item1, item2]
+
+        #expect(plugin.isDecomposed == true)
+        #expect(plugin.subItemCount(store: store) == 2)
+        #expect(plugin.subItemId(at: 0, store: store) == "clipboard-\(item1.id)")
+        #expect(plugin.subItemId(at: 1, store: store) == "clipboard-\(item2.id)")
+
+        // Verify ownsSubItemId correctly attributes subItem to clipboard
+        #expect(plugin.ownsSubItemId("clipboard-\(item1.id)", store: store) == true)
+        #expect(plugin.ownsSubItemId("clipboard-\(item2.id)", store: store) == true)
+        #expect(plugin.ownsSubItemId("notes-123", store: store) == false)
+
+        let dummyPod = SlotPod(id: "clipboard", name: "Clipboard", systemIcon: "doc.on.clipboard.fill", edge: .left, range: .init(start: 0.1, length: 0.2), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30.0)
+        let context = PurahPluginContext(
+            pod: dummyPod,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 260.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .orange,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        let steppedChips = plugin.steppedItems(context: context)
+        #expect(steppedChips.count == 2)
+        #expect(steppedChips[0].id == "clipboard-\(item1.id)")
+        #expect(steppedChips[0].tintColorHex == "#00E5A3")
+
+        let steppedDrawer = plugin.makeSteppedDrawerView(subItemId: "clipboard-\(item1.id)", context: context)
+        #expect(steppedDrawer != nil)
+        #expect(type(of: steppedDrawer!) == AnyView.self)
+
+        plugin.onUnmount(store: store)
     }
 }

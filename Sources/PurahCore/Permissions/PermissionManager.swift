@@ -9,6 +9,7 @@ public enum AccessStatus: String, Codable, Sendable, CaseIterable {
     case notDetermined
     case denied
     case restricted
+    case standardCapability
 
     public var title: String {
         switch self {
@@ -16,11 +17,12 @@ public enum AccessStatus: String, Codable, Sendable, CaseIterable {
         case .notDetermined: return "Not Determined"
         case .denied: return "Denied"
         case .restricted: return "Restricted"
+        case .standardCapability: return "No Prompt Needed"
         }
     }
 
     public var isGranted: Bool {
-        self == .authorized
+        self == .authorized || self == .standardCapability
     }
 }
 
@@ -31,7 +33,7 @@ public final class PermissionManager {
 
     public private(set) var calendarStatus: AccessStatus = .notDetermined
     public private(set) var remindersStatus: AccessStatus = .notDetermined
-    public private(set) var musicStatus: AccessStatus = .authorized
+    public private(set) var musicStatus: AccessStatus = .standardCapability
 
     private var eventStore = EKEventStore()
 
@@ -47,17 +49,16 @@ public final class PermissionManager {
         let remEKStatus = EKEventStore.authorizationStatus(for: .reminder)
         self.remindersStatus = Self.status(from: remEKStatus)
 
-        // Apple Music does not require TCC permissions for DistributedNotificationCenter
-        self.musicStatus = .authorized
+        // Apple Music observes standard distributed notifications without TCC prompt
+        self.musicStatus = .standardCapability
     }
 
     public func status(for permission: PluginPermission) -> AccessStatus {
         switch permission {
         case .calendar: return calendarStatus
         case .reminders: return remindersStatus
-        case .appleMusic: return musicStatus
-        case .pasteboard, .machTelemetry, .shellExecution, .fileSystem:
-            return .authorized
+        case .appleMusic, .pasteboard, .machTelemetry, .shellExecution, .fileSystem:
+            return .standardCapability
         }
     }
 

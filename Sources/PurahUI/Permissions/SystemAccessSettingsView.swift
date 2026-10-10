@@ -23,8 +23,13 @@ public struct SystemAccessSettingsView: View {
                 map[perm, default: []].append(manifest)
             }
         }
-        // Ordered by case order in PluginPermission
-        return PluginPermission.allCases.compactMap { perm in
+        let sorted = PluginPermission.allCases.sorted { a, b in
+            if a.isTCCRestricted != b.isTCCRestricted {
+                return a.isTCCRestricted && !b.isTCCRestricted
+            }
+            return a.rawValue < b.rawValue
+        }
+        return sorted.compactMap { perm in
             guard let manifests = map[perm], !manifests.isEmpty else { return nil }
             return (perm, manifests)
         }
@@ -43,7 +48,7 @@ public struct SystemAccessSettingsView: View {
                     Text("Plugin Permissions & Privacy Matrix")
                         .font(palette.fontTitle)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text("Dynamic inspection of system capabilities required by installed plugins and functional impacts when denied")
+                    Text("Audit system capabilities required by installed plugins and functional impacts when denied")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -65,9 +70,34 @@ public struct SystemAccessSettingsView: View {
 
             // Dynamic Permission Cards List
             ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 12) {
-                    ForEach(groupedPermissions, id: \.permission.rawValue) { item in
-                        dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
+                VStack(alignment: .leading, spacing: 14) {
+                    let privacyPermissions = groupedPermissions.filter { $0.permission.isTCCRestricted }
+                    let standardCapabilities = groupedPermissions.filter { !$0.permission.isTCCRestricted }
+
+                    if !privacyPermissions.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("System Privacy Permissions (macOS TCC)")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                                .textCase(.uppercase)
+
+                            ForEach(privacyPermissions, id: \.permission.rawValue) { item in
+                                dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
+                            }
+                        }
+                    }
+
+                    if !standardCapabilities.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Standard Ambient Capabilities (Automatic)")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+
+                            ForEach(standardCapabilities, id: \.permission.rawValue) { item in
+                                dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
+                            }
+                        }
                     }
                 }
                 .padding(.trailing, 4)
@@ -80,7 +110,7 @@ public struct SystemAccessSettingsView: View {
             // Bottom action: Guarantee Access to All
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Permission Summary")
+                    Text("Privacy Authorization Status")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
@@ -122,14 +152,14 @@ public struct SystemAccessSettingsView: View {
     }
 
     private var summaryText: String {
-        let calOk = permissions.calendarStatus.isGranted
-        let remOk = permissions.remindersStatus.isGranted
+        let calOk = permissions.calendarStatus == .authorized
+        let remOk = permissions.remindersStatus == .authorized
         if calOk && remOk {
-            return "All sensitive native services authorized with live synchronization."
+            return "All macOS privacy permissions authorized with live synchronization."
         } else if calOk || remOk {
-            return "Partial access granted. Click to complete authorization."
+            return "Calendar or Reminders permission pending. Affected plugins run with sample data."
         } else {
-            return "Some permissions pending. Affected plugins will run with degraded features."
+            return "Privacy permissions not granted yet. Calendar & Reminders will run with local sample data."
         }
     }
 
@@ -171,7 +201,19 @@ public struct SystemAccessSettingsView: View {
 
                 Spacer()
 
-                if status.isGranted {
+                if status == .standardCapability {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.shield")
+                            .font(.system(size: 10))
+                        Text("Ready")
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.12))
+                    .cornerRadius(4)
+                } else if status == .authorized {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                         .font(.title3)
@@ -256,6 +298,7 @@ public struct SystemAccessSettingsView: View {
     private func statusColor(_ status: AccessStatus) -> Color {
         switch status {
         case .authorized: return .green
+        case .standardCapability: return .blue
         case .notDetermined: return .orange
         case .denied, .restricted: return .red
         }
