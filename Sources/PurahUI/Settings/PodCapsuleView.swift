@@ -11,6 +11,7 @@ public struct PodCapsuleView: View {
     public let onTransferEdge: () -> Void
     public let onFillRail: () -> Void
     public let onDisable: () -> Void
+    public var onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)?
 
     @State private var dragInitialStart: Double? = nil
     @State private var resizeInitialLength: Double? = nil
@@ -33,7 +34,8 @@ public struct PodCapsuleView: View {
         onResize: @escaping (Double) -> Void,
         onTransferEdge: @escaping () -> Void,
         onFillRail: @escaping () -> Void,
-        onDisable: @escaping () -> Void = {}
+        onDisable: @escaping () -> Void = {},
+        onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)? = nil
     ) {
         self.pod = pod
         self.canvasHeight = canvasHeight
@@ -43,6 +45,7 @@ public struct PodCapsuleView: View {
         self.onTransferEdge = onTransferEdge
         self.onFillRail = onFillRail
         self.onDisable = onDisable
+        self.onMoveOrder = onMoveOrder
     }
 
     public var body: some View {
@@ -113,9 +116,20 @@ public struct PodCapsuleView: View {
                     }
                     .onEnded { value in
                         let horizontalDistance = value.translation.width
+                        let verticalDistance = value.translation.height
                         if (pod.edge == .left && horizontalDistance > 75.0) || (pod.edge == .right && horizontalDistance < -75.0) {
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onTransferEdge()
+                            }
+                        } else if verticalDistance < -35.0, let onMoveOrder = onMoveOrder {
+                            // Dragged upward across threshold -> Swap with predecessor above
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                onMoveOrder(.up)
+                            }
+                        } else if verticalDistance > 35.0, let onMoveOrder = onMoveOrder {
+                            // Dragged downward across threshold -> Swap with successor below
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                onMoveOrder(.down)
                             }
                         } else {
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {

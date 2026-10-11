@@ -118,6 +118,11 @@ public struct ScreenSimulationCanvas: View {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                         store.togglePodEnabled(id: item.pod.id)
                                     }
+                                },
+                                onMoveOrder: { direction in
+                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                        store.movePodInOrder(id: item.pod.id, direction: direction)
+                                    }
                                 }
                             )
                             .offset(x: 4, y: topY)
@@ -160,6 +165,11 @@ public struct ScreenSimulationCanvas: View {
                                 onDisable: {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                         store.togglePodEnabled(id: item.pod.id)
+                                    }
+                                },
+                                onMoveOrder: { direction in
+                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                        store.movePodInOrder(id: item.pod.id, direction: direction)
                                     }
                                 }
                             )

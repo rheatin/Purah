@@ -847,6 +847,78 @@ public final class PurahWorkspaceStore {
         autoLayoutAll()
     }
 
+    // MARK: - Pod Reordering & Position Swapping
+    public enum PodMoveDirection: Sendable {
+        case up
+        case down
+    }
+
+    public func canMovePod(id: String, direction: PodMoveDirection) -> Bool {
+        guard let currentPod = pods.first(where: { $0.id == id && $0.isEnabled }) else { return false }
+        let railPods = pods.filter { $0.edge == currentPod.edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        guard let currentIndex = railPods.firstIndex(where: { $0.id == id }) else { return false }
+        switch direction {
+        case .up:
+            return currentIndex > 0
+        case .down:
+            return currentIndex < railPods.count - 1
+        }
+    }
+
+    public func movePodInOrder(id: String, direction: PodMoveDirection) {
+        guard let currentPod = pods.first(where: { $0.id == id && $0.isEnabled }) else { return }
+        let edge = currentPod.edge
+        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+
+        guard let currentIndex = railPods.firstIndex(where: { $0.id == id }) else { return }
+
+        let targetIndex: Int
+        switch direction {
+        case .up:
+            targetIndex = currentIndex - 1
+        case .down:
+            targetIndex = currentIndex + 1
+        }
+
+        guard targetIndex >= 0 && targetIndex < railPods.count else { return }
+        let targetPod = railPods[targetIndex]
+
+        swapPods(id1: currentPod.id, id2: targetPod.id)
+    }
+
+    public func swapPods(id1: String, id2: String) {
+        guard let idx1 = pods.firstIndex(where: { $0.id == id1 }),
+              let idx2 = pods.firstIndex(where: { $0.id == id2 }) else { return }
+
+        let p1 = pods[idx1]
+        let p2 = pods[idx2]
+        guard p1.edge == p2.edge else { return }
+
+        let start1 = p1.range.start
+        let start2 = p2.range.start
+
+        if start1 < start2 {
+            // p1 is above p2 -> p2 moves up, p1 moves down
+            let newP2Start = start1
+            let newP1Start = start1 + p2.range.length + 0.02
+            pods[idx2].range.start = newP2Start
+            pods[idx1].range.start = newP1Start
+        } else {
+            // p1 is below p2 -> p1 moves up, p2 moves down
+            let newP1Start = start2
+            let newP2Start = start2 + p1.range.length + 0.02
+            pods[idx1].range.start = newP1Start
+            pods[idx2].range.start = newP2Start
+        }
+
+        invalidateLayoutCache()
+        autoLayoutAll()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
     private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double, isEnabled: Bool = true) {
         if let idx = pods.firstIndex(where: { $0.id == id }) {
             pods[idx].edge = edge
@@ -864,8 +936,8 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.08, length: 0.26), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35, minLength: 0.22, defaultColorHex: "#00E5A3"),
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.36, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16, defaultColorHex: "#2ED573"),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.58, length: 0.18), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.15, defaultColorHex: "#FFD166"),
-            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.78, length: 0.16), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.16, defaultColorHex: "#6C5CE7"),
-            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.88, length: 0.08), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.05, isEnabled: false, drawerWidth: 520, defaultColorHex: "#00F5D4"),
+            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.72, length: 0.14), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.14, defaultColorHex: "#6C5CE7"),
+            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.86, length: 0.12), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.08, isEnabled: true, drawerWidth: 520, defaultColorHex: "#00F5D4"),
             SlotPod(id: "clipboard", name: "Clipboard", systemIcon: "doc.on.clipboard.fill", edge: .left, range: .init(start: 0.88, length: 0.08), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.08, isEnabled: false, drawerWidth: 260, defaultColorHex: "#FF9F0A")
         ]
     }

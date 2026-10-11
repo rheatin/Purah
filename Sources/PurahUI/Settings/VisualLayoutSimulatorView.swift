@@ -420,13 +420,13 @@ public struct VisualLayoutSimulatorView: View {
     // MARK: - Rail Module Assembly Card
     private var moduleAssemblyCard: some View {
         let palette = theme.palette
-        let mountedPods = store.pods.filter { $0.isEnabled }
+        let mountedPods = store.pods.filter { $0.isEnabled }.sorted { ($0.edge == $1.edge) ? ($0.range.start < $1.range.start) : ($0.edge == .left) }
         let unmountedPods = store.pods.filter { !$0.isEnabled }
 
         return settingsCard(title: "Rail Module Assembly", icon: "square.grid.2x2.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Toggle modules on rails. Click ✕ to unmount or + to mount.")
+                    Text("Toggle and reorder modules on rails. Use ↑ / ↓ or drag in simulator to adjust order.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
@@ -438,52 +438,90 @@ public struct VisualLayoutSimulatorView: View {
                 // 1. Mounted Pods Grid
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(mountedPods) { pod in
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Image(systemName: pod.systemIcon)
                                 .font(.caption)
                                 .foregroundColor(palette.podColor(for: pod.id, store: store))
 
                             Text(pod.name)
-                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 .lineLimit(1)
 
                             Spacer()
 
+                            // Reorder: Move Up
+                            if store.canMovePod(id: pod.id, direction: .up) {
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.movePodInOrder(id: pod.id, direction: .up)
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                        .frame(width: 17, height: 17)
+                                        .background(Color.primary.opacity(0.08))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                                .help("Move \(pod.name) up")
+                            }
+
+                            // Reorder: Move Down
+                            if store.canMovePod(id: pod.id, direction: .down) {
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.movePodInOrder(id: pod.id, direction: .down)
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.down")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                        .frame(width: 17, height: 17)
+                                        .background(Color.primary.opacity(0.08))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                                .help("Move \(pod.name) down")
+                            }
+
+                            // Transfer Edge
                             Button {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                     store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
                                 }
                             } label: {
-                                HStack(spacing: 3) {
+                                HStack(spacing: 2) {
                                     Image(systemName: pod.edge == .left ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
-                                        .font(.system(size: 8))
-                                    Text(pod.edge == .left ? "Left" : "Right")
-                                        .font(.system(size: 8.5, weight: .bold))
+                                        .font(.system(size: 7.5))
+                                    Text(pod.edge == .left ? "L" : "R")
+                                        .font(.system(size: 8, weight: .bold))
                                 }
-                                .padding(.horizontal, 6)
+                                .padding(.horizontal, 5)
                                 .padding(.vertical, 2.5)
                                 .background(palette.primaryAccent.opacity(0.15))
                                 .foregroundColor(palette.primaryAccent)
                                 .cornerRadius(4)
                             }
                             .buttonStyle(.tactile)
-                            .help("Click to move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
+                            .help("Move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
 
+                            // Unmount button
                             Button {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                     store.togglePodEnabled(id: pod.id)
                                 }
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 10.5))
                                     .foregroundColor(Color.red.opacity(0.85))
                             }
                             .buttonStyle(.tactile)
                             .help("Unmount \(pod.name) from rail")
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                         .background(Color(nsColor: .controlBackgroundColor))
                         .cornerRadius(8)
                         .overlay(
