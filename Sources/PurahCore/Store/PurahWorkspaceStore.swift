@@ -771,11 +771,29 @@ public final class PurahWorkspaceStore {
     }
 
     public func fillRail(podId: String) {
-        guard pods.contains(where: { $0.id == podId }) else { return }
-        // Expand current pod to fill the entire effective safe range of the rail (0.02 to 0.98)
-        let safeSpan = 0.96
-        let newRange = NormalizedRange(start: 0.02, length: safeSpan)
-        updatePodRange(id: podId, newRange: newRange)
+        guard let currentPod = pods.first(where: { $0.id == podId && $0.isEnabled }) else { return }
+        let edge = currentPod.edge
+        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        guard let currentIndex = railPods.firstIndex(where: { $0.id == podId }),
+              let podIndex = pods.firstIndex(where: { $0.id == podId }) else { return }
+
+        if currentIndex == railPods.count - 1 {
+            // Last pod on the rail (e.g. Music): expand length down to 0.98 to fill all remaining space!
+            let start = pods[podIndex].range.start
+            let newLength = max(0.98 - start, currentPod.minLength)
+            pods[podIndex].range.length = newLength
+        } else {
+            // Expand towards successor above/below
+            let nextPod = railPods[currentIndex + 1]
+            let start = pods[podIndex].range.start
+            let newLength = max(nextPod.range.start - start - 0.015, currentPod.minLength)
+            pods[podIndex].range.length = newLength
+        }
+
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
     }
 
     public func applyPreset(_ preset: PodPreset) {
@@ -933,7 +951,8 @@ public final class PurahWorkspaceStore {
         guard let currentIndex = railPods.firstIndex(where: { $0.id == id }), currentIndex > 0 else { return false }
         let prev = railPods[currentIndex - 1]
         let gap = currentPod.range.start - (prev.range.start + prev.range.length)
-        return gap > 0.02
+        let bottomGap = (currentIndex == railPods.count - 1) ? (0.98 - (currentPod.range.start + currentPod.range.length)) : 0.0
+        return gap > 0.015 || bottomGap > 0.04
     }
 
     public func snapPod(id: String, to target: SnapTarget) {
@@ -953,6 +972,11 @@ public final class PurahWorkspaceStore {
                 let prev = railPods[currentIndex - 1]
                 let newStart = prev.range.start + prev.range.length + minGap
                 pods[podIndex].range.start = min(newStart, 0.96 - currentPod.range.length)
+                // If this is the last pod on the rail, stretch length down to fill all remaining space to 0.98!
+                if currentIndex == railPods.count - 1 {
+                    let availableDown = max(0.98 - pods[podIndex].range.start, currentPod.minLength)
+                    pods[podIndex].range.length = availableDown
+                }
             } else {
                 pods[podIndex].range.start = 0.02
             }

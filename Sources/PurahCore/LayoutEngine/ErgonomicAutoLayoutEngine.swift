@@ -53,7 +53,8 @@ public enum ErgonomicAutoLayoutEngine {
         }
 
         // 4. If space is exceeded, compress pods with surplus slack while strictly defending minLength floors
-        let excess = targetLengths.reduce(0.0, +) - availableHeight
+        let totalTargetLength = targetLengths.reduce(0.0, +)
+        let excess = totalTargetLength - availableHeight
         if excess > 0 {
             // Sum up all compressible slack above minLength
             let compressableSlack = targetLengths.enumerated().reduce(0.0) { total, item in
@@ -83,6 +84,10 @@ public enum ErgonomicAutoLayoutEngine {
                     targetLengths = targetLengths.map { $0 * overflowScale }
                 }
             }
+        } else if excess < -0.001 && totalTargetLength > 0 {
+            // Surplus space remains: expand pods proportionally to gracefully fill the entire rail without dead blank space!
+            let fillScale = availableHeight / totalTargetLength
+            targetLengths = targetLengths.map { $0 * fillScale }
         }
 
         // 5. Sequence pods starting from safe boundary
