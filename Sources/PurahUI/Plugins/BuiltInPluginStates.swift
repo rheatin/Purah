@@ -379,6 +379,7 @@ public final class MusicPluginState: Sendable {
     public var track: MusicTrackInfo
     public var railStyle: MusicRailStyle
     public var dynamicSubStyle: DynamicWaveformSubStyle
+    public var rhythmOffsetMs: Double
     public var isWaveformAnimationEnabled: Bool
     public let storage: any PurahPluginStorage
 
@@ -410,6 +411,7 @@ public final class MusicPluginState: Sendable {
         self.storage = storage
         self.railStyle = storage.codable(forKey: "railStyle", as: MusicRailStyle.self) ?? .dynamicWaveform
         self.dynamicSubStyle = storage.codable(forKey: "dynamicSubStyle", as: DynamicWaveformSubStyle.self) ?? .neonVUTower
+        self.rhythmOffsetMs = storage.double(forKey: "rhythmOffsetMs")
         self.isWaveformAnimationEnabled = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) ?? true
         var loadedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) ?? MusicTrackInfo()
         loadedTrack.isPlaying = false
@@ -424,6 +426,7 @@ public final class MusicPluginState: Sendable {
         if let sub = storage.codable(forKey: "dynamicSubStyle", as: DynamicWaveformSubStyle.self) {
             self.dynamicSubStyle = sub
         }
+        self.rhythmOffsetMs = storage.double(forKey: "rhythmOffsetMs")
         if let anim = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) {
             self.isWaveformAnimationEnabled = anim
         }
@@ -437,6 +440,7 @@ public final class MusicPluginState: Sendable {
     public func save() {
         storage.setCodable(railStyle, forKey: "railStyle")
         storage.setCodable(dynamicSubStyle, forKey: "dynamicSubStyle")
+        storage.set(rhythmOffsetMs, forKey: "rhythmOffsetMs")
         storage.setCodable(isWaveformAnimationEnabled, forKey: "isWaveformAnimationEnabled")
         storage.setCodable(track, forKey: "lastTrack")
     }

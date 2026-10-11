@@ -571,6 +571,9 @@ public struct MusicRailBarContainerView: View {
             height: slotHeight
         )
         .frame(width: railWidth, height: slotHeight)
+        .onAppear {
+            SystemAudioLiveMonitor.shared.latencyOffsetMs = state.rhythmOffsetMs
+        }
     }
 }
 
@@ -1399,6 +1402,28 @@ public struct MusicPluginSettingsView: View {
                     Text(dynamicSubStyleDescription(for: state.dynamicSubStyle))
                         .font(.caption2)
                         .foregroundColor(.secondary)
+                }
+                .padding(.top, 2)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Beat Timing Alignment")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(String(format: "%+.0f ms", state.rhythmOffsetMs))
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+
+                    Slider(value: Binding(
+                        get: { state.rhythmOffsetMs },
+                        set: {
+                            state.rhythmOffsetMs = $0
+                            state.save()
+                            SystemAudioLiveMonitor.shared.latencyOffsetMs = $0
+                        }
+                    ), in: -100...100, step: 10)
                 }
                 .padding(.top, 2)
 

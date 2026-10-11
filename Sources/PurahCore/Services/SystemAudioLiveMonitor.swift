@@ -25,6 +25,26 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
     private var bassIIRState: Float = 0.0
     private var runningAvgBass: Float = 0.05
 
+    // Latency compensation delay ring buffer (up to 320ms)
+    private var levelRing: [Float] = Array(repeating: 0.0, count: 32)
+    private var bassRing: [Float] = Array(repeating: 0.0, count: 32)
+    private var beatRing: [Float] = Array(repeating: 0.0, count: 32)
+    private var ringIndex: Int = 0
+
+    private var _latencyOffsetMs: Double = 0.0
+    public var latencyOffsetMs: Double {
+        get {
+            os_unfair_lock_lock(lock)
+            defer { os_unfair_lock_unlock(lock) }
+            return _latencyOffsetMs
+        }
+        set {
+            os_unfair_lock_lock(lock)
+            _latencyOffsetMs = newValue
+            os_unfair_lock_unlock(lock)
+        }
+    }
+
     /// Real-time peak volume level (0.0 .. 1.0) with fast attack and natural decay
     public var currentLevel: Float {
         os_unfair_lock_lock(lock)
@@ -130,7 +150,7 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
                     while i < frameCount {
                         let sample = ptr[i]
                         let absVal = abs(sample)
-                        if absVal > maxPeak { maxPeak = absVal }
+                        if absVal > maxPeak { maxPeak = sample }
                         energySum += absVal * absVal
                         sampleCount += 1.0
 
@@ -154,10 +174,25 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
             let kickTrigger = min(bassSurge * 4.2, 1.0)
 
             os_unfair_lock_lock(self.lock)
+            // Push into delay ring buffer
+            let cap = 32
+            self.levelRing[self.ringIndex] = clampedPeak
+            self.bassRing[self.ringIndex] = clampedBass
+            self.beatRing[self.ringIndex] = kickTrigger
+
+            // Compute delay buffer index (buffer duration is ~10.6ms at 512 frames / 48kHz)
+            let delayFrames = Int(round(max(self._latencyOffsetMs, 0.0) / 10.6))
+            let readIdx = (self.ringIndex - delayFrames + cap) % cap
+            self.ringIndex = (self.ringIndex + 1) % cap
+
+            let effectivePeak = self.levelRing[readIdx]
+            let effectiveBass = self.bassRing[readIdx]
+            let effectiveBeat = self.beatRing[readIdx]
+
             // Instant attack on rising transients, smooth logarithmic decay on release
-            self._peak = max(clampedPeak, self._peak * 0.82)
-            self._bass = max(clampedBass, self._bass * 0.78)
-            self._beatPulse = max(kickTrigger, self._beatPulse * 0.70)
+            self._peak = max(effectivePeak, self._peak * 0.82)
+            self._bass = max(effectiveBass, self._bass * 0.78)
+            self._beatPulse = max(effectiveBeat, self._beatPulse * 0.70)
             self._rms = max(rms, self._rms * 0.85)
             os_unfair_lock_unlock(self.lock)
         }

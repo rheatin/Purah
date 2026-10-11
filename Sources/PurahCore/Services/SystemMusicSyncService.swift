@@ -29,6 +29,7 @@ public final class SystemMusicSyncService {
     @ObservationIgnored private var cachedLyricsKey: String?
     @ObservationIgnored private var cachedLyricsResult: OnlineLyricsResult?
     @ObservationIgnored private var playbackTimer: Timer?
+    @ObservationIgnored private var statusHeartbeatTimer: Timer?
 
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
@@ -40,6 +41,8 @@ public final class SystemMusicSyncService {
     }
 
     public func stopListening() {
+        statusHeartbeatTimer?.invalidate()
+        statusHeartbeatTimer = nil
         SystemAudioLiveMonitor.shared.stop()
         let center = DistributedNotificationCenter.default()
         if let obs = musicObserver {
@@ -144,6 +147,22 @@ public final class SystemMusicSyncService {
         // 4. Query initial playback state if Apple Music player is already running
         Task { [weak self, weak store] in
             await self?.pollCurrentPlayingState(store: store)
+        }
+
+        // 5. Periodic 2.0s heartbeat to guarantee continuous real-time state sync across all players
+        statusHeartbeatTimer?.invalidate()
+        statusHeartbeatTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self, weak store] _ in
+            MainActor.assumeIsolated {
+                guard let self = self, let store = store else { return }
+                guard !store.isRailsFrozen else { return }
+                if SystemMediaRemoteBridge.shared.isAvailable {
+                    self.handleMediaRemoteInfoUpdate(store: store)
+                } else if self.isMusicAppRunning {
+                    Task { [weak self, weak store] in
+                        await self?.pollCurrentPlayingState(store: store)
+                    }
+                }
+            }
         }
     }
 

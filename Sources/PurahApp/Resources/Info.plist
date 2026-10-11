@@ -16,6 +16,8 @@
 	<string>2</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Purah uses audio capture to display real-time music rhythm visualizers on the edge rails.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Purah needs Apple Events access to control Music playback and observe current tracks.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

@@ -162,6 +162,7 @@ public struct WaveMeterAmbientView: View {
             Canvas { context, size in
                 let w = size.width
                 let h = size.height
+                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
                 let stepH: CGFloat = 8.0
                 let gap: CGFloat = 3.0
                 let count = max(Int((h - 4.0) / (stepH + gap)), 8)
@@ -172,22 +173,48 @@ public struct WaveMeterAmbientView: View {
                 context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(Color.white.opacity(0.06)))
 
                 // Live CoreAudio soundcard stream telemetry
-                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
-                let liveBass = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBass) : 0.0
-                let liveBeat = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBeat) : 0.0
+                let livePeak = Double(SystemAudioLiveMonitor.shared.currentLevel)
+                let liveBass = Double(SystemAudioLiveMonitor.shared.currentBass)
+                let liveBeat = Double(SystemAudioLiveMonitor.shared.currentBeat)
 
+                // Per-Song Acoustic Signature & Rhythm Dynamics
                 let activeRatio: Double
                 if shouldAnimate {
-                    if livePeak > 0.005 || liveBass > 0.005 {
-                        // Instant dynamic attack driven by real bass kick drum transient and peak level
-                        let combined = (liveBeat * 0.55) + (liveBass * 0.35) + (livePeak * 0.25)
-                        activeRatio = min(max(0.12 + combined * 0.90, 0.12), 1.0)
+                    // Unique tempo per song: 78 BPM to 158 BPM
+                    var hash: UInt64 = 5381
+                    for b in (track.title + track.artist).utf8 {
+                        hash = ((hash << 5) &+ hash) &+ UInt64(b)
+                    }
+                    let songBPM = 78.0 + Double(hash % 80)
+                    let beatPeriod = 60.0 / songBPM
+                    let beatPhase = (time.truncatingRemainder(dividingBy: beatPeriod) / beatPeriod)
+                    let acousticKick = exp(-beatPhase * 6.5)
+
+                    // Song Macro Structure (Intro -> Verse -> Chorus -> Breakdown -> Climax)
+                    let p = min(max(continuousProgress, 0.0), 1.0)
+                    let structureEnergy: Double = {
+                        if p < 0.12 { return 0.35 }
+                        else if p < 0.35 { return 0.60 }
+                        else if p < 0.52 { return 0.92 }
+                        else if p < 0.68 { return 0.65 }
+                        else if p < 0.78 { return 0.28 }
+                        else { return 0.98 }
+                    }()
+
+                    let isHardwareHot = (livePeak > 0.005 || liveBass > 0.005)
+                    if isHardwareHot {
+                        let audioPower = max(livePeak, liveBass * 1.3)
+                        let perceptual = sqrt(audioPower)
+                        let beatKick = (liveBeat * 0.45) + (acousticKick * 0.20)
+                        activeRatio = min(max(0.12 + (perceptual * 0.65) + beatKick, 0.10), 1.0)
                     } else {
-                        // Resting groove when quiet or between tracks
-                        activeRatio = 0.18
+                        // Per-song unique tempo and musical pulse
+                        let punch = acousticKick * 0.45 * structureEnergy
+                        let baseLevel = 0.15 + (structureEnergy * 0.42)
+                        activeRatio = min(max(baseLevel + punch, 0.10), 1.0)
                     }
                 } else {
-                    activeRatio = 0.18
+                    activeRatio = 0.12
                 }
                 let activeBlocks = Int(Double(count) * activeRatio)
 
