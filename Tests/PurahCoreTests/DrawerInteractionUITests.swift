@@ -871,6 +871,47 @@ struct DrawerInteractionUITests {
     @MainActor
     func testMusicPodPlanCAmbientViewAndProgressBar() {
         // 1. Test WaveMeterAmbientView with progress and playing states
+        let track = MusicTrackInfo(
+            title: "Test Song",
+            artist: "Test Artist",
+            album: "Test Album",
+            isPlaying: true,
+            playbackProgress: 0.45,
+            currentPositionSeconds: 60.0,
+            durationSeconds: 180.0,
+            lastUpdated: Date(),
+            playbackRate: 1.0,
+            waveformSamples: [0.3, 0.8, 0.5, 0.9, 0.4]
+        )
+
+        let testHStack = HStack(spacing: 28) {
+            VStack {
+                Text("1. Minimalist").font(.system(size: 8.5)).foregroundColor(.white)
+                WaveMeterAmbientView(style: .minimalist, track: track, isPlaying: true, height: 160.0)
+            }
+            VStack {
+                Text("2. Smooth Progress").font(.system(size: 8.5)).foregroundColor(.white)
+                WaveMeterAmbientView(style: .smoothProgress, track: track, isPlaying: true, height: 160.0)
+            }
+            VStack {
+                Text("3. Dynamic Wave").font(.system(size: 8.5)).foregroundColor(.white)
+                WaveMeterAmbientView(style: .dynamicWaveform, track: track, isPlaying: true, height: 160.0)
+            }
+        }
+        .padding(16)
+        .background(Color(red: 0.08, green: 0.08, blue: 0.10))
+
+        let testHosting = NSHostingView(rootView: testHStack)
+        testHosting.frame = NSRect(x: 0, y: 0, width: 340, height: 230)
+        testHosting.layoutSubtreeIfNeeded()
+
+        if let rep = testHosting.bitmapImageRepForCachingDisplay(in: testHosting.bounds) {
+            testHosting.cacheDisplay(in: testHosting.bounds, to: rep)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: "/tmp/final_music_three_modes.png"))
+            }
+        }
+
         let playingPodView = WaveMeterAmbientView(
             progress: 0.45,
             isPlaying: true,

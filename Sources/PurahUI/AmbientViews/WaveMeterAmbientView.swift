@@ -127,7 +127,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Mode 3: Continuous Fluid Superposition Audio Waveform
+    // MARK: - Mode 3: Continuous Dynamic Harmonic Audio Waveform (双束粒子谐波光浪)
     private func dynamicWaveformView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
@@ -149,79 +149,53 @@ public struct WaveMeterAmbientView: View {
                     continuousProgress = min(max(progress, 0.0), 1.0)
                 }
                 let playheadY = CGFloat(continuousProgress) * h
+                let primaryColor = musicColor
+                let secondaryColor = Color(hex: "#FF7597")
 
-                // 1. Background Track Capsule
+                // 1. Dark glass track
                 let bgRect = CGRect(x: 0, y: 0, width: w, height: h)
-                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
+                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(primaryColor.opacity(0.12)))
 
-                // 2. Continuous Fluid Superposition Audio Wave Ribbon
-                let stepCount = max(Int(h / 3.0), 20)
-                let dy = h / CGFloat(stepCount)
+                // 2. Played background fill (soft ambient illumination)
+                if playheadY > 1.0 {
+                    let playedRect = CGRect(x: 1, y: 0, width: w - 2, height: playheadY)
+                    context.fill(Path(roundedRect: playedRect, cornerRadius: (w - 2) / 2), with: .color(primaryColor.opacity(0.22)))
+                }
 
-                var rightPoints: [CGPoint] = []
-                var leftPoints: [CGPoint] = []
+                // 3. Dual-Beam Interwoven Harmonic Sine Waves
+                var path1 = Path()
+                var path2 = Path()
+                let steps = max(Int(h / 2.5), 30)
+                let dy = h / CGFloat(steps)
 
-                for i in 0...stepCount {
-                    let y = min(CGFloat(i) * dy, h)
+                for i in 0...steps {
+                    let y = CGFloat(i) * dy
                     let ny = Double(y / h)
 
-                    // Superposition wave equations (w1*sin + w2*cos + w3*sin) per AGENTS.md
-                    let wave1 = shouldAnimate ? sin(ny * 14.0 - time * 5.0) : sin(ny * 10.0)
-                    let wave2 = shouldAnimate ? cos(ny * 8.0 + time * 3.6) : cos(ny * 6.0)
-                    let wave3 = shouldAnimate ? sin(ny * 22.0 - time * 6.5) : sin(ny * 16.0)
-                    let combined = (wave1 * 0.45 + wave2 * 0.35 + wave3 * 0.20) // -1.0 .. 1.0
-                    let energy = (combined + 1.0) / 2.0 // 0.0 .. 1.0
+                    let wave1 = shouldAnimate
+                        ? (sin(ny * 14.0 - time * 5.5) * 0.75 + cos(ny * 22.0 + time * 3.8) * 0.25)
+                        : (sin(ny * 10.0) * 0.7)
+                    let wave2 = shouldAnimate
+                        ? (sin(ny * 14.0 - time * 5.5 + 2.2) * 0.75 + cos(ny * 22.0 - time * 4.2) * 0.25)
+                        : (cos(ny * 10.0 + 1.2) * 0.7)
 
-                    let sampleIdx = Int(ny * Double(samples.count)) % max(samples.count, 1)
-                    let sampleVal = samples.isEmpty ? 0.5 : samples[sampleIdx]
-                    let amp = shouldAnimate ? ((energy * 0.65) + (sampleVal * 0.35)) : (0.35 + energy * 0.25)
+                    let x1 = centerX + CGFloat(wave1) * (w / 2.0 - 1.2)
+                    let x2 = centerX + CGFloat(wave2) * (w / 2.0 - 1.2)
 
-                    // Symmetrically undulate width: 2.8pt at troughs, 7.4pt at peaks
-                    let minHalfW: CGFloat = 1.4
-                    let maxHalfW: CGFloat = min((w - 0.6) / 2.0, 3.7)
-                    let halfW = minHalfW + CGFloat(amp) * (maxHalfW - minHalfW)
-
-                    rightPoints.append(CGPoint(x: centerX + halfW, y: y))
-                    leftPoints.append(CGPoint(x: centerX - halfW, y: y))
-                }
-
-                // Build closed fluid ribbon path
-                var wavePath = Path()
-                if let firstRight = rightPoints.first {
-                    wavePath.move(to: firstRight)
-                    for pt in rightPoints.dropFirst() {
-                        wavePath.addLine(to: pt)
+                    if i == 0 {
+                        path1.move(to: CGPoint(x: x1, y: y))
+                        path2.move(to: CGPoint(x: x2, y: y))
+                    } else {
+                        path1.addLine(to: CGPoint(x: x1, y: y))
+                        path2.addLine(to: CGPoint(x: x2, y: y))
                     }
                 }
-                if let lastLeft = leftPoints.last {
-                    wavePath.addLine(to: lastLeft)
-                    for pt in leftPoints.reversed().dropFirst() {
-                        wavePath.addLine(to: pt)
-                    }
-                }
-                wavePath.closeSubpath()
 
-                // Draw Played segment with vibrant glowing gradient, and Remaining with subtle sheen
-                context.drawLayer { ctx in
-                    let playedClipRect = CGRect(x: 0, y: 0, width: w, height: max(playheadY, 4.0))
-                    ctx.clip(to: Path(playedClipRect))
-                    ctx.fill(
-                        wavePath,
-                        with: .linearGradient(
-                            Gradient(colors: [musicColor, musicColor.opacity(0.85)]),
-                            startPoint: CGPoint(x: centerX, y: 0),
-                            endPoint: CGPoint(x: centerX, y: max(playheadY, 4.0))
-                        )
-                    )
-                }
+                // Draw glowing laser sound waves
+                context.stroke(path1, with: .color(primaryColor), lineWidth: 1.6)
+                context.stroke(path2, with: .color(secondaryColor), lineWidth: 1.4)
 
-                context.drawLayer { ctx in
-                    let unplayedClipRect = CGRect(x: 0, y: playheadY, width: w, height: max(h - playheadY, 0.0))
-                    ctx.clip(to: Path(unplayedClipRect))
-                    ctx.fill(wavePath, with: .color(musicColor.opacity(0.30)))
-                }
-
-                // 3. Glowing Playhead Needle
+                // 4. Glowing Playhead Needle
                 if playheadY > 0 && playheadY < h {
                     let needleH: CGFloat = 2.0
                     let needleW: CGFloat = w - 1.0

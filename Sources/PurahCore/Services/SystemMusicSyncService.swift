@@ -351,6 +351,16 @@ public final class SystemMusicSyncService {
         isMusicAppConnected = true
 
         let totalSec = max(duration, 1.0)
+        let sampleTimestamp: Date = {
+            if let date = dict["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date {
+                return date
+            }
+            if let cfDate = dict["kMRMediaRemoteNowPlayingInfoTimestamp"] as? NSDate {
+                return cfDate as Date
+            }
+            return Date()
+        }()
+
         let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
         let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
         let currentPosSec: Double = {
@@ -372,7 +382,7 @@ public final class SystemMusicSyncService {
                 playbackProgress: progress,
                 currentPositionSeconds: currentPosSec,
                 durationSeconds: totalSec,
-                lastUpdated: Date(),
+                lastUpdated: sampleTimestamp,
                 playbackRate: isPlaying ? 1.0 : 0.0,
                 waveformSamples: [0.3, 0.6, 0.4, 0.7, 0.5],
                 artworkData: existingArtwork,
@@ -386,6 +396,7 @@ public final class SystemMusicSyncService {
 
     public func pollCurrentPlayingState(store: PurahWorkspaceStore?) async {
         guard isMusicAppRunning else { return }
+        let queryStartTime = Date()
         let script = """
         tell application "Music"
             try
@@ -424,7 +435,7 @@ public final class SystemMusicSyncService {
                 playbackProgress: progress,
                 currentPositionSeconds: pos,
                 durationSeconds: dur,
-                lastUpdated: Date(),
+                lastUpdated: queryStartTime,
                 playbackRate: isPlaying ? 1.0 : 0.0,
                 sourceApp: "Apple Music",
                 sourceBundleId: "com.apple.Music"
@@ -448,8 +459,7 @@ public final class SystemMusicSyncService {
 
         guard isPlaying, let store = store else { return }
 
-        // Low-frequency 1.0s timer to periodically update playbackProgress for background rail fill,
-        // without generating garbage arrays or thrashing heap memory!
+        var tickCount = 0
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self, weak store] _ in
             MainActor.assumeIsolated {
                 guard let store = store, store._musicTrack.isPlaying else { return }
@@ -458,6 +468,18 @@ public final class SystemMusicSyncService {
 
                 store._musicTrack.playbackProgress = store._musicTrack.calculatedProgress
                 self?.onTrackChanged?(store._musicTrack)
+
+                tickCount += 1
+                if tickCount % 4 == 0 {
+                    // Periodic 4-second ground-truth recalibration to prevent time-anchor drift
+                    if SystemMediaRemoteBridge.shared.isAvailable {
+                        self?.handleMediaRemoteInfoUpdate(store: store)
+                    } else if self?.isMusicAppRunning == true {
+                        Task { [weak self, weak store] in
+                            await self?.pollCurrentPlayingState(store: store)
+                        }
+                    }
+                }
             }
         }
     }
