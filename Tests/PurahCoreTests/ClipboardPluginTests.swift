@@ -30,7 +30,8 @@ struct ClipboardPluginTests {
 
     @Test("SystemClipboardSyncService color regex parser handles hex and rgba")
     func testColorParsing() {
-        let service = SystemClipboardSyncService.shared
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
 
         // 6-digit hex
         let item1 = service.processColor(string: "#30D158")
@@ -59,7 +60,8 @@ struct ClipboardPluginTests {
 
     @Test("SystemClipboardSyncService image tmp caching and cleanup lifecycle")
     func testImageTmpCaching() {
-        let service = SystemClipboardSyncService.shared
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
 
         // Create a small test image bitmap
         let img = NSImage(size: NSSize(width: 100, height: 100))
@@ -86,7 +88,7 @@ struct ClipboardPluginTests {
         #expect(FileManager.default.fileExists(atPath: path))
         #expect(FileManager.default.fileExists(atPath: thumbPath))
         #expect(!service.diskUsageFormatted.isEmpty)
-        #expect(FileManager.default.fileExists(atPath: SystemClipboardSyncService.storageDirectory.path))
+        #expect(FileManager.default.fileExists(atPath: service.storageDirectory.path))
 
         // Delete item cleans up disk tmp file
         service.deleteItem(id: latest.id)

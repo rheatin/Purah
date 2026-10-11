@@ -52,8 +52,8 @@ struct MemoryFootprintTests {
 
     @Test("Clipboard image ingestion with streaming ImageIO produces minimal footprint growth")
     func testClipboardImageIngestionMemory() {
-        let service = SystemClipboardSyncService.shared
-        service.clearAll()
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
 
         autoreleasepool {
             let img = NSImage(size: NSSize(width: 200, height: 200))

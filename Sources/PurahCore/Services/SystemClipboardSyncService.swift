@@ -30,10 +30,33 @@ public final class SystemClipboardSyncService {
     @ObservationIgnored private var lastChangeCount: Int = -1
 
     // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Clipboard/
-    @ObservationIgnored public static let storageDirectory: URL = {
+    @ObservationIgnored public static let defaultStorageDirectory: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let baseDir = appSupport.appendingPathComponent("Purah/Clipboard", isDirectory: true)
+        return appSupport.appendingPathComponent("Purah/Clipboard", isDirectory: true)
+    }()
+
+    @ObservationIgnored public let storageDirectory: URL
+
+    public static var storageDirectory: URL {
+        shared.storageDirectory
+    }
+
+    @ObservationIgnored private var imagesDirectory: URL {
+        storageDirectory.appendingPathComponent("images", isDirectory: true)
+    }
+
+    @ObservationIgnored private var thumbnailsDirectory: URL {
+        storageDirectory.appendingPathComponent("thumbnails", isDirectory: true)
+    }
+
+    @ObservationIgnored private var metadataURL: URL {
+        storageDirectory.appendingPathComponent("metadata/index.json")
+    }
+
+    public init(storageDirectory: URL? = nil) {
+        let baseDir = storageDirectory ?? Self.defaultStorageDirectory
+        self.storageDirectory = baseDir
         let imagesDir = baseDir.appendingPathComponent("images", isDirectory: true)
         let thumbsDir = baseDir.appendingPathComponent("thumbnails", isDirectory: true)
         let metaDir = baseDir.appendingPathComponent("metadata", isDirectory: true)
@@ -41,24 +64,20 @@ public final class SystemClipboardSyncService {
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thumbsDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: metaDir, withIntermediateDirectories: true)
-        return baseDir
-    }()
 
-    @ObservationIgnored private var imagesDirectory: URL {
-        Self.storageDirectory.appendingPathComponent("images", isDirectory: true)
-    }
-
-    @ObservationIgnored private var thumbnailsDirectory: URL {
-        Self.storageDirectory.appendingPathComponent("thumbnails", isDirectory: true)
-    }
-
-    @ObservationIgnored private var metadataURL: URL {
-        Self.storageDirectory.appendingPathComponent("metadata/index.json")
-    }
-
-    public init() {
-        lastChangeCount = NSPasteboard.general.changeCount
+        self.lastChangeCount = NSPasteboard.general.changeCount
         // Lazy loading: disk history is loaded on-demand when history is accessed
+    }
+
+    /// Factory method for isolated unit testing without touching user's real clipboard storage
+    public static func createIsolatedTestService() -> (service: SystemClipboardSyncService, cleanup: () -> Void) {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_clipboard_test_\(UUID().uuidString)", isDirectory: true)
+        let service = SystemClipboardSyncService(storageDirectory: tempDir)
+        let cleanup: () -> Void = {
+            _ = try? FileManager.default.removeItem(at: tempDir)
+        }
+        return (service: service, cleanup: cleanup)
     }
 
     // MARK: - Disk Persistence & Memory Paging
@@ -85,7 +104,7 @@ public final class SystemClipboardSyncService {
     }
 
     public var diskUsageFormatted: String {
-        let size = computeDirectorySize(url: Self.storageDirectory)
+        let size = computeDirectorySize(url: storageDirectory)
         let mb = Double(size) / (1024.0 * 1024.0)
         if mb >= 1.0 {
             return String(format: "%.1f MB (%d items)", mb, history.count)
@@ -108,7 +127,7 @@ public final class SystemClipboardSyncService {
     }
 
     public func openStorageInFinder() {
-        NSWorkspace.shared.selectFile(Self.storageDirectory.path, inFileViewerRootedAtPath: "")
+        NSWorkspace.shared.selectFile(storageDirectory.path, inFileViewerRootedAtPath: "")
     }
 
     public func clearDiskStorage() {
