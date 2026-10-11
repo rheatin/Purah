@@ -79,8 +79,6 @@ public struct WaveMeterAmbientView: View {
                 neonVUTowerView(totalH: totalH, barW: barW)
             case .moltenPlasma:
                 moltenPlasmaView(totalH: totalH, barW: barW)
-            case .appleSpringEQ:
-                appleSpringEQView(totalH: totalH, barW: barW)
             case .auroraWave:
                 auroraWaveView(totalH: totalH, barW: barW)
             }
@@ -159,12 +157,23 @@ public struct WaveMeterAmbientView: View {
                 // Dark glass track
                 context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(Color.white.opacity(0.06)))
 
-                // Beat physics calculation (125 BPM Kick Drum + Snare Pulse)
-                let beatPeriod = 0.48
-                let beatPhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: beatPeriod) / beatPeriod) : 0.0
-                let kickPunch = shouldAnimate ? exp(-beatPhase * 6.0) : 0.0
-                let phraseTension = shouldAnimate ? (sin(time * 0.4) * 0.5 + 0.5) : 0.0
-                let activeRatio = shouldAnimate ? min(max(0.35 + (kickPunch * 0.45) + (phraseTension * 0.20), 0.2), 1.0) : 0.25
+                // Live CoreAudio soundcard stream telemetry
+                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
+                let liveBass = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBass) : 0.0
+                let activeRatio: Double
+                if shouldAnimate {
+                    if livePeak > 0.015 || liveBass > 0.015 {
+                        // 100% Real-time acoustic spectrum drive
+                        activeRatio = min(max(0.15 + (livePeak * 0.52) + (liveBass * 0.42), 0.15), 1.0)
+                    } else {
+                        // Fallback gentle groove if audio buffer is silent/loading
+                        let beatPhase = (time.truncatingRemainder(dividingBy: 0.48) / 0.48)
+                        let kick = exp(-beatPhase * 6.0)
+                        activeRatio = min(max(0.28 + kick * 0.35, 0.20), 0.80)
+                    }
+                } else {
+                    activeRatio = 0.20
+                }
                 let activeBlocks = Int(Double(count) * activeRatio)
 
                 for i in 0..<count {
@@ -232,12 +241,16 @@ public struct WaveMeterAmbientView: View {
                     with: .linearGradient(Gradient(colors: colors), startPoint: p1, endPoint: p2)
                 )
 
-                // Traveling pulse wave on beat kicks
+                // Live acoustic pulse wave
+                let liveBass = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBass) : 0.0
+                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
+                let pulseAlpha = shouldAnimate ? min(max(0.18 + (liveBass * 0.60) + (livePeak * 0.20), 0.0), 0.85) : 0.0
+
                 let pulsePeriod = 0.52
                 let pulsePhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: pulsePeriod) / pulsePeriod) : 0.0
                 let pulseY = CGFloat(pulsePhase) * h
                 let pulseRect = CGRect(x: 0, y: pulseY - 14.0, width: w, height: 28.0)
-                context.fill(Path(ellipseIn: pulseRect), with: .color(Color.white.opacity(shouldAnimate ? 0.40 : 0.0)))
+                context.fill(Path(ellipseIn: pulseRect), with: .color(Color.white.opacity(pulseAlpha)))
 
                 // Playhead needle
                 if playheadY > 0 && playheadY < h {
@@ -251,61 +264,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Sub-Style 3: Apple Spring EQ (苹果高弹跳动均衡柱)
-    private func appleSpringEQView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
-
-        return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
-            Canvas { context, size in
-                let w = size.width
-                let h = size.height
-                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
-                let continuousProgress = currentContinuousProgress(timeline: timeline)
-                let playheadY = CGFloat(continuousProgress) * h
-
-                // Track background
-                context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
-
-                // Played track background
-                if playheadY > 1.0 {
-                    context.fill(Path(roundedRect: CGRect(x: 0.5, y: 0, width: w - 1.0, height: playheadY), cornerRadius: (w - 1.0) / 2), with: .color(musicColor.opacity(0.28)))
-                }
-
-                // 3 Apple-style spring bouncing bars centered in the rail
-                let centerY = h / 2.0
-                let eqBarW: CGFloat = 1.5
-                let eqGap: CGFloat = 1.2
-                let totalEqW = eqBarW * 3.0 + eqGap * 2.0
-                let startX = (w - totalEqW) / 2.0
-
-                let phases = [0.0, 1.8, 3.2]
-                let freqs = [6.2, 8.5, 5.0]
-                let maxH: [CGFloat] = [48.0, 72.0, 42.0]
-
-                for b in 0..<3 {
-                    let e = shouldAnimate
-                        ? ((sin(time * freqs[b] + phases[b]) * 0.65 + cos(time * 3.5 + phases[b] * 0.7) * 0.35 + 1.0) / 2.0)
-                        : 0.15
-                    let bH = 8.0 + CGFloat(e) * (maxH[b] - 8.0)
-                    let bX = startX + CGFloat(b) * (eqBarW + eqGap)
-                    let bY = centerY - (bH / 2.0)
-                    let r = CGRect(x: bX, y: bY, width: eqBarW, height: bH)
-                    context.fill(Path(roundedRect: r, cornerRadius: eqBarW / 2), with: .color(musicColor))
-                }
-
-                // Playhead needle
-                if playheadY > 0 && playheadY < h {
-                    let needleRect = CGRect(x: 0, y: playheadY - 1.0, width: w, height: 2.0)
-                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(.white))
-                }
-            }
-            .frame(width: barW, height: totalH)
-            .clipShape(Capsule())
-        }
-        .frame(width: barW, height: totalH)
-    }
-
-    // MARK: - Sub-Style 4: Aurora Wave Ribbon (极光呼吸声波带)
+    // MARK: - Sub-Style 3: Aurora Wave Ribbon (极光呼吸声波带)
     private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
@@ -329,13 +288,16 @@ public struct WaveMeterAmbientView: View {
                 var leftPoints: [CGPoint] = []
                 var rightPoints: [CGPoint] = []
 
+                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
+                let dynamicSpread = shouldAnimate ? (1.0 + CGFloat(livePeak) * 1.5) : 1.0
+
                 for i in 0...steps {
                     let y = CGFloat(i) * dy
                     let ny = Double(y / h)
                     let wave = shouldAnimate
                         ? (sin(ny * 8.0 - time * 5.0) * 0.5 + cos(ny * 16.0 + time * 3.2) * 0.3 + 0.8)
                         : (sin(ny * 7.0) * 0.4 + 0.7)
-                    let halfW = min(max(CGFloat(wave) * 2.2, 1.2), w / 2.0 - 0.5)
+                    let halfW = min(max(CGFloat(wave) * 1.8 * dynamicSpread, 1.2), w / 2.0 - 0.5)
                     rightPoints.append(CGPoint(x: centerX + halfW, y: y))
                     leftPoints.append(CGPoint(x: centerX - halfW, y: y))
                 }

@@ -1415,11 +1415,9 @@ public struct MusicPluginSettingsView: View {
     private func dynamicSubStyleDescription(for sub: DynamicWaveformSubStyle) -> String {
         switch sub {
         case .neonVUTower:
-            return "Cyberpunk 12-block multi-color spectrum tower bouncing to 125 BPM bass kicks."
+            return "Cyberpunk 12-block multi-color spectrum tower bouncing to live audio levels."
         case .moltenPlasma:
             return "Molten liquid plasma stream with continuous chromatic surge and beat pulses."
-        case .appleSpringEQ:
-            return "Apple Dynamic Island style 3-bar high-spring physical jumping equalizer."
         case .auroraWave:
             return "Seamless aurora borealis undulating gradient ribbon with organic breathing."
         }

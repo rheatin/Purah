@@ -10,14 +10,12 @@ public enum MusicRailStyle: String, Codable, Sendable, CaseIterable {
 public enum DynamicWaveformSubStyle: String, Codable, Sendable, CaseIterable {
     case neonVUTower = "neonVUTower"       // 1. 赛博霓虹电平塔 (Cyberpunk Neon VU Tower)
     case moltenPlasma = "moltenPlasma"     // 2. 熔融等离子光流 (Molten Plasma Surge)
-    case appleSpringEQ = "appleSpringEQ"   // 3. 苹果高弹音浪柱 (Apple Spring EQ)
-    case auroraWave = "auroraWave"         // 4. 极光呼吸声波带 (Aurora Wave Ribbon)
+    case auroraWave = "auroraWave"         // 3. 极光呼吸声波带 (Aurora Wave Ribbon)
 
     public var displayName: String {
         switch self {
         case .neonVUTower: return "Neon VU Tower"
         case .moltenPlasma: return "Molten Plasma"
-        case .appleSpringEQ: return "Apple Spring EQ"
         case .auroraWave: return "Aurora Wave"
         }
     }
