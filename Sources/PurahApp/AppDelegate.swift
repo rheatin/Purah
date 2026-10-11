@@ -5,7 +5,7 @@ import PurahCore
 import PurahUI
 
 @MainActor
-public final class AppDelegate: NSObject, NSApplicationDelegate {
+public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     public let store = PurahWorkspaceStore()
     var coordinator: ScreenEdgeCoordinator?
     var mouseMonitor: EdgeMouseMonitor?
@@ -143,6 +143,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             window.hidesOnDeactivate = false
             window.contentView = NSHostingView(rootView: prefView)
             window.isReleasedWhenClosed = false
+            window.delegate = self
             preferencesWindow = window
         } else {
             let prefView = PreferencesView(store: store, initialTab: initialTab, initialPluginId: initialPluginId)
@@ -167,6 +168,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
             window.contentView = NSHostingView(rootView: updateView)
             window.isReleasedWhenClosed = false
+            window.delegate = self
             updaterWindow = window
         }
         updaterWindow?.makeKeyAndOrderFront(nil)
@@ -192,5 +194,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let lang = sender.representedObject as? AppLanguage else { return }
         LocalizationManager.shared.currentLanguage = lang
         rebuildMenu()
+    }
+
+    public func windowWillClose(_ notification: Notification) {
+        if let closingWin = notification.object as? NSWindow {
+            if closingWin === preferencesWindow {
+                preferencesWindow?.contentView = nil
+                preferencesWindow = nil
+            } else if closingWin === updaterWindow {
+                updaterWindow?.contentView = nil
+                updaterWindow = nil
+            }
+        }
     }
 }

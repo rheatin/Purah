@@ -105,4 +105,58 @@ struct MemoryFootprintTests {
         let deltaMB = afterMB - initialMB
         #expect(deltaMB < 25.0, "Compact AmbientRailWindow must not allocate bloated graphics memory (delta was \(deltaMB) MB)")
     }
+
+    @Test("Sustained runtime memory footprint stays strictly stable without creeping over time")
+    func testSustainedRuntimeMemoryStability() async {
+        let store = PurahWorkspaceStore()
+        PluginRegistry.shared.bindStore(store)
+        let monitor = EdgeMouseMonitor(store: store)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        // 1. Warmup cycles to reach steady-state heap
+        for cycle in 0..<10 {
+            autoreleasepool {
+                let x = (cycle % 2 == 0) ? 5.0 : 500.0
+                let pt = NSPoint(x: x, y: 450.0)
+                monitor.customCurrentMouseLocation = pt
+                monitor.processMouse(point: pt, now: Date())
+                _ = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+            }
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let baselineMB = currentFootprintMB()
+
+        // 2. Run over simulated time (100 sustained iterations across continuous operations)
+        let iterations = 100
+        for i in 0..<iterations {
+            autoreleasepool {
+                let simTime = Date(timeIntervalSinceNow: Double(i) * 0.016)
+                // Sweep mouse from left edge across rail into desktop and back
+                let simX = (i % 4 == 0) ? 4.0 : ((i % 4 == 1) ? 20.0 : ((i % 4 == 2) ? 150.0 : 800.0))
+                let simY = 200.0 + Double(i % 50) * 8.0
+                let pt = NSPoint(x: simX, y: simY)
+                monitor.customCurrentMouseLocation = pt
+                monitor.processMouse(point: pt, now: simTime)
+
+                _ = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+                _ = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
+                _ = store.activeDrawerCardFrames(for: .left, totalHeight: 900.0)
+            }
+
+            if i % 25 == 0 {
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+        }
+
+        // Allow runloop and tasks to stabilize
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        let sustainedMB = currentFootprintMB()
+        let creepDeltaMB = max(sustainedMB - baselineMB, 0.0)
+
+        // Strict assertion: Over 100 continuous real-time simulated iterations, memory growth must be < 15MB
+        #expect(creepDeltaMB < 15.0, "Sustained execution must not leak or creep memory over time (creep was \(creepDeltaMB) MB, baseline: \(baselineMB) MB, sustained: \(sustainedMB) MB)")
+    }
 }
