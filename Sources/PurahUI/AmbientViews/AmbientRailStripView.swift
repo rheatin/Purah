@@ -39,7 +39,7 @@ public struct AmbientRailStripView: View {
                     let isActive = (store.activeDrawerItemId == pod.id || store.activeDrawerPodId == pod.id || isPinned)
                     let context = makeContext(for: pod, totalHeight: spanH, isActive: isActive, isPinned: isPinned)
 
-                    VStack(spacing: 0) {
+                    VStack(alignment: edge == .left ? .leading : .trailing, spacing: 0) {
                         if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
                             if plugin.supportedDrawerModes.contains(.stepped) && store.isPodDecomposed(pod.id) {
                                 SteppedRailContainerView(
@@ -294,6 +294,7 @@ public struct AmbientRailStripView: View {
         RoundedRectangle(cornerRadius: 3.5)
             .fill(color.opacity(0.5))
             .frame(width: barW, height: totalHeight)
+            .transaction { $0.animation = nil }
     }
 
     private func pinButton(id: String, isPinned: Bool, color: Color) -> some View {

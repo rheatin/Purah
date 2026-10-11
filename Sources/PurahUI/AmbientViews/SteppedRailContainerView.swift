@@ -56,7 +56,7 @@ public struct SteppedRailContainerView: View {
                 plugin.makeRailBarView(context: context)
                     .frame(width: CGFloat(store.railBarWidth), height: totalHeight)
             } else {
-                VStack(spacing: spacing) {
+                VStack(alignment: edge == .left ? .leading : .trailing, spacing: spacing) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, subItem in
                         let isPinned = store.isItemPinned(id: subItem.id)
                         let isActive = (subItem.id == store.activeDrawerItemId || isPinned)
@@ -226,6 +226,7 @@ public struct SteppedRailContainerView: View {
             }
         }
         .frame(width: barW, height: itemH)
+        .transaction { $0.animation = nil }
         .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
     }
 
