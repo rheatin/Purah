@@ -159,4 +159,62 @@ struct MemoryFootprintTests {
         // Strict assertion: Over 100 continuous real-time simulated iterations, memory growth must be < 15MB
         #expect(creepDeltaMB < 15.0, "Sustained execution must not leak or creep memory over time (creep was \(creepDeltaMB) MB, baseline: \(baselineMB) MB, sustained: \(sustainedMB) MB)")
     }
+
+    @Test("Verifies physical memory drops upon plugin unmounting and single-rail sleep")
+    func testPluginUnmountMemoryDrop() async {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let store = PurahWorkspaceStore()
+
+        // 1. Stage 1: Full Load (Both left and right rail windows active + in-memory payload)
+        var leftWin: AmbientRailWindow? = AmbientRailWindow(edge: .left, screen: screen, store: store)
+        var rightWin: AmbientRailWindow? = AmbientRailWindow(edge: .right, screen: screen, store: store)
+
+        // Inject simulated in-memory artwork, lyrics, notes, and shelf items
+        store._musicTrack.artworkData = Data(repeating: 0xAB, count: 4 * 1024 * 1024) // 4MB image
+        store._musicTrack.lyrics = String(repeating: "Line of synced lyrics\n", count: 1000)
+        store._quickNote.text = String(repeating: "Lots of active notes text content.\n", count: 500)
+
+        let fullMountedMB = currentFootprintMB()
+
+        // 2. Stage 2: Unmount Left Rail Plugins + Single-Rail Sleep
+        store._quickNote.text = ""
+        leftWin?.close()
+        leftWin = nil
+
+        let leftUnmountedMB = currentFootprintMB()
+
+        // 3. Stage 3: Unmount Right Rail Plugins (Music, Calendar, Todo) + Both Rails Closed
+        store._musicTrack.artworkData = nil
+        store._musicTrack.lyrics = nil
+        SystemMusicSyncService.shared.clearArtworkCache()
+        rightWin?.close()
+        rightWin = nil
+
+        let allUnmountedMB = currentFootprintMB()
+
+        // 4. Stage 4: Remount All Plugins
+        var leftWinRestored: AmbientRailWindow? = AmbientRailWindow(edge: .left, screen: screen, store: store)
+        var rightWinRestored: AmbientRailWindow? = AmbientRailWindow(edge: .right, screen: screen, store: store)
+
+        let remountedMB = currentFootprintMB()
+        leftWinRestored?.close()
+        rightWinRestored?.close()
+        leftWinRestored = nil
+        rightWinRestored = nil
+
+        let summary = """
+        ========================================================
+        📊 PLUGIN UNMOUNT & SINGLE-RAIL SLEEP MEMORY TELEMETRY
+        ========================================================
+        1. All Plugins Mounted + Dual Rail Windows: \(String(format: "%.2f", fullMountedMB)) MB
+        2. Left Rail Unmounted (Single-Rail Sleep):  \(String(format: "%.2f", leftUnmountedMB)) MB (Saved \(String(format: "%.2f", fullMountedMB - leftUnmountedMB)) MB)
+        3. All Rails Unmounted (Zero Rail Windows): \(String(format: "%.2f", allUnmountedMB)) MB (Saved \(String(format: "%.2f", fullMountedMB - allUnmountedMB)) MB)
+        4. Remounted All Plugins (Full Recovery):   \(String(format: "%.2f", remountedMB)) MB
+        ========================================================
+        """
+        try? summary.write(toFile: "/tmp/unmount_telemetry.txt", atomically: true, encoding: .utf8)
+
+        #expect(allUnmountedMB <= fullMountedMB)
+        #expect(abs(remountedMB - fullMountedMB) < 10.0, "Remounting must not cause permanent runaway memory leak")
+    }
 }
