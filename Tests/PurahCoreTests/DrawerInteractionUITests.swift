@@ -863,4 +863,57 @@ struct DrawerInteractionUITests {
         )
         _ = flagshipView
     }
+
+    @Test("Music Pod Plan C WaveMeterAmbientView and NativeMediaProgressBar instantiate cleanly")
+    @MainActor
+    func testMusicPodPlanCAmbientViewAndProgressBar() {
+        // 1. Test WaveMeterAmbientView with progress and playing states
+        let playingPodView = WaveMeterAmbientView(
+            progress: 0.45,
+            isPlaying: true,
+            isAnimated: true,
+            height: 90.0
+        )
+        _ = playingPodView
+
+        let pausedPodView = WaveMeterAmbientView(
+            progress: 0.70,
+            isPlaying: false,
+            isAnimated: false,
+            height: 70.0
+        )
+        _ = pausedPodView
+
+        // 2. Test NativeMediaProgressBar instantiate and scrub seek callbacks
+        var seekResult: Double?
+        var scrubDragging: Bool?
+        let progressBar = NativeMediaProgressBar(
+            progress: 0.35,
+            color: .pink,
+            height: 16.0,
+            onScrubChange: { dragging, _ in
+                scrubDragging = dragging
+            },
+            onSeek: { target in
+                seekResult = target
+            }
+        )
+        _ = progressBar
+
+        progressBar.onScrubChange(true, 0.6)
+        #expect(scrubDragging == true)
+
+        progressBar.onSeek(0.85)
+        #expect(seekResult == 0.85)
+
+        // 3. Backward-compatible FluidWaveformScrubber wrapper
+        let compatScrubber = FluidWaveformScrubber(
+            progress: 0.5,
+            isPlaying: true,
+            color: .red,
+            onScrubChange: { _, _ in },
+            onSeek: { _ in }
+        )
+        _ = compatScrubber
+    }
 }

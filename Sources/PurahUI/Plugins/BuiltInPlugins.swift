@@ -565,6 +565,7 @@ public struct MusicPlugin: PurahPodPlugin {
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
             WaveMeterAmbientView(
+                progress: state.track.calculatedProgress,
                 samples: state.waveformSamples,
                 isPlaying: state.isPlaying,
                 isAnimated: state.isWaveformAnimationEnabled,
@@ -1302,7 +1303,7 @@ public struct MusicPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle("Live 120FPS Waveform Animation", isOn: Binding(
+            Toggle("Pod Playback Dynamic Animation", isOn: Binding(
                 get: { state.isWaveformAnimationEnabled },
                 set: {
                     state.isWaveformAnimationEnabled = $0

@@ -436,10 +436,13 @@ public final class MusicPluginState: Sendable {
             self.track = targetStore._musicTrack
             self.isPlaying = targetStore._musicTrack.isPlaying
         } else {
+            let frozenTime = track.calculatedCurrentTime
             let nowPlaying = !track.isPlaying
+            let totalSec = max(track.durationSeconds, 1.0)
+            track.currentPositionSeconds = frozenTime
+            track.playbackProgress = min(max(frozenTime / totalSec, 0.0), 1.0)
             track.isPlaying = nowPlaying
             track.playbackRate = nowPlaying ? 1.0 : 0.0
-            track.currentPositionSeconds = track.calculatedCurrentTime
             track.lastUpdated = Date()
             self.isPlaying = nowPlaying
         }
@@ -576,16 +579,32 @@ public final class MusicPluginState: Sendable {
         let title = userInfo["Name"] as? String ?? "Unknown Track"
         let artist = userInfo["Artist"] as? String ?? "Apple Music"
         let album = userInfo["Album"] as? String ?? ""
-        let totalTimeMs = (userInfo["Total Time"] as? Double) ?? 180000.0
-        let currentPosSec = (userInfo["Player Position"] as? Double) ?? 0.0
+
+        let totalTimeMs = SystemMusicSyncService.extractNumericValue(from: userInfo["Total Time"]) ?? 180000.0
         let totalSec = max(totalTimeMs / 1000.0, 1.0)
+
+        let isSameTrack = (self.track.title == title && self.track.artist == artist)
+        let existingPos = self.track.calculatedCurrentTime
+
+        let parsedPosSec = SystemMusicSyncService.extractNumericValue(from: userInfo["Player Position"])
+        let currentPosSec: Double = {
+            if let pos = parsedPosSec {
+                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
+                    return existingPos
+                }
+                return min(max(pos, 0.0), totalSec)
+            } else if isSameTrack {
+                return existingPos
+            }
+            return 0.0
+        }()
+
         let progress = min(max(currentPosSec / totalSec, 0.0), 1.0)
         let samples: [Double] = (0..<14).map { _ in
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
 
         // Retain existing artwork if same track, or check cache
-        let isSameTrack = (self.track.title == title && self.track.artist == artist)
         let existingArtwork: Data? = {
             if isSameTrack && self.track.artworkData != nil {
                 return self.track.artworkData
@@ -662,14 +681,31 @@ public final class MusicPluginState: Sendable {
         let title = userInfo["Name"] as? String ?? "Unknown Track"
         let artist = userInfo["Artist"] as? String ?? "Spotify"
         let album = userInfo["Album"] as? String ?? ""
-        let durationSec = (userInfo["Duration"] as? Double) ?? 180.0
-        let currentPosSec = (userInfo["Playback Position"] as? Double) ?? 0.0
+
+        let durationMs = SystemMusicSyncService.extractNumericValue(from: userInfo["Duration"]) ?? 180000.0
+        let durationSec = max(durationMs / 1000.0, 1.0)
+
+        let isSameTrack = (self.track.title == title && self.track.artist == artist)
+        let existingPos = self.track.calculatedCurrentTime
+
+        let parsedPosSec = SystemMusicSyncService.extractNumericValue(from: userInfo["Playback Position"])
+        let currentPosSec: Double = {
+            if let pos = parsedPosSec {
+                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
+                    return existingPos
+                }
+                return min(max(pos, 0.0), durationSec)
+            } else if isSameTrack {
+                return existingPos
+            }
+            return 0.0
+        }()
+
         let progress = min(max(currentPosSec / durationSec, 0.0), 1.0)
         let samples: [Double] = (0..<14).map { _ in
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
 
-        let isSameTrack = (self.track.title == title && self.track.artist == artist)
         let existingArtwork: Data? = {
             if isSameTrack && self.track.artworkData != nil {
                 return self.track.artworkData

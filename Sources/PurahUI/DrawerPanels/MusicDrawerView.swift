@@ -132,14 +132,11 @@ public struct MusicDrawerView: View {
                     .buttonStyle(.plain)
                 }
 
-                // Compact Waveform
-                FluidWaveformScrubber(
+                // Compact Progress Bar
+                NativeMediaProgressBar(
                     progress: displayProgress,
-                    isPlaying: isPlaying,
                     color: musicColor,
-                    samples: state.waveformSamples,
-                    barCount: 22,
-                    waveformHeight: 16,
+                    height: 14,
                     onScrubChange: { dragging, prog in
                         isScrubbing = dragging
                         scrubbedProgress = prog
@@ -191,15 +188,12 @@ public struct MusicDrawerView: View {
                 Spacer(minLength: 4)
             }
 
-            // Row 2: Waveform + Dual Time Labels
-            VStack(spacing: 3) {
-                FluidWaveformScrubber(
+            // Row 2: Standard Progress Bar + Dual Time Labels
+            VStack(spacing: 5) {
+                NativeMediaProgressBar(
                     progress: displayProgress,
-                    isPlaying: isPlaying,
                     color: musicColor,
-                    samples: state.waveformSamples,
-                    barCount: 30,
-                    waveformHeight: 20,
+                    height: 16,
                     onScrubChange: { dragging, prog in
                         isScrubbing = dragging
                         scrubbedProgress = prog
@@ -379,15 +373,12 @@ public struct MusicDrawerView: View {
 
             Spacer(minLength: 2)
 
-            // High-density Waveform Scrubber
-            VStack(spacing: 3) {
-                FluidWaveformScrubber(
+            // High-density Progress Bar
+            VStack(spacing: 5) {
+                NativeMediaProgressBar(
                     progress: displayProgress,
-                    isPlaying: isPlaying,
                     color: musicColor,
-                    samples: state.waveformSamples,
-                    barCount: 34,
-                    waveformHeight: 22,
+                    height: 16,
                     onScrubChange: { dragging, prog in
                         isScrubbing = dragging
                         scrubbedProgress = prog
@@ -560,7 +551,89 @@ public struct HeroPlayPauseButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Metal GPU 60/120FPS Fluid Waveform Scrubber
+// MARK: - Native Tactile Media Progress Bar (Standard Clean Scrubber)
+public struct NativeMediaProgressBar: View {
+    public let progress: Double
+    public let color: Color
+    public var height: CGFloat = 16
+    public let onScrubChange: (Bool, Double) -> Void
+    public let onSeek: (Double) -> Void
+
+    @State private var isHovered: Bool = false
+    @State private var isScrubbing: Bool = false
+    @State private var dragProgress: Double = 0.0
+
+    public init(
+        progress: Double,
+        color: Color,
+        height: CGFloat = 16,
+        onScrubChange: @escaping (Bool, Double) -> Void,
+        onSeek: @escaping (Double) -> Void
+    ) {
+        self.progress = progress
+        self.color = color
+        self.height = height
+        self.onScrubChange = onScrubChange
+        self.onSeek = onSeek
+    }
+
+    public var body: some View {
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let activeProg = min(max(isScrubbing ? dragProgress : progress, 0.0), 1.0)
+            let fillW = totalW * CGFloat(activeProg)
+            let trackHeight: CGFloat = (isHovered || isScrubbing) ? 5.5 : 3.5
+            let thumbDiameter: CGFloat = (isHovered || isScrubbing) ? 10.0 : 0.0
+
+            ZStack(alignment: .leading) {
+                // Background Track
+                Capsule()
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: totalW, height: trackHeight)
+
+                // Elapsed Progress Fill
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(fillW, 0.0), height: trackHeight)
+
+                // Playhead Thumb (Expands smoothly on hover/scrub)
+                if isHovered || isScrubbing {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: thumbDiameter, height: thumbDiameter)
+                        .shadow(color: Color.black.opacity(0.35), radius: 2, x: 0, y: 1)
+                        .offset(x: min(max(fillW - thumbDiameter / 2.0, 0), max(totalW - thumbDiameter, 0)))
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: totalW, height: geo.size.height, alignment: .center)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.75)) {
+                    isHovered = hovering
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        isScrubbing = true
+                        let p = min(max(value.location.x / max(totalW, 1.0), 0.0), 1.0)
+                        dragProgress = p
+                        onScrubChange(true, p)
+                    }
+                    .onEnded { value in
+                        let final = min(max(value.location.x / max(totalW, 1.0), 0.0), 1.0)
+                        isScrubbing = false
+                        onScrubChange(false, final)
+                        onSeek(final)
+                    }
+            )
+        }
+        .frame(height: height)
+    }
+}
+
+// MARK: - Backward-Compatible Scrubber Wrapper
 public struct FluidWaveformScrubber: View {
     public let progress: Double
     public let isPlaying: Bool
@@ -571,18 +644,11 @@ public struct FluidWaveformScrubber: View {
     public let onScrubChange: (Bool, Double) -> Void
     public let onSeek: (Double) -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isScrubbing: Bool = false
-    @State private var dragProgress: Double = 0.0
-
-    private let spacing: CGFloat = 2.5
-    private let minBarHeight: CGFloat = 3.0
-
     public init(
         progress: Double,
         isPlaying: Bool,
         color: Color,
-        samples: [Double],
+        samples: [Double] = [],
         barCount: Int = 30,
         waveformHeight: CGFloat = 20,
         onScrubChange: @escaping (Bool, Double) -> Void,
@@ -599,75 +665,13 @@ public struct FluidWaveformScrubber: View {
     }
 
     public var body: some View {
-        GeometryReader { geo in
-            let totalW = geo.size.width
-            let totalH = geo.size.height
-            let currentProg = isScrubbing ? dragProgress : progress
-            let activeWidth = totalW * CGFloat(currentProg)
-            let totalSpacing = CGFloat(barCount - 1) * spacing
-            let barW = max((totalW - totalSpacing) / CGFloat(barCount), 2.0)
-
-            ZStack(alignment: .leading) {
-                // Metal GPU 60/120FPS Animation Canvas
-                TimelineView(.animation(paused: !isPlaying || reduceMotion)) { timeline in
-                    Canvas { context, size in
-                        let time = timeline.date.timeIntervalSinceReferenceDate
-
-                        for i in 0..<barCount {
-                            let x = CGFloat(i) * (barW + spacing)
-                            let isPlayed = (x + barW / 2.0) <= activeWidth
-
-                            let phase = Double(i) * 0.38
-                            let w1 = sin(time * 5.8 + phase)
-                            let w2 = cos(time * 3.4 + phase * 0.70)
-                            let w3 = sin(time * 1.6 + Double(i) * 0.15)
-                            let fluidFactor = (w1 * 0.45 + w2 * 0.35 + w3 * 0.20 + 1.0) / 2.0
-
-                            let sampleIdx = i % max(samples.count, 1)
-                            let rawSample = samples.isEmpty ? 0.35 : samples[sampleIdx]
-
-                            let amp = reduceMotion ? (rawSample * 0.50) : (isPlaying ? (rawSample * 0.25 + fluidFactor * 0.75) : (rawSample * 0.30))
-                            let barH = max(minBarHeight, totalH * CGFloat(amp))
-                            let y = (totalH - barH) / 2.0
-
-                            let barRect = CGRect(x: x, y: y, width: barW, height: barH)
-                            let path = Path(roundedRect: barRect, cornerRadius: barW / 2.0)
-
-                            if isPlayed {
-                                context.fill(path, with: .color(color))
-                            } else {
-                                context.fill(path, with: .color(Color.primary.opacity(0.12)))
-                            }
-                        }
-
-                        // Luminous Scrubber Thumb while dragging
-                        if isScrubbing {
-                            let thumbX = min(max(activeWidth, 0), totalW)
-                            let thumbRect = CGRect(x: thumbX - 1.5, y: 1, width: 3, height: totalH - 2)
-                            context.fill(Path(roundedRect: thumbRect, cornerRadius: 1.5), with: .color(.white))
-                        }
-                    }
-                    .frame(width: totalW, height: totalH)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        isScrubbing = true
-                        let prog = min(max(value.location.x / totalW, 0.0), 1.0)
-                        dragProgress = prog
-                        onScrubChange(true, prog)
-                    }
-                    .onEnded { value in
-                        let final = min(max(value.location.x / totalW, 0.0), 1.0)
-                        isScrubbing = false
-                        onScrubChange(false, final)
-                        onSeek(final)
-                    }
-            )
-        }
-        .frame(height: waveformHeight)
+        NativeMediaProgressBar(
+            progress: progress,
+            color: color,
+            height: waveformHeight,
+            onScrubChange: onScrubChange,
+            onSeek: onSeek
+        )
     }
 }
 

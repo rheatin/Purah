@@ -95,6 +95,19 @@ public final class SystemMusicSyncService {
         handleAppleMusicInfo(notification: notification, store: store)
     }
 
+    public static func extractNumericValue(from value: Any?) -> Double? {
+        if let num = value as? NSNumber {
+            return num.doubleValue
+        } else if let d = value as? Double {
+            return d
+        } else if let i = value as? Int {
+            return Double(i)
+        } else if let s = value as? String, let d = Double(s) {
+            return d
+        }
+        return nil
+    }
+
     public func handleAppleMusicInfo(notification: Notification, store: PurahWorkspaceStore?) {
         guard let userInfo = notification.userInfo else { return }
         playbackTimer?.invalidate()
@@ -108,9 +121,27 @@ public final class SystemMusicSyncService {
         let artist = userInfo["Artist"] as? String ?? "Apple Music"
         let album = userInfo["Album"] as? String ?? ""
 
-        let totalTimeMs = (userInfo["Total Time"] as? Double) ?? 180000.0
-        let currentPosSec = (userInfo["Player Position"] as? Double) ?? 0.0
+        let totalTimeMs = Self.extractNumericValue(from: userInfo["Total Time"]) ?? 180000.0
         let totalSec = max(totalTimeMs / 1000.0, 1.0)
+
+        let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
+        let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
+
+        let parsedPosSec = Self.extractNumericValue(from: userInfo["Player Position"])
+        let currentPosSec: Double = {
+            if let pos = parsedPosSec {
+                // If notification is Pause and pos is 0, but we were already playing this song,
+                // do not wipe out to 0.0! Preserve current calculated position.
+                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
+                    return existingPos
+                }
+                return min(max(pos, 0.0), totalSec)
+            } else if isSameTrack {
+                return existingPos
+            }
+            return 0.0
+        }()
+
         let progress = min(max(currentPosSec / totalSec, 0.0), 1.0)
 
         let samples: [Double] = (0..<14).map { _ in
@@ -164,9 +195,26 @@ public final class SystemMusicSyncService {
         let artist = userInfo["Artist"] as? String ?? "Spotify"
         let album = userInfo["Album"] as? String ?? ""
 
-        let durationSec = (userInfo["Duration"] as? Double).map { $0 / 1000.0 } ?? 180.0
-        let currentPosSec = (userInfo["Playback Position"] as? Double) ?? 0.0
-        let progress = min(max(currentPosSec / max(durationSec, 1.0), 0.0), 1.0)
+        let durationMs = Self.extractNumericValue(from: userInfo["Duration"]) ?? 180000.0
+        let durationSec = max(durationMs / 1000.0, 1.0)
+
+        let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
+        let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
+
+        let parsedPosSec = Self.extractNumericValue(from: userInfo["Playback Position"])
+        let currentPosSec: Double = {
+            if let pos = parsedPosSec {
+                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
+                    return existingPos
+                }
+                return min(max(pos, 0.0), durationSec)
+            } else if isSameTrack {
+                return existingPos
+            }
+            return 0.0
+        }()
+
+        let progress = min(max(currentPosSec / durationSec, 0.0), 1.0)
 
         let samples: [Double] = (0..<14).map { _ in
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
@@ -269,23 +317,15 @@ public final class SystemMusicSyncService {
 
         guard isPlaying, let store = store else { return }
 
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak store] _ in
+        // Low-frequency 1.0s timer to periodically update playbackProgress for background rail fill,
+        // without generating garbage arrays or thrashing heap memory!
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak store] _ in
             MainActor.assumeIsolated {
                 guard let store = store, store._musicTrack.isPlaying else { return }
                 guard !store.isRailsFrozen else { return }
                 guard store.pods.contains(where: { $0.id == "music" && $0.isEnabled }) else { return }
 
-                // Time-Anchor Model (AGENTS.md Section 5.2):
-                // Do NOT rewrite currentPositionSeconds or update lastUpdated on timer ticks.
-                // The true anchor (currentPositionSeconds, lastUpdated) is calibrated solely by external
-                // notifications or explicit seek/pause actions. The timer only pushes waveform samples and
-                // cached progress reflection to drive fluid UI visualizers without drift.
-                let prog = store._musicTrack.calculatedProgress
-                let samples: [Double] = (0..<14).map { _ in
-                    Double.random(in: 0.25...0.95)
-                }
-                store._musicTrack.playbackProgress = prog
-                store._musicTrack.waveformSamples = samples
+                store._musicTrack.playbackProgress = store._musicTrack.calculatedProgress
             }
         }
     }
@@ -460,10 +500,15 @@ public final class SystemMusicSyncService {
 
     public func togglePlayPause(store: PurahWorkspaceStore?) {
         guard let store = store else { return }
+        // 1. Freeze elapsed position BEFORE altering isPlaying or playbackRate
+        let frozenTime = store._musicTrack.calculatedCurrentTime
         let nowPlaying = !store._musicTrack.isPlaying
+        let totalSec = max(store._musicTrack.durationSeconds, 1.0)
+
+        store._musicTrack.currentPositionSeconds = frozenTime
+        store._musicTrack.playbackProgress = min(max(frozenTime / totalSec, 0.0), 1.0)
         store._musicTrack.isPlaying = nowPlaying
         store._musicTrack.playbackRate = nowPlaying ? 1.0 : 0.0
-        store._musicTrack.currentPositionSeconds = store._musicTrack.calculatedCurrentTime
         store._musicTrack.lastUpdated = Date()
         updatePlaybackTimer(store: store, isPlaying: nowPlaying)
 

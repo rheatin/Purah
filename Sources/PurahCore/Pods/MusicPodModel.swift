@@ -38,12 +38,13 @@ public struct MusicTrackInfo: Codable, Sendable {
         self.title = title
         self.artist = artist
         self.album = album
-        self.isPlaying = isPlaying ?? (playbackRate > 0)
+        let resolvedPlaying = isPlaying ?? (playbackRate > 0)
+        self.isPlaying = resolvedPlaying
         self.playbackProgress = playbackProgress
         self.currentPositionSeconds = currentPositionSeconds
         self.durationSeconds = durationSeconds
         self.lastUpdated = lastUpdated
-        self.playbackRate = playbackRate
+        self.playbackRate = playbackRate != 0.0 ? playbackRate : (resolvedPlaying ? 1.0 : 0.0)
         self.waveformSamples = waveformSamples
         self.artworkData = artworkData
         self.lyrics = lyrics
@@ -53,7 +54,7 @@ public struct MusicTrackInfo: Codable, Sendable {
     }
 
     public var calculatedCurrentTime: Double {
-        if (isPlaying || playbackRate > 0) && playbackRate > 0 {
+        if isPlaying && playbackRate > 0 {
             let elapsed = Date().timeIntervalSince(lastUpdated) * playbackRate
             return min(max(currentPositionSeconds + elapsed, 0.0), durationSeconds)
         }
