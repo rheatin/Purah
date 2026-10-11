@@ -160,13 +160,19 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
 struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String
     let minHeight: CGFloat
+    let adaptiveWidth: CGFloat?
 
-    init(podId: String, minHeight: CGFloat) {
+    init(podId: String, minHeight: CGFloat, adaptiveWidth: CGFloat? = nil) {
         self.podId = podId
         self.minHeight = minHeight
+        self.adaptiveWidth = adaptiveWidth
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         minHeight
+    }
+
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        adaptiveWidth
     }
 }

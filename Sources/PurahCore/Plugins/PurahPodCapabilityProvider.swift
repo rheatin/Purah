@@ -16,6 +16,10 @@ public protocol PurahPodCapabilityProvider: Sendable {
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool
+
+    /// Autonomously declared preferred drawer width when operating in Adaptive mode.
+    /// Return nil to fall back to the base layout engine's text-length estimation.
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
 }
 
 public extension PurahPodCapabilityProvider {
@@ -43,4 +47,5 @@ public extension PurahPodCapabilityProvider {
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 120.0 }
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { false }
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { nil }
 }

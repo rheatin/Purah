@@ -80,6 +80,11 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     func contextMenuActions(subItemId: String?, context: PurahPluginContext) -> [PurahMenuAction]
     var preferredPollingInterval: TimeInterval? { get }
     func onPollingTick(store: PurahWorkspaceStore) async
+
+    // MARK: - 人机工学与尺寸自主宣告
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
+    /// 插件自主声明在 Adaptive 模式下的最佳自适应宽度（例如音乐 360pt, 剪贴板 380pt, 终端 520pt）；返回 nil 则使用 Base 通用算法
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
 }
 ```
 
@@ -87,6 +92,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 协议为几乎所有可选能力提供了合理默认值：
 - 单抽屉插件只需实现 `makeRailBarView` 与 `makeDrawerView`。
 - 如果支持在轨拆解（如多条目/多指标），声明 `supportedDrawerModes: [.stepped]` 并实现 `steppedItems(context:)`。
+- **自适应宽度自主宣告**：底座（Base Store）遵循开闭原则，不硬编码具体插件宽度。插件只需重写 `adaptiveDrawerWidth(store:)` 返回专属宽度（如 `360.0`），即可在用户切换为自适应模式时享受专属最佳排版。
 
 ---
 

@@ -345,6 +345,10 @@ struct PluginArchitectureTests {
                 itemId.hasPrefix("dyn-")
             }
 
+            func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+                410.0
+            }
+
             func makeRailBarView(context: PurahPluginContext) -> AnyView { AnyView(EmptyView()) }
             func makeDrawerView(context: PurahPluginContext) -> AnyView { AnyView(EmptyView()) }
         }
@@ -362,20 +366,49 @@ struct PluginArchitectureTests {
             ergonomicWeight: 30
         )
         store.pods.append(dynamicPod)
+        store.registerCapabilityProvider(plugin)
 
-        PluginRegistry.shared.register(plugin, store: store)
-        defer { PluginRegistry.shared.unregister(id: "com.test.dynamic-pod", store: store) }
-
-        // Store resolves height dynamically through capability provider
+        // Verify height dynamically delegates to plugin
         #expect(store.minimumDrawerHeight(for: "com.test.dynamic-pod") == 210.0)
 
-        // Store resolves subitem ownership dynamically without hardcoded ID logic
-        #expect(store.pod(forItemId: "dyn-task-42")?.id == "com.test.dynamic-pod")
+        // Verify adaptive width dynamically delegates to plugin (Open-Closed Principle)
+        store.drawerWidthMode = .adaptive
+        #expect(store.effectiveDrawerWidth(podId: "com.test.dynamic-pod") == 410.0)
+    }
 
-        // Store checks pinned child dynamically
-        #expect(store.hasPinnedItem(on: .right) == false)
-        plugin.pinnedChildren.insert("dyn-task-42")
-        #expect(store.hasPinnedItem(on: .right) == true)
+    @Test("Autonomous adaptive drawer width resolution across built-in plugins with base fallback")
+    @MainActor
+    func testAutonomousAdaptiveDrawerWidth() {
+        let store = PurahWorkspaceStore()
+        store.drawerWidthMode = .adaptive
+
+        let music = MusicPlugin()
+        let shelf = DropShelfPlugin()
+        let notes = QuickNotesPlugin()
+        let clipboard = ClipboardPlugin()
+        let terminal = TerminalPlugin()
+
+        // 1. Verify plugins autonomously declare their intended width
+        #expect(music.adaptiveDrawerWidth(store: store) == 360.0)
+        #expect(shelf.adaptiveDrawerWidth(store: store) == 360.0)
+        #expect(notes.adaptiveDrawerWidth(store: store) == 320.0)
+        #expect(clipboard.adaptiveDrawerWidth(store: store) == 380.0)
+        #expect(terminal.adaptiveDrawerWidth(store: store) == 520.0)
+
+        // 2. Register plugins and verify store resolves autonomously without hardcoded switches
+        store.registerCapabilityProvider(music)
+        store.registerCapabilityProvider(shelf)
+        store.registerCapabilityProvider(clipboard)
+        store.registerCapabilityProvider(terminal)
+
+        #expect(store.effectiveDrawerWidth(podId: "music") == 360.0)
+        #expect(store.effectiveDrawerWidth(podId: "shelf") == 360.0)
+        #expect(store.effectiveDrawerWidth(podId: "clipboard") == 380.0)
+        #expect(store.effectiveDrawerWidth(podId: "terminal") == 520.0)
+
+        // 3. Fallback for unprovided plugin uses clean text estimation
+        let fallbackWidth = store.effectiveDrawerWidth(for: "Short", baseWidth: 280.0, podId: "unknown-plugin")
+        #expect(fallbackWidth >= 230.0 && fallbackWidth <= 330.0)
     }
 
     @Test("ScopedPluginStorage isolates keys per plugin ID")

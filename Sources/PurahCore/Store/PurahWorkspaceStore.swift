@@ -225,30 +225,28 @@ public final class PurahWorkspaceStore {
     public var customPodColors: [String: String] = [:]
 
     public func effectiveDrawerWidth(for text: String = "", baseWidth: Double = 290.0, podId: String = "") -> CGFloat {
-        if podId == "clipboard" || text == "Clipboard" {
+        let resolvedPodId: String = {
+            if !podId.isEmpty { return podId }
+            let lower = text.lowercased()
+            if let matched = pods.first(where: { lower.contains($0.id.lowercased()) || lower.contains($0.name.lowercased()) }) {
+                return matched.id
+            }
+            return ""
+        }()
+
+        // 1. Autonomous Plugin Adaptive Width Resolution (Open-Closed Principle)
+        if !resolvedPodId.isEmpty,
+           let provider = capabilityProvider(for: resolvedPodId),
+           let pluginAdaptiveWidth = provider.adaptiveDrawerWidth(store: self) {
             switch drawerWidthMode {
             case .fixed:
-                return CGFloat(max(fixedDrawerWidth, 360.0))
+                return CGFloat(max(fixedDrawerWidth, Double(pluginAdaptiveWidth)))
             case .adaptive:
-                return 380.0
+                return pluginAdaptiveWidth
             }
         }
-        if podId == "shelf" || text == "Drop Shelf" || text.hasPrefix("shelf") {
-            switch drawerWidthMode {
-            case .fixed:
-                return CGFloat(max(fixedDrawerWidth, 340.0))
-            case .adaptive:
-                return 360.0
-            }
-        }
-        if baseWidth >= 400.0 {
-            switch drawerWidthMode {
-            case .fixed:
-                return CGFloat(max(fixedDrawerWidth, baseWidth))
-            case .adaptive:
-                return CGFloat(max(baseWidth, 520.0))
-            }
-        }
+
+        // 2. Base Fallback Estimation (Text length and baseline fallback)
         switch drawerWidthMode {
         case .fixed:
             return CGFloat(min(max(fixedDrawerWidth, 220.0), 330.0))
@@ -592,10 +590,11 @@ public final class PurahWorkspaceStore {
         registerCapabilityProvider(DefaultTodoCapabilityProvider())
         registerCapabilityProvider(DefaultVitalsCapabilityProvider())
         registerCapabilityProvider(DefaultScriptsCapabilityProvider())
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 60.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0, adaptiveWidth: 360.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 60.0, adaptiveWidth: 520.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "clipboard", minHeight: 120.0, adaptiveWidth: 380.0))
     }
 
     // MARK: - Local Persistence

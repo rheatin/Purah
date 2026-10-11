@@ -84,6 +84,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 - **`PurahPluginContext`**: Supplies layout geometry (`edge`, `railWidth`, `slotHeight`, `drawerWidth`), state (`isExpanded`, `isPinned`), theme palette, isolated storage, and action triggers (`requestExpand`, `requestDismiss`, `togglePin`, `showToast`, `showWarning`, `performHaptic`). Third-party plugins communicate through context actions rather than mutating host store internals directly.
 - **Default Decomposed Principle**: Plugins that support multi-item stepped modes (Vitals, Scripts, Calendar, Todo) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and per-item direct interaction.
 - **Header Slot Integration**: Plugins can inject badges (e.g. Terminal `[• ZSH]`) and inline toolbars directly into the card header row via `makeHeaderAccessoryView` and `makeHeaderTrailingView`, saving vertical drawer space.
+- **Autonomous Adaptive Width Principle (自适应宽度自主宣告法则)**: Plugins autonomously declare their optimal adaptive width via `adaptiveDrawerWidth(store:) -> CGFloat?` (e.g. Music: 360pt, Shelf: 360pt, Clipboard: 380pt, Terminal: 520pt, Notes: 320pt). The base workspace store contains ZERO hardcoded plugin dimensions and gracefully falls back to text-length estimation only when a plugin returns `nil`.
 - **Extensibility**: Third-party plugins can register custom manifests and views without modifying core layout engines.
 
 ---

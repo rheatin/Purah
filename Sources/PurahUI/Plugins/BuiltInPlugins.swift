@@ -466,6 +466,7 @@ public struct QuickNotesPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 320.0 }
 }
 
 // MARK: - Drop Shelf Plugin
@@ -520,6 +521,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 360.0 }
 
     public var supportedDropTypes: [UTType] { [.fileURL] }
 
@@ -610,6 +612,7 @@ public struct MusicPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 110.0 }
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 360.0 }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         context.performHaptic(.alignment)
@@ -2209,6 +2212,10 @@ public struct TerminalPlugin: PurahPodPlugin {
         60.0
     }
 
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        520.0
+    }
+
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         context.performHaptic(.alignment)
         context.requestExpand()
@@ -2438,6 +2445,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
             return 160.0
         }
     }
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 380.0 }
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store.pinnedDrawerItemIds.contains { $0.hasPrefix("clipboard-") }
     }
