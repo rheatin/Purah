@@ -258,4 +258,35 @@ struct PurahWorkspaceStoreTests {
         #expect(changedState == true)
         #expect(rebuildTriggered == true)
     }
+
+    @Test("movePodInOrder and swapPods cleanly swap relative vertical order and persist")
+    func testPodReorderingAndPositionSwapping() {
+        let store = PurahWorkspaceStore()
+        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        #expect(rightPods.count >= 2)
+
+        let topPodId = rightPods[0].id
+        let secondPodId = rightPods[1].id
+
+        #expect(store.canMovePod(id: topPodId, direction: .up) == false)
+        #expect(store.canMovePod(id: topPodId, direction: .down) == true)
+        #expect(store.canMovePod(id: secondPodId, direction: .up) == true)
+
+        // Swap top pod down
+        store.movePodInOrder(id: topPodId, direction: .down)
+
+        let reorderedRightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+
+        #expect(reorderedRightPods[0].id == secondPodId)
+        #expect(reorderedRightPods[1].id == topPodId)
+
+        // Swap back up
+        store.movePodInOrder(id: topPodId, direction: .up)
+        let restoredPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        #expect(restoredPods[0].id == topPodId)
+        #expect(restoredPods[1].id == secondPodId)
+    }
 }

@@ -22,15 +22,22 @@ public enum ErgonomicAutoLayoutEngine {
     public static func layout(
         pods: [SlotPod],
         on edge: MountEdge,
+        preserveCustomOrder: Bool = true,
         safeBounds: ClosedRange<Double> = defaultSafeBounds,
         gap: Double = defaultGap
     ) -> [SlotPod] {
         let activePods = pods.filter { $0.edge == edge && $0.isEnabled }
         guard !activePods.isEmpty else { return [] }
 
-        // 1. Sort pods by ergonomic zone hierarchy and weight
-        let sortedPods = activePods.sorted {
-            ($0.preferredZone, -$0.ergonomicWeight) < ($1.preferredZone, -$1.ergonomicWeight)
+        // 1. Sort pods: if preserveCustomOrder and pods have distinct start positions, respect user order ($0.range.start)
+        var sortedPods: [SlotPod]
+        let hasDistinctStarts = Set(activePods.map { Int($0.range.start * 1000) }).count == activePods.count
+        if preserveCustomOrder && hasDistinctStarts {
+            sortedPods = activePods.sorted { $0.range.start < $1.range.start }
+        } else {
+            sortedPods = activePods.sorted {
+                ($0.preferredZone, -$0.ergonomicWeight) < ($1.preferredZone, -$1.ergonomicWeight)
+            }
         }
 
         // 2. Compute available net vertical height
@@ -152,8 +159,8 @@ public enum ErgonomicAutoLayoutEngine {
         }
 
         // Solve ergonomic ordering and proportional distribution independently on left and right rails
-        let laidOutLeft = layout(pods: leftCandidates, on: .left, safeBounds: safeBounds, gap: gap)
-        let laidOutRight = layout(pods: rightCandidates, on: .right, safeBounds: safeBounds, gap: gap)
+        let laidOutLeft = layout(pods: leftCandidates, on: .left, preserveCustomOrder: !reassignEdges, safeBounds: safeBounds, gap: gap)
+        let laidOutRight = layout(pods: rightCandidates, on: .right, preserveCustomOrder: !reassignEdges, safeBounds: safeBounds, gap: gap)
 
         let map = Dictionary(uniqueKeysWithValues: (laidOutLeft + laidOutRight).map { ($0.id, $0) })
         return pods.map { map[$0.id] ?? $0 }

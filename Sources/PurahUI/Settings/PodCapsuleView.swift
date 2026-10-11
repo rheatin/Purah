@@ -14,6 +14,8 @@ public struct PodCapsuleView: View {
     public var onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)?
 
     @State private var dragInitialStart: Double? = nil
+    @State private var dragOffsetY: CGFloat = 0.0
+    @State private var isDraggingHeader: Bool = false
     @State private var resizeInitialLength: Double? = nil
     @State private var isResizeHovered: Bool = false
     @State private var isHeaderHovered: Bool = false
@@ -96,49 +98,34 @@ public struct PodCapsuleView: View {
             .padding(.top, 6)
             .padding(.bottom, 4)
             .contentShape(Rectangle())
-            // Header-driven anchor-based move gesture with Apple rubber-banding
+            // Header-driven move & reorder gesture
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
-                        if dragInitialStart == nil {
-                            dragInitialStart = pod.range.start
-                        }
-                        let deltaYRatio = Double(value.translation.height / canvasHeight)
-                        let rawTarget = (dragInitialStart ?? pod.range.start) + deltaYRatio
-                        let safeBounds: ClosedRange<Double> = 0.02...max(0.98 - pod.range.length, 0.02)
-                        let dampedStart = RubberBandingEngine.clampWithRubberband(
-                            value: rawTarget,
-                            bounds: safeBounds,
-                            dimension: 0.20,
-                            constant: 0.55
-                        )
-                        onMove(dampedStart)
+                        isDraggingHeader = true
+                        dragOffsetY = value.translation.height
                     }
                     .onEnded { value in
                         let horizontalDistance = value.translation.width
                         let verticalDistance = value.translation.height
-                        if (pod.edge == .left && horizontalDistance > 75.0) || (pod.edge == .right && horizontalDistance < -75.0) {
+                        isDraggingHeader = false
+                        dragOffsetY = 0.0
+
+                        if (pod.edge == .left && horizontalDistance > 60.0) || (pod.edge == .right && horizontalDistance < -60.0) {
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onTransferEdge()
                             }
-                        } else if verticalDistance < -35.0, let onMoveOrder = onMoveOrder {
+                        } else if verticalDistance < -16.0, let onMoveOrder = onMoveOrder {
                             // Dragged upward across threshold -> Swap with predecessor above
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onMoveOrder(.up)
                             }
-                        } else if verticalDistance > 35.0, let onMoveOrder = onMoveOrder {
+                        } else if verticalDistance > 16.0, let onMoveOrder = onMoveOrder {
                             // Dragged downward across threshold -> Swap with successor below
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onMoveOrder(.down)
                             }
-                        } else {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                let safeBounds: ClosedRange<Double> = 0.02...max(0.98 - pod.range.length, 0.02)
-                                let finalStart = min(max(pod.range.start, safeBounds.lowerBound), safeBounds.upperBound)
-                                onMove(finalStart)
-                            }
                         }
-                        dragInitialStart = nil
                     }
             )
 
@@ -201,9 +188,11 @@ public struct PodCapsuleView: View {
         )
         .shadow(
             color: palette.useGlow ? podColor.opacity(0.3) : Color.black.opacity(0.2),
-            radius: 4,
+            radius: isDraggingHeader ? 8 : 4,
             x: 0,
-            y: 2
+            y: isDraggingHeader ? 4 : 2
         )
+        .offset(y: dragOffsetY)
+        .zIndex(isDraggingHeader ? 50 : 1)
     }
 }
