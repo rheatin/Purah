@@ -52,9 +52,6 @@ public final class AmbientRailWindow: NSPanel {
         let rootView = AmbientRailStripView(edge: edge, store: store)
             .ignoresSafeArea()
         let hostingView = PassThroughHostingView(rootView: rootView, edge: edge, store: store)
-        hostingView.wantsLayer = true
-        hostingView.layer?.drawsAsynchronously = true
-        hostingView.layerContentsRedrawPolicy = .onSetNeedsDisplay
         self.contentView = hostingView
     }
 

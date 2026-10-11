@@ -52,14 +52,15 @@ public struct WaveMeterAmbientView: View {
                     .frame(width: 8, height: totalH)
                 }
             } else {
-                Canvas { context, size in
-                    for idx in 0..<barCount {
+                VStack(spacing: spacing) {
+                    ForEach(0..<barCount, id: \.self) { idx in
                         let sampleIdx = idx % max(samples.count, 1)
                         let amp = isPlaying ? (samples.isEmpty ? 0.4 : samples[sampleIdx]) : 0.25
                         let w = max(CGFloat(amp) * 6.0, 2.0)
-                        let y = CGFloat(idx) * (barHeight + spacing)
-                        let rect = CGRect(x: size.width - w, y: y, width: w, height: barHeight)
-                        context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(isPlaying ? musicColor : palette.borderColor))
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(isPlaying ? musicColor : palette.borderColor)
+                            .frame(width: w, height: barHeight)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                 }
                 .frame(width: 8, height: totalH)

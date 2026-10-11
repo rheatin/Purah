@@ -193,7 +193,6 @@ public final class SystemClipboardSyncService {
 
     // MARK: - Internal Processors
     private func addItem(_ item: ClipboardItem) {
-        // Deduplicate consecutive identical text / colors
         if let latest = history.first {
             if latest.plainTextToCopy == item.plainTextToCopy {
                 return
@@ -256,18 +255,15 @@ public final class SystemClipboardSyncService {
             let thumbFileURL = thumbnailsDirectory.appendingPathComponent(thumbFilename)
 
             do {
-                // If clipboard data is already PNG, write it directly without re-encoding to save CPU & RAM!
                 if pasteboard.data(forType: .png) != nil {
                     try data.write(to: fullFileURL)
                 } else {
-                    guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-                    let rep = NSBitmapImageRep(cgImage: cgImage)
-                    guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
-                    try png.write(to: fullFileURL)
+                    guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil),
+                          let dest = CGImageDestinationCreateWithURL(fullFileURL as CFURL, "public.png" as CFString, 1, nil) else { return nil }
+                    CGImageDestinationAddImage(dest, cgImage, nil)
+                    guard CGImageDestinationFinalize(dest) else { return nil }
                 }
 
-                // Streaming downsample to max 100px thumbnail using ImageIO
-                // Decodes ONLY thumbnail dimensions directly, NEVER allocating the full 4K / 30MB raw bitmap in RAM!
                 let thumbOptions: [CFString: Any] = [
                     kCGImageSourceCreateThumbnailFromImageAlways: true,
                     kCGImageSourceShouldCacheImmediately: true,
@@ -275,13 +271,12 @@ public final class SystemClipboardSyncService {
                     kCGImageSourceThumbnailMaxPixelSize: 100
                 ]
 
-                guard let thumbCGImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+                guard let thumbCGImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary),
+                      let thumbDest = CGImageDestinationCreateWithURL(thumbFileURL as CFURL, "public.png" as CFString, 1, nil) else {
                     return nil
                 }
-
-                let thumbRep = NSBitmapImageRep(cgImage: thumbCGImage)
-                guard let thumbData = thumbRep.representation(using: .png, properties: [:]) else { return nil }
-                try thumbData.write(to: thumbFileURL)
+                CGImageDestinationAddImage(thumbDest, thumbCGImage, nil)
+                guard CGImageDestinationFinalize(thumbDest) else { return nil }
 
                 let byteSize = (try? Data(contentsOf: fullFileURL).count) ?? data.count
 

@@ -261,7 +261,9 @@ public final class EdgeMouseMonitor {
     }
 
     private func handleMouse(event: NSEvent) {
-        processMouse(point: NSEvent.mouseLocation, event: event, now: Date())
+        autoreleasepool {
+            processMouse(point: NSEvent.mouseLocation, event: event, now: Date())
+        }
     }
 
     public func processMouse(

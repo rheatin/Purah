@@ -13,14 +13,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     var statusMenu: NSMenu?
     private var preferencesWindow: NSWindow?
     private var updaterWindow: NSWindow?
+    private lazy var menuHeaderIcon: NSImage? = {
+        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: iconURL) {
+            img.size = NSSize(width: 16, height: 16)
+            img.cacheMode = .never
+            return img
+        }
+        return nil
+    }()
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // Persistent menu bar accessory app without dock icon
-
-        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
-           let iconImage = NSImage(contentsOf: iconURL) {
-            NSApp.applicationIconImage = iconImage
-        }
 
         PluginRegistry.shared.bindStore(store)
 
@@ -86,10 +90,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // App Title Item
         let headerItem = NSMenuItem(title: "app.name".localized, action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
-        if let icon = NSApp.applicationIconImage?.copy() as? NSImage {
-            icon.size = NSSize(width: 16, height: 16)
-            headerItem.image = icon
-        }
+        headerItem.image = menuHeaderIcon
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
 

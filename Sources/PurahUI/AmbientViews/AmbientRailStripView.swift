@@ -195,19 +195,18 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
-                        if store.activeDrawerPodId != nil {
+                        if pod.id == store.activeDrawerPodId {
+                            return
+                        }
+                        railDwellTasks[pod.id]?.cancel()
+                        let dwellSec = store.activeInitialDwellSeconds
+                        if dwellSec <= 0.02 {
                             context.requestExpand()
                         } else {
-                            railDwellTasks[pod.id]?.cancel()
-                            let dwellSec = store.activeInitialDwellSeconds
-                            if dwellSec <= 0.02 {
+                            railDwellTasks[pod.id] = Task { @MainActor in
+                                try? await Task.sleep(for: .seconds(dwellSec))
+                                guard !Task.isCancelled else { return }
                                 context.requestExpand()
-                            } else {
-                                railDwellTasks[pod.id] = Task { @MainActor in
-                                    try? await Task.sleep(for: .seconds(dwellSec))
-                                    guard !Task.isCancelled else { return }
-                                    context.requestExpand()
-                                }
                             }
                         }
                     } else {

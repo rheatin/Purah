@@ -78,24 +78,22 @@ public struct SteppedRailContainerView: View {
                                         if store.dismissAlertOnHover && subItem.state == .alerting {
                                             store.acknowledgeAlert(id: subItem.id)
                                         }
-                                        if store.activeDrawerPodId != nil {
+                                        // If already active, keep steady without retriggering spring animations
+                                        if subItem.id == store.activeDrawerItemId {
+                                            return
+                                        }
+                                        dwellTask?.cancel()
+                                        let dwellSec = store.activeInitialDwellSeconds
+                                        if dwellSec <= 0.02 {
                                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                                 store.activateDrawer(podId: pod.id, itemId: subItem.id)
                                             }
                                         } else {
-                                            dwellTask?.cancel()
-                                            let dwellSec = store.activeInitialDwellSeconds
-                                            if dwellSec <= 0.02 {
+                                            dwellTask = Task { @MainActor in
+                                                try? await Task.sleep(for: .seconds(dwellSec))
+                                                guard !Task.isCancelled else { return }
                                                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                                     store.activateDrawer(podId: pod.id, itemId: subItem.id)
-                                                }
-                                            } else {
-                                                dwellTask = Task { @MainActor in
-                                                    try? await Task.sleep(for: .seconds(dwellSec))
-                                                    guard !Task.isCancelled else { return }
-                                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                                        store.activateDrawer(podId: pod.id, itemId: subItem.id)
-                                                    }
                                                 }
                                             }
                                         }
