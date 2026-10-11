@@ -57,7 +57,12 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
             if market.isInstalled(id: plugin.manifest.id) {
                 registeredPlugins[plugin.manifest.id] = plugin
                 store.registerCapabilityProvider(plugin)
-                plugin.onMount(store: store)
+                // Strict on-demand mount: only mount if the pod is actually enabled on an active rail!
+                // Disabled plugins (e.g. terminal, clipboard by default) remain 100% idle with 0 resource footprint.
+                let isEnabledOnRail = store.pods.contains(where: { $0.id == plugin.manifest.id && $0.isEnabled })
+                if isEnabledOnRail {
+                    plugin.onMount(store: store)
+                }
             } else {
                 if let removed = registeredPlugins.removeValue(forKey: plugin.manifest.id) {
                     store.unregisterCapabilityProvider(for: plugin.manifest.id)

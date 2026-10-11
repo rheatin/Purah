@@ -21,7 +21,9 @@ public final class SystemCalendarSyncService {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.syncEvents(into: self?.boundStore)
+                guard let self = self else { return }
+                guard self.boundStore?.pods.contains(where: { $0.id == "calendar" && $0.isEnabled }) == true else { return }
+                self.syncEvents(into: self.boundStore)
             }
         }
     }

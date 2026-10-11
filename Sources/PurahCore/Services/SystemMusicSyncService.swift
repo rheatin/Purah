@@ -35,7 +35,7 @@ public final class SystemMusicSyncService {
     public var isListening: Bool { musicObserver != nil || spotifyObserver != nil || mediaRemoteObserver != nil }
 
     public init() {
-        startListening()
+        // Dormant by default: listening is started strictly on-demand when MusicPlugin mounts
     }
 
     public func stopListening() {

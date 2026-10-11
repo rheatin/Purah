@@ -9,7 +9,20 @@ import ImageIO
 public final class SystemClipboardSyncService {
     public static let shared = SystemClipboardSyncService()
 
-    public private(set) var history: [ClipboardItem] = []
+    @ObservationIgnored private var _historyLoaded: Bool = false
+    @ObservationIgnored private var _history: [ClipboardItem] = []
+
+    public var history: [ClipboardItem] {
+        get {
+            loadFromDiskIfNeeded()
+            return _history
+        }
+        set {
+            _historyLoaded = true
+            _history = newValue
+        }
+    }
+
     public private(set) var isListening: Bool = false
     public var onItemAdded: ((ClipboardItem) -> Void)?
 
@@ -45,22 +58,28 @@ public final class SystemClipboardSyncService {
 
     public init() {
         lastChangeCount = NSPasteboard.general.changeCount
-        loadFromDisk()
+        // Lazy loading: disk history is loaded on-demand when history is accessed
     }
 
     // MARK: - Disk Persistence & Memory Paging
-    private func loadFromDisk() {
+    public func loadFromDiskIfNeeded() {
+        guard !_historyLoaded else { return }
+        _historyLoaded = true
+        loadFromDisk()
+    }
+
+    public func loadFromDisk() {
         guard let data = try? Data(contentsOf: metadataURL),
               let savedItems = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
             return
         }
-        self.history = savedItems
+        self._history = savedItems
     }
 
     private func saveToDisk() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(history) {
+        if let data = try? encoder.encode(_history) {
             try? data.write(to: metadataURL, options: .atomic)
         }
     }
