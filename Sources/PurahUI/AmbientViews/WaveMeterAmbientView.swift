@@ -39,100 +39,121 @@ public struct WaveMeterAmbientView: View {
 
     public var body: some View {
         let totalH = max(height, 40.0)
-        let spacing: CGFloat = 2.0
-        let barHeight: CGFloat = 2.2
-        let step = barHeight + spacing
-        let barCount = max(Int((totalH - 4.0) / step), 10)
+        let barW: CGFloat = 8.0
+        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
-        ZStack {
-            // Background rail capsule
-            Capsule()
-                .fill(Color.primary.opacity(0.06))
-                .frame(width: 8, height: totalH)
+        TimelineView(.animation(paused: !shouldAnimate)) { timeline in
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+                let centerX = w / 2.0
+                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
+                let clampedProgress = min(max(progress, 0.0), 1.0)
+                let playheadY = CGFloat(clampedProgress) * h
 
-            // Full-height ladder of horizontal alternating sound bars
-            VStack(spacing: spacing) {
-                ForEach(0..<barCount, id: \.self) { idx in
-                    AlternatingRungBar(
-                        index: idx,
-                        isPlaying: isPlaying && isAnimated && !reduceMotion,
-                        musicColor: musicColor,
-                        idleColor: palette.borderColor.opacity(0.55),
-                        barHeight: barHeight
-                    )
-                }
-            }
-            .frame(width: 8, height: totalH, alignment: .center)
-        }
-        .frame(width: 8, height: totalH)
-        .clipShape(Capsule())
-    }
-}
+                // 1. Background Track Capsule
+                let bgRect = CGRect(x: 0, y: 0, width: w, height: h)
+                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
 
-// MARK: - Alternating Horizontal Rung Bar (Hardware Composited, 0 KB Heap Allocations)
-private struct AlternatingRungBar: View {
-    let index: Int
-    let isPlaying: Bool
-    let musicColor: Color
-    let idleColor: Color
-    let barHeight: CGFloat
+                // 2. Continuous Fluid Superposition Audio Wave Ribbon
+                if shouldAnimate {
+                    let stepCount = max(Int(h / 3.0), 20)
+                    let dy = h / CGFloat(stepCount)
 
-    @State private var isExpanded: Bool = false
+                    var rightPoints: [CGPoint] = []
+                    var leftPoints: [CGPoint] = []
 
-    // 3-Phase wave distribution along the column gives silky traveling wave dynamics
-    private var phaseGroup: Int { index % 3 }
-    private var animationDuration: Double {
-        switch phaseGroup {
-        case 0: return 0.55
-        case 1: return 0.72
-        default: return 0.62
-        }
-    }
-    private var targetMaxWidth: CGFloat {
-        switch phaseGroup {
-        case 0: return 7.6
-        case 1: return 6.8
-        default: return 7.4
-        }
-    }
+                    for i in 0...stepCount {
+                        let y = min(CGFloat(i) * dy, h)
+                        let ny = Double(y / h)
 
-    var body: some View {
-        let currentWidth: CGFloat = {
-            if isPlaying {
-                return isExpanded ? targetMaxWidth : 2.5
-            } else {
-                return 2.5
-            }
-        }()
+                        // Superposition wave equations (w1*sin + w2*cos + w3*sin) per AGENTS.md
+                        let wave1 = sin(ny * 14.0 - time * 5.0)
+                        let wave2 = cos(ny * 8.0 + time * 3.6)
+                        let wave3 = sin(ny * 22.0 - time * 6.5)
+                        let combined = (wave1 * 0.45 + wave2 * 0.35 + wave3 * 0.20) // -1.0 .. 1.0
+                        let energy = (combined + 1.0) / 2.0 // 0.0 .. 1.0
 
-        Capsule()
-            .fill(isPlaying ? musicColor : idleColor)
-            .frame(width: currentWidth, height: barHeight)
-            .frame(width: 8, alignment: .center)
-            .onAppear {
-                if isPlaying {
-                    startLoop()
-                }
-            }
-            .onChange(of: isPlaying) { _, playing in
-                if playing {
-                    startLoop()
+                        let sampleIdx = Int(ny * Double(samples.count)) % max(samples.count, 1)
+                        let sampleVal = samples.isEmpty ? 0.5 : samples[sampleIdx]
+                        let amp = (energy * 0.65) + (sampleVal * 0.35)
+
+                        // Symmetrically undulate width: 2.8pt at troughs, 7.4pt at peaks
+                        let minHalfW: CGFloat = 1.4
+                        let maxHalfW: CGFloat = min((w - 0.6) / 2.0, 3.7)
+                        let halfW = minHalfW + CGFloat(amp) * (maxHalfW - minHalfW)
+
+                        rightPoints.append(CGPoint(x: centerX + halfW, y: y))
+                        leftPoints.append(CGPoint(x: centerX - halfW, y: y))
+                    }
+
+                    // Build closed fluid ribbon path
+                    var wavePath = Path()
+                    if let firstRight = rightPoints.first {
+                        wavePath.move(to: firstRight)
+                        for pt in rightPoints.dropFirst() {
+                            wavePath.addLine(to: pt)
+                        }
+                    }
+                    if let lastLeft = leftPoints.last {
+                        wavePath.addLine(to: lastLeft)
+                        for pt in leftPoints.reversed().dropFirst() {
+                            wavePath.addLine(to: pt)
+                        }
+                    }
+                    wavePath.closeSubpath()
+
+                    // Draw Played segment with vibrant glowing gradient, and Remaining with subtle sheen
+                    context.drawLayer { ctx in
+                        let playedClipRect = CGRect(x: 0, y: 0, width: w, height: max(playheadY, 4.0))
+                        ctx.clip(to: Path(playedClipRect))
+                        ctx.fill(
+                            wavePath,
+                            with: .linearGradient(
+                                Gradient(colors: [musicColor, musicColor.opacity(0.85)]),
+                                startPoint: CGPoint(x: centerX, y: 0),
+                                endPoint: CGPoint(x: centerX, y: max(playheadY, 4.0))
+                            )
+                        )
+                    }
+
+                    context.drawLayer { ctx in
+                        let unplayedClipRect = CGRect(x: 0, y: playheadY, width: w, height: max(h - playheadY, 0.0))
+                        ctx.clip(to: Path(unplayedClipRect))
+                        ctx.fill(wavePath, with: .color(musicColor.opacity(0.35)))
+                    }
+
+                    // 3. Glowing Playhead Needle
+                    if playheadY > 0 && playheadY < h {
+                        let needleH: CGFloat = 2.0
+                        let needleW: CGFloat = w - 1.0
+                        let needleRect = CGRect(x: (w - needleW) / 2.0, y: playheadY - (needleH / 2.0), width: needleW, height: needleH)
+                        context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(.white))
+                    }
                 } else {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        isExpanded = false
+                    // Paused state: Serene, clean, calm progress pill with zero comb lines
+                    let pillW: CGFloat = max(w - 2.0, 4.0)
+                    let pillX = (w - pillW) / 2.0
+
+                    // Played portion
+                    if playheadY > 2.0 {
+                        let playedRect = CGRect(x: pillX, y: 0, width: pillW, height: playheadY)
+                        context.fill(
+                            Path(roundedRect: playedRect, cornerRadius: pillW / 2),
+                            with: .color(isPlaying ? musicColor : palette.borderColor.opacity(0.7))
+                        )
+                    }
+
+                    // Playhead needle
+                    if playheadY > 0 && playheadY < h {
+                        let needleRect = CGRect(x: 1.0, y: playheadY - 1.0, width: w - 2.0, height: 2.0)
+                        context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(isPlaying ? .white : palette.borderColor))
                     }
                 }
             }
-    }
-
-    private func startLoop() {
-        let initialExpanded = (index % 2 == 0)
-        isExpanded = initialExpanded
-        withAnimation(
-            .easeInOut(duration: animationDuration)
-                .repeatForever(autoreverses: true)
-        ) {
-            isExpanded = !initialExpanded
+            .frame(width: barW, height: totalH)
+            .clipShape(Capsule())
         }
+        .frame(width: barW, height: totalH)
     }
 }
