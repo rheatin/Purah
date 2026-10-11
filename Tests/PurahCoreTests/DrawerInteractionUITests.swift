@@ -884,17 +884,17 @@ struct DrawerInteractionUITests {
             waveformSamples: [0.3, 0.8, 0.5, 0.9, 0.4]
         )
 
-        let testHStack = HStack(spacing: 28) {
+        let testHStack = HStack(spacing: 24) {
             VStack {
-                Text("1. Minimalist").font(.system(size: 8.5)).foregroundColor(.white)
+                Text("1. Minimalist").font(.system(size: 8.0)).foregroundColor(.white)
                 WaveMeterAmbientView(style: .minimalist, track: track, isPlaying: true, height: 160.0)
             }
             VStack {
-                Text("2. Smooth Progress").font(.system(size: 8.5)).foregroundColor(.white)
+                Text("2. Smooth Progress").font(.system(size: 8.0)).foregroundColor(.white)
                 WaveMeterAmbientView(style: .smoothProgress, track: track, isPlaying: true, height: 160.0)
             }
             VStack {
-                Text("3. Dynamic Wave").font(.system(size: 8.5)).foregroundColor(.white)
+                Text("3. Kinetic Beat (Live)").font(.system(size: 8.0)).foregroundColor(.white)
                 WaveMeterAmbientView(style: .dynamicWaveform, track: track, isPlaying: true, height: 160.0)
             }
         }
@@ -908,7 +908,7 @@ struct DrawerInteractionUITests {
         if let rep = testHosting.bitmapImageRepForCachingDisplay(in: testHosting.bounds) {
             testHosting.cacheDisplay(in: testHosting.bounds, to: rep)
             if let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: URL(fileURLWithPath: "/tmp/final_music_three_modes.png"))
+                try? png.write(to: URL(fileURLWithPath: "/tmp/kinetic_rhythm_showcase.png"))
             }
         }
 

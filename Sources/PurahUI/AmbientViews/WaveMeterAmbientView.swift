@@ -127,7 +127,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Mode 3: Continuous Dynamic Harmonic Audio Waveform (双束粒子谐波光浪)
+    // MARK: - Mode 3: Kinetic Audio Rhythm Engine (复合节拍物理震荡引擎)
     private func dynamicWaveformView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
@@ -138,7 +138,7 @@ public struct WaveMeterAmbientView: View {
                 let centerX = w / 2.0
                 let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
 
-                // Time-anchor continuous progress calculation
+                // 1. Time-anchor continuous progress calculation
                 let elapsed = isPlaying ? max(timeline.date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
                 let effectiveRate = track.playbackRate > 0 ? track.playbackRate : (isPlaying ? 1.0 : 0.0)
                 let currentPos = track.currentPositionSeconds + (elapsed * effectiveRate)
@@ -152,35 +152,57 @@ public struct WaveMeterAmbientView: View {
                 let primaryColor = musicColor
                 let secondaryColor = Color(hex: "#FF7597")
 
-                // 1. Dark glass track
-                let bgRect = CGRect(x: 0, y: 0, width: w, height: h)
-                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(primaryColor.opacity(0.12)))
+                // 2. Pseudo-Beat Multi-Band Rhythm Physics Model (125 BPM Bass Kick + Snare + Phrase Tension)
+                let beatPeriod = 0.48 // ~125 BPM
+                let beatPhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: beatPeriod) / beatPeriod) : 0.0
+                // Sharp exponential acoustic envelope for bass kick
+                let kickPunch = shouldAnimate ? exp(-beatPhase * 6.5) : 0.0
 
-                // 2. Played background fill (soft ambient illumination)
+                // Snare backbeat on measure half-notes (0.96s)
+                let measurePhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: 0.96) / 0.96) : 0.0
+                let snarePunch = (shouldAnimate && measurePhase > 0.45 && measurePhase < 0.70)
+                    ? exp(-(measurePhase - 0.45) * 10.0)
+                    : 0.0
+
+                // Macro phrase tension (verse to chorus energy surge ~ 16s cycle)
+                let phraseTension = shouldAnimate ? (sin(time * 0.38) * 0.5 + 0.5) : 0.3
+                let dynamicEnergy = 0.45 + (kickPunch * 0.45) + (snarePunch * 0.20) + (phraseTension * 0.15)
+
+                // 3. Dark glass track with rhythmic kick bloom
+                let bgRect = CGRect(x: 0, y: 0, width: w, height: h)
+                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(primaryColor.opacity(0.12 + kickPunch * 0.08)))
+
+                // 4. Played background fill (rhythmically breathing ambient illumination)
                 if playheadY > 1.0 {
                     let playedRect = CGRect(x: 1, y: 0, width: w - 2, height: playheadY)
-                    context.fill(Path(roundedRect: playedRect, cornerRadius: (w - 2) / 2), with: .color(primaryColor.opacity(0.22)))
+                    context.fill(Path(roundedRect: playedRect, cornerRadius: (w - 2) / 2), with: .color(primaryColor.opacity(0.20 + kickPunch * 0.12)))
                 }
 
-                // 3. Dual-Beam Interwoven Harmonic Sine Waves
+                // 5. Dual-Beam Interwoven Harmonic Sine Waves with Kick Explosion
                 var path1 = Path()
                 var path2 = Path()
-                let steps = max(Int(h / 2.5), 30)
+                var crossFlares: [CGPoint] = []
+
+                let steps = max(Int(h / 2.5), 32)
                 let dy = h / CGFloat(steps)
+                let speedMult = 1.0 + (kickPunch * 0.4)
 
                 for i in 0...steps {
                     let y = CGFloat(i) * dy
                     let ny = Double(y / h)
 
+                    // Kinetic traveling wave equations modulated by physical energy
                     let wave1 = shouldAnimate
-                        ? (sin(ny * 14.0 - time * 5.5) * 0.75 + cos(ny * 22.0 + time * 3.8) * 0.25)
-                        : (sin(ny * 10.0) * 0.7)
+                        ? (sin(ny * 13.0 - time * 6.2 * speedMult) * 0.72 + cos(ny * 24.0 + time * 4.2) * 0.28)
+                        : (sin(ny * 9.5) * 0.65)
                     let wave2 = shouldAnimate
-                        ? (sin(ny * 14.0 - time * 5.5 + 2.2) * 0.75 + cos(ny * 22.0 - time * 4.2) * 0.25)
-                        : (cos(ny * 10.0 + 1.2) * 0.7)
+                        ? (sin(ny * 13.0 - time * 6.2 * speedMult + 2.3) * 0.72 + cos(ny * 24.0 - time * 4.5) * 0.28)
+                        : (cos(ny * 9.5 + 1.4) * 0.65)
 
-                    let x1 = centerX + CGFloat(wave1) * (w / 2.0 - 1.2)
-                    let x2 = centerX + CGFloat(wave2) * (w / 2.0 - 1.2)
+                    // Amplitude aggressively widens during kick impact
+                    let maxSpread = (w / 2.0 - 0.9) * CGFloat(dynamicEnergy)
+                    let x1 = centerX + CGFloat(wave1) * maxSpread
+                    let x2 = centerX + CGFloat(wave2) * maxSpread
 
                     if i == 0 {
                         path1.move(to: CGPoint(x: x1, y: y))
@@ -189,18 +211,32 @@ public struct WaveMeterAmbientView: View {
                         path1.addLine(to: CGPoint(x: x1, y: y))
                         path2.addLine(to: CGPoint(x: x2, y: y))
                     }
+
+                    // Detect phase clash nodes for explosive energy sparkle
+                    if shouldAnimate && abs(x1 - x2) < 0.9 && i % 3 == 0 {
+                        crossFlares.append(CGPoint(x: (x1 + x2) / 2.0, y: y))
+                    }
                 }
 
-                // Draw glowing laser sound waves
-                context.stroke(path1, with: .color(primaryColor), lineWidth: 1.6)
-                context.stroke(path2, with: .color(secondaryColor), lineWidth: 1.4)
+                // Stroke with dynamic line width and energetic glow
+                let strokeW1 = 1.5 + CGFloat(kickPunch * 0.6)
+                let strokeW2 = 1.3 + CGFloat(snarePunch * 0.5)
+                context.stroke(path1, with: .color(primaryColor), lineWidth: strokeW1)
+                context.stroke(path2, with: .color(secondaryColor), lineWidth: strokeW2)
 
-                // 4. Glowing Playhead Needle
+                // 6. Cross-Phase Energy Sparks at Intersection Nodes
+                for pt in crossFlares {
+                    let flareSize: CGFloat = 2.0 + CGFloat(kickPunch * 1.5)
+                    let flareRect = CGRect(x: pt.x - flareSize / 2, y: pt.y - flareSize / 2, width: flareSize, height: flareSize)
+                    context.fill(Path(ellipseIn: flareRect), with: .color(Color.white.opacity(0.85 + kickPunch * 0.15)))
+                }
+
+                // 7. Glowing Playhead Needle with Beat Expansion
                 if playheadY > 0 && playheadY < h {
-                    let needleH: CGFloat = 2.0
+                    let needleH: CGFloat = 2.0 + CGFloat(kickPunch * 1.2)
                     let needleW: CGFloat = w - 1.0
                     let needleRect = CGRect(x: (w - needleW) / 2.0, y: playheadY - (needleH / 2.0), width: needleW, height: needleH)
-                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(.white))
+                    context.fill(Path(roundedRect: needleRect, cornerRadius: needleH / 2), with: .color(.white))
                 }
             }
             .frame(width: barW, height: totalH)
