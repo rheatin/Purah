@@ -541,6 +541,39 @@ public struct DropShelfPlugin: PurahPodPlugin {
     }
 }
 
+// MARK: - Reactive Live Rail Bar View for Music Plugin
+public struct MusicRailBarContainerView: View {
+    public let state: MusicPluginState
+    public let store: PurahWorkspaceStore
+    public let slotHeight: CGFloat
+    public let railWidth: CGFloat
+
+    public init(state: MusicPluginState, store: PurahWorkspaceStore, slotHeight: CGFloat, railWidth: CGFloat) {
+        self.state = state
+        self.store = store
+        self.slotHeight = slotHeight
+        self.railWidth = railWidth
+    }
+
+    public var body: some View {
+        let storeTrack = store._musicTrack
+        let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
+        let isPlaying = liveTrack.isPlaying || state.isPlaying
+
+        WaveMeterAmbientView(
+            style: state.railStyle,
+            subStyle: state.dynamicSubStyle,
+            track: liveTrack,
+            progress: liveTrack.calculatedProgress,
+            samples: liveTrack.waveformSamples,
+            isPlaying: isPlaying,
+            isAnimated: state.isWaveformAnimationEnabled,
+            height: slotHeight
+        )
+        .frame(width: railWidth, height: slotHeight)
+    }
+}
+
 // MARK: - Music Plugin
 public struct MusicPlugin: PurahPodPlugin {
     public nonisolated let manifest = PurahPluginManifest(
@@ -565,22 +598,13 @@ public struct MusicPlugin: PurahPodPlugin {
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        let storeTrack = context.store._musicTrack
-        let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
-        let isPlaying = liveTrack.isPlaying || state.track.isPlaying
-
-        return AnyView(
-            WaveMeterAmbientView(
-                style: state.railStyle,
-                subStyle: state.dynamicSubStyle,
-                track: liveTrack,
-                progress: liveTrack.calculatedProgress,
-                samples: liveTrack.waveformSamples,
-                isPlaying: isPlaying,
-                isAnimated: state.isWaveformAnimationEnabled,
-                height: context.slotHeight
+        AnyView(
+            MusicRailBarContainerView(
+                state: state,
+                store: context.store,
+                slotHeight: context.slotHeight,
+                railWidth: context.railWidth
             )
-            .frame(width: context.railWidth, height: context.slotHeight)
         )
     }
 

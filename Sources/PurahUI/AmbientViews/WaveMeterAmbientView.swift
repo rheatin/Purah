@@ -84,21 +84,17 @@ public struct WaveMeterAmbientView: View {
             }
         }
         .onAppear {
-            if isPlaying && style == .dynamicWaveform {
+            if style == .dynamicWaveform {
                 SystemAudioLiveMonitor.shared.start()
             }
         }
-        .onChange(of: isPlaying) { _, playing in
-            if playing && style == .dynamicWaveform {
-                SystemAudioLiveMonitor.shared.start()
-            } else {
-                SystemAudioLiveMonitor.shared.stop()
-            }
+        .onDisappear {
+            SystemAudioLiveMonitor.shared.stop()
         }
         .onChange(of: style) { _, newStyle in
-            if isPlaying && newStyle == .dynamicWaveform {
+            if newStyle == .dynamicWaveform {
                 SystemAudioLiveMonitor.shared.start()
-            } else if newStyle != .dynamicWaveform {
+            } else {
                 SystemAudioLiveMonitor.shared.stop()
             }
         }
@@ -160,7 +156,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (赛博霓虹电平塔 - 实时低频滤波与瞬态节拍冲击)
     private func neonVUTowerView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
@@ -235,7 +231,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Sub-Style 2: Aurora Wave Ribbon (极光呼吸声波带)
     private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
