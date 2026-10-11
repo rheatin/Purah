@@ -22,7 +22,7 @@
 
 <!-- ═════════════════════ DEMO SHOWCASE ═════════════════════ -->
 <p align="center">
-  <img src="assets/purah-demo.gif" width="880" alt="Purah macOS 交互演示" style="border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.35);" />
+  <img src="assets/purah-showcase-30s.gif" width="880" alt="Purah macOS 交互演示" style="border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.35);" />
 </p>
 <!-- ═══════════════════════════════════════════════════════════ -->
 
