@@ -9,7 +9,8 @@ import AppKit
 struct PurahWorkspaceStoreTests {
     @Test("Initializes with standard built-in pods including vitals and scripts")
     func testDefaultPods() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_default_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         #expect(store.pods.count == 9)
         #expect(store.pods.contains(where: { $0.id == "calendar" }))
         #expect(store.pods.contains(where: { $0.id == "todo" }))
@@ -24,7 +25,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Applies Sprint Productivity preset properly")
     func testSprintPreset() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_sprint")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         store.applyPreset(.sprintProductivity)
 
         // Sprint preset: left rail hosts shelf and notes
@@ -40,7 +42,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("All presets configure 7 pods within safe rail capacity without overload warnings")
     func testPresetsWithinSafeCapacity() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_presets")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
 
         for preset in PodPreset.allCases {
             store.applyPreset(preset)
@@ -51,7 +54,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Toggle pod enabled/disabled updates active layout")
     func testTogglePodEnabled() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_toggle")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         #expect(store.pods.first(where: { $0.id == "music" })?.isEnabled == true)
 
         store.togglePodEnabled(id: "music")
@@ -63,7 +67,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Fill rail expands pod to span safe boundary without crashing")
     func testFillRail() throws {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_fill_rail")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         store.fillRail(podId: "calendar")
 
         let cal = try #require(store.pods.first(where: { $0.id == "calendar" }))
@@ -72,7 +77,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("PurahWorkspaceStore persists settings via savePersistentState and loadPersistentState")
     func testStorePersistence() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_store_persistence")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         store.setPodColorHex(podId: "notes", hex: "#123456")
         store.fixedDrawerWidth = 310.0
         store.drawerWidthMode = .adaptive
@@ -80,7 +86,7 @@ struct PurahWorkspaceStoreTests {
         store.edgeTriggerMode = .pushForce
         store.savePersistentState()
 
-        let freshStore = PurahWorkspaceStore()
+        let freshStore = PurahWorkspaceStore(userDefaults: isolated)
         freshStore.loadPersistentState()
 
         #expect(freshStore.customPodColors["notes"] == "#123456")
@@ -261,7 +267,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("movePodInOrder and swapPods cleanly swap relative vertical order and persist")
     func testPodReorderingAndPositionSwapping() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_reordering_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
         #expect(rightPods.count >= 2)
@@ -292,7 +299,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("snapPod cleanly snaps pod to the bottom of its predecessor eliminating gap")
     func testSnapPodToPredecessor() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_snap_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
         guard rightPods.count >= 2 else { return }
@@ -305,5 +313,25 @@ struct PurahWorkspaceStoreTests {
             #expect(updatedPod.range.start < oldStart)
             #expect(store.hasGapAbove(id: bottomPod.id) == false)
         }
+    }
+
+    @Test("Pods persistence stores custom layout in UserDefaults and restores on launch")
+    func testPodsPersistence() {
+        let suiteName = "test_pods_persistence_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        guard let terminalIdx = store.pods.firstIndex(where: { $0.id == "terminal" }) else { return }
+        let originalTerminalEnabled = store.pods[terminalIdx].isEnabled
+
+        // Mutate pod state and save
+        store.pods[terminalIdx].isEnabled = !originalTerminalEnabled
+        store.savePersistentState()
+
+        // Create new store with same isolated defaults and verify it loads the mutated state
+        let newStore = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        let reloadedTerminal = newStore.pods.first(where: { $0.id == "terminal" })
+        #expect(reloadedTerminal?.isEnabled == !originalTerminalEnabled)
     }
 }

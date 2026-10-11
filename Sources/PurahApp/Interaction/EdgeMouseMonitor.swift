@@ -250,7 +250,7 @@ public final class EdgeMouseMonitor {
             let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
             let matchedItem = layoutItems.first { item in
                 let topY = CGFloat(item.startY)
-                let bottomY = topY + CGFloat(item.spanH)
+                let bottomY = topY + actualOccupiedHeight(for: item)
                 return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
             }
             if let matched = matchedItem {
@@ -258,6 +258,21 @@ public final class EdgeMouseMonitor {
                 activatePodDrawer(candidate: matched.pod, matched: matched, currentWindowY: currentWindowY, edge: edge)
             }
         }
+    }
+
+    public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
+        if store.isPodDecomposed(item.pod.id), let provider = store.capabilityProvider(for: item.pod.id) {
+            let rawCount = provider.subItemCount(store: store)
+            let minChipH: CGFloat = 20.0
+            let spacing: CGFloat = 2.5
+            let maxAllowed = max(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), 1)
+            let count = min(rawCount, maxAllowed)
+            let safeCount = max(count, 1)
+            let totalSpacing = spacing * CGFloat(safeCount - 1)
+            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), 185.0)
+            return CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
+        }
+        return CGFloat(item.spanH)
     }
 
     private func handleMouse(event: NSEvent) {
@@ -394,7 +409,7 @@ public final class EdgeMouseMonitor {
         let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
         let matchedItem = layoutItems.first { item in
             let topY = CGFloat(item.startY)
-            let bottomY = topY + CGFloat(item.spanH)
+            let bottomY = topY + actualOccupiedHeight(for: item)
             return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
         }
 
@@ -527,7 +542,7 @@ public final class EdgeMouseMonitor {
                         let curLayout = self.store.resolvedPhysicalLayout(for: edge, totalHeight: Double(curVisibleRect.height))
                         let curMatched = curLayout.first(where: { item in
                             let topY = CGFloat(item.startY)
-                            let bottomY = topY + CGFloat(item.spanH)
+                            let bottomY = topY + self.actualOccupiedHeight(for: item)
                             return curWinY >= (topY - 6.0) && curWinY <= (bottomY + 6.0)
                         })
 
@@ -565,10 +580,23 @@ public final class EdgeMouseMonitor {
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
             let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), 185.0)
+            let actualSpan = CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
+
+            let podY = currentWindowY - CGFloat(matched.startY)
+            // Cursor is in empty space below the actual chips: do NOT trigger any chip!
+            guard podY >= -4.0 && podY <= (actualSpan + 4.0) else {
+                if store.activeDrawerPodId == candidate.id && !store.isItemPinned(id: store.activeDrawerItemId ?? "") {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                        store.dismissActiveDrawer()
+                    }
+                }
+                return
+            }
+
             let itemPitch = itemH + spacing
-            let podY = max(currentWindowY - CGFloat(matched.startY), 0.0)
-            let itemIdx = min(max(Int(podY / itemPitch), 0), count - 1)
-            let subItemId = provider.subItemId(at: itemIdx, store: store) ?? candidate.id
+            let rawIdx = Int(max(podY, 0.0) / itemPitch)
+            guard rawIdx >= 0 && rawIdx < count else { return }
+            let subItemId = provider.subItemId(at: rawIdx, store: store) ?? candidate.id
 
             let now = Date()
             // Sub-item intentional dwell gate (80ms): protects against rapid oscillation and jitter

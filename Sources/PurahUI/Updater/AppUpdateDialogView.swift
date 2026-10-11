@@ -96,6 +96,35 @@ public struct AppUpdateDialogView: View {
                         removal: .opacity
                     ))
 
+                case .downloading(let progress):
+                    VStack(spacing: 12) {
+                        ProgressView(value: progress > 0 ? progress : nil)
+                            .progressViewStyle(.linear)
+                            .frame(width: 260)
+                        Text("Downloading update asset...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+
+                case .installing:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                        Text("Replacing Purah and restarting...")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+
                 case .failed(let error):
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -128,12 +157,19 @@ public struct AppUpdateDialogView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
 
-                if case .updateAvailable = updater.state {
-                    Button("updater.button.update".localized) {
-                        onClose()
+                switch updater.state {
+                case .updateAvailable(let release):
+                    Button("Update & Restart") {
+                        Task {
+                            await updater.downloadAndInstall(release: release)
+                        }
                     }
                     .buttonStyle(.borderedProminent)
-                } else {
+
+                case .downloading, .installing:
+                    EmptyView()
+
+                default:
                     Button("updater.button.check".localized) {
                         Task {
                             await updater.checkForUpdates()

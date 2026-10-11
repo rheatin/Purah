@@ -567,6 +567,8 @@ public struct MusicPlugin: PurahPodPlugin {
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
             WaveMeterAmbientView(
+                style: state.railStyle,
+                track: state.track,
                 progress: state.track.calculatedProgress,
                 samples: state.waveformSamples,
                 isPlaying: state.isPlaying,
@@ -1323,19 +1325,43 @@ public struct MusicPluginSettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle("Pod Playback Dynamic Animation", isOn: Binding(
-                get: { state.isWaveformAnimationEnabled },
-                set: {
-                    state.isWaveformAnimationEnabled = $0
-                    state.save()
-                    store.isMusicWaveformAnimationEnabled = $0
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Rail Bar Display Style")
+                    .font(.subheadline.weight(.semibold))
+
+                Picker("", selection: Binding(
+                    get: { state.railStyle },
+                    set: {
+                        state.railStyle = $0
+                        state.save()
+                    }
+                )) {
+                    Text("Minimalist Pod").tag(MusicRailStyle.minimalist)
+                    Text("Smooth Progress").tag(MusicRailStyle.smoothProgress)
+                    Text("Dynamic Wave").tag(MusicRailStyle.dynamicWaveform)
                 }
-            ))
-            .font(.subheadline)
+                .pickerStyle(.segmented)
+
+                Text(styleDescription(for: state.railStyle))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if state.railStyle == .dynamicWaveform {
+                Toggle("Dynamic Rhythm Animation", isOn: Binding(
+                    get: { state.isWaveformAnimationEnabled },
+                    set: {
+                        state.isWaveformAnimationEnabled = $0
+                        state.save()
+                        store.isMusicWaveformAnimationEnabled = $0
+                    }
+                ))
+                .font(.subheadline)
+            }
 
             HStack {
-                Text("Audio Source: \(state.track.sourceApp)")
+                Text("Audio Source: \(state.track.sourceApp.isEmpty ? "None" : state.track.sourceApp)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
@@ -1343,6 +1369,17 @@ public struct MusicPluginSettingsView: View {
                     .font(.caption.weight(.medium))
                     .foregroundColor(state.track.isPlaying ? .green : .secondary)
             }
+        }
+    }
+
+    private func styleDescription(for style: MusicRailStyle) -> String {
+        switch style {
+        case .minimalist:
+            return "Clean, static ambient capsule with zero animation and zero CPU usage."
+        case .smoothProgress:
+            return "Silky 60 FPS live-gliding progress bar driven by time-anchor calculation."
+        case .dynamicWaveform:
+            return "Metal GPU continuous fluid audio wave undulating to the rhythm of playback."
         }
     }
 }

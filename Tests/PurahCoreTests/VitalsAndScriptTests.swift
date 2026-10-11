@@ -433,7 +433,7 @@ struct VitalsAndScriptTests {
         #expect(hostingView.isPointInInteractiveDrawer(outsideXPoint) == false, "Point outside drawer width must pass through")
 
         // Point outside drawer on Y returns false
-        let outsideYPoint = NSPoint(x: 50, y: 950)
+        let outsideYPoint = NSPoint(x: 50, y: (activeRect.maxY + 60.0 > 950) ? max(activeRect.minY - 60.0, 10.0) : activeRect.maxY + 60.0)
         #expect(hostingView.isPointInInteractiveDrawer(outsideYPoint) == false, "Point outside drawer Y range must pass through")
 
         // Dismiss active drawer, but pin the decomposed script item

@@ -36,14 +36,22 @@ struct FreezeModeTests {
     @Test("PassThroughHostingView completely suppresses hit-test and interactive drawer when frozen")
     @MainActor
     func testPassThroughHostingViewFreeze() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_freeze")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let view = PassThroughHostingView(rootView: EmptyView(), edge: .right, store: store)
         view.frame = NSRect(x: 0, y: 0, width: 340, height: 1000)
         
         store.activateDrawer(podId: "calendar")
         
+        let cardFrames = store.activeDrawerCardFrames(for: .right, totalHeight: 1000.0, windowWidth: 340.0)
+        let drawerPoint: NSPoint
+        if let first = cardFrames.first {
+            drawerPoint = NSPoint(x: first.midX, y: first.midY)
+        } else {
+            drawerPoint = NSPoint(x: 300, y: 700)
+        }
+        
         // When not frozen, point inside active drawer is interactive
-        let drawerPoint = NSPoint(x: 300, y: 700)
         #expect(view.isPointInInteractiveDrawer(drawerPoint) == true)
         
         // When frozen, 100% click-through (hitTest returns nil, isPointInInteractiveDrawer returns false)

@@ -185,9 +185,23 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             updateCacheIfNeeded()
             let totalH = Double(bounds.height)
             let currentWindowY = totalH - Double(point.y)
-            let isOverPod = cache.cachedLayoutItems.contains(where: {
-                let topY = $0.startY
-                let bottomY = topY + $0.spanH
+            let isOverPod = cache.cachedLayoutItems.contains(where: { item in
+                let topY = item.startY
+                let actualSpan: Double
+                if store.isPodDecomposed(item.pod.id), let provider = store.capabilityProvider(for: item.pod.id) {
+                    let rawCount = provider.subItemCount(store: store)
+                    let minChipH = 20.0
+                    let spacing = 2.5
+                    let maxAllowed = max(Int((item.spanH + spacing) / (minChipH + spacing)), 1)
+                    let count = min(rawCount, maxAllowed)
+                    let safeCount = max(count, 1)
+                    let totalSpacing = spacing * Double(safeCount - 1)
+                    let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), minChipH), 185.0)
+                    actualSpan = Double(count) * itemH + spacing * Double(max(count - 1, 0))
+                } else {
+                    actualSpan = item.spanH
+                }
+                let bottomY = topY + actualSpan
                 return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
             })
             if isOverPod {

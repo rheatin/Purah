@@ -826,4 +826,34 @@ struct EdgeTriggerIntentTests {
         monitor.handleHardwareRawMotion(point: bezelPoint, rawDeltaX: -40.0, now: t1)
         #expect(store.activeDrawerPodId == firstItem.pod.id, "Post-arrival push at bezel must break through")
     }
+
+    @Test("Cursor in empty space below decomposed chips strictly rejects triggering drawer")
+    @MainActor
+    func testEmptySpaceBelowDecomposedChipsDoesNotTriggerDrawer() {
+        let store = PurahWorkspaceStore()
+        store.activeDrawerPodId = nil
+        store.activeDrawerItemId = nil
+        store.edgeTriggerMode = .hoverDwell
+        store.edgeTriggerSensitivity = .agile
+
+        let coordinator = ScreenEdgeCoordinator(store: store)
+        let monitor = EdgeMouseMonitor(store: store, coordinator: coordinator)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        let layoutItems = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
+        guard let calItem = layoutItems.first(where: { $0.pod.id == "calendar" }) else { return }
+
+        let actualH = monitor.actualOccupiedHeight(for: calItem)
+        let totalSpan = CGFloat(calItem.spanH)
+
+        if totalSpan > actualH + 20.0 {
+            let emptySpaceY = visibleRect.maxY - (CGFloat(calItem.startY) + actualH + 15.0)
+            let emptyPoint = NSPoint(x: visibleRect.maxX - 6.0, y: emptySpaceY)
+            monitor.customCurrentMouseLocation = emptyPoint
+            monitor.processMouse(point: emptyPoint, now: Date(), customVelocity: .zero)
+
+            #expect(store.activeDrawerPodId == nil, "Empty space below chips must strictly NOT open drawer")
+        }
+    }
 }

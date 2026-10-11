@@ -262,7 +262,9 @@ struct DrawerInteractionUITests {
         @Test("When pod is pinned, empty area above and below guarantees 100% nil hitTest for scroll wheel and right click pass-through")
     @MainActor
     func testPinnedPodAboveBelowEmptyAreaGuaranteesPassThrough() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_pinned_vitals")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.movePod(id: "vitals", to: .left)
         store.togglePinItem(id: "vitals")
         #expect(store.isItemPinned(id: "vitals") == true)
         store.activeDrawerPodId = nil
@@ -772,7 +774,8 @@ struct DrawerInteractionUITests {
     @Test("EdgeMouseMonitor polymorphic activation correctly routes decomposed sub-items and composite pods")
     @MainActor
     func testPolymorphicEdgeMouseMonitorActivation() throws {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_polymorphic")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let monitor = EdgeMouseMonitor(store: store)
 
         // 1. Decomposed pod (e.g. todo)

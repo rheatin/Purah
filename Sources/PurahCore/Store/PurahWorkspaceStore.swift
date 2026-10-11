@@ -563,11 +563,26 @@ public final class PurahWorkspaceStore {
         ]
     }
 
-    public init() {
+    @ObservationIgnored
+    private let userDefaults: UserDefaults
+
+    public init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         self.pods = Self.defaultPods()
         registerDefaultCapabilityProviders()
+        let hasCustomPods = userDefaults.object(forKey: "purah.pods") != nil
         loadPersistentState()
-        autoLayoutAll()
+        if !hasCustomPods {
+            autoLayoutAll()
+        } else {
+            // Re-apply dynamic minLength calculation without resetting custom layout
+            for idx in pods.indices {
+                let pod = pods[idx]
+                let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
+                let minPt = Double(minimumDrawerHeight(for: pod.id))
+                pods[idx].minLength = max(minPt / screenH, 0.05)
+            }
+        }
     }
 
     private func registerDefaultCapabilityProviders() {
@@ -583,8 +598,19 @@ public final class PurahWorkspaceStore {
     }
 
     // MARK: - Local Persistence
+    public static func resetToFactoryDefaults(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: "purah.pods")
+        defaults.removeObject(forKey: "purah.currentPreset")
+    }
+
     public func loadPersistentState() {
-        let defaults = UserDefaults.standard
+        let defaults = userDefaults
+
+        if let data = defaults.data(forKey: "purah.pods"),
+           let savedPods = try? JSONDecoder().decode([SlotPod].self, from: data),
+           !savedPods.isEmpty {
+            self.pods = savedPods
+        }
 
         if let colors = defaults.dictionary(forKey: "purah.customPodColors") as? [String: String] {
             self.customPodColors = colors
@@ -672,7 +698,10 @@ public final class PurahWorkspaceStore {
     }
 
     public func savePersistentState() {
-        let defaults = UserDefaults.standard
+        let defaults = userDefaults
+        if let data = try? JSONEncoder().encode(pods) {
+            defaults.set(data, forKey: "purah.pods")
+        }
         defaults.set(customPodColors, forKey: "purah.customPodColors")
         defaults.set(drawerWidthMode.rawValue, forKey: "purah.drawerWidthMode")
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
@@ -842,6 +871,7 @@ public final class PurahWorkspaceStore {
             }
         )
         invalidateLayoutCache()
+        savePersistentState()
     }
 
     public func movePod(id: String, to edge: MountEdge) {

@@ -255,4 +255,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
     }
+
+    public func applicationWillTerminate(_ notification: Notification) {
+        store.savePersistentState()
+    }
 }

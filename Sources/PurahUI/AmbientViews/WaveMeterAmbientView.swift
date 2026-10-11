@@ -3,6 +3,8 @@ import SwiftUI
 import PurahCore
 
 public struct WaveMeterAmbientView: View {
+    public var style: MusicRailStyle
+    public var track: MusicTrackInfo
     public var progress: Double
     public var samples: [Double]
     public var isPlaying: Bool
@@ -20,12 +22,16 @@ public struct WaveMeterAmbientView: View {
     }
 
     public init(
+        style: MusicRailStyle = .dynamicWaveform,
+        track: MusicTrackInfo = MusicTrackInfo(),
         progress: Double = 0.0,
         samples: [Double] = [],
         isPlaying: Bool,
         isAnimated: Bool = true,
         height: CGFloat = 80.0
     ) {
+        self.style = style
+        self.track = track
         self.progress = progress
         self.samples = samples
         self.isPlaying = isPlaying
@@ -33,16 +39,98 @@ public struct WaveMeterAmbientView: View {
         self.height = height
     }
 
+    public init(
+        progress: Double = 0.0,
+        samples: [Double] = [],
+        isPlaying: Bool,
+        isAnimated: Bool = true,
+        height: CGFloat = 80.0
+    ) {
+        self.init(style: .dynamicWaveform, track: MusicTrackInfo(), progress: progress, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
+    }
+
     public init(samples: [Double], isPlaying: Bool, isAnimated: Bool = true, height: CGFloat = 80.0) {
-        self.init(progress: 0.0, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
+        self.init(style: .dynamicWaveform, track: MusicTrackInfo(), progress: 0.0, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
     }
 
     public var body: some View {
         let totalH = max(height, 40.0)
         let barW: CGFloat = 8.0
+
+        switch style {
+        case .minimalist:
+            Capsule()
+                .fill(
+                    isPlaying
+                        ? musicColor.opacity(0.90)
+                        : musicColor.opacity(0.45)
+                )
+                .frame(width: barW, height: totalH)
+
+        case .smoothProgress:
+            smoothProgressView(totalH: totalH, barW: barW)
+
+        case .dynamicWaveform:
+            dynamicWaveformView(totalH: totalH, barW: barW)
+        }
+    }
+
+    // MARK: - Mode 2: 60 FPS Silky Smooth Live Progress Bar
+    private func smoothProgressView(totalH: CGFloat, barW: CGFloat) -> some View {
+        TimelineView(.animation(paused: !isPlaying)) { timeline in
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+                let centerX = w / 2.0
+
+                // Time-anchor continuous progress calculation
+                let elapsed = isPlaying ? max(timeline.date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
+                let currentPos = track.currentPositionSeconds + (elapsed * track.playbackRate)
+                let continuousProgress: Double
+                if track.durationSeconds > 0 {
+                    continuousProgress = min(max(currentPos / track.durationSeconds, 0.0), 1.0)
+                } else {
+                    continuousProgress = min(max(progress, 0.0), 1.0)
+                }
+                let playheadY = CGFloat(continuousProgress) * h
+
+                // 1. Background Track
+                let bgRect = CGRect(x: 0, y: 0, width: w, height: h)
+                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(musicColor.opacity(0.15)))
+
+                // 2. Played Fill with vibrant gradient
+                let pillW: CGFloat = max(w - 1.0, 4.0)
+                let pillX = (w - pillW) / 2.0
+                if playheadY > 1.0 {
+                    let playedRect = CGRect(x: pillX, y: 0, width: pillW, height: playheadY)
+                    context.fill(
+                        Path(roundedRect: playedRect, cornerRadius: pillW / 2),
+                        with: .linearGradient(
+                            Gradient(colors: [musicColor, musicColor.opacity(0.85)]),
+                            startPoint: CGPoint(x: centerX, y: 0),
+                            endPoint: CGPoint(x: centerX, y: max(playheadY, 4.0))
+                        )
+                    )
+                }
+
+                // 3. Glowing Playhead Needle
+                if playheadY > 0 && playheadY < h {
+                    let needleH: CGFloat = 2.5
+                    let needleRect = CGRect(x: 0.5, y: playheadY - (needleH / 2.0), width: w - 1.0, height: needleH)
+                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1.2), with: .color(.white))
+                }
+            }
+            .frame(width: barW, height: totalH)
+            .clipShape(Capsule())
+        }
+        .frame(width: barW, height: totalH)
+    }
+
+    // MARK: - Mode 3: Continuous Fluid Superposition Audio Waveform
+    private func dynamicWaveformView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
-        TimelineView(.animation(paused: !shouldAnimate)) { timeline in
+        return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
                 let w = size.width
                 let h = size.height
