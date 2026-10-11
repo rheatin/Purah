@@ -165,4 +165,56 @@ struct MusicSyncTests {
         #expect(SystemMusicSyncService.extractNumericValue(from: nil) == nil)
         #expect(SystemMusicSyncService.extractNumericValue(from: "invalid") == nil)
     }
+
+    @Test("MediaRemote bridge is dynamically available on macOS")
+    func testMediaRemoteBridgeAvailability() {
+        let bridge = SystemMediaRemoteBridge.shared
+        #expect(bridge.isAvailable == true)
+    }
+
+    @Test("Processes MediaRemote multimedia dictionary correctly for system-wide players")
+    func testProcessMediaRemoteData() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService()
+
+        let dummyArtwork = "test-art-bytes".data(using: .utf8)
+        let dict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "Never Gonna Give You Up",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Rick Astley",
+            "kMRMediaRemoteNowPlayingInfoAlbum": "Whenever You Need Somebody",
+            "kMRMediaRemoteNowPlayingInfoDuration": 213.0,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 75.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1.0,
+            "kMRMediaRemoteNowPlayingInfoArtworkData": dummyArtwork as Any,
+            "kMRMediaRemoteNowPlayingInfoIsMusicApp": false
+        ]
+
+        service.processMediaRemoteData(dict: dict, pid: 0, store: store)
+
+        #expect(store._musicTrack.title == "Never Gonna Give You Up")
+        #expect(store._musicTrack.artist == "Rick Astley")
+        #expect(store._musicTrack.isPlaying == true)
+        #expect(store._musicTrack.currentPositionSeconds == 75.0)
+        #expect(store._musicTrack.durationSeconds == 213.0)
+        #expect(store._musicTrack.artworkData == dummyArtwork)
+        #expect(store._musicTrack.sourceApp == "Media Player")
+    }
+
+    @Test("MusicTrackInfo sourceIconName resolves appropriate SF Symbols")
+    func testMusicTrackInfoSourceIconName() {
+        let spotify = MusicTrackInfo(sourceApp: "Spotify")
+        #expect(spotify.sourceIconName == "waveform")
+
+        let safari = MusicTrackInfo(sourceApp: "Safari")
+        #expect(safari.sourceIconName == "globe")
+
+        let chrome = MusicTrackInfo(sourceApp: "Google Chrome")
+        #expect(chrome.sourceIconName == "globe")
+
+        let podcast = MusicTrackInfo(sourceApp: "Podcasts")
+        #expect(podcast.sourceIconName == "antenna.radiowaves.left.and.right")
+
+        let appleMusic = MusicTrackInfo(sourceApp: "Apple Music")
+        #expect(appleMusic.sourceIconName == "music.note")
+    }
 }

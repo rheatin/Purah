@@ -21,6 +21,9 @@ public final class SystemMusicSyncService {
 
     @ObservationIgnored private var musicObserver: Any?
     @ObservationIgnored private var spotifyObserver: Any?
+    @ObservationIgnored private var mediaRemoteObserver: Any?
+    @ObservationIgnored private var mediaRemoteAppObserver: Any?
+    @ObservationIgnored private var mediaRemotePlayingObserver: Any?
     @ObservationIgnored private var cachedArtworkKey: String?
     @ObservationIgnored private var cachedArtworkData: Data?
     @ObservationIgnored private var cachedLyricsKey: String?
@@ -29,7 +32,7 @@ public final class SystemMusicSyncService {
 
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
-    public var isListening: Bool { musicObserver != nil || spotifyObserver != nil }
+    public var isListening: Bool { musicObserver != nil || spotifyObserver != nil || mediaRemoteObserver != nil }
 
     public init() {
         startListening()
@@ -45,6 +48,20 @@ public final class SystemMusicSyncService {
             center.removeObserver(obs)
             spotifyObserver = nil
         }
+        let nc = NotificationCenter.default
+        if let obs = mediaRemoteObserver {
+            nc.removeObserver(obs)
+            mediaRemoteObserver = nil
+        }
+        if let obs = mediaRemoteAppObserver {
+            nc.removeObserver(obs)
+            mediaRemoteAppObserver = nil
+        }
+        if let obs = mediaRemotePlayingObserver {
+            nc.removeObserver(obs)
+            mediaRemotePlayingObserver = nil
+        }
+        SystemMediaRemoteBridge.shared.unregisterForNotifications()
         clearArtworkCache()
     }
 
@@ -85,7 +102,44 @@ public final class SystemMusicSyncService {
             }
         }
 
-        // 3. Query initial playback state if player is already running
+        // 3. MediaRemote observer (System-wide media: NetEase, QQ Music, Safari, Chrome, Bilibili, YouTube, Podcasts, VLC, IINA)
+        let bridge = SystemMediaRemoteBridge.shared
+        if bridge.isAvailable {
+            bridge.registerForNotifications(queue: .main)
+            let nc = NotificationCenter.default
+            mediaRemoteObserver = nc.addObserver(
+                forName: NSNotification.Name("kMRMediaRemoteNowPlayingInfoDidChangeNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self, weak store] _ in
+                MainActor.assumeIsolated {
+                    self?.handleMediaRemoteInfoUpdate(store: store)
+                }
+            }
+            mediaRemoteAppObserver = nc.addObserver(
+                forName: NSNotification.Name("kMRMediaRemoteNowPlayingApplicationDidChangeNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self, weak store] _ in
+                MainActor.assumeIsolated {
+                    self?.handleMediaRemoteInfoUpdate(store: store)
+                }
+            }
+            mediaRemotePlayingObserver = nc.addObserver(
+                forName: NSNotification.Name("kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self, weak store] _ in
+                MainActor.assumeIsolated {
+                    self?.handleMediaRemoteInfoUpdate(store: store)
+                }
+            }
+
+            // Initial query
+            handleMediaRemoteInfoUpdate(store: store)
+        }
+
+        // 4. Query initial playback state if Apple Music player is already running
         Task { [weak self, weak store] in
             await self?.pollCurrentPlayingState(store: store)
         }
@@ -251,6 +305,78 @@ public final class SystemMusicSyncService {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - MediaRemote System-wide Multimedia Processing
+    public func handleMediaRemoteInfoUpdate(store: PurahWorkspaceStore?) {
+        let bridge = SystemMediaRemoteBridge.shared
+        guard bridge.isAvailable else { return }
+
+        bridge.getNowPlayingInfo(queue: .main) { [weak self, weak store] dict in
+            guard let dict else { return }
+            bridge.getNowPlayingPID(queue: .main) { [weak self, weak store] pid in
+                MainActor.assumeIsolated {
+                    self?.processMediaRemoteData(dict: dict, pid: pid, store: store)
+                }
+            }
+        }
+    }
+
+    public func processMediaRemoteData(dict: [String: Any], pid: pid_t, store: PurahWorkspaceStore?) {
+        guard let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String, !title.isEmpty else { return }
+
+        let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
+        let album = dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
+        let duration = Self.extractNumericValue(from: dict["kMRMediaRemoteNowPlayingInfoDuration"]) ?? 180.0
+        let elapsed = Self.extractNumericValue(from: dict["kMRMediaRemoteNowPlayingInfoElapsedTime"]) ?? 0.0
+        let rate = Self.extractNumericValue(from: dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"]) ?? 0.0
+        let isPlaying = (rate > 0.0)
+        let artworkData = dict["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data
+
+        var appName = "Media Player"
+        var bundleId = ""
+        if pid > 0, let app = NSRunningApplication(processIdentifier: pid) {
+            appName = app.localizedName ?? appName
+            bundleId = app.bundleIdentifier ?? ""
+        } else if let isMusicApp = dict["kMRMediaRemoteNowPlayingInfoIsMusicApp"] as? Bool, isMusicApp {
+            appName = "Apple Music"
+            bundleId = "com.apple.Music"
+        }
+
+        lastNotificationDate = Date()
+        isMusicAppConnected = true
+
+        let totalSec = max(duration, 1.0)
+        let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
+        let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
+        let currentPosSec: Double = {
+            if !isPlaying && elapsed == 0.0 && isSameTrack && existingPos > 1.0 {
+                return existingPos
+            }
+            return min(max(elapsed, 0.0), totalSec)
+        }()
+        let progress = min(max(currentPosSec / totalSec, 0.0), 1.0)
+
+        let existingArtwork = artworkData ?? ((cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil)
+
+        if let store = store {
+            store._musicTrack = MusicTrackInfo(
+                title: title,
+                artist: artist.isEmpty ? appName : artist,
+                album: album,
+                isPlaying: isPlaying,
+                playbackProgress: progress,
+                currentPositionSeconds: currentPosSec,
+                durationSeconds: totalSec,
+                lastUpdated: Date(),
+                playbackRate: isPlaying ? 1.0 : 0.0,
+                waveformSamples: [0.3, 0.6, 0.4, 0.7, 0.5],
+                artworkData: existingArtwork,
+                sourceApp: appName,
+                sourceBundleId: bundleId
+            )
+            updatePlaybackTimer(store: store, isPlaying: isPlaying)
         }
     }
 
@@ -512,38 +638,47 @@ public final class SystemMusicSyncService {
         store._musicTrack.lastUpdated = Date()
         updatePlaybackTimer(store: store, isPlaying: nowPlaying)
 
-        if isMusicAppRunning {
+        let bundleId = store._musicTrack.sourceBundleId.lowercased()
+        if bundleId.contains("apple.music") && isMusicAppRunning {
             Task.detached {
                 Self.executeAppleScript("tell application \"Music\" to playpause")
             }
-        } else if isSpotifyRunning {
+        } else if bundleId.contains("spotify") && isSpotifyRunning {
             Task.detached {
                 Self.executeAppleScript("tell application \"Spotify\" to playpause")
             }
+        } else if SystemMediaRemoteBridge.shared.isAvailable {
+            SystemMediaRemoteBridge.shared.togglePlayPause()
         }
     }
 
     public func nextTrack(store: PurahWorkspaceStore?) {
-        if isMusicAppRunning {
+        let bundleId = store?._musicTrack.sourceBundleId.lowercased() ?? ""
+        if bundleId.contains("apple.music") && isMusicAppRunning {
             Task.detached {
                 Self.executeAppleScript("tell application \"Music\" to next track")
             }
-        } else if isSpotifyRunning {
+        } else if bundleId.contains("spotify") && isSpotifyRunning {
             Task.detached {
                 Self.executeAppleScript("tell application \"Spotify\" to next track")
             }
+        } else if SystemMediaRemoteBridge.shared.isAvailable {
+            SystemMediaRemoteBridge.shared.nextTrack()
         }
     }
 
     public func previousTrack(store: PurahWorkspaceStore?) {
-        if isMusicAppRunning {
+        let bundleId = store?._musicTrack.sourceBundleId.lowercased() ?? ""
+        if bundleId.contains("apple.music") && isMusicAppRunning {
             Task.detached {
                 Self.executeAppleScript("tell application \"Music\" to previous track")
             }
-        } else if isSpotifyRunning {
+        } else if bundleId.contains("spotify") && isSpotifyRunning {
             Task.detached {
                 Self.executeAppleScript("tell application \"Spotify\" to previous track")
             }
+        } else if SystemMediaRemoteBridge.shared.isAvailable {
+            SystemMediaRemoteBridge.shared.previousTrack()
         }
     }
 

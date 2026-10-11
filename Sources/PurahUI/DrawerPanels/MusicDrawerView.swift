@@ -277,26 +277,6 @@ public struct MusicDrawerView: View {
         let dynamicArtSize = min(max((availableHeight - 160) * 0.50, 60.0), 160.0)
 
         VStack(spacing: 8) {
-            // Top Bar: Source Badge
-            HStack {
-                HStack(spacing: 5) {
-                    Image(systemName: sourceIconName(for: state.track.sourceApp))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(musicColor)
-                    Text(state.track.sourceApp)
-                        .purahCaption(size: 9, weight: .bold, design: .rounded)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2.5)
-                .background(musicColor.opacity(0.12))
-                .cornerRadius(5)
-
-                Spacer()
-            }
-
-            Spacer(minLength: 2)
-
             if let lyrics = state.track.lyrics, !lyrics.isEmpty {
                 // Direct Lyrics Showcase: Compact Track Bar + Flowing Lyrics Sheet
                 VStack(spacing: 6) {
@@ -508,9 +488,17 @@ public struct MusicDrawerView: View {
     }
 
     private func activateMusicPlayerApp() {
+        let bundleId = state.track.sourceBundleId
+        if !bundleId.isEmpty, let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            return
+        }
+
         let source = state.track.sourceApp.lowercased()
-        let bundleId = source.contains("spotify") ? "com.spotify.client" : "com.apple.Music"
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+        let fallbackId = source.contains("spotify") ? "com.spotify.client" : "com.apple.Music"
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: fallbackId) {
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
             NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)

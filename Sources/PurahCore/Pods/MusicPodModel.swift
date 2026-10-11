@@ -65,4 +65,17 @@ public struct MusicTrackInfo: Codable, Sendable {
         guard durationSeconds > 0 else { return 0.0 }
         return min(max(calculatedCurrentTime / durationSeconds, 0.0), 1.0)
     }
+
+    public var sourceIconName: String {
+        let lower = sourceApp.lowercased()
+        if lower.contains("spotify") {
+            return "waveform"
+        } else if lower.contains("chrome") || lower.contains("safari") || lower.contains("browser") || lower.contains("edge") || lower.contains("arc") || lower.contains("firefox") {
+            return "globe"
+        } else if lower.contains("podcast") {
+            return "antenna.radiowaves.left.and.right"
+        } else {
+            return "music.note"
+        }
+    }
 }

@@ -915,5 +915,36 @@ struct DrawerInteractionUITests {
             onSeek: { _ in }
         )
         _ = compatScrubber
+
+        // 4. Test MusicPlugin makeHeaderAccessoryView
+        let store = PurahWorkspaceStore()
+        let musicPlugin = MusicPlugin()
+        musicPlugin.state.track.sourceApp = "NetEase Music"
+        let context = PurahPluginContext(
+            pod: store.pods.first(where: { $0.id == "music" }) ?? SlotPod(
+                id: "music",
+                name: "Music",
+                systemIcon: "music.note",
+                edge: .right,
+                range: .init(start: 0.2, length: 0.2),
+                ambientStyle: .waveLevelMeter,
+                preferredZone: .goldenAction,
+                ergonomicWeight: 25.0
+            ),
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 260.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .pink,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        let accessoryView = musicPlugin.makeHeaderAccessoryView(context: context)
+        #expect(accessoryView != nil)
     }
 }

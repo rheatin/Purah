@@ -39,93 +39,100 @@ public struct WaveMeterAmbientView: View {
 
     public var body: some View {
         let totalH = max(height, 40.0)
-        let clampedProgress = min(max(progress, 0.0), 1.0)
-        let fillHeight = totalH * CGFloat(clampedProgress)
+        let spacing: CGFloat = 2.0
+        let barHeight: CGFloat = 2.2
+        let step = barHeight + spacing
+        let barCount = max(Int((totalH - 4.0) / step), 10)
 
-        ZStack(alignment: .top) {
-            // Layer 1: Background Rail Capsule
+        ZStack {
+            // Background rail capsule
             Capsule()
-                .fill(Color.primary.opacity(0.08))
+                .fill(Color.primary.opacity(0.06))
                 .frame(width: 8, height: totalH)
 
-            // Layer 2: Vertical Playback Progress Fill (Top to Bottom)
-            Capsule()
-                .fill(musicColor.opacity(isPlaying ? 0.32 : 0.16))
-                .frame(width: 8, height: max(fillHeight, 0))
-                .animation(.easeInOut(duration: 0.6), value: clampedProgress)
-
-            // Layer 3: Centered Micro Equalizer Bars (Zero Memory, Hardware Composited)
-            VStack {
-                Spacer()
-                HStack(spacing: 0.8) {
-                    MicroEqualizerBar(
-                        minH: 3.0,
-                        maxH: 12.0,
-                        duration: 0.55,
+            // Full-height ladder of horizontal alternating sound bars
+            VStack(spacing: spacing) {
+                ForEach(0..<barCount, id: \.self) { idx in
+                    AlternatingRungBar(
+                        index: idx,
                         isPlaying: isPlaying && isAnimated && !reduceMotion,
-                        staticH: isPlaying ? 8.0 : 2.5,
-                        color: isPlaying ? musicColor : palette.borderColor.opacity(0.6)
-                    )
-
-                    MicroEqualizerBar(
-                        minH: 4.0,
-                        maxH: 18.0,
-                        duration: 0.75,
-                        isPlaying: isPlaying && isAnimated && !reduceMotion,
-                        staticH: isPlaying ? 14.0 : 2.5,
-                        color: isPlaying ? musicColor : palette.borderColor.opacity(0.6)
-                    )
-
-                    MicroEqualizerBar(
-                        minH: 3.0,
-                        maxH: 10.0,
-                        duration: 0.62,
-                        isPlaying: isPlaying && isAnimated && !reduceMotion,
-                        staticH: isPlaying ? 6.0 : 2.5,
-                        color: isPlaying ? musicColor : palette.borderColor.opacity(0.6)
+                        musicColor: musicColor,
+                        idleColor: palette.borderColor.opacity(0.55),
+                        barHeight: barHeight
                     )
                 }
-                .frame(width: 8)
-                Spacer()
             }
+            .frame(width: 8, height: totalH, alignment: .center)
         }
         .frame(width: 8, height: totalH)
         .clipShape(Capsule())
     }
 }
 
-// MARK: - Micro Equalizer Bar (Hardware Accelerated, 0 KB Heap Allocations)
-private struct MicroEqualizerBar: View {
-    let minH: CGFloat
-    let maxH: CGFloat
-    let duration: Double
+// MARK: - Alternating Horizontal Rung Bar (Hardware Composited, 0 KB Heap Allocations)
+private struct AlternatingRungBar: View {
+    let index: Int
     let isPlaying: Bool
-    let staticH: CGFloat
-    let color: Color
+    let musicColor: Color
+    let idleColor: Color
+    let barHeight: CGFloat
 
-    @State private var isScaled: Bool = false
+    @State private var isExpanded: Bool = false
+
+    // 3-Phase wave distribution along the column gives silky traveling wave dynamics
+    private var phaseGroup: Int { index % 3 }
+    private var animationDuration: Double {
+        switch phaseGroup {
+        case 0: return 0.55
+        case 1: return 0.72
+        default: return 0.62
+        }
+    }
+    private var targetMaxWidth: CGFloat {
+        switch phaseGroup {
+        case 0: return 7.6
+        case 1: return 6.8
+        default: return 7.4
+        }
+    }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 0.8)
-            .fill(color)
-            .frame(width: 1.6, height: isPlaying ? (isScaled ? maxH : minH) : staticH)
+        let currentWidth: CGFloat = {
+            if isPlaying {
+                return isExpanded ? targetMaxWidth : 2.5
+            } else {
+                return 2.5
+            }
+        }()
+
+        Capsule()
+            .fill(isPlaying ? musicColor : idleColor)
+            .frame(width: currentWidth, height: barHeight)
+            .frame(width: 8, alignment: .center)
             .onAppear {
                 if isPlaying {
-                    withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
-                        isScaled = true
-                    }
+                    startLoop()
                 }
             }
             .onChange(of: isPlaying) { _, playing in
                 if playing {
-                    withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
-                        isScaled = true
-                    }
+                    startLoop()
                 } else {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        isScaled = false
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        isExpanded = false
                     }
                 }
             }
+    }
+
+    private func startLoop() {
+        let initialExpanded = (index % 2 == 0)
+        isExpanded = initialExpanded
+        withAnimation(
+            .easeInOut(duration: animationDuration)
+                .repeatForever(autoreverses: true)
+        ) {
+            isExpanded = !initialExpanded
+        }
     }
 }

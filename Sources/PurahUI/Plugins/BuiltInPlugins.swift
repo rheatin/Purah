@@ -579,6 +579,24 @@ public struct MusicPlugin: PurahPodPlugin {
         AnyView(MusicDrawerView(state: state, store: context.store))
     }
 
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        let source = state.track.sourceApp
+        guard !source.isEmpty else { return nil }
+        return AnyView(
+            HStack(spacing: 3.5) {
+                Image(systemName: state.track.sourceIconName)
+                    .font(.system(size: 8, weight: .bold))
+                Text(source)
+                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(context.accentColor)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(context.accentColor.opacity(0.12))
+            .cornerRadius(4)
+        )
+    }
+
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(MusicPluginSettingsView(state: state, store: store))
     }
