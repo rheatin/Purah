@@ -45,6 +45,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             self?.showPreferences(initialTab: .plugins, initialPluginId: pluginId)
         }
 
+        // Connect pod enable/disable changes to plugin lifecycle and single-rail sleep
+        store.onPodEnabledChanged = { [weak self] podId, isEnabled in
+            guard let self = self else { return }
+            if isEnabled {
+                PluginRegistry.shared.plugin(for: podId)?.onMount(store: self.store)
+            } else {
+                PluginRegistry.shared.plugin(for: podId)?.onUnmount(store: self.store)
+            }
+            self.coordinator?.rebuildWindows()
+        }
+
+        store.onWindowsRebuildNeeded = { [weak self] in
+            self?.coordinator?.rebuildWindows()
+        }
+
         // Register global freeze/unfreeze hotkey shortcut
         GlobalHotKeyManager.shared.register(shortcut: store.hotKeyShortcut) { [weak self] in
             self?.toggleFreezeMode()

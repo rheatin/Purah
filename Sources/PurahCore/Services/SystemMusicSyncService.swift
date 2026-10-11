@@ -29,6 +29,7 @@ public final class SystemMusicSyncService {
 
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
+    public var isListening: Bool { musicObserver != nil || spotifyObserver != nil }
 
     public init() {
         startListening()

@@ -301,6 +301,8 @@ public final class PurahWorkspaceStore {
 
     public var onCapacityWarningToast: ((String) -> Void)?
     public var onLocalMouseMove: (@MainActor (NSEvent) -> Void)?
+    public var onPodEnabledChanged: (@MainActor (String, Bool) -> Void)?
+    public var onWindowsRebuildNeeded: (@MainActor () -> Void)?
     private var lastCapacityAlertTime: Date?
 
     public func notifyCapacityWarningIfNeeded() {
@@ -747,14 +749,26 @@ public final class PurahWorkspaceStore {
             pods[index].isEnabled = true
             if id == "clipboard" {
                 SystemClipboardSyncService.shared.startListening()
+            } else if id == "vitals" {
+                HardwareVitalsService.shared.startMonitoring()
+            } else if id == "music" {
+                SystemMusicSyncService.shared.startListening(into: self)
             }
+            onPodEnabledChanged?(id, true)
         } else {
             pods[index].isEnabled = false
             if id == "clipboard" {
                 SystemClipboardSyncService.shared.stopListening()
+            } else if id == "vitals" {
+                HardwareVitalsService.shared.stopMonitoring()
+            } else if id == "music" {
+                SystemMusicSyncService.shared.stopListening()
+                SystemMusicSyncService.shared.clearArtworkCache()
             }
+            onPodEnabledChanged?(id, false)
         }
         autoLayoutAll()
+        onWindowsRebuildNeeded?()
     }
 
     public func fillRail(podId: String) {

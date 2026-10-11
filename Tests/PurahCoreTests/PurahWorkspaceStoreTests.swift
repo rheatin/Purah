@@ -214,4 +214,48 @@ struct PurahWorkspaceStoreTests {
         #expect(store.defaultColorHex(for: "my-custom-pod") == "#998877")
         #expect(store.defaultColorHex(for: "nonexistent-pod") == "#00F5D4")
     }
+
+    @Test("togglePodEnabled triggers onPodEnabledChanged, manages core background services, and triggers window rebuild")
+    func testTogglePodEnabledLifecycleAndServices() {
+        let store = PurahWorkspaceStore()
+        var changedId: String?
+        var changedState: Bool?
+        var rebuildTriggered = false
+
+        store.onPodEnabledChanged = { id, enabled in
+            changedId = id
+            changedState = enabled
+        }
+        store.onWindowsRebuildNeeded = {
+            rebuildTriggered = true
+        }
+
+        // 1. Disable music pod: must stop listening and notify
+        if store.pods.first(where: { $0.id == "music" })?.isEnabled == true {
+            store.togglePodEnabled(id: "music")
+            #expect(store.pods.first(where: { $0.id == "music" })?.isEnabled == false)
+            #expect(changedId == "music")
+            #expect(changedState == false)
+            #expect(rebuildTriggered == true)
+            #expect(SystemMusicSyncService.shared.isListening == false)
+        }
+
+        // 2. Disable vitals pod: must stop kernel monitoring
+        if store.pods.first(where: { $0.id == "vitals" })?.isEnabled == true {
+            rebuildTriggered = false
+            store.togglePodEnabled(id: "vitals")
+            #expect(store.pods.first(where: { $0.id == "vitals" })?.isEnabled == false)
+            #expect(changedId == "vitals")
+            #expect(changedState == false)
+            #expect(rebuildTriggered == true)
+        }
+
+        // 3. Re-enable music: must resume and notify
+        rebuildTriggered = false
+        store.togglePodEnabled(id: "music")
+        #expect(store.pods.first(where: { $0.id == "music" })?.isEnabled == true)
+        #expect(changedId == "music")
+        #expect(changedState == true)
+        #expect(rebuildTriggered == true)
+    }
 }

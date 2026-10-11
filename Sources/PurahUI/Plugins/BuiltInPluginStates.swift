@@ -515,6 +515,10 @@ public final class MusicPluginState: Sendable {
     public func unmount(store: PurahWorkspaceStore) {
         stopListening()
         SystemMusicSyncService.shared.stopListening()
+        SystemMusicSyncService.shared.clearArtworkCache()
+        track.artworkData = nil
+        track.lyrics = nil
+        track.syncedLyrics = nil
         save()
         if boundStore === store {
             boundStore = nil
