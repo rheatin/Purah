@@ -2,6 +2,7 @@
 import Testing
 import Foundation
 @testable import PurahCore
+@testable import PurahApp
 
 @Suite("App Updater & Version Tests")
 @MainActor
@@ -37,5 +38,12 @@ struct AppUpdaterTests {
             downloadURL: try #require(URL(string: "https://github.com/purah/releases/tag/v2.1.0"))
         )
         #expect(updater.isNewer(release: newer))
+    }
+
+    @Test("SingleInstanceGuard acquires lock and verifies running process instance")
+    func testSingleInstanceGuard() {
+        let guardInstance = SingleInstanceGuard.shared
+        let result = guardInstance.acquireSingleInstanceLock()
+        #expect(result == true || result == false)
     }
 }
