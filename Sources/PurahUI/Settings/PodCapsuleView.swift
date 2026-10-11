@@ -6,6 +6,8 @@ public struct PodCapsuleView: View {
     public let pod: SlotPod
     public let canvasHeight: Double
     public let customHeight: Double?
+    public let neighborHeightAbove: Double?
+    public let neighborHeightBelow: Double?
     public let onMove: (Double) -> Void
     public let onResize: (Double) -> Void
     public let onTransferEdge: () -> Void
@@ -28,10 +30,32 @@ public struct PodCapsuleView: View {
         palette.podColor(for: pod.id)
     }
 
+    private var upwardThreshold: CGFloat {
+        let targetH = neighborHeightAbove ?? customHeight ?? 50.0
+        return max(CGFloat(targetH * 0.50), 22.0)
+    }
+
+    private var downwardThreshold: CGFloat {
+        let targetH = neighborHeightBelow ?? customHeight ?? 50.0
+        return max(CGFloat(targetH * 0.50), 22.0)
+    }
+
+    private var isCrossingThreshold: Bool {
+        if dragOffsetY < -upwardThreshold && neighborHeightAbove != nil {
+            return true
+        }
+        if dragOffsetY > downwardThreshold && neighborHeightBelow != nil {
+            return true
+        }
+        return false
+    }
+
     public init(
         pod: SlotPod,
         canvasHeight: Double,
         customHeight: Double? = nil,
+        neighborHeightAbove: Double? = nil,
+        neighborHeightBelow: Double? = nil,
         onMove: @escaping (Double) -> Void,
         onResize: @escaping (Double) -> Void,
         onTransferEdge: @escaping () -> Void,
@@ -42,6 +66,8 @@ public struct PodCapsuleView: View {
         self.pod = pod
         self.canvasHeight = canvasHeight
         self.customHeight = customHeight
+        self.neighborHeightAbove = neighborHeightAbove
+        self.neighborHeightBelow = neighborHeightBelow
         self.onMove = onMove
         self.onResize = onResize
         self.onTransferEdge = onTransferEdge
@@ -115,13 +141,13 @@ public struct PodCapsuleView: View {
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onTransferEdge()
                             }
-                        } else if verticalDistance < -16.0, let onMoveOrder = onMoveOrder {
-                            // Dragged upward across threshold -> Swap with predecessor above
+                        } else if verticalDistance < -upwardThreshold, let onMoveOrder = onMoveOrder {
+                            // Dragged upward past 50% threshold of predecessor -> Swap with predecessor above
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onMoveOrder(.up)
                             }
-                        } else if verticalDistance > 16.0, let onMoveOrder = onMoveOrder {
-                            // Dragged downward across threshold -> Swap with successor below
+                        } else if verticalDistance > downwardThreshold, let onMoveOrder = onMoveOrder {
+                            // Dragged downward past 50% threshold of successor -> Swap with successor below
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onMoveOrder(.down)
                             }
@@ -184,14 +210,16 @@ public struct PodCapsuleView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(podColor, lineWidth: 1.5)
+                .stroke(isCrossingThreshold ? palette.primaryAccent : podColor, lineWidth: isCrossingThreshold ? 2.2 : 1.5)
         )
         .shadow(
-            color: palette.useGlow ? podColor.opacity(0.3) : Color.black.opacity(0.2),
-            radius: isDraggingHeader ? 8 : 4,
+            color: isCrossingThreshold ? palette.primaryAccent.opacity(0.45) : (palette.useGlow ? podColor.opacity(0.3) : Color.black.opacity(0.2)),
+            radius: isDraggingHeader ? 10 : 4,
             x: 0,
             y: isDraggingHeader ? 4 : 2
         )
+        .scaleEffect(isCrossingThreshold ? 1.02 : 1.0)
+        .animation(.spring(response: 0.20, dampingFraction: 0.70), value: isCrossingThreshold)
         .offset(y: dragOffsetY)
         .zIndex(isDraggingHeader ? 50 : 1)
     }

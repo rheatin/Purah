@@ -94,14 +94,18 @@ public struct ScreenSimulationCanvas: View {
                         let realScreenH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
                         let leftScale = workableHeight / realScreenH
                         let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: realScreenH)
-                        ForEach(leftLayout) { item in
+                        ForEach(Array(leftLayout.enumerated()), id: \.element.id) { idx, item in
                             let topY = CGFloat(item.startY * leftScale)
                             let podSpan = CGFloat(item.spanH * leftScale)
+                            let neighborAboveH = (idx > 0) ? Double(leftLayout[idx - 1].spanH * leftScale) : nil
+                            let neighborBelowH = (idx < leftLayout.count - 1) ? Double(leftLayout[idx + 1].spanH * leftScale) : nil
 
                             PodCapsuleView(
                                 pod: item.pod,
                                 canvasHeight: workableHeight,
                                 customHeight: Double(podSpan),
+                                neighborHeightAbove: neighborAboveH,
+                                neighborHeightBelow: neighborBelowH,
                                 onMove: { newStart in
                                     store.updatePodRange(id: item.pod.id, newRange: .init(start: newStart, length: item.pod.range.length))
                                 },
@@ -142,14 +146,18 @@ public struct ScreenSimulationCanvas: View {
                         let realScreenRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
                         let rightScale = workableHeight / realScreenRightH
                         let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: realScreenRightH)
-                        ForEach(rightLayout) { item in
+                        ForEach(Array(rightLayout.enumerated()), id: \.element.id) { idx, item in
                             let topY = CGFloat(item.startY * rightScale)
                             let podSpan = CGFloat(item.spanH * rightScale)
+                            let neighborAboveH = (idx > 0) ? Double(rightLayout[idx - 1].spanH * rightScale) : nil
+                            let neighborBelowH = (idx < rightLayout.count - 1) ? Double(rightLayout[idx + 1].spanH * rightScale) : nil
 
                             PodCapsuleView(
                                 pod: item.pod,
                                 canvasHeight: workableHeight,
                                 customHeight: Double(podSpan),
+                                neighborHeightAbove: neighborAboveH,
+                                neighborHeightBelow: neighborBelowH,
                                 onMove: { newStart in
                                     store.updatePodRange(id: item.pod.id, newRange: .init(start: newStart, length: item.pod.range.length))
                                 },

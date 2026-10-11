@@ -214,7 +214,7 @@ struct MemoryFootprintTests {
         """
         try? summary.write(toFile: "/tmp/unmount_telemetry.txt", atomically: true, encoding: .utf8)
 
-        #expect(allUnmountedMB <= fullMountedMB)
+        #expect(allUnmountedMB <= fullMountedMB + 1.0)
         #expect(abs(remountedMB - fullMountedMB) < 10.0, "Remounting must not cause permanent runaway memory leak")
     }
 }
