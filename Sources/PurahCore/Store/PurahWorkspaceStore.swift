@@ -334,23 +334,8 @@ public final class PurahWorkspaceStore {
 
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
         let podHeight = max(pod.range.length * totalHeight, 36.0)
-        if let provider = capabilityProvider(for: pod.id), provider.isDecomposed(store: self) {
-            let minReserved = minimumDrawerHeight(for: pod.id)
-            let rawCount = provider.subItemCount(store: self)
-            if rawCount > 0 {
-                let maxChipH: CGFloat = 185.0
-                let spacing: CGFloat = 2.5
-                let count = CGFloat(rawCount)
-                let minBaseH: CGFloat = (pod.id == "todo") ? 32.0 : ((pod.id == "calendar") ? 40.0 : 56.0)
-                let itemH = min(max((podHeight - spacing * (count - 1)) / count, minBaseH), maxChipH)
-                let actualSpan = count * itemH + spacing * (count - 1)
-                // If actual items require less than podHeight (e.g. only 1 event), shrink pod to actualSpan,
-                // anchoring to the top of its slot and leaving remaining space empty!
-                return min(actualSpan, max(podHeight, minReserved))
-            }
-            return max(podHeight, minReserved)
-        }
-        return podHeight
+        let minReserved = minimumDrawerHeight(for: pod.id)
+        return max(podHeight, minReserved)
     }
 
     @ObservationIgnored
