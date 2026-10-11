@@ -497,6 +497,9 @@ public final class EdgeMouseMonitor {
                     currentDwellCandidatePodId = candidate.id
                     currentDwellEdge = edge
 
+                    // Pre-expand canvas silently on arrival so window frame is already 580pt before drawer spring
+                    coordinator?.expandCanvas(for: edge)
+
                     let remainingDwell = max(requiredDwell - hoverDuration, 0.02)
                     let candidateId = candidate.id
 
@@ -549,6 +552,10 @@ public final class EdgeMouseMonitor {
     }
 
     public func activatePodDrawer(candidate: SlotPod, matched: ResolvedPodLayoutItem, currentWindowY: CGFloat, edge: MountEdge) {
+        // Ensure window canvas is ready and interactive BEFORE triggering drawer spring animation
+        coordinator?.expandCanvas(for: edge)
+        coordinator?.setInteractive(true, for: edge)
+
         if let provider = store.capabilityProvider(for: candidate.id), provider.isDecomposed(store: store) {
             let rawCount = provider.subItemCount(store: store)
             let minChipH: CGFloat = 20.0
@@ -592,8 +599,6 @@ public final class EdgeMouseMonitor {
                 }
             }
         }
-        coordinator?.expandCanvas(for: edge)
-        coordinator?.setInteractive(true, for: edge)
     }
 
     private func isPointInsideAnyDrawerCard(point: NSPoint, visibleRect: CGRect, edge: MountEdge) -> Bool {

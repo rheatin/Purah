@@ -108,16 +108,15 @@ public struct SteppedRailContainerView: View {
                                 .fill(Color.clear)
                                 .frame(width: CGFloat(store.railBarWidth), height: itemH)
                                 .contentShape(Rectangle())
+                                .transaction { $0.animation = nil }
                                 .onTapGesture {
                                     plugin.onRailBarTap(subItemId: subItem.id, context: context)
                                 }
                         }
-                        .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)
                         .frame(height: itemH, alignment: .top)
                         .zIndex(isActive ? 100 : Double(10 - idx))
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: edge == .left ? .topLeading : .topTrailing)
                 .frame(height: actualSpanH, alignment: .top)
             }
         }

@@ -52,6 +52,11 @@ public final class AmbientRailWindow: NSPanel {
         let rootView = AmbientRailStripView(edge: edge, store: store)
             .ignoresSafeArea()
         let hostingView = PassThroughHostingView(rootView: rootView, edge: edge, store: store)
+        hostingView.wantsLayer = true
+        // Symmetrically anchor layer contents to the physical screen border:
+        // Left rail anchors to .topLeft, Right rail anchors to .topRight.
+        // Even when canvas resizes between 28pt and 580pt, physical content never shifts.
+        hostingView.layer?.contentsGravity = (edge == .right) ? .topRight : .topLeft
         self.contentView = hostingView
     }
 
@@ -67,7 +72,10 @@ public final class AmbientRailWindow: NSPanel {
         let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - targetWidth)
         let newFrame = NSRect(x: x, y: visibleRect.minY, width: targetWidth, height: visibleRect.height)
         if self.frame != newFrame {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             self.setFrame(newFrame, display: display)
+            CATransaction.commit()
         }
     }
 

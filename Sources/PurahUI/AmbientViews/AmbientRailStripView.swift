@@ -59,7 +59,6 @@ public struct AmbientRailStripView: View {
                             genericRailBar(pod: pod, totalHeight: spanH)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
                     .frame(height: spanH, alignment: .top)
                     .offset(y: startY)
                     .zIndex(isThisPodActive ? 100 : 1)
@@ -193,6 +192,7 @@ public struct AmbientRailStripView: View {
             plugin.makeRailBarView(context: context)
                 .frame(width: barW, height: slotH)
                 .contentShape(Rectangle())
+                .transaction { $0.animation = nil }
                 .onHover { isHovered in
                     if isHovered {
                         if pod.id == store.activeDrawerPodId {
@@ -223,7 +223,6 @@ public struct AmbientRailStripView: View {
                     .transition(drawerTransition)
             }
         }
-        .frame(maxWidth: .infinity, alignment: edge == .left ? .leading : .trailing)
         .frame(height: slotH, alignment: .top)
         .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerItemId)
         .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerPodId)
