@@ -492,6 +492,9 @@ public final class MusicPluginState: Sendable {
         self.isWaveformAnimationEnabled = store.isMusicWaveformAnimationEnabled
 
         startListening()
+        SystemMusicSyncService.shared.onTrackChanged = { [weak self] newTrack in
+            self?.track = newTrack
+        }
         SystemMusicSyncService.shared.startListening(into: store)
 
         // Initial fetch of artwork and local lyrics if not yet cached
@@ -529,6 +532,7 @@ public final class MusicPluginState: Sendable {
     public func unmount(store: PurahWorkspaceStore) {
         stopListening()
         SystemMusicSyncService.shared.stopListening()
+        SystemMusicSyncService.shared.onTrackChanged = nil
         SystemMusicSyncService.shared.clearArtworkCache()
         track.artworkData = nil
         track.lyrics = nil

@@ -33,6 +33,7 @@ public final class SystemMusicSyncService {
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
     public var isListening: Bool { musicObserver != nil || spotifyObserver != nil || mediaRemoteObserver != nil }
+    public var onTrackChanged: ((MusicTrackInfo) -> Void)?
 
     public init() {
         // Dormant by default: listening is started strictly on-demand when MusicPlugin mounts
@@ -221,6 +222,7 @@ public final class SystemMusicSyncService {
                 sourceBundleId: "com.apple.Music"
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
+            onTrackChanged?(store._musicTrack)
         }
 
         if existingArtwork == nil {
@@ -293,6 +295,7 @@ public final class SystemMusicSyncService {
                 sourceBundleId: "com.spotify.client"
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
+            onTrackChanged?(store._musicTrack)
         }
 
         if existingArtwork == nil {
@@ -377,6 +380,7 @@ public final class SystemMusicSyncService {
                 sourceBundleId: bundleId
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
+            onTrackChanged?(store._musicTrack)
         }
     }
 
@@ -426,6 +430,7 @@ public final class SystemMusicSyncService {
                 sourceBundleId: "com.apple.Music"
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
+            onTrackChanged?(store._musicTrack)
         }
 
         if let art = await fetchArtwork(title: title, artist: artist, album: album) {
@@ -445,13 +450,14 @@ public final class SystemMusicSyncService {
 
         // Low-frequency 1.0s timer to periodically update playbackProgress for background rail fill,
         // without generating garbage arrays or thrashing heap memory!
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak store] _ in
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self, weak store] _ in
             MainActor.assumeIsolated {
                 guard let store = store, store._musicTrack.isPlaying else { return }
                 guard !store.isRailsFrozen else { return }
                 guard store.pods.contains(where: { $0.id == "music" && $0.isEnabled }) else { return }
 
                 store._musicTrack.playbackProgress = store._musicTrack.calculatedProgress
+                self?.onTrackChanged?(store._musicTrack)
             }
         }
     }
@@ -637,6 +643,7 @@ public final class SystemMusicSyncService {
         store._musicTrack.playbackRate = nowPlaying ? 1.0 : 0.0
         store._musicTrack.lastUpdated = Date()
         updatePlaybackTimer(store: store, isPlaying: nowPlaying)
+        onTrackChanged?(store._musicTrack)
 
         let bundleId = store._musicTrack.sourceBundleId.lowercased()
         if bundleId.contains("apple.music") && isMusicAppRunning {
@@ -692,6 +699,7 @@ public final class SystemMusicSyncService {
         store._musicTrack.currentPositionSeconds = targetSec
         store._musicTrack.lastUpdated = Date()
         store._musicTrack.playbackProgress = clamped
+        onTrackChanged?(store._musicTrack)
 
         if isMusicAppRunning {
             Task.detached {

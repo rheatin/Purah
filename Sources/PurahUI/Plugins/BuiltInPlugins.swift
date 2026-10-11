@@ -565,13 +565,17 @@ public struct MusicPlugin: PurahPodPlugin {
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(
+        let storeTrack = context.store._musicTrack
+        let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
+        let isPlaying = liveTrack.isPlaying || state.track.isPlaying
+
+        return AnyView(
             WaveMeterAmbientView(
                 style: state.railStyle,
-                track: state.track,
-                progress: state.track.calculatedProgress,
-                samples: state.waveformSamples,
-                isPlaying: state.isPlaying,
+                track: liveTrack,
+                progress: liveTrack.calculatedProgress,
+                samples: liveTrack.waveformSamples,
+                isPlaying: isPlaying,
                 isAnimated: state.isWaveformAnimationEnabled,
                 height: context.slotHeight
             )
