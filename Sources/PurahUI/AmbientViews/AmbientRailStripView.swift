@@ -7,6 +7,8 @@ public struct AmbientRailStripView: View {
     public let edge: MountEdge
     public let store: PurahWorkspaceStore
 
+    @State private var railDwellTasks: [String: Task<Void, Never>] = [:]
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -193,8 +195,24 @@ public struct AmbientRailStripView: View {
                 .contentShape(Rectangle())
                 .onHover { isHovered in
                     if isHovered {
-                        guard store.activeDrawerPodId != nil || (store.edgeTriggerMode == .hoverDwell && store.edgeTriggerSensitivity == .agile) else { return }
-                        context.requestExpand()
+                        if store.activeDrawerPodId != nil {
+                            context.requestExpand()
+                        } else {
+                            railDwellTasks[pod.id]?.cancel()
+                            let dwellSec = store.activeInitialDwellSeconds
+                            if dwellSec <= 0.02 {
+                                context.requestExpand()
+                            } else {
+                                railDwellTasks[pod.id] = Task { @MainActor in
+                                    try? await Task.sleep(for: .seconds(dwellSec))
+                                    guard !Task.isCancelled else { return }
+                                    context.requestExpand()
+                                }
+                            }
+                        }
+                    } else {
+                        railDwellTasks[pod.id]?.cancel()
+                        railDwellTasks[pod.id] = nil
                     }
                 }
                 .onTapGesture {

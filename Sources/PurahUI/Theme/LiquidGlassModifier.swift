@@ -120,8 +120,9 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
         let secondary = accentColor.harmonicSecondary()
 
         ZStack {
-            // 1. Core macOS behind-window visual effect material: blurs underlying active desktop or app content
-            NativeVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+            // 1. Native SwiftUI system blur material without WindowServer offscreen framebuffer bloat (saves ~80MB)
+            Rectangle()
+                .fill(.ultraThinMaterial)
 
             // 2. Translucent aurora ambient gradient (8% to 14% concentration without occluding content)
             LinearGradient(

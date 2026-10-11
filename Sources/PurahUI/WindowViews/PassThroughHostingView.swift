@@ -135,7 +135,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         store.onLocalMouseMove?(event)
 
         let winPoint = event.locationInWindow
-        let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
+        let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
         let isInsideCard = isPointInInteractiveDrawer(winPoint)
 
@@ -160,7 +160,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let mouseLoc = NSEvent.mouseLocation
         if let win = self.window, win.frame.contains(mouseLoc) {
             let winPoint = win.convertPoint(fromScreen: mouseLoc)
-            let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
+            let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
             let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
             if isOnRail || isPointInInteractiveDrawer(winPoint) {
                 return
@@ -177,7 +177,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public override func hitTest(_ point: NSPoint) -> NSView? {
         guard !store.isRailsFrozen else { return nil }
         let bounds = self.bounds
-        let barW: CGFloat = CGFloat(store.railBarWidth) + 4.0
+        let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
 
         let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW) : (point.x <= bounds.minX + barW)
         if isOnRail {

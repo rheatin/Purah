@@ -199,6 +199,7 @@ public final class ClipboardHoverPreviewController {
 
     private var panel: NSPanel?
     private var activeItemId: String?
+    private var pendingItemId: String?
     private var showWorkItem: DispatchWorkItem?
     private var hideWorkItem: DispatchWorkItem?
 
@@ -212,18 +213,25 @@ public final class ClipboardHoverPreviewController {
             return
         }
 
+        // If a dwell timer is already counting down for this same item, do not reset it on micro-movements
+        if pendingItemId == item.id && showWorkItem != nil {
+            return
+        }
+
         showWorkItem?.cancel()
+        pendingItemId = item.id
         let work = DispatchWorkItem { [weak self] in
             Task { @MainActor [weak self] in
                 self?.performShow(item: item, edge: edge, palette: palette, drawerWidth: drawerWidth)
             }
         }
         showWorkItem = work
-        // Intentional hover dwell (180ms) avoids aggressive popping & flickering on casual pointer pass-through
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+        // Intentional crisp dwell (120ms) guarantees prompt display as soon as user rests cursor on card
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
     private func performShow(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
+        pendingItemId = nil
         activeItemId = item.id
 
         let targetPanel = getOrCreatePanel()
@@ -266,6 +274,7 @@ public final class ClipboardHoverPreviewController {
     }
 
     public func hide() {
+        pendingItemId = nil
         showWorkItem?.cancel()
         showWorkItem = nil
         hideWorkItem?.cancel()

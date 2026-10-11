@@ -208,7 +208,7 @@ public final class EdgeMouseMonitor {
         let isInVerticalBounds = (mousePoint.y >= visibleRect.minY && mousePoint.y <= visibleRect.maxY)
         guard isInVerticalBounds else { return }
 
-        let triggerW = CGFloat(store.railBarWidth) + 4.0
+        let triggerW = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let isAtLeftEdge = (mousePoint.x <= (visibleRect.minX + triggerW))
         let isAtRightEdge = (mousePoint.x >= (visibleRect.maxX - triggerW))
         guard isAtLeftEdge || isAtRightEdge else { return }
@@ -293,7 +293,7 @@ public final class EdgeMouseMonitor {
         let visibleRect = customTargetVisibleRect ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
         let isInVerticalBounds = (point.y >= visibleRect.minY && point.y <= visibleRect.maxY)
-        let triggerW = CGFloat(store.railBarWidth) + 4.0
+        let triggerW = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let isAtLeftEdge = isInVerticalBounds && (point.x <= (visibleRect.minX + triggerW))
         let isAtRightEdge = isInVerticalBounds && (point.x >= (visibleRect.maxX - triggerW))
 
@@ -510,7 +510,7 @@ public final class EdgeMouseMonitor {
                         let curScreen = self.coordinator?.targetScreen(for: currentPoint) ?? NSScreen.main ?? NSScreen.screens.first
                         let curVisibleRect = self.customTargetVisibleRect ?? curScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
-                        let triggerW = CGFloat(self.store.railBarWidth) + 8.0
+                        let triggerW = max(CGFloat(self.store.railBarWidth) + 8.0, 16.0)
                         let atLeft = currentPoint.x <= (curVisibleRect.minX + triggerW)
                         let atRight = currentPoint.x >= (curVisibleRect.maxX - triggerW)
                         guard (edge == .left && atLeft) || (edge == .right && atRight) else {
