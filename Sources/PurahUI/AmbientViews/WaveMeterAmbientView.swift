@@ -60,27 +60,46 @@ public struct WaveMeterAmbientView: View {
         let totalH = max(height, 40.0)
         let barW: CGFloat = 8.0
 
-        switch style {
-        case .minimalist:
-            Capsule()
-                .fill(
-                    isPlaying
-                        ? musicColor.opacity(0.90)
-                        : musicColor.opacity(0.45)
-                )
-                .frame(width: barW, height: totalH)
+        Group {
+            switch style {
+            case .minimalist:
+                Capsule()
+                    .fill(
+                        isPlaying
+                            ? musicColor.opacity(0.90)
+                            : musicColor.opacity(0.45)
+                    )
+                    .frame(width: barW, height: totalH)
 
-        case .smoothProgress:
-            smoothProgressView(totalH: totalH, barW: barW)
+            case .smoothProgress:
+                smoothProgressView(totalH: totalH, barW: barW)
 
-        case .dynamicWaveform:
-            switch subStyle {
-            case .neonVUTower:
-                neonVUTowerView(totalH: totalH, barW: barW)
-            case .moltenPlasma:
-                moltenPlasmaView(totalH: totalH, barW: barW)
-            case .auroraWave:
-                auroraWaveView(totalH: totalH, barW: barW)
+            case .dynamicWaveform:
+                switch subStyle {
+                case .neonVUTower:
+                    neonVUTowerView(totalH: totalH, barW: barW)
+                case .auroraWave:
+                    auroraWaveView(totalH: totalH, barW: barW)
+                }
+            }
+        }
+        .onAppear {
+            if isPlaying && style == .dynamicWaveform {
+                SystemAudioLiveMonitor.shared.start()
+            }
+        }
+        .onChange(of: isPlaying) { _, playing in
+            if playing && style == .dynamicWaveform {
+                SystemAudioLiveMonitor.shared.start()
+            } else {
+                SystemAudioLiveMonitor.shared.stop()
+            }
+        }
+        .onChange(of: style) { _, newStyle in
+            if isPlaying && newStyle == .dynamicWaveform {
+                SystemAudioLiveMonitor.shared.start()
+            } else if newStyle != .dynamicWaveform {
+                SystemAudioLiveMonitor.shared.stop()
             }
         }
     }
@@ -139,7 +158,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (赛博霓虹电平塔)
+    // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (赛博霓虹电平塔 - 实时低频滤波与瞬态节拍冲击)
     private func neonVUTowerView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
@@ -147,7 +166,6 @@ public struct WaveMeterAmbientView: View {
             Canvas { context, size in
                 let w = size.width
                 let h = size.height
-                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
                 let stepH: CGFloat = 8.0
                 let gap: CGFloat = 3.0
                 let count = max(Int((h - 4.0) / (stepH + gap)), 8)
@@ -160,19 +178,20 @@ public struct WaveMeterAmbientView: View {
                 // Live CoreAudio soundcard stream telemetry
                 let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
                 let liveBass = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBass) : 0.0
+                let liveBeat = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBeat) : 0.0
+
                 let activeRatio: Double
                 if shouldAnimate {
-                    if livePeak > 0.015 || liveBass > 0.015 {
-                        // 100% Real-time acoustic spectrum drive
-                        activeRatio = min(max(0.15 + (livePeak * 0.52) + (liveBass * 0.42), 0.15), 1.0)
+                    if livePeak > 0.005 || liveBass > 0.005 {
+                        // Instant dynamic attack driven by real bass kick drum transient and peak level
+                        let combined = (liveBeat * 0.55) + (liveBass * 0.35) + (livePeak * 0.25)
+                        activeRatio = min(max(0.12 + combined * 0.90, 0.12), 1.0)
                     } else {
-                        // Fallback gentle groove if audio buffer is silent/loading
-                        let beatPhase = (time.truncatingRemainder(dividingBy: 0.48) / 0.48)
-                        let kick = exp(-beatPhase * 6.0)
-                        activeRatio = min(max(0.28 + kick * 0.35, 0.20), 0.80)
+                        // Resting groove when quiet or between tracks
+                        activeRatio = 0.18
                     }
                 } else {
-                    activeRatio = 0.20
+                    activeRatio = 0.18
                 }
                 let activeBlocks = Int(Double(count) * activeRatio)
 
@@ -180,9 +199,14 @@ public struct WaveMeterAmbientView: View {
                     let idxFromBottom = count - 1 - i
                     let y = CGFloat(idxFromBottom) * (stepH + gap) + 2.0
                     let isLit = i < activeBlocks
+                    let isTopActiveBlock = (i == activeBlocks - 1) && (activeBlocks > 2)
 
                     let ratio = Double(i) / Double(count)
-                    // High-energy Chroma ladder: Crimson -> Electric Pink -> Amber Gold -> Cyber Cyan Peak
+                    // High-energy Chroma ladder:
+                    // Low Bass: Deep Crimson (#FF0055)
+                    // Mid Range: Luminous Electric Pink (#FF375F)
+                    // High Energy: Warm Amber Gold (#FF9F0A)
+                    // Kick Overdrive Peak: Cyber Cyan (#00F5D4)
                     let litColor: Color = {
                         if ratio < 0.35 { return Color(hex: "#FF0055") }
                         else if ratio < 0.70 { return Color(hex: "#FF375F") }
@@ -190,10 +214,10 @@ public struct WaveMeterAmbientView: View {
                         else { return Color(hex: "#00F5D4") }
                     }()
 
-                    let blockW: CGFloat = w - (isLit ? 0.8 : 1.6)
+                    let blockW: CGFloat = w - (isLit ? (isTopActiveBlock ? 0.4 : 0.8) : 1.6)
                     let blockX = (w - blockW) / 2.0
                     let r = CGRect(x: blockX, y: y, width: blockW, height: stepH)
-                    let col = isLit ? litColor : litColor.opacity(0.18)
+                    let col = isLit ? (isTopActiveBlock ? Color.white : litColor) : litColor.opacity(0.16)
                     context.fill(Path(roundedRect: r, cornerRadius: 2.5), with: .color(col))
                 }
 
@@ -209,62 +233,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Sub-Style 2: Molten Liquid Plasma Surge (熔融等离子光流)
-    private func moltenPlasmaView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
-
-        return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
-            Canvas { context, size in
-                let w = size.width
-                let h = size.height
-                let centerX = w / 2.0
-                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
-                let continuousProgress = currentContinuousProgress(timeline: timeline)
-                let playheadY = CGFloat(continuousProgress) * h
-
-                // Moving Multi-stop Spectral Gradient
-                let offset = (time * 0.55).truncatingRemainder(dividingBy: 1.0)
-                let p1 = CGPoint(x: centerX, y: -h * 0.5 + CGFloat(offset) * h)
-                let p2 = CGPoint(x: centerX, y: h * 1.5 + CGFloat(offset) * h)
-
-                let colors: [Color] = [
-                    Color(hex: "#FF007A"),
-                    Color(hex: "#7928CA"),
-                    Color(hex: "#0070F3"),
-                    Color(hex: "#00DFD8"),
-                    Color(hex: "#FF007A")
-                ]
-
-                let rect = CGRect(x: 0, y: 0, width: w, height: h)
-                context.fill(
-                    Path(roundedRect: rect, cornerRadius: w / 2),
-                    with: .linearGradient(Gradient(colors: colors), startPoint: p1, endPoint: p2)
-                )
-
-                // Live acoustic pulse wave
-                let liveBass = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentBass) : 0.0
-                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
-                let pulseAlpha = shouldAnimate ? min(max(0.18 + (liveBass * 0.60) + (livePeak * 0.20), 0.0), 0.85) : 0.0
-
-                let pulsePeriod = 0.52
-                let pulsePhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: pulsePeriod) / pulsePeriod) : 0.0
-                let pulseY = CGFloat(pulsePhase) * h
-                let pulseRect = CGRect(x: 0, y: pulseY - 14.0, width: w, height: 28.0)
-                context.fill(Path(ellipseIn: pulseRect), with: .color(Color.white.opacity(pulseAlpha)))
-
-                // Playhead needle
-                if playheadY > 0 && playheadY < h {
-                    let needleRect = CGRect(x: 0, y: playheadY - 1.2, width: w, height: 2.4)
-                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1.2), with: .color(.white))
-                }
-            }
-            .frame(width: barW, height: totalH)
-            .clipShape(Capsule())
-        }
-        .frame(width: barW, height: totalH)
-    }
-
-    // MARK: - Sub-Style 3: Aurora Wave Ribbon (极光呼吸声波带)
+    // MARK: - Sub-Style 2: Aurora Wave Ribbon (极光呼吸声波带)
     private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
@@ -280,16 +249,16 @@ public struct WaveMeterAmbientView: View {
                 // Track
                 context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
 
-                // Smooth organic undulating ribbon without any harsh lines
+                // Live volume dynamics directly expands ribbon
+                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
+                let dynamicSpread = shouldAnimate ? (1.0 + CGFloat(livePeak) * 1.5) : 1.0
+
                 let steps = 40
                 let dy = h / CGFloat(steps)
 
                 var path = Path()
                 var leftPoints: [CGPoint] = []
                 var rightPoints: [CGPoint] = []
-
-                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
-                let dynamicSpread = shouldAnimate ? (1.0 + CGFloat(livePeak) * 1.5) : 1.0
 
                 for i in 0...steps {
                     let y = CGFloat(i) * dy

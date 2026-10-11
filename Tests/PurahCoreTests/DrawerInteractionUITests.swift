@@ -884,7 +884,7 @@ struct DrawerInteractionUITests {
             waveformSamples: [0.3, 0.8, 0.5, 0.9, 0.4]
         )
 
-        let testHStack = HStack(spacing: 22) {
+        let testHStack = HStack(spacing: 24) {
             VStack(spacing: 6) {
                 Text("1. Minimalist").font(.system(size: 8.0, weight: .bold)).foregroundColor(.white)
                 WaveMeterAmbientView(style: .minimalist, track: track, isPlaying: true, height: 160.0)
@@ -898,11 +898,7 @@ struct DrawerInteractionUITests {
                 WaveMeterAmbientView(style: .dynamicWaveform, subStyle: .neonVUTower, track: track, isPlaying: true, height: 160.0)
             }
             VStack(spacing: 6) {
-                Text("4. Molten Plasma").font(.system(size: 8.0, weight: .bold)).foregroundColor(.white)
-                WaveMeterAmbientView(style: .dynamicWaveform, subStyle: .moltenPlasma, track: track, isPlaying: true, height: 160.0)
-            }
-            VStack(spacing: 6) {
-                Text("5. Aurora Wave").font(.system(size: 8.0, weight: .bold)).foregroundColor(.white)
+                Text("4. Aurora Wave").font(.system(size: 8.0, weight: .bold)).foregroundColor(.white)
                 WaveMeterAmbientView(style: .dynamicWaveform, subStyle: .auroraWave, track: track, isPlaying: true, height: 160.0)
             }
         }
@@ -910,7 +906,15 @@ struct DrawerInteractionUITests {
         .background(Color(red: 0.08, green: 0.08, blue: 0.10))
 
         let testHosting = NSHostingView(rootView: testHStack)
-        testHosting.frame = NSRect(x: 0, y: 0, width: 440, height: 250)
+        testHosting.frame = NSRect(x: 0, y: 0, width: 380, height: 250)
+        testHosting.layoutSubtreeIfNeeded()
+
+        if let rep = testHosting.bitmapImageRepForCachingDisplay(in: testHosting.bounds) {
+            testHosting.cacheDisplay(in: testHosting.bounds, to: rep)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: "/tmp/final_four_modes_showcase.png"))
+            }
+        }
         testHosting.layoutSubtreeIfNeeded()
 
         if let rep = testHosting.bitmapImageRepForCachingDisplay(in: testHosting.bounds) {
