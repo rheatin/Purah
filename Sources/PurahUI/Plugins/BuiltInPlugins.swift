@@ -557,8 +557,8 @@ public struct MusicRailBarContainerView: View {
 
     public var body: some View {
         let storeTrack = store._musicTrack
-        let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
-        let isPlaying = liveTrack.isPlaying || state.isPlaying
+        let isPlaying = storeTrack.isPlaying
+        let liveTrack = !storeTrack.title.isEmpty ? storeTrack : state.track
 
         WaveMeterAmbientView(
             style: state.railStyle,
@@ -1411,19 +1411,29 @@ public struct MusicPluginSettingsView: View {
                             .font(.caption.weight(.medium))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text(String(format: "%+.0f ms", state.rhythmOffsetMs))
+                        Text(state.rhythmOffsetMs <= 0 ? "0 ms (Direct)" : String(format: "+%.0f ms", state.rhythmOffsetMs))
                             .font(.caption.monospacedDigit())
                             .foregroundColor(.secondary)
                     }
 
                     Slider(value: Binding(
-                        get: { state.rhythmOffsetMs },
+                        get: { max(state.rhythmOffsetMs, 0.0) },
                         set: {
                             state.rhythmOffsetMs = $0
                             state.save()
                             SystemAudioLiveMonitor.shared.latencyOffsetMs = $0
                         }
-                    ), in: -100...100, step: 10)
+                    ), in: 0...200, step: 10)
+
+                    HStack {
+                        Text("Mac Speakers (0ms)")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("AirPods / Bluetooth (+150ms)")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(.top, 2)
 
@@ -1439,13 +1449,14 @@ public struct MusicPluginSettingsView: View {
             }
 
             HStack {
-                Text("Audio Source: \(state.track.sourceApp.isEmpty ? "None" : state.track.sourceApp)")
+                let currentSource = !store._musicTrack.sourceApp.isEmpty ? store._musicTrack.sourceApp : state.track.sourceApp
+                Text("Audio Source: \(currentSource.isEmpty ? "None" : currentSource)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(state.track.isPlaying ? "Playing" : "Paused")
+                Text(store._musicTrack.isPlaying ? "Playing" : "Paused")
                     .font(.caption.weight(.medium))
-                    .foregroundColor(state.track.isPlaying ? .green : .secondary)
+                    .foregroundColor(store._musicTrack.isPlaying ? .green : .secondary)
             }
         }
     }

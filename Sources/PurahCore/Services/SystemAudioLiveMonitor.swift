@@ -21,9 +21,10 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
     private var _beatPulse: Float = 0.0
     private var _rms: Float = 0.0
 
-    // Low-pass IIR filter state (< 140Hz kick drum isolation)
+    // Low-pass IIR filter state (< 130Hz kick drum isolation)
     private var bassIIRState: Float = 0.0
     private var runningAvgBass: Float = 0.05
+    private var runningAvgPeak: Float = 0.10
 
     // Latency compensation delay ring buffer (up to 320ms)
     private var levelRing: [Float] = Array(repeating: 0.0, count: 32)
@@ -130,8 +131,8 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
         }
         self.aggDeviceID = createdAggID
 
-        // 140Hz cutoff coefficient at 44.1kHz (alpha = 2 * pi * 140 / 44100 ≈ 0.02)
-        let iirAlpha: Float = 0.022
+        // 130Hz cutoff coefficient at 48kHz (alpha = 2 * pi * 130 / 48000 ≈ 0.017)
+        let iirAlpha: Float = 0.017
 
         var localProcID: AudioDeviceIOProcID?
         let ioStatus = AudioDeviceCreateIOProcIDWithBlock(&localProcID, createdAggID, nil) { [weak self] _, inInputData, _, _, _ in
@@ -145,21 +146,17 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
             for buf in bufferList {
                 if let ptr = buf.mData?.assumingMemoryBound(to: Float.self) {
                     let frameCount = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
-                    let step = max(frameCount / 256, 1)
-                    var i = 0
-                    while i < frameCount {
+                    for i in 0..<frameCount {
                         let sample = ptr[i]
                         let absVal = abs(sample)
-                        if absVal > maxPeak { maxPeak = sample }
+                        if absVal > maxPeak { maxPeak = absVal }
                         energySum += absVal * absVal
                         sampleCount += 1.0
 
-                        // 1-Pole Low-Pass Filter isolating Kick Drum / Sub-Bass (< 140Hz)
+                        // 1-Pole Low-Pass Filter isolating Kick Drum / Sub-Bass (< 130Hz)
                         self.bassIIRState += iirAlpha * (sample - self.bassIIRState)
                         let bVal = abs(self.bassIIRState)
                         if bVal > maxBass { maxBass = bVal }
-
-                        i += step
                     }
                 }
             }
@@ -169,16 +166,23 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
             let clampedBass = min(maxBass * 2.8, 1.0)
 
             // Onset / Transient Kick Drum Detector: sudden energy burst above running baseline
-            self.runningAvgBass = self.runningAvgBass * 0.94 + clampedBass * 0.06
+            self.runningAvgBass = self.runningAvgBass * 0.90 + clampedBass * 0.10
             let bassSurge = max(clampedBass - self.runningAvgBass, 0.0)
-            let kickTrigger = min(bassSurge * 4.2, 1.0)
+            let kickTrigger = min(bassSurge * 4.5, 1.0)
+
+            // Full-spectrum transient attack detector (snare drum, claps, dynamic drops)
+            self.runningAvgPeak = self.runningAvgPeak * 0.90 + clampedPeak * 0.10
+            let peakSurge = max(clampedPeak - self.runningAvgPeak, 0.0)
+            let peakTrigger = min(peakSurge * 3.5, 1.0)
+
+            let combinedTrigger = max(kickTrigger, peakTrigger * 0.70)
 
             os_unfair_lock_lock(self.lock)
             // Push into delay ring buffer
             let cap = 32
             self.levelRing[self.ringIndex] = clampedPeak
             self.bassRing[self.ringIndex] = clampedBass
-            self.beatRing[self.ringIndex] = kickTrigger
+            self.beatRing[self.ringIndex] = combinedTrigger
 
             // Compute delay buffer index (buffer duration is ~10.6ms at 512 frames / 48kHz)
             let delayFrames = Int(round(max(self._latencyOffsetMs, 0.0) / 10.6))
@@ -189,11 +193,11 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
             let effectiveBass = self.bassRing[readIdx]
             let effectiveBeat = self.beatRing[readIdx]
 
-            // Instant attack on rising transients, smooth logarithmic decay on release
-            self._peak = max(effectivePeak, self._peak * 0.82)
-            self._bass = max(effectiveBass, self._bass * 0.78)
-            self._beatPulse = max(effectiveBeat, self._beatPulse * 0.70)
-            self._rms = max(rms, self._rms * 0.85)
+            // Instant attack on rising transients, snappy logarithmic decay on release
+            self._peak = max(effectivePeak, self._peak * 0.78)
+            self._bass = max(effectiveBass, self._bass * 0.74)
+            self._beatPulse = max(effectiveBeat, self._beatPulse * 0.62)
+            self._rms = max(rms, self._rms * 0.80)
             os_unfair_lock_unlock(self.lock)
         }
 
@@ -232,6 +236,13 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
         _bass = 0.0
         _beatPulse = 0.0
         _rms = 0.0
+        bassIIRState = 0.0
+        runningAvgBass = 0.05
+        runningAvgPeak = 0.10
+        levelRing = Array(repeating: 0.0, count: 32)
+        bassRing = Array(repeating: 0.0, count: 32)
+        beatRing = Array(repeating: 0.0, count: 32)
+        ringIndex = 0
         os_unfair_lock_unlock(lock)
     }
 }

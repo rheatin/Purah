@@ -411,7 +411,7 @@ public final class MusicPluginState: Sendable {
         self.storage = storage
         self.railStyle = storage.codable(forKey: "railStyle", as: MusicRailStyle.self) ?? .dynamicWaveform
         self.dynamicSubStyle = storage.codable(forKey: "dynamicSubStyle", as: DynamicWaveformSubStyle.self) ?? .neonVUTower
-        self.rhythmOffsetMs = storage.double(forKey: "rhythmOffsetMs")
+        self.rhythmOffsetMs = max(storage.double(forKey: "rhythmOffsetMs"), 0.0)
         self.isWaveformAnimationEnabled = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) ?? true
         var loadedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) ?? MusicTrackInfo()
         loadedTrack.isPlaying = false
@@ -426,7 +426,7 @@ public final class MusicPluginState: Sendable {
         if let sub = storage.codable(forKey: "dynamicSubStyle", as: DynamicWaveformSubStyle.self) {
             self.dynamicSubStyle = sub
         }
-        self.rhythmOffsetMs = storage.double(forKey: "rhythmOffsetMs")
+        self.rhythmOffsetMs = max(storage.double(forKey: "rhythmOffsetMs"), 0.0)
         if let anim = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) {
             self.isWaveformAnimationEnabled = anim
         }

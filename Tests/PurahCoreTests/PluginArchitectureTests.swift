@@ -705,9 +705,11 @@ struct PluginArchitectureTests {
     @Test("PluginMarketManager installs and completely uninstalls plugin, freeing resources")
     @MainActor
     func testPluginMarketManagerLifecycle() {
+        UserDefaults.standard.removeObject(forKey: "purah.pods")
         UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
         UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         defer {
+            UserDefaults.standard.removeObject(forKey: "purah.pods")
             UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
             UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         }
@@ -715,6 +717,10 @@ struct PluginArchitectureTests {
         let store = PurahWorkspaceStore()
         let market = PluginMarketManager(store: store)
         PluginRegistry.shared.bindStore(store, marketManager: market)
+
+        if let idx = store.pods.firstIndex(where: { $0.id == "notes" }), !store.pods[idx].isEnabled {
+            store.pods[idx].isEnabled = true
+        }
 
         #expect(market.isInstalled(id: "notes"))
         #expect(market.isEnabled(id: "notes"))

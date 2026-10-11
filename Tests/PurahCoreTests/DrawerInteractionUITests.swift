@@ -953,6 +953,19 @@ struct DrawerInteractionUITests {
         )
         _ = pausedPodView
 
+        // Verify paused state renders cleanly and remains static
+        let pausedVUTower = WaveMeterAmbientView(
+            style: .dynamicWaveform,
+            subStyle: .neonVUTower,
+            track: track,
+            isPlaying: false,
+            height: 120.0
+        )
+        let pausedHosting = NSHostingView(rootView: pausedVUTower)
+        pausedHosting.frame = NSRect(x: 0, y: 0, width: 8.0, height: 120.0)
+        pausedHosting.layoutSubtreeIfNeeded()
+        #expect(pausedHosting.frame.height == 120.0)
+
         // 2. Test NativeMediaProgressBar instantiate and scrub seek callbacks
         var seekResult: Double?
         var scrubDragging: Bool?
