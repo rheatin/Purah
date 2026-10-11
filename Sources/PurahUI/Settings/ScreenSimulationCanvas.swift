@@ -106,6 +106,7 @@ public struct ScreenSimulationCanvas: View {
                                 customHeight: Double(podSpan),
                                 neighborHeightAbove: neighborAboveH,
                                 neighborHeightBelow: neighborBelowH,
+                                hasGapAbove: store.hasGapAbove(id: item.pod.id),
                                 onMove: { newStart in
                                     store.updatePodRange(id: item.pod.id, newRange: .init(start: newStart, length: item.pod.range.length))
                                 },
@@ -126,6 +127,11 @@ public struct ScreenSimulationCanvas: View {
                                 onMoveOrder: { direction in
                                     withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                         store.movePodInOrder(id: item.pod.id, direction: direction)
+                                    }
+                                },
+                                onSnapAbove: {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.snapPod(id: item.pod.id, to: .predecessor)
                                     }
                                 }
                             )
@@ -158,6 +164,7 @@ public struct ScreenSimulationCanvas: View {
                                 customHeight: Double(podSpan),
                                 neighborHeightAbove: neighborAboveH,
                                 neighborHeightBelow: neighborBelowH,
+                                hasGapAbove: store.hasGapAbove(id: item.pod.id),
                                 onMove: { newStart in
                                     store.updatePodRange(id: item.pod.id, newRange: .init(start: newStart, length: item.pod.range.length))
                                 },
@@ -178,6 +185,11 @@ public struct ScreenSimulationCanvas: View {
                                 onMoveOrder: { direction in
                                     withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                         store.movePodInOrder(id: item.pod.id, direction: direction)
+                                    }
+                                },
+                                onSnapAbove: {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.snapPod(id: item.pod.id, to: .predecessor)
                                     }
                                 }
                             )

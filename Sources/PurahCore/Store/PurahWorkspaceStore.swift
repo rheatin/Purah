@@ -919,6 +919,58 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    // MARK: - Magnetic Pod Snapping
+    public enum SnapTarget: Sendable {
+        case predecessor // Snap to bottom of the pod above
+        case successor   // Snap to top of the pod below
+        case top         // Snap to top of the rail
+    }
+
+    public func hasGapAbove(id: String) -> Bool {
+        guard let currentPod = pods.first(where: { $0.id == id && $0.isEnabled }) else { return false }
+        let railPods = pods.filter { $0.edge == currentPod.edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        guard let currentIndex = railPods.firstIndex(where: { $0.id == id }), currentIndex > 0 else { return false }
+        let prev = railPods[currentIndex - 1]
+        let gap = currentPod.range.start - (prev.range.start + prev.range.length)
+        return gap > 0.02
+    }
+
+    public func snapPod(id: String, to target: SnapTarget) {
+        guard let currentPod = pods.first(where: { $0.id == id && $0.isEnabled }) else { return }
+        let edge = currentPod.edge
+        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+
+        guard let currentIndex = railPods.firstIndex(where: { $0.id == id }) else { return }
+        guard let podIndex = pods.firstIndex(where: { $0.id == id }) else { return }
+
+        let minGap = 0.012
+
+        switch target {
+        case .predecessor:
+            if currentIndex > 0 {
+                let prev = railPods[currentIndex - 1]
+                let newStart = prev.range.start + prev.range.length + minGap
+                pods[podIndex].range.start = min(newStart, 0.96 - currentPod.range.length)
+            } else {
+                pods[podIndex].range.start = 0.02
+            }
+        case .successor:
+            if currentIndex < railPods.count - 1 {
+                let next = railPods[currentIndex + 1]
+                let newStart = next.range.start - currentPod.range.length - minGap
+                pods[podIndex].range.start = max(newStart, 0.02)
+            }
+        case .top:
+            pods[podIndex].range.start = 0.02
+        }
+
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
     private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double, isEnabled: Bool = true) {
         if let idx = pods.firstIndex(where: { $0.id == id }) {
             pods[idx].edge = edge

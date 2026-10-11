@@ -289,4 +289,21 @@ struct PurahWorkspaceStoreTests {
         #expect(restoredPods[0].id == topPodId)
         #expect(restoredPods[1].id == secondPodId)
     }
+
+    @Test("snapPod cleanly snaps pod to the bottom of its predecessor eliminating gap")
+    func testSnapPodToPredecessor() {
+        let store = PurahWorkspaceStore()
+        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        guard rightPods.count >= 2 else { return }
+
+        let bottomPod = rightPods.last!
+        if store.hasGapAbove(id: bottomPod.id) {
+            let oldStart = bottomPod.range.start
+            store.snapPod(id: bottomPod.id, to: .predecessor)
+            let updatedPod = store.pods.first(where: { $0.id == bottomPod.id })!
+            #expect(updatedPod.range.start < oldStart)
+            #expect(store.hasGapAbove(id: bottomPod.id) == false)
+        }
+    }
 }

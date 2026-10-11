@@ -8,12 +8,14 @@ public struct PodCapsuleView: View {
     public let customHeight: Double?
     public let neighborHeightAbove: Double?
     public let neighborHeightBelow: Double?
+    public let hasGapAbove: Bool
     public let onMove: (Double) -> Void
     public let onResize: (Double) -> Void
     public let onTransferEdge: () -> Void
     public let onFillRail: () -> Void
     public let onDisable: () -> Void
     public var onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)?
+    public var onSnapAbove: (() -> Void)?
 
     @State private var dragInitialStart: Double? = nil
     @State private var dragOffsetY: CGFloat = 0.0
@@ -56,24 +58,28 @@ public struct PodCapsuleView: View {
         customHeight: Double? = nil,
         neighborHeightAbove: Double? = nil,
         neighborHeightBelow: Double? = nil,
+        hasGapAbove: Bool = false,
         onMove: @escaping (Double) -> Void,
         onResize: @escaping (Double) -> Void,
         onTransferEdge: @escaping () -> Void,
         onFillRail: @escaping () -> Void,
         onDisable: @escaping () -> Void = {},
-        onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)? = nil
+        onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)? = nil,
+        onSnapAbove: (() -> Void)? = nil
     ) {
         self.pod = pod
         self.canvasHeight = canvasHeight
         self.customHeight = customHeight
         self.neighborHeightAbove = neighborHeightAbove
         self.neighborHeightBelow = neighborHeightBelow
+        self.hasGapAbove = hasGapAbove
         self.onMove = onMove
         self.onResize = onResize
         self.onTransferEdge = onTransferEdge
         self.onFillRail = onFillRail
         self.onDisable = onDisable
         self.onMoveOrder = onMoveOrder
+        self.onSnapAbove = onSnapAbove
     }
 
     public var body: some View {
@@ -92,6 +98,17 @@ public struct PodCapsuleView: View {
                     .lineLimit(1)
 
                 Spacer(minLength: 2)
+
+                // Snap above button (if gap exists above this pod)
+                if hasGapAbove, let onSnapAbove = onSnapAbove {
+                    Button(action: onSnapAbove) {
+                        Image(systemName: "arrow.up.to.line.compact")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .foregroundColor(palette.primaryAccent)
+                    }
+                    .buttonStyle(.tactile)
+                    .help("Snap to module above (eliminate gap)")
+                }
 
                 // Fill rail button
                 Button(action: onFillRail) {
@@ -150,6 +167,11 @@ public struct PodCapsuleView: View {
                             // Dragged downward past 50% threshold of successor -> Swap with successor below
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                 onMoveOrder(.down)
+                            }
+                        } else if verticalDistance < -12.0, hasGapAbove, let onSnapAbove = onSnapAbove {
+                            // Dragged upward towards predecessor without crossing 50% -> Magnetically snap to predecessor!
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                onSnapAbove()
                             }
                         }
                     }
