@@ -4,5 +4,21 @@ import Foundation
 public enum MusicRailStyle: String, Codable, Sendable, CaseIterable {
     case minimalist = "minimalist"         // 1. 普通静止 Pod (极简纯净圆角胶囊)
     case smoothProgress = "smoothProgress" // 2. 60 FPS 平滑流淌进度条 (时间锚点无顿挫刷新)
-    case dynamicWaveform = "dynamicWaveform" // 3. 流体律动音浪 (叠加声波与频谱动态)
+    case dynamicWaveform = "dynamicWaveform" // 3. 动态律动音浪 (可进一步选择子方案)
+}
+
+public enum DynamicWaveformSubStyle: String, Codable, Sendable, CaseIterable {
+    case neonVUTower = "neonVUTower"       // 1. 赛博霓虹电平塔 (Cyberpunk Neon VU Tower)
+    case moltenPlasma = "moltenPlasma"     // 2. 熔融等离子光流 (Molten Plasma Surge)
+    case appleSpringEQ = "appleSpringEQ"   // 3. 苹果高弹音浪柱 (Apple Spring EQ)
+    case auroraWave = "auroraWave"         // 4. 极光呼吸声波带 (Aurora Wave Ribbon)
+
+    public var displayName: String {
+        switch self {
+        case .neonVUTower: return "Neon VU Tower"
+        case .moltenPlasma: return "Molten Plasma"
+        case .appleSpringEQ: return "Apple Spring EQ"
+        case .auroraWave: return "Aurora Wave"
+        }
+    }
 }

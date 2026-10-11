@@ -4,6 +4,7 @@ import PurahCore
 
 public struct WaveMeterAmbientView: View {
     public var style: MusicRailStyle
+    public var subStyle: DynamicWaveformSubStyle
     public var track: MusicTrackInfo
     public var progress: Double
     public var samples: [Double]
@@ -23,6 +24,7 @@ public struct WaveMeterAmbientView: View {
 
     public init(
         style: MusicRailStyle = .dynamicWaveform,
+        subStyle: DynamicWaveformSubStyle = .neonVUTower,
         track: MusicTrackInfo = MusicTrackInfo(),
         progress: Double = 0.0,
         samples: [Double] = [],
@@ -31,6 +33,7 @@ public struct WaveMeterAmbientView: View {
         height: CGFloat = 80.0
     ) {
         self.style = style
+        self.subStyle = subStyle
         self.track = track
         self.progress = progress
         self.samples = samples
@@ -46,11 +49,11 @@ public struct WaveMeterAmbientView: View {
         isAnimated: Bool = true,
         height: CGFloat = 80.0
     ) {
-        self.init(style: .dynamicWaveform, track: MusicTrackInfo(), progress: progress, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
+        self.init(style: .dynamicWaveform, subStyle: .neonVUTower, track: MusicTrackInfo(), progress: progress, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
     }
 
     public init(samples: [Double], isPlaying: Bool, isAnimated: Bool = true, height: CGFloat = 80.0) {
-        self.init(style: .dynamicWaveform, track: MusicTrackInfo(), progress: 0.0, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
+        self.init(style: .dynamicWaveform, subStyle: .neonVUTower, track: MusicTrackInfo(), progress: 0.0, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
     }
 
     public var body: some View {
@@ -71,7 +74,28 @@ public struct WaveMeterAmbientView: View {
             smoothProgressView(totalH: totalH, barW: barW)
 
         case .dynamicWaveform:
-            dynamicWaveformView(totalH: totalH, barW: barW)
+            switch subStyle {
+            case .neonVUTower:
+                neonVUTowerView(totalH: totalH, barW: barW)
+            case .moltenPlasma:
+                moltenPlasmaView(totalH: totalH, barW: barW)
+            case .appleSpringEQ:
+                appleSpringEQView(totalH: totalH, barW: barW)
+            case .auroraWave:
+                auroraWaveView(totalH: totalH, barW: barW)
+            }
+        }
+    }
+
+    // MARK: - Common Time-Anchor Progress Calculation
+    private func currentContinuousProgress(timeline: TimelineViewDefaultContext) -> Double {
+        let elapsed = isPlaying ? max(timeline.date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
+        let effectiveRate = track.playbackRate > 0 ? track.playbackRate : (isPlaying ? 1.0 : 0.0)
+        let currentPos = track.currentPositionSeconds + (elapsed * effectiveRate)
+        if track.durationSeconds > 0 {
+            return min(max(currentPos / track.durationSeconds, 0.0), 1.0)
+        } else {
+            return min(max(progress, 0.0), 1.0)
         }
     }
 
@@ -82,17 +106,7 @@ public struct WaveMeterAmbientView: View {
                 let w = size.width
                 let h = size.height
                 let centerX = w / 2.0
-
-                // Time-anchor continuous progress calculation
-                let elapsed = isPlaying ? max(timeline.date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
-                let effectiveRate = track.playbackRate > 0 ? track.playbackRate : (isPlaying ? 1.0 : 0.0)
-                let currentPos = track.currentPositionSeconds + (elapsed * effectiveRate)
-                let continuousProgress: Double
-                if track.durationSeconds > 0 {
-                    continuousProgress = min(max(currentPos / track.durationSeconds, 0.0), 1.0)
-                } else {
-                    continuousProgress = min(max(progress, 0.0), 1.0)
-                }
+                let continuousProgress = currentContinuousProgress(timeline: timeline)
                 let playheadY = CGFloat(continuousProgress) * h
 
                 // 1. Background Track
@@ -127,8 +141,67 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Mode 3: Kinetic Audio Rhythm Engine (复合节拍物理震荡引擎)
-    private func dynamicWaveformView(totalH: CGFloat, barW: CGFloat) -> some View {
+    // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (赛博霓虹电平塔)
+    private func neonVUTowerView(totalH: CGFloat, barW: CGFloat) -> some View {
+        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+
+        return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
+                let stepH: CGFloat = 8.0
+                let gap: CGFloat = 3.0
+                let count = max(Int((h - 4.0) / (stepH + gap)), 8)
+                let continuousProgress = currentContinuousProgress(timeline: timeline)
+                let playheadY = CGFloat(continuousProgress) * h
+
+                // Dark glass track
+                context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(Color.white.opacity(0.06)))
+
+                // Beat physics calculation (125 BPM Kick Drum + Snare Pulse)
+                let beatPeriod = 0.48
+                let beatPhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: beatPeriod) / beatPeriod) : 0.0
+                let kickPunch = shouldAnimate ? exp(-beatPhase * 6.0) : 0.0
+                let phraseTension = shouldAnimate ? (sin(time * 0.4) * 0.5 + 0.5) : 0.0
+                let activeRatio = shouldAnimate ? min(max(0.35 + (kickPunch * 0.45) + (phraseTension * 0.20), 0.2), 1.0) : 0.25
+                let activeBlocks = Int(Double(count) * activeRatio)
+
+                for i in 0..<count {
+                    let idxFromBottom = count - 1 - i
+                    let y = CGFloat(idxFromBottom) * (stepH + gap) + 2.0
+                    let isLit = i < activeBlocks
+
+                    let ratio = Double(i) / Double(count)
+                    // High-energy Chroma ladder: Crimson -> Electric Pink -> Amber Gold -> Cyber Cyan Peak
+                    let litColor: Color = {
+                        if ratio < 0.35 { return Color(hex: "#FF0055") }
+                        else if ratio < 0.70 { return Color(hex: "#FF375F") }
+                        else if ratio < 0.88 { return Color(hex: "#FF9F0A") }
+                        else { return Color(hex: "#00F5D4") }
+                    }()
+
+                    let blockW: CGFloat = w - (isLit ? 0.8 : 1.6)
+                    let blockX = (w - blockW) / 2.0
+                    let r = CGRect(x: blockX, y: y, width: blockW, height: stepH)
+                    let col = isLit ? litColor : litColor.opacity(0.18)
+                    context.fill(Path(roundedRect: r, cornerRadius: 2.5), with: .color(col))
+                }
+
+                // Playhead needle
+                if playheadY > 0 && playheadY < h {
+                    let needleRect = CGRect(x: 0, y: playheadY - 1.0, width: w, height: 2.0)
+                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(.white))
+                }
+            }
+            .frame(width: barW, height: totalH)
+            .clipShape(Capsule())
+        }
+        .frame(width: barW, height: totalH)
+    }
+
+    // MARK: - Sub-Style 2: Molten Liquid Plasma Surge (熔融等离子光流)
+    private func moltenPlasmaView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isPlaying && isAnimated && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
@@ -137,106 +210,157 @@ public struct WaveMeterAmbientView: View {
                 let h = size.height
                 let centerX = w / 2.0
                 let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
-
-                // 1. Time-anchor continuous progress calculation
-                let elapsed = isPlaying ? max(timeline.date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
-                let effectiveRate = track.playbackRate > 0 ? track.playbackRate : (isPlaying ? 1.0 : 0.0)
-                let currentPos = track.currentPositionSeconds + (elapsed * effectiveRate)
-                let continuousProgress: Double
-                if track.durationSeconds > 0 {
-                    continuousProgress = min(max(currentPos / track.durationSeconds, 0.0), 1.0)
-                } else {
-                    continuousProgress = min(max(progress, 0.0), 1.0)
-                }
+                let continuousProgress = currentContinuousProgress(timeline: timeline)
                 let playheadY = CGFloat(continuousProgress) * h
-                let primaryColor = musicColor
-                let secondaryColor = Color(hex: "#FF7597")
 
-                // 2. Pseudo-Beat Multi-Band Rhythm Physics Model (125 BPM Bass Kick + Snare + Phrase Tension)
-                let beatPeriod = 0.48 // ~125 BPM
-                let beatPhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: beatPeriod) / beatPeriod) : 0.0
-                // Sharp exponential acoustic envelope for bass kick
-                let kickPunch = shouldAnimate ? exp(-beatPhase * 6.5) : 0.0
+                // Moving Multi-stop Spectral Gradient
+                let offset = (time * 0.55).truncatingRemainder(dividingBy: 1.0)
+                let p1 = CGPoint(x: centerX, y: -h * 0.5 + CGFloat(offset) * h)
+                let p2 = CGPoint(x: centerX, y: h * 1.5 + CGFloat(offset) * h)
 
-                // Snare backbeat on measure half-notes (0.96s)
-                let measurePhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: 0.96) / 0.96) : 0.0
-                let snarePunch = (shouldAnimate && measurePhase > 0.45 && measurePhase < 0.70)
-                    ? exp(-(measurePhase - 0.45) * 10.0)
-                    : 0.0
+                let colors: [Color] = [
+                    Color(hex: "#FF007A"),
+                    Color(hex: "#7928CA"),
+                    Color(hex: "#0070F3"),
+                    Color(hex: "#00DFD8"),
+                    Color(hex: "#FF007A")
+                ]
 
-                // Macro phrase tension (verse to chorus energy surge ~ 16s cycle)
-                let phraseTension = shouldAnimate ? (sin(time * 0.38) * 0.5 + 0.5) : 0.3
-                let dynamicEnergy = 0.45 + (kickPunch * 0.45) + (snarePunch * 0.20) + (phraseTension * 0.15)
+                let rect = CGRect(x: 0, y: 0, width: w, height: h)
+                context.fill(
+                    Path(roundedRect: rect, cornerRadius: w / 2),
+                    with: .linearGradient(Gradient(colors: colors), startPoint: p1, endPoint: p2)
+                )
 
-                // 3. Dark glass track with rhythmic kick bloom
-                let bgRect = CGRect(x: 0, y: 0, width: w, height: h)
-                context.fill(Path(roundedRect: bgRect, cornerRadius: w / 2), with: .color(primaryColor.opacity(0.12 + kickPunch * 0.08)))
+                // Traveling pulse wave on beat kicks
+                let pulsePeriod = 0.52
+                let pulsePhase = shouldAnimate ? (time.truncatingRemainder(dividingBy: pulsePeriod) / pulsePeriod) : 0.0
+                let pulseY = CGFloat(pulsePhase) * h
+                let pulseRect = CGRect(x: 0, y: pulseY - 14.0, width: w, height: 28.0)
+                context.fill(Path(ellipseIn: pulseRect), with: .color(Color.white.opacity(shouldAnimate ? 0.40 : 0.0)))
 
-                // 4. Played background fill (rhythmically breathing ambient illumination)
+                // Playhead needle
+                if playheadY > 0 && playheadY < h {
+                    let needleRect = CGRect(x: 0, y: playheadY - 1.2, width: w, height: 2.4)
+                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1.2), with: .color(.white))
+                }
+            }
+            .frame(width: barW, height: totalH)
+            .clipShape(Capsule())
+        }
+        .frame(width: barW, height: totalH)
+    }
+
+    // MARK: - Sub-Style 3: Apple Spring EQ (苹果高弹跳动均衡柱)
+    private func appleSpringEQView(totalH: CGFloat, barW: CGFloat) -> some View {
+        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+
+        return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
+                let continuousProgress = currentContinuousProgress(timeline: timeline)
+                let playheadY = CGFloat(continuousProgress) * h
+
+                // Track background
+                context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
+
+                // Played track background
                 if playheadY > 1.0 {
-                    let playedRect = CGRect(x: 1, y: 0, width: w - 2, height: playheadY)
-                    context.fill(Path(roundedRect: playedRect, cornerRadius: (w - 2) / 2), with: .color(primaryColor.opacity(0.20 + kickPunch * 0.12)))
+                    context.fill(Path(roundedRect: CGRect(x: 0.5, y: 0, width: w - 1.0, height: playheadY), cornerRadius: (w - 1.0) / 2), with: .color(musicColor.opacity(0.28)))
                 }
 
-                // 5. Dual-Beam Interwoven Harmonic Sine Waves with Kick Explosion
-                var path1 = Path()
-                var path2 = Path()
-                var crossFlares: [CGPoint] = []
+                // 3 Apple-style spring bouncing bars centered in the rail
+                let centerY = h / 2.0
+                let eqBarW: CGFloat = 1.5
+                let eqGap: CGFloat = 1.2
+                let totalEqW = eqBarW * 3.0 + eqGap * 2.0
+                let startX = (w - totalEqW) / 2.0
 
-                let steps = max(Int(h / 2.5), 32)
+                let phases = [0.0, 1.8, 3.2]
+                let freqs = [6.2, 8.5, 5.0]
+                let maxH: [CGFloat] = [48.0, 72.0, 42.0]
+
+                for b in 0..<3 {
+                    let e = shouldAnimate
+                        ? ((sin(time * freqs[b] + phases[b]) * 0.65 + cos(time * 3.5 + phases[b] * 0.7) * 0.35 + 1.0) / 2.0)
+                        : 0.15
+                    let bH = 8.0 + CGFloat(e) * (maxH[b] - 8.0)
+                    let bX = startX + CGFloat(b) * (eqBarW + eqGap)
+                    let bY = centerY - (bH / 2.0)
+                    let r = CGRect(x: bX, y: bY, width: eqBarW, height: bH)
+                    context.fill(Path(roundedRect: r, cornerRadius: eqBarW / 2), with: .color(musicColor))
+                }
+
+                // Playhead needle
+                if playheadY > 0 && playheadY < h {
+                    let needleRect = CGRect(x: 0, y: playheadY - 1.0, width: w, height: 2.0)
+                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(.white))
+                }
+            }
+            .frame(width: barW, height: totalH)
+            .clipShape(Capsule())
+        }
+        .frame(width: barW, height: totalH)
+    }
+
+    // MARK: - Sub-Style 4: Aurora Wave Ribbon (极光呼吸声波带)
+    private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
+        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+
+        return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+                let centerX = w / 2.0
+                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
+                let continuousProgress = currentContinuousProgress(timeline: timeline)
+                let playheadY = CGFloat(continuousProgress) * h
+
+                // Track
+                context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
+
+                // Smooth organic undulating ribbon without any harsh lines
+                let steps = 40
                 let dy = h / CGFloat(steps)
-                let speedMult = 1.0 + (kickPunch * 0.4)
+
+                var path = Path()
+                var leftPoints: [CGPoint] = []
+                var rightPoints: [CGPoint] = []
 
                 for i in 0...steps {
                     let y = CGFloat(i) * dy
                     let ny = Double(y / h)
-
-                    // Kinetic traveling wave equations modulated by physical energy
-                    let wave1 = shouldAnimate
-                        ? (sin(ny * 13.0 - time * 6.2 * speedMult) * 0.72 + cos(ny * 24.0 + time * 4.2) * 0.28)
-                        : (sin(ny * 9.5) * 0.65)
-                    let wave2 = shouldAnimate
-                        ? (sin(ny * 13.0 - time * 6.2 * speedMult + 2.3) * 0.72 + cos(ny * 24.0 - time * 4.5) * 0.28)
-                        : (cos(ny * 9.5 + 1.4) * 0.65)
-
-                    // Amplitude aggressively widens during kick impact
-                    let maxSpread = (w / 2.0 - 0.9) * CGFloat(dynamicEnergy)
-                    let x1 = centerX + CGFloat(wave1) * maxSpread
-                    let x2 = centerX + CGFloat(wave2) * maxSpread
-
-                    if i == 0 {
-                        path1.move(to: CGPoint(x: x1, y: y))
-                        path2.move(to: CGPoint(x: x2, y: y))
-                    } else {
-                        path1.addLine(to: CGPoint(x: x1, y: y))
-                        path2.addLine(to: CGPoint(x: x2, y: y))
-                    }
-
-                    // Detect phase clash nodes for explosive energy sparkle
-                    if shouldAnimate && abs(x1 - x2) < 0.9 && i % 3 == 0 {
-                        crossFlares.append(CGPoint(x: (x1 + x2) / 2.0, y: y))
-                    }
+                    let wave = shouldAnimate
+                        ? (sin(ny * 8.0 - time * 5.0) * 0.5 + cos(ny * 16.0 + time * 3.2) * 0.3 + 0.8)
+                        : (sin(ny * 7.0) * 0.4 + 0.7)
+                    let halfW = min(max(CGFloat(wave) * 2.2, 1.2), w / 2.0 - 0.5)
+                    rightPoints.append(CGPoint(x: centerX + halfW, y: y))
+                    leftPoints.append(CGPoint(x: centerX - halfW, y: y))
                 }
 
-                // Stroke with dynamic line width and energetic glow
-                let strokeW1 = 1.5 + CGFloat(kickPunch * 0.6)
-                let strokeW2 = 1.3 + CGFloat(snarePunch * 0.5)
-                context.stroke(path1, with: .color(primaryColor), lineWidth: strokeW1)
-                context.stroke(path2, with: .color(secondaryColor), lineWidth: strokeW2)
-
-                // 6. Cross-Phase Energy Sparks at Intersection Nodes
-                for pt in crossFlares {
-                    let flareSize: CGFloat = 2.0 + CGFloat(kickPunch * 1.5)
-                    let flareRect = CGRect(x: pt.x - flareSize / 2, y: pt.y - flareSize / 2, width: flareSize, height: flareSize)
-                    context.fill(Path(ellipseIn: flareRect), with: .color(Color.white.opacity(0.85 + kickPunch * 0.15)))
+                if let first = rightPoints.first {
+                    path.move(to: first)
+                    for pt in rightPoints.dropFirst() { path.addLine(to: pt) }
+                    for pt in leftPoints.reversed() { path.addLine(to: pt) }
+                    path.closeSubpath()
                 }
 
-                // 7. Glowing Playhead Needle with Beat Expansion
+                // Fill with glowing chromatic gradient
+                context.fill(
+                    path,
+                    with: .linearGradient(
+                        Gradient(colors: [Color(hex: "#FF007A"), Color(hex: "#FF4E50"), Color(hex: "#F9D423")]),
+                        startPoint: CGPoint(x: centerX, y: 0),
+                        endPoint: CGPoint(x: centerX, y: h)
+                    )
+                )
+
+                // Playhead needle
                 if playheadY > 0 && playheadY < h {
-                    let needleH: CGFloat = 2.0 + CGFloat(kickPunch * 1.2)
-                    let needleW: CGFloat = w - 1.0
-                    let needleRect = CGRect(x: (w - needleW) / 2.0, y: playheadY - (needleH / 2.0), width: needleW, height: needleH)
-                    context.fill(Path(roundedRect: needleRect, cornerRadius: needleH / 2), with: .color(.white))
+                    let needleRect = CGRect(x: 0, y: playheadY - 1.0, width: w, height: 2.0)
+                    context.fill(Path(roundedRect: needleRect, cornerRadius: 1), with: .color(.white))
                 }
             }
             .frame(width: barW, height: totalH)

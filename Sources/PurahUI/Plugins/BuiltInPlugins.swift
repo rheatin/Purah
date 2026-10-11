@@ -572,6 +572,7 @@ public struct MusicPlugin: PurahPodPlugin {
         return AnyView(
             WaveMeterAmbientView(
                 style: state.railStyle,
+                subStyle: state.dynamicSubStyle,
                 track: liveTrack,
                 progress: liveTrack.calculatedProgress,
                 samples: liveTrack.waveformSamples,
@@ -1353,6 +1354,30 @@ public struct MusicPluginSettingsView: View {
             }
 
             if state.railStyle == .dynamicWaveform {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Dynamic Effect Scheme")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+
+                    Picker("", selection: Binding(
+                        get: { state.dynamicSubStyle },
+                        set: {
+                            state.dynamicSubStyle = $0
+                            state.save()
+                        }
+                    )) {
+                        ForEach(DynamicWaveformSubStyle.allCases, id: \.self) { sub in
+                            Text(sub.displayName).tag(sub)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(dynamicSubStyleDescription(for: state.dynamicSubStyle))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 2)
+
                 Toggle("Dynamic Rhythm Animation", isOn: Binding(
                     get: { state.isWaveformAnimationEnabled },
                     set: {
@@ -1384,6 +1409,19 @@ public struct MusicPluginSettingsView: View {
             return "Silky 60 FPS live-gliding progress bar driven by time-anchor calculation."
         case .dynamicWaveform:
             return "Metal GPU continuous fluid audio wave undulating to the rhythm of playback."
+        }
+    }
+
+    private func dynamicSubStyleDescription(for sub: DynamicWaveformSubStyle) -> String {
+        switch sub {
+        case .neonVUTower:
+            return "Cyberpunk 12-block multi-color spectrum tower bouncing to 125 BPM bass kicks."
+        case .moltenPlasma:
+            return "Molten liquid plasma stream with continuous chromatic surge and beat pulses."
+        case .appleSpringEQ:
+            return "Apple Dynamic Island style 3-bar high-spring physical jumping equalizer."
+        case .auroraWave:
+            return "Seamless aurora borealis undulating gradient ribbon with organic breathing."
         }
     }
 }
