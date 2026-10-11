@@ -36,6 +36,181 @@ public final class StableTerminalContainerView: NSView {
     }
 }
 
+// MARK: - Purah Terminal View
+/// Enhanced terminal view providing:
+/// 1. Reliable ⌘C / ⌘V / ⌘A / ⌘K keyboard shortcut routing
+/// 2. Smooth edge auto-scrolling during mouse drag selection (top-to-bottom and bottom-to-top)
+/// 3. Native contextual menu (Copy, Paste, Select All, Clear Buffer)
+/// 4. Strict zero-memory-leak lifecycle (removes monitors & invalidates timers on teardown)
+open class PurahTerminalView: LocalProcessTerminalView {
+    private var autoScrollTimer: Timer?
+    private var activeScrollLines: Int?
+    private var mouseMonitorToken: Any?
+    private var isDragging: Bool = false
+
+    open override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            stopAutoScroll()
+            if let token = mouseMonitorToken {
+                NSEvent.removeMonitor(token)
+                mouseMonitorToken = nil
+            }
+        }
+    }
+
+    open override func removeFromSuperview() {
+        stopAutoScroll()
+        if let token = mouseMonitorToken {
+            NSEvent.removeMonitor(token)
+            mouseMonitorToken = nil
+        }
+        super.removeFromSuperview()
+    }
+
+    open override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        setupMouseDragMonitorIfNeeded()
+    }
+
+    private func setupMouseDragMonitorIfNeeded() {
+        guard mouseMonitorToken == nil else { return }
+        mouseMonitorToken = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.handleLocalDragEvent(event)
+            }
+            return event
+        }
+    }
+
+    private func handleLocalDragEvent(_ event: NSEvent) {
+        guard let win = window, event.window === win else { return }
+        switch event.type {
+        case .leftMouseDown:
+            let localPoint = convert(event.locationInWindow, from: nil)
+            isDragging = bounds.contains(localPoint)
+            stopAutoScroll()
+        case .leftMouseDragged:
+            guard isDragging else { return }
+            let localPoint = convert(event.locationInWindow, from: nil)
+            // In AppKit coordinates, y=0 is at bottom, bounds.height is at top
+            if localPoint.y <= 14.0 {
+                startAutoScroll(lines: 1)
+            } else if localPoint.y >= bounds.height - 14.0 {
+                startAutoScroll(lines: -1)
+            } else {
+                stopAutoScroll()
+            }
+        case .leftMouseUp:
+            isDragging = false
+            stopAutoScroll()
+        default:
+            break
+        }
+    }
+
+    private func startAutoScroll(lines: Int) {
+        if activeScrollLines == lines && autoScrollTimer != nil { return }
+        stopAutoScroll()
+        activeScrollLines = lines
+
+        // 20Hz continuous scroll while mouse is held past the top or bottom viewport edge
+        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self = self, self.isDragging else { return }
+                if lines > 0 {
+                    self.scrollDown(lines: 1)
+                } else {
+                    self.scrollUp(lines: 1)
+                }
+                self.setNeedsDisplay(self.bounds)
+            }
+        }
+    }
+
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+        activeScrollLines = nil
+    }
+
+    // MARK: - ⌘C / ⌘V / ⌘A / ⌘K Keyboard Shortcut Interception
+    open override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if flags == .command {
+            guard let chars = event.charactersIgnoringModifiers?.lowercased() else {
+                return super.performKeyEquivalent(with: event)
+            }
+            switch chars {
+            case "c":
+                if selectionActive || (getSelection()?.isEmpty == false) {
+                    copy(self)
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                    return true
+                }
+            case "v":
+                if let str = NSPasteboard.general.string(forType: .string), !str.isEmpty {
+                    paste(self)
+                    return true
+                }
+            case "a":
+                selectAll()
+                return true
+            case "k":
+                TerminalManager.shared.clearScreen()
+                return true
+            default:
+                break
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    // MARK: - Native Context Menu
+    open override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let hasSelection = selectionActive || (getSelection()?.isEmpty == false)
+
+        let copyItem = NSMenuItem(title: "Copy", action: #selector(copyAction), keyEquivalent: "c")
+        copyItem.target = self
+        copyItem.isEnabled = hasSelection
+        menu.addItem(copyItem)
+
+        let pasteItem = NSMenuItem(title: "Paste", action: #selector(pasteAction), keyEquivalent: "v")
+        pasteItem.target = self
+        menu.addItem(pasteItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let selectAllItem = NSMenuItem(title: "Select All", action: #selector(selectAllAction), keyEquivalent: "a")
+        selectAllItem.target = self
+        menu.addItem(selectAllItem)
+
+        let clearItem = NSMenuItem(title: "Clear Buffer", action: #selector(clearBufferAction), keyEquivalent: "k")
+        clearItem.target = self
+        menu.addItem(clearItem)
+
+        return menu
+    }
+
+    @objc private func copyAction() {
+        copy(self)
+    }
+
+    @objc private func pasteAction() {
+        paste(self)
+    }
+
+    @objc private func selectAllAction() {
+        selectAll()
+    }
+
+    @objc private func clearBufferAction() {
+        TerminalManager.shared.clearScreen()
+    }
+}
+
 // MARK: - Terminal Manager (Persistent Shell Controller)
 @MainActor
 public final class TerminalManager: ObservableObject {
@@ -54,7 +229,7 @@ public final class TerminalManager: ObservableObject {
         return v
     }()
 
-    public private(set) var terminalView: LocalProcessTerminalView?
+    public private(set) var terminalView: PurahTerminalView?
     private weak var currentDelegate: LocalProcessTerminalViewDelegate?
     private var lastAppliedFontFamily: String = ""
     private var lastAppliedFontSize: CGFloat = 0
@@ -80,7 +255,7 @@ public final class TerminalManager: ObservableObject {
 
         terminalView?.removeFromSuperview()
 
-        let view = LocalProcessTerminalView(frame: initialFrame)
+        let view = PurahTerminalView(frame: initialFrame)
         view.autoresizingMask = [.width, .height]
         view.processDelegate = delegate
 

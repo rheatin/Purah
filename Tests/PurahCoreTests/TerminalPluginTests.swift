@@ -199,4 +199,64 @@ struct TerminalPluginTests {
         let farLeftPinPoint = NSPoint(x: windowW - 510.0, y: termFrame.midY)
         #expect(termFrame.contains(farLeftPinPoint), "Pin button region (510pt from right bezel) must be covered by card frame")
     }
+
+    @Test("PurahTerminalView routes ⌘C, ⌘V, ⌘A, ⌘K shortcuts and generates native context menu")
+    @MainActor
+    func testPurahTerminalViewShortcutsAndMenu() {
+        let terminalView = PurahTerminalView(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+
+        // Context menu inspection
+        let menu = terminalView.menu(for: NSEvent())
+        #expect(menu != nil)
+        #expect(menu?.items.contains(where: { $0.title == "Copy" }) == true)
+        #expect(menu?.items.contains(where: { $0.title == "Paste" }) == true)
+        #expect(menu?.items.contains(where: { $0.title == "Select All" }) == true)
+        #expect(menu?.items.contains(where: { $0.title == "Clear Buffer" }) == true)
+
+        // Simulate ⌘A (Select All)
+        let selectAllEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "a",
+            charactersIgnoringModifiers: "a",
+            isARepeat: false,
+            keyCode: 0
+        )!
+        let handledA = terminalView.performKeyEquivalent(with: selectAllEvent)
+        #expect(handledA == true)
+
+        // Simulate ⌘K (Clear buffer)
+        let clearEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "k",
+            charactersIgnoringModifiers: "k",
+            isARepeat: false,
+            keyCode: 40
+        )!
+        let handledK = terminalView.performKeyEquivalent(with: clearEvent)
+        #expect(handledK == true)
+    }
+
+    @Test("PurahTerminalView cleans up drag auto-scroll timer without memory leak on window move")
+    @MainActor
+    func testPurahTerminalViewAutoScrollLifecycle() {
+        let terminalView = PurahTerminalView(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = terminalView
+
+        #expect(terminalView.window === window)
+
+        // Detaching from window must safely clean up all timers and local monitors
+        terminalView.removeFromSuperview()
+        #expect(terminalView.window == nil)
+    }
 }

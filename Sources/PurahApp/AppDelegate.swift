@@ -25,6 +25,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // Persistent menu bar accessory app without dock icon
+        setupMainMenu()
 
         PluginRegistry.shared.bindStore(store)
 
@@ -85,6 +86,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             button.image?.isTemplate = true
         }
         rebuildMenu()
+    }
+
+    private func setupMainMenu() {
+        if NSApp.mainMenu == nil {
+            let mainMenu = NSMenu()
+
+            // Application Menu
+            let appMenu = NSMenu()
+            let appMenuItem = NSMenuItem(title: "Purah", action: nil, keyEquivalent: "")
+            appMenuItem.submenu = appMenu
+            mainMenu.addItem(appMenuItem)
+
+            // Edit Menu (Standard Cocoa ⌘C, ⌘V, ⌘A, ⌘X)
+            let editMenu = NSMenu(title: "Edit")
+            editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+            editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+            editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+            editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+            let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+            editMenuItem.submenu = editMenu
+            mainMenu.addItem(editMenuItem)
+
+            NSApp.mainMenu = mainMenu
+        }
     }
 
     private func setupStatusItem() {
