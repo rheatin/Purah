@@ -649,7 +649,6 @@ public struct FluidWaveformScrubber: View {
                     }
                     .frame(width: totalW, height: totalH)
                 }
-                .drawingGroup()
             }
             .contentShape(Rectangle())
             .gesture(

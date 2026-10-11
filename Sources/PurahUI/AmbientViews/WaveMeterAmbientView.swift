@@ -31,40 +31,20 @@ public struct WaveMeterAmbientView: View {
         let spacing: CGFloat = 2.0
         let barHeight = max((totalH - (CGFloat(barCount - 1) * spacing)) / CGFloat(barCount), 2.5)
 
-        Group {
-            if isPlaying && isAnimated && !reduceMotion {
-                // 30fps periodic sampling via Metal GPU Canvas to eliminate high CPU overhead and memory jitter
-                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
-                    Canvas { context, size in
-                        let time = timeline.date.timeIntervalSinceReferenceDate
-                        for idx in 0..<barCount {
-                            let phase = Double(idx) * 0.45
-                            let wave = (sin(time * 7.5 + phase) + cos(time * 4.2 + phase * 0.5) + 2.0) / 4.0
-                            let sampleIdx = idx % max(samples.count, 1)
-                            let amp = max(0.25, (samples[sampleIdx] * 0.4) + (wave * 0.6))
-                            let w = max(CGFloat(amp) * 8.0, 2.5)
-                            let y = CGFloat(idx) * (barHeight + spacing)
+        VStack(spacing: spacing) {
+            ForEach(0..<barCount, id: \.self) { idx in
+                let sampleIdx = idx % max(samples.count, 1)
+                let rawSample = samples.isEmpty ? 0.35 : samples[sampleIdx]
+                let amp = isPlaying ? max(rawSample, 0.25) : 0.25
+                let w = max(CGFloat(amp) * 8.0, 2.0)
 
-                            let rect = CGRect(x: size.width - w, y: y, width: w, height: barHeight)
-                            context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(musicColor))
-                        }
-                    }
-                    .frame(width: 8, height: totalH)
-                }
-            } else {
-                VStack(spacing: spacing) {
-                    ForEach(0..<barCount, id: \.self) { idx in
-                        let sampleIdx = idx % max(samples.count, 1)
-                        let amp = isPlaying ? (samples.isEmpty ? 0.4 : samples[sampleIdx]) : 0.25
-                        let w = max(CGFloat(amp) * 6.0, 2.0)
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(isPlaying ? musicColor : palette.borderColor)
-                            .frame(width: w, height: barHeight)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                }
-                .frame(width: 8, height: totalH)
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(isPlaying ? musicColor : palette.borderColor.opacity(0.6))
+                    .frame(width: w, height: barHeight)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .animation(isPlaying && isAnimated && !reduceMotion ? .easeInOut(duration: 0.35) : nil, value: w)
             }
         }
+        .frame(width: 8, height: totalH)
     }
 }

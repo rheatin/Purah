@@ -407,14 +407,19 @@ public final class MusicPluginState: Sendable {
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "music")) {
         self.storage = storage
         self.isWaveformAnimationEnabled = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) ?? true
-        self.track = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) ?? MusicTrackInfo()
+        var loadedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) ?? MusicTrackInfo()
+        loadedTrack.isPlaying = false
+        loadedTrack.playbackRate = 0.0
+        self.track = loadedTrack
     }
 
     public func load() {
         if let anim = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) {
             self.isWaveformAnimationEnabled = anim
         }
-        if let savedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) {
+        if var savedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) {
+            savedTrack.isPlaying = false
+            savedTrack.playbackRate = 0.0
             self.track = savedTrack
         }
     }

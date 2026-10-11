@@ -22,12 +22,12 @@ public struct MusicTrackInfo: Codable, Sendable {
         title: String = "Zelda's Lullaby",
         artist: String = "Purah OST",
         album: String = "Tears of the Kingdom",
-        isPlaying: Bool = true,
+        isPlaying: Bool? = nil,
         playbackProgress: Double = 0.42,
         currentPositionSeconds: Double = 88.0,
         durationSeconds: Double = 210.0,
         lastUpdated: Date = Date(),
-        playbackRate: Double = 1.0,
+        playbackRate: Double = 0.0,
         waveformSamples: [Double] = [0.2, 0.5, 0.8, 0.3, 0.9, 0.6, 0.4, 0.7, 0.5, 0.3],
         artworkData: Data? = nil,
         lyrics: String? = nil,
@@ -38,7 +38,7 @@ public struct MusicTrackInfo: Codable, Sendable {
         self.title = title
         self.artist = artist
         self.album = album
-        self.isPlaying = isPlaying
+        self.isPlaying = isPlaying ?? (playbackRate > 0)
         self.playbackProgress = playbackProgress
         self.currentPositionSeconds = currentPositionSeconds
         self.durationSeconds = durationSeconds
@@ -53,7 +53,7 @@ public struct MusicTrackInfo: Codable, Sendable {
     }
 
     public var calculatedCurrentTime: Double {
-        if isPlaying && playbackRate > 0 {
+        if (isPlaying || playbackRate > 0) && playbackRate > 0 {
             let elapsed = Date().timeIntervalSince(lastUpdated) * playbackRate
             return min(max(currentPositionSeconds + elapsed, 0.0), durationSeconds)
         }
