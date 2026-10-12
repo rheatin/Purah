@@ -852,6 +852,15 @@ struct DrawerInteractionUITests {
             store: store,
             onTogglePin: {}
         )
+        let hosting = NSHostingView(rootView: standardView)
+        hosting.frame = NSRect(x: 0, y: 0, width: 320, height: 95)
+        hosting.layoutSubtreeIfNeeded()
+        if let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
+            hosting.cacheDisplay(in: hosting.bounds, to: rep)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: "/tmp/cal_sample_button_check.png"))
+            }
+        }
         _ = standardView
 
         // Flagship Tier (>= 115pt)

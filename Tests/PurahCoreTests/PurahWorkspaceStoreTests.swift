@@ -334,4 +334,32 @@ struct PurahWorkspaceStoreTests {
         let reloadedTerminal = newStore.pods.first(where: { $0.id == "terminal" })
         #expect(reloadedTerminal?.isEnabled == !originalTerminalEnabled)
     }
+
+    @Test("Layout operations immediately persist to disk without requiring app quit or explicit save")
+    func testImmediateLayoutPersistenceOnOperations() {
+        let suiteName = "test_immediate_persistence_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+
+        // 1. Operation: movePod immediately persists
+        store.movePod(id: "shelf", to: .right)
+        let storeAfterMove = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        #expect(storeAfterMove.pods.first(where: { $0.id == "shelf" })?.edge == .right)
+
+        // 2. Operation: updatePodRange immediately persists
+        let targetPod = store.pods.first(where: { $0.id == "calendar" })!
+        let newRange = NormalizedRange(start: 0.12, length: 0.38)
+        store.updatePodRange(id: targetPod.id, newRange: newRange)
+        let storeAfterRange = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        let reloadedCal = storeAfterRange.pods.first(where: { $0.id == "calendar" })!
+        #expect(abs(reloadedCal.range.start - 0.12) < 0.05)
+
+        // 3. Operation: fillRail immediately persists
+        store.fillRail(podId: "calendar")
+        let storeAfterFill = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        let filledCal = storeAfterFill.pods.first(where: { $0.id == "calendar" })!
+        #expect(filledCal.range.length > 0.30)
+    }
 }

@@ -380,6 +380,7 @@ public struct CalendarItemDrawerView: View {
             }
 
             categoryTag(calColor: calColor, isPast: isPast)
+            sampleConnectBadge()
 
             pinButton(calColor: calColor)
         }
@@ -395,6 +396,7 @@ public struct CalendarItemDrawerView: View {
                     .foregroundColor(calColor)
 
                 categoryTag(calColor: calColor, isPast: isPast)
+                sampleConnectBadge()
 
                 if isOngoing {
                     HStack(spacing: 3) {
@@ -478,6 +480,7 @@ public struct CalendarItemDrawerView: View {
                     .foregroundColor(calColor)
 
                 categoryTag(calColor: calColor, isPast: isPast)
+                sampleConnectBadge()
 
                 if isOngoing {
                     HStack(spacing: 3) {
@@ -716,44 +719,50 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func categoryTag(calColor: Color, isPast: Bool) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 4.5) {
             Circle()
                 .fill(calColor)
                 .frame(width: 5, height: 5)
             Text(event.calendarTitle)
                 .purahBadge(size: 8.5, weight: .bold)
-
-            if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
-                Button {
-                    Task {
-                        let granted = await PermissionManager.shared.requestCalendarAccess()
-                        if granted {
-                            SystemCalendarSyncService.shared.syncEvents(into: store)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 7))
-                            .foregroundColor(.orange)
-                        Text("Sample · Connect")
-                            .font(.system(size: 7.5, weight: .bold))
-                            .foregroundColor(.orange)
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Color.orange.opacity(0.15))
-                    .cornerRadius(3)
-                }
-                .buttonStyle(.plain)
-                .help("Using sample events. Click to connect system Apple Calendar")
-            }
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.vertical, 2.5)
         .background(calColor.opacity(0.18))
         .foregroundColor(palette.style == .native ? Color.primary : Color.white)
         .cornerRadius(4)
+    }
+
+    @ViewBuilder
+    private func sampleConnectBadge() -> some View {
+        if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+            Button {
+                Task {
+                    let granted = await PermissionManager.shared.requestCalendarAccess()
+                    if granted {
+                        SystemCalendarSyncService.shared.syncEvents(into: store)
+                    }
+                }
+            } label: {
+                HStack(spacing: 3.5) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text("Sample · Connect")
+                        .font(.system(size: 8, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(Color.orange.opacity(0.14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+                )
+                .cornerRadius(4)
+            }
+            .buttonStyle(.tactile)
+            .help("Using sample events. Click to connect system Apple Calendar")
+        }
     }
 
     private func joinMeetingButton(url: URL, isOngoing: Bool, isAlerting: Bool, calColor: Color) -> some View {

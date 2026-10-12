@@ -245,20 +245,23 @@ public struct CalendarDrawerView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 3.5) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 7))
-                                .foregroundColor(.orange)
+                                .font(.system(size: 8, weight: .semibold))
                             Text("Sample · Connect")
-                                .font(.system(size: 7.5, weight: .bold))
-                                .foregroundColor(.orange)
+                                .font(.system(size: 8, weight: .semibold, design: .rounded))
                         }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.orange.opacity(0.15))
-                        .cornerRadius(3)
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(Color.orange.opacity(0.14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+                        )
+                        .cornerRadius(4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                     .help("Using sample events. Click to connect system Apple Calendar")
                 }
 
@@ -506,20 +509,23 @@ public struct CalendarAgendaOverviewDrawerView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 3.5) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 7))
-                                .foregroundColor(.orange)
+                                .font(.system(size: 8, weight: .semibold))
                             Text("Sample · Connect")
-                                .font(.system(size: 7.5, weight: .bold))
-                                .foregroundColor(.orange)
+                                .font(.system(size: 8, weight: .semibold, design: .rounded))
                         }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.orange.opacity(0.15))
-                        .cornerRadius(3)
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(Color.orange.opacity(0.14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+                        )
+                        .cornerRadius(4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                     .help("Using sample events. Click to connect system Apple Calendar")
                 }
 

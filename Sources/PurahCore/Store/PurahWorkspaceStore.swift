@@ -723,6 +723,7 @@ public final class PurahWorkspaceStore {
         defaults.set(customCatchCorridorPt, forKey: "purah.customCatchCorridorPt")
         defaults.set(customPushForceThreshold, forKey: "purah.customPushForceThreshold")
         defaults.set(customPushResistanceBarrier, forKey: "purah.customPushResistanceBarrier")
+        defaults.synchronize()
         notifyCapacityWarningIfNeeded()
     }
 
@@ -872,12 +873,14 @@ public final class PurahWorkspaceStore {
         )
         invalidateLayoutCache()
         savePersistentState()
+        onWindowsRebuildNeeded?()
     }
 
     public func movePod(id: String, to edge: MountEdge) {
         guard let index = pods.firstIndex(where: { $0.id == id }) else { return }
         pods[index].edge = edge
         autoLayoutAll()
+        onWindowsRebuildNeeded?()
     }
 
     // MARK: - Pod Reordering & Position Swapping
@@ -947,7 +950,6 @@ public final class PurahWorkspaceStore {
         }
 
         invalidateLayoutCache()
-        autoLayoutAll()
         savePersistentState()
         onWindowsRebuildNeeded?()
     }
