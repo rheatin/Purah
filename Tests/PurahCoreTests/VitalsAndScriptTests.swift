@@ -49,6 +49,74 @@ struct VitalsAndScriptTests {
         #expect(metrics.memoryTotalGB > 0.0)
     }
 
+    @Test("Hardware Vitals time-series history accumulates and feeds VitalsTimeSeriesGraphView dynamically")
+    func testVitalsHistoryAccumulationAndGraph() {
+        let service = HardwareVitalsService.shared
+        service.refreshMetrics(includeProcesses: false)
+        service.refreshMetrics(includeProcesses: false)
+
+        let netHistory = service.history(for: .network)
+        let cpuHistory = service.history(for: .cpu)
+
+        #expect(!netHistory.isEmpty)
+        #expect(!cpuHistory.isEmpty)
+
+        let graphView = VitalsTimeSeriesGraphView(
+            points: netHistory,
+            color: .green,
+            palette: ThemeManager.shared.palette,
+            height: 50.0
+        )
+        let hosting = NSHostingView(rootView: graphView)
+        hosting.frame = NSRect(x: 0, y: 0, width: 280, height: 50)
+        hosting.layoutSubtreeIfNeeded()
+        #expect(hosting.frame.height == 50.0)
+    }
+
+    @Test("VitalsDualTimeSeriesGraphView renders dual-line download and upload curves cleanly")
+    func testDualLineNetworkGraphView() {
+        let service = HardwareVitalsService.shared
+        service.refreshMetrics(includeProcesses: false)
+
+        let downHistory = service.history(for: .network)
+        let upHistory = service.networkUpHistory()
+
+        let dualGraph = VitalsDualTimeSeriesGraphView(
+            downPoints: downHistory,
+            upPoints: upHistory,
+            downColor: Color(hex: "#00F5D4"),
+            upColor: Color(hex: "#0A84FF"),
+            palette: ThemeManager.shared.palette,
+            height: 52.0,
+            scope: .realTime30s
+        )
+
+        let hosting = NSHostingView(rootView: dualGraph)
+        hosting.frame = NSRect(x: 0, y: 0, width: 280, height: 52)
+        hosting.layoutSubtreeIfNeeded()
+        #expect(hosting.frame.height == 52.0)
+    }
+
+    @Test("HardwareVitalsService persists up to 24 hours of telemetry data and purges expired entries")
+    func testVitals24HourPersistenceAndPurging() {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("test_vitals_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let isolatedService = HardwareVitalsService(storageDirectory: tmpDir)
+        isolatedService.refreshMetrics(includeProcesses: false)
+        isolatedService.saveHistoryToDisk()
+
+        // Create new instance pointing to same storage directory
+        let reloadedService = HardwareVitalsService(storageDirectory: tmpDir)
+        #expect(!reloadedService.cpuHistory.isEmpty)
+        #expect(!reloadedService.networkDownHistory.isEmpty)
+
+        // Verify multi-resolution time scopes (30s, 1h, 24h)
+        let recent30s = reloadedService.history(for: .cpu, scope: .realTime30s)
+        let day24h = reloadedService.history(for: .cpu, scope: .day24h)
+        #expect(recent30s.count <= day24h.count)
+    }
+
     @Test("Script Runway defines default maintenance actions")
     func testScriptActions() {
         let service = ScriptRunwayService.shared

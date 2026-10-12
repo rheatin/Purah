@@ -261,6 +261,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     public func applicationWillTerminate(_ notification: Notification) {
         SystemAudioLiveMonitor.shared.stop()
+        HardwareVitalsService.shared.saveHistoryToDisk()
         store.savePersistentState()
     }
 }

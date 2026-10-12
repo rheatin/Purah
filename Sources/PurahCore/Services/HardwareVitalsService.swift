@@ -87,16 +87,126 @@ public final class HardwareVitalsService {
     public static let shared = HardwareVitalsService()
 
     public private(set) var metrics: HardwareVitalsInfo = .init()
+    public private(set) var cpuHistory: [VitalsHistoryPoint] = []
+    public private(set) var gpuHistory: [VitalsHistoryPoint] = []
+    public private(set) var ramHistory: [VitalsHistoryPoint] = []
+    public private(set) var powerHistory: [VitalsHistoryPoint] = []
+    public private(set) var networkHistory: [VitalsHistoryPoint] = []
+    public private(set) var networkDownHistory: [VitalsHistoryPoint] = []
+    public private(set) var networkUpHistory: [VitalsHistoryPoint] = []
+    public private(set) var diskHistory: [VitalsHistoryPoint] = []
+
+    public var selectedTimeScope: VitalsTimeScope = .realTime30s
+
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
+    @ObservationIgnored private var saveThrottleCounter = 0
+
+    // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Vitals/
+    @ObservationIgnored public static let defaultStorageDirectory: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return appSupport.appendingPathComponent("Purah/Vitals", isDirectory: true)
+    }()
+
+    @ObservationIgnored public let storageDirectory: URL
+    @ObservationIgnored private var historyFileURL: URL {
+        storageDirectory.appendingPathComponent("vitals_history.json")
+    }
 
     public var isMonitoring: Bool {
         monitorTask != nil
     }
 
-    public init() {
+    public init(storageDirectory: URL = defaultStorageDirectory) {
+        self.storageDirectory = storageDirectory
+        loadHistoryFromDisk()
         // Collect initial baseline snapshot on startup without kicking off continuous kernel polling
         refreshMetrics(includeProcesses: false)
+    }
+
+    public func history(for metric: VitalsMetricType, scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
+        let activeScope = scope ?? selectedTimeScope
+        let allPoints: [VitalsHistoryPoint] = {
+            switch metric {
+            case .cpu: return cpuHistory
+            case .gpu: return gpuHistory
+            case .ram: return ramHistory
+            case .power: return powerHistory
+            case .network: return networkDownHistory
+            case .disk: return diskHistory
+            }
+        }()
+        let now = Date()
+        let dur = activeScope.durationSeconds
+        return allPoints.filter { now.timeIntervalSince($0.timestamp) <= dur }
+    }
+
+    public func networkUpHistory(scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
+        let activeScope = scope ?? selectedTimeScope
+        let now = Date()
+        let dur = activeScope.durationSeconds
+        return networkUpHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
+    }
+
+    private func appendHistory(_ array: inout [VitalsHistoryPoint], point: VitalsHistoryPoint, maxSamples: Int = 2880) {
+        let maxAge: TimeInterval = 24 * 3600 // Retain up to 24 hours of telemetry
+        let now = point.timestamp
+        if array.capacity < maxSamples + 10 {
+            array.reserveCapacity(maxSamples + 10)
+        }
+        array.append(point)
+        // Purge points older than 24 hours
+        if let first = array.first, now.timeIntervalSince(first.timestamp) > maxAge {
+            array.removeAll { now.timeIntervalSince($0.timestamp) > maxAge }
+        }
+        // Strict boundary: 2880 points (24 hours at 30-second cadence)
+        if array.count > maxSamples {
+            let overflow = array.count - maxSamples
+            array.removeFirst(overflow)
+        }
+    }
+
+    public func saveHistoryToDisk() {
+        let container = VitalsPersistedHistory(
+            cpu: cpuHistory,
+            gpu: gpuHistory,
+            ram: ramHistory,
+            power: powerHistory,
+            networkDown: networkDownHistory,
+            networkUp: networkUpHistory,
+            disk: diskHistory
+        )
+        do {
+            try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(container)
+            try data.write(to: historyFileURL, options: .atomic)
+        } catch {
+            // Silently ignore disk write failures in background
+        }
+    }
+
+    public func loadHistoryFromDisk() {
+        guard FileManager.default.fileExists(atPath: historyFileURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: historyFileURL)
+            let container = try JSONDecoder().decode(VitalsPersistedHistory.self, from: data)
+            let now = Date()
+            let maxAge: TimeInterval = 24 * 3600
+
+            // Strictly filter loaded points to within 24 hours
+            self.cpuHistory = container.cpu.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            self.gpuHistory = container.gpu.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            self.ramHistory = container.ram.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            self.powerHistory = container.power.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            self.networkDownHistory = container.networkDown.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            self.networkUpHistory = container.networkUp.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            self.networkHistory = self.networkDownHistory
+            self.diskHistory = container.disk.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+        } catch {
+            // In case of corrupt file, fallback to empty history
+        }
     }
 
     public func startMonitoring(interval: TimeInterval = 1.0) {
@@ -105,6 +215,11 @@ public final class HardwareVitalsService {
             while !Task.isCancelled {
                 guard let self = self else { break }
                 self.refreshMetrics(includeProcesses: false)
+                self.saveThrottleCounter += 1
+                if self.saveThrottleCounter >= 60 {
+                    self.saveThrottleCounter = 0
+                    self.saveHistoryToDisk()
+                }
                 try? await Task.sleep(for: .seconds(interval))
             }
         }
@@ -113,6 +228,7 @@ public final class HardwareVitalsService {
     public func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+        saveHistoryToDisk()
     }
 
     public func refreshMetrics(includeProcesses: Bool = true) {
@@ -139,6 +255,20 @@ public final class HardwareVitalsService {
             networkUpSpeed: net.up,
             topProcesses: top
         )
+
+        let now = Date()
+        appendHistory(&cpuHistory, point: VitalsHistoryPoint(timestamp: now, value: cpu))
+        appendHistory(&gpuHistory, point: VitalsHistoryPoint(timestamp: now, value: gpu))
+        appendHistory(&ramHistory, point: VitalsHistoryPoint(timestamp: now, value: mem.usage))
+        appendHistory(&powerHistory, point: VitalsHistoryPoint(timestamp: now, value: Double(battery.level) / 100.0))
+        let netRatio = min((net.down + net.up) / 10_485_760.0, 1.0)
+        let downRatio = min(net.down / 10_485_760.0, 1.0)
+        let upRatio = min(net.up / 10_485_760.0, 1.0)
+        appendHistory(&networkHistory, point: VitalsHistoryPoint(timestamp: now, value: netRatio))
+        appendHistory(&networkDownHistory, point: VitalsHistoryPoint(timestamp: now, value: downRatio))
+        appendHistory(&networkUpHistory, point: VitalsHistoryPoint(timestamp: now, value: upRatio))
+        let diskRatio = disk.totalGB > 0 ? (disk.totalGB - disk.freeGB) / disk.totalGB : 0.5
+        appendHistory(&diskHistory, point: VitalsHistoryPoint(timestamp: now, value: diskRatio))
     }
 
     public func refreshMetricsAsync(includeProcesses: Bool = false) async {
