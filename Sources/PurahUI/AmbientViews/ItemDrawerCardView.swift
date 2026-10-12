@@ -64,7 +64,7 @@ public struct TodoItemDrawerView: View {
                 .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH)
-        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
     private var itemDrawerTransition: AnyTransition {
@@ -264,7 +264,7 @@ public struct CalendarItemDrawerView: View {
                 .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH, alignment: .top)
-        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
         .onAppear {
             if isAlerting {
                 store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
@@ -931,7 +931,7 @@ public struct VitalsItemDrawerView: View {
                 .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH)
-        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
     private var telemetryRatio: Double {
@@ -1134,7 +1134,7 @@ public struct ScriptItemDrawerView: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
+        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
     private var itemDrawerTransition: AnyTransition {

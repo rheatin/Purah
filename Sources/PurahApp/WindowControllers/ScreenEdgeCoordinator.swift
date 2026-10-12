@@ -11,6 +11,7 @@ public final class ScreenEdgeCoordinator {
     private var rightRailWindow: AmbientRailWindow?
     public private(set) var activeScreen: NSScreen?
     public private(set) var isFrozen: Bool = false
+    private var isDismissingEdge: [MountEdge: Bool] = [:]
     nonisolated(unsafe) private var screenChangeObserver: (any NSObjectProtocol)?
 
     public init(store: PurahWorkspaceStore) {
@@ -135,6 +136,7 @@ public final class ScreenEdgeCoordinator {
     /// Dynamically expands rail canvas from 28pt compact docked width to full drawer canvas width (580pt)
     public func expandCanvas(for edge: MountEdge) {
         guard !isFrozen else { return }
+        isDismissingEdge[edge] = false
         if edge == .left {
             leftRailWindow?.setExpanded(true)
             leftRailWindow?.setInteractive(true)
@@ -146,6 +148,7 @@ public final class ScreenEdgeCoordinator {
 
     /// Dynamically collapses rail canvas back to 28pt compact width when drawers retract, saving ~20MB framebuffer memory
     public func collapseCanvas(for edge: MountEdge) {
+        guard isDismissingEdge[edge] != true else { return }
         let hasActive = (store.activePod?.edge == edge) && (store.activeDrawerPodId != nil || store.activeDrawerItemId != nil)
         let hasPinned = store.hasPinnedItem(on: edge)
         guard !hasActive && !hasPinned else { return }
@@ -186,7 +189,8 @@ public final class ScreenEdgeCoordinator {
             let isPinned = activeId.map { store.isItemPinned(id: $0) } ?? false
 
             if isCurrentOnEdge && !isPinned {
-                withAnimation(.spring(response: 0.18, dampingFraction: 0.90)) {
+                isDismissingEdge[targetEdge] = true
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.92)) {
                     store.activeDrawerItemId = nil
                     store.activeDrawerPodId = nil
                     store.hoveredPodId = nil
@@ -196,8 +200,9 @@ public final class ScreenEdgeCoordinator {
             setInteractive(false, for: targetEdge)
             EdgeMouseMonitor.shared?.resetEdgeState()
 
-            // Smoothly collapse window canvas back to compact 28pt width once drawer is tucked inside bezel
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            // Smoothly collapse window canvas back to compact 28pt width once drawer is 100% tucked inside bezel (~160ms animation + 140ms safe buffer = 300ms)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) { [weak self] in
+                self?.isDismissingEdge[targetEdge] = false
                 self?.collapseCanvas(for: targetEdge)
             }
         }
