@@ -2909,18 +2909,71 @@ public struct ClipboardItemDrawerView: View {
     }
 }
 
-// MARK: - Clipboard Full Drawer View (Polished Apple Design)
+// MARK: - Clipboard Full Drawer View (Polished Apple Design with Fuzzy Search)
 public struct ClipboardFullDrawerView: View {
+    public enum ClipboardCategoryFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case text = "Text"
+        case color = "Color"
+        case image = "Image"
+
+        public var id: String { rawValue }
+        public var iconName: String {
+            switch self {
+            case .all: return "square.grid.2x2"
+            case .text: return "doc.text"
+            case .color: return "paintpalette"
+            case .image: return "photo"
+            }
+        }
+    }
+
     public let state: ClipboardPluginState
     public let context: PurahPluginContext
+    @State private var searchText: String = ""
+    @State private var selectedFilter: ClipboardCategoryFilter = .all
     @State private var hoveredItemId: String? = nil
 
     private var palette: ThemePalette {
         context.palette
     }
 
+    private var filteredItems: [ClipboardItem] {
+        var baseItems = state.items
+        switch selectedFilter {
+        case .all:
+            break
+        case .text:
+            baseItems = baseItems.filter {
+                if case .text = $0.type { return true }
+                return false
+            }
+        case .color:
+            baseItems = baseItems.filter {
+                if case .color = $0.type { return true }
+                return false
+            }
+        case .image:
+            baseItems = baseItems.filter {
+                if case .image = $0.type { return true }
+                return false
+            }
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return baseItems }
+
+        return baseItems.compactMap { item -> (item: ClipboardItem, score: Int)? in
+            let match = FuzzySearchEngine.match(query: query, in: item.searchableContent)
+            guard match.matched else { return nil }
+            return (item, match.score)
+        }
+        .sorted { $0.score > $1.score }
+        .map(\.item)
+    }
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if state.items.isEmpty {
                 VStack(spacing: 10) {
                     Spacer()
@@ -2937,19 +2990,124 @@ public struct ClipboardFullDrawerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical, showsIndicators: true) {
-                    LazyVStack(spacing: 8) {
-                        ForEach(state.items) { item in
-                            clipboardCard(item: item)
+                searchHeaderView
+
+                let itemsToDisplay = filteredItems
+                if itemsToDisplay.isEmpty {
+                    emptySearchView
+                } else {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(spacing: 8) {
+                            ForEach(itemsToDisplay) { item in
+                                clipboardCard(item: item)
+                            }
                         }
+                        .padding(.vertical, 2)
+                        .padding(.trailing, 2)
                     }
-                    .padding(.vertical, 2)
-                    .padding(.trailing, 2)
-                }
-                .onDisappear {
-                    ClipboardHoverPreviewController.shared.hide()
+                    .onDisappear {
+                        ClipboardHoverPreviewController.shared.hide()
+                    }
                 }
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var searchHeaderView: some View {
+        VStack(spacing: 6) {
+            // Search Input Row
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundColor(palette.primaryAccent)
+
+                TextField("Search clips, colors, hex...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                if !searchText.isEmpty {
+                    // Match Count Badge
+                    Text("\(filteredItems.count)/\(state.items.count)")
+                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(Color.primary.opacity(0.08))
+                        .foregroundColor(.secondary)
+                        .cornerRadius(3)
+
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(palette.surfaceBackground)
+            .cornerRadius(7)
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
+            )
+
+            // Category Filter Pills
+            HStack(spacing: 4) {
+                ForEach(ClipboardCategoryFilter.allCases) { filter in
+                    Button {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                            selectedFilter = filter
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: filter.iconName)
+                                .font(.system(size: 8.5))
+                            Text(filter.rawValue)
+                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(selectedFilter == filter ? palette.primaryAccent.opacity(0.2) : Color.primary.opacity(0.04))
+                        .foregroundColor(selectedFilter == filter ? palette.primaryAccent : .secondary)
+                        .cornerRadius(5)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(selectedFilter == filter ? palette.primaryAccent.opacity(0.4) : Color.clear, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptySearchView: some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 26))
+                .foregroundColor(.secondary.opacity(0.6))
+            Text("No results for \"\(searchText)\"")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary)
+            Button {
+                searchText = ""
+                selectedFilter = .all
+            } label: {
+                Text("Clear Filters")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(palette.primaryAccent)
+            }
+            .buttonStyle(.tactile)
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

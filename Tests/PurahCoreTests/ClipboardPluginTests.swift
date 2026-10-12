@@ -279,4 +279,72 @@ struct ClipboardPluginTests {
         // Hide should have cancelled pending show
         controller.hide()
     }
+
+    @Test("FuzzySearchEngine matches substring, word prefixes, and subsequence fuzzy queries with relevance ranking")
+    func testFuzzySearchEngine() {
+        let targetText = "Project Purah Ergonomic Kernel"
+
+        // 1. Exact substring match
+        let exactMatch = FuzzySearchEngine.match(query: "Purah", in: targetText)
+        #expect(exactMatch.matched == true)
+        #expect(exactMatch.score >= 1000)
+
+        // 2. Word prefix match
+        let prefixMatch = FuzzySearchEngine.match(query: "ergo", in: targetText)
+        #expect(prefixMatch.matched == true)
+        #expect(prefixMatch.score >= 1000)
+
+        // 3. Subsequence fuzzy match (letters 'p', 'r', 'h' appear in sequence)
+        let fuzzyMatch = FuzzySearchEngine.match(query: "prh", in: targetText)
+        #expect(fuzzyMatch.matched == true)
+        #expect(fuzzyMatch.score > 0)
+
+        // Exact match must score higher than scattered fuzzy match
+        #expect(exactMatch.score > fuzzyMatch.score)
+
+        // 4. Non-matching query
+        let noMatch = FuzzySearchEngine.match(query: "zebra", in: targetText)
+        #expect(noMatch.matched == false)
+        #expect(noMatch.score == 0)
+
+        // 5. Empty query matches everything
+        let emptyMatch = FuzzySearchEngine.match(query: "   ", in: targetText)
+        #expect(emptyMatch.matched == true)
+    }
+
+    @Test("ClipboardItem searchableContent enables fuzzy search across text, colors, and image metadata")
+    func testClipboardItemSearchableContent() {
+        // Text item
+        let textItem = ClipboardItem(type: .text("Swift 6 Concurrency Architecture"))
+        let textMatch = FuzzySearchEngine.match(query: "swift concur", in: textItem.searchableContent)
+        #expect(textMatch.matched == true)
+
+        // Color item
+        let colorItem = ClipboardItem(type: .color(hex: "#FF5A60", red: 1.0, green: 0.353, blue: 0.376, alpha: 1.0))
+        let hexMatch = FuzzySearchEngine.match(query: "ff5a", in: colorItem.searchableContent)
+        #expect(hexMatch.matched == true)
+
+        let rgbMatch = FuzzySearchEngine.match(query: "rgb(255", in: colorItem.searchableContent)
+        #expect(rgbMatch.matched == true)
+
+        let colorWordMatch = FuzzySearchEngine.match(query: "color", in: colorItem.searchableContent)
+        #expect(colorWordMatch.matched == true)
+
+        // Image item
+        let imageItem = ClipboardItem(type: .image(
+            filePath: "/tmp/mock_screenshot_2026.png",
+            thumbnailPath: "/tmp/mock_screenshot_thumb.png",
+            pixelWidth: 1920,
+            pixelHeight: 1080,
+            byteSize: 204800
+        ))
+        let imageExtMatch = FuzzySearchEngine.match(query: "png", in: imageItem.searchableContent)
+        #expect(imageExtMatch.matched == true)
+
+        let imageDimMatch = FuzzySearchEngine.match(query: "1920x1080", in: imageItem.searchableContent)
+        #expect(imageDimMatch.matched == true)
+
+        let imageKeywordMatch = FuzzySearchEngine.match(query: "photo", in: imageItem.searchableContent)
+        #expect(imageKeywordMatch.matched == true)
+    }
 }
