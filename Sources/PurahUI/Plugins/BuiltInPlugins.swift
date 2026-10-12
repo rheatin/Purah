@@ -557,8 +557,8 @@ public struct MusicRailBarContainerView: View {
 
     public var body: some View {
         let storeTrack = store._musicTrack
-        let isPlaying = storeTrack.isPlaying
-        let liveTrack = !storeTrack.title.isEmpty ? storeTrack : state.track
+        let isPlaying = storeTrack.isPlaying || state.isPlaying || (SystemAudioLiveMonitor.shared.currentLevel > 0.008)
+        let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
 
         WaveMeterAmbientView(
             style: state.railStyle,
@@ -572,6 +572,7 @@ public struct MusicRailBarContainerView: View {
         )
         .frame(width: railWidth, height: slotHeight)
         .onAppear {
+            SystemAudioLiveMonitor.shared.start()
             SystemAudioLiveMonitor.shared.latencyOffsetMs = state.rhythmOffsetMs
         }
     }

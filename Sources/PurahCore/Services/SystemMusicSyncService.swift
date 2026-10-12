@@ -43,7 +43,6 @@ public final class SystemMusicSyncService {
     public func stopListening() {
         statusHeartbeatTimer?.invalidate()
         statusHeartbeatTimer = nil
-        SystemAudioLiveMonitor.shared.stop()
         let center = DistributedNotificationCenter.default()
         if let obs = musicObserver {
             center.removeObserver(obs)
@@ -476,12 +475,6 @@ public final class SystemMusicSyncService {
     private func updatePlaybackTimer(store: PurahWorkspaceStore?, isPlaying: Bool) {
         playbackTimer?.invalidate()
         playbackTimer = nil
-
-        if isPlaying {
-            SystemAudioLiveMonitor.shared.start()
-        } else {
-            SystemAudioLiveMonitor.shared.stop()
-        }
 
         guard isPlaying, let store = store else { return }
 

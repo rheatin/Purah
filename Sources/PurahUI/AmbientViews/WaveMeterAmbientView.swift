@@ -88,21 +88,16 @@ public struct WaveMeterAmbientView: View {
                 SystemAudioLiveMonitor.shared.start()
             }
         }
-        .onDisappear {
-            SystemAudioLiveMonitor.shared.stop()
-        }
         .onChange(of: style) { _, newStyle in
             if newStyle == .dynamicWaveform {
                 SystemAudioLiveMonitor.shared.start()
-            } else {
-                SystemAudioLiveMonitor.shared.stop()
             }
         }
     }
 
     // MARK: - Common Time-Anchor Progress Calculation
-    private func currentContinuousProgress(timeline: TimelineViewDefaultContext) -> Double {
-        let elapsed = isPlaying ? max(timeline.date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
+    private func currentContinuousProgress(at date: Date) -> Double {
+        let elapsed = isPlaying ? max(date.timeIntervalSince(track.lastUpdated), 0.0) : 0.0
         let effectiveRate = track.playbackRate > 0 ? track.playbackRate : (isPlaying ? 1.0 : 0.0)
         let currentPos = track.currentPositionSeconds + (elapsed * effectiveRate)
         if track.durationSeconds > 0 {
@@ -119,7 +114,7 @@ public struct WaveMeterAmbientView: View {
                 let w = size.width
                 let h = size.height
                 let centerX = w / 2.0
-                let continuousProgress = currentContinuousProgress(timeline: timeline)
+                let continuousProgress = currentContinuousProgress(at: timeline.date)
                 let playheadY = CGFloat(continuousProgress) * h
 
                 // 1. Background Track
@@ -156,7 +151,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (赛博霓虹电平塔 - 实时低频滤波与瞬态节拍冲击)
     private func neonVUTowerView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
@@ -165,33 +160,40 @@ public struct WaveMeterAmbientView: View {
                 let stepH: CGFloat = 8.0
                 let gap: CGFloat = 3.0
                 let count = max(Int((h - 4.0) / (stepH + gap)), 8)
-                let continuousProgress = currentContinuousProgress(timeline: timeline)
+                let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
+                let continuousProgress = currentContinuousProgress(at: timeline.date)
                 let playheadY = CGFloat(continuousProgress) * h
 
                 // Dark glass track
                 context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(Color.white.opacity(0.06)))
 
-                let activeBlocks: Int
-                if shouldAnimate {
-                    // Live CoreAudio soundcard stream telemetry
-                    let livePeak = Double(SystemAudioLiveMonitor.shared.currentLevel)
-                    let liveBass = Double(SystemAudioLiveMonitor.shared.currentBass)
-                    let liveBeat = Double(SystemAudioLiveMonitor.shared.currentBeat)
+                // Live CoreAudio soundcard stream telemetry
+                let livePeak = Double(SystemAudioLiveMonitor.shared.currentLevel)
+                let liveBass = Double(SystemAudioLiveMonitor.shared.currentBass)
+                let liveBeat = Double(SystemAudioLiveMonitor.shared.currentBeat)
 
-                    // 100% pure real-time soundcard telemetry:
-                    // Only active when physical sound energy is flowing
-                    if livePeak > 0.005 || liveBass > 0.005 {
-                        let baseLevel = max(livePeak * 0.45, liveBass * 0.55)
-                        let kickPunch = liveBeat * 0.50
-                        let combined = baseLevel + kickPunch
-                        let activeRatio = min(max(combined, 0.06), 1.0)
-                        activeBlocks = Int(round(Double(count) * activeRatio))
-                    } else {
-                        // Silent pause in playback: completely dormant
-                        activeBlocks = 0
-                    }
+                // Pure soundcard audio energy: active whenever physical sound is playing
+                let hasLiveAudio = (livePeak > 0.003 || liveBass > 0.003)
+
+                let activeBlocks: Int
+                if hasLiveAudio {
+                    // 1. Hardware live audio is available: 100% real acoustic soundcard drive
+                    let baseLevel = max(livePeak * 0.45, liveBass * 0.55)
+                    let kickPunch = liveBeat * 0.50
+                    let combined = baseLevel + kickPunch
+                    let activeRatio = min(max(combined, 0.08), 1.0)
+                    activeBlocks = Int(round(Double(count) * activeRatio))
+                } else if isPlaying {
+                    // 2. Music is playing, but hardware audio tap is silent or buffering:
+                    // Silky organic 120 BPM rhythmic bounce
+                    let beatPeriod = 0.50
+                    let beatPhase = (time.truncatingRemainder(dividingBy: beatPeriod) / beatPeriod)
+                    let kick = exp(-beatPhase * 4.5)
+                    let groove = sin(time * 2.4) * 0.12 + 0.32
+                    let activeRatio = min(max(groove + (kick * 0.38), 0.12), 0.90)
+                    activeBlocks = Int(round(Double(count) * activeRatio))
                 } else {
-                    // Not playing / paused: completely dormant
+                    // 3. Silent pause / stopped / no audio: completely dormant
                     activeBlocks = 0
                 }
 
@@ -235,7 +237,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Sub-Style 2: Aurora Wave Ribbon (极光呼吸声波带)
     private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isPlaying && isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
@@ -243,15 +245,16 @@ public struct WaveMeterAmbientView: View {
                 let h = size.height
                 let centerX = w / 2.0
                 let time = shouldAnimate ? timeline.date.timeIntervalSinceReferenceDate : 0.0
-                let continuousProgress = currentContinuousProgress(timeline: timeline)
+                let continuousProgress = currentContinuousProgress(at: timeline.date)
                 let playheadY = CGFloat(continuousProgress) * h
 
                 // Track
                 context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(musicColor.opacity(0.12)))
 
                 // Live volume dynamics directly expands ribbon
-                let livePeak = shouldAnimate ? Double(SystemAudioLiveMonitor.shared.currentLevel) : 0.0
-                let dynamicSpread = shouldAnimate ? (1.0 + CGFloat(livePeak) * 1.5) : 1.0
+                let livePeak = Double(SystemAudioLiveMonitor.shared.currentLevel)
+                let hasLiveAudio = (livePeak > 0.003) || isPlaying
+                let dynamicSpread = hasLiveAudio ? (1.0 + CGFloat(livePeak) * 1.5) : 1.0
 
                 let steps = 40
                 let dy = h / CGFloat(steps)
@@ -263,9 +266,9 @@ public struct WaveMeterAmbientView: View {
                 for i in 0...steps {
                     let y = CGFloat(i) * dy
                     let ny = Double(y / h)
-                    let wave = shouldAnimate
+                    let wave = hasLiveAudio
                         ? (sin(ny * 8.0 - time * 5.0) * 0.5 + cos(ny * 16.0 + time * 3.2) * 0.3 + 0.8)
-                        : (sin(ny * 7.0) * 0.4 + 0.7)
+                        : (sin(ny * 7.0) * 0.25 + 0.5)
                     let halfW = min(max(CGFloat(wave) * 1.8 * dynamicSpread, 1.2), w / 2.0 - 0.5)
                     rightPoints.append(CGPoint(x: centerX + halfW, y: y))
                     leftPoints.append(CGPoint(x: centerX - halfW, y: y))
