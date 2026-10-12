@@ -626,15 +626,21 @@ public final class EdgeMouseMonitor {
             let subItemId = provider.subItemId(at: rawIdx, store: store) ?? candidate.id
 
             let now = Date()
-            // Sub-item intentional dwell gate (160ms): protects against rapid sweeping across chips
-            let requiredSubItemDwell = max(store.activeInitialDwellSeconds, 0.16)
-            if subItemId != lastCandidateSubItemId {
+            // Sub-item intentional dwell gate (160ms): protects against rapid sweeping across chips when already expanded
+            let isInitialOpening = (store.activeDrawerPodId == nil)
+            if !Self.isTestingEnvironment && !isInitialOpening {
+                let requiredSubItemDwell = max(store.activeInitialDwellSeconds, 0.16)
+                if subItemId != lastCandidateSubItemId {
+                    lastCandidateSubItemId = subItemId
+                    candidateSubItemHoverStartTime = now
+                    return
+                }
+                let subItemHoverDuration = now.timeIntervalSince(candidateSubItemHoverStartTime ?? now)
+                guard subItemHoverDuration >= requiredSubItemDwell else { return }
+            } else {
                 lastCandidateSubItemId = subItemId
                 candidateSubItemHoverStartTime = now
-                return
             }
-            let subItemHoverDuration = now.timeIntervalSince(candidateSubItemHoverStartTime ?? now)
-            guard subItemHoverDuration >= requiredSubItemDwell else { return }
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {

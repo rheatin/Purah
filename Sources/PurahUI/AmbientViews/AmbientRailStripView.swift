@@ -57,7 +57,7 @@ public struct AmbientRailStripView: View {
                             genericRailBar(pod: pod, totalHeight: spanH)
                         }
                     }
-                    .frame(width: isThisPodActive ? geo.size.width : barW, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
+                    .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
                     .offset(y: startY)
                     .zIndex(isThisPodActive ? 100 : 1)
                 }

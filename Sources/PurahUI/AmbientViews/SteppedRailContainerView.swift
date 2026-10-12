@@ -71,13 +71,6 @@ public struct SteppedRailContainerView: View {
                             subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: itemH)
                                 .id(subItem.id)
                                 .offset(y: -shift)
-                                .onHover { isHovered in
-                                    if isHovered {
-                                        if store.dismissAlertOnHover && subItem.state == .alerting {
-                                            store.acknowledgeAlert(id: subItem.id)
-                                        }
-                                    }
-                                }
 
                             // Scope rail tap gestures strictly to the rail bar indicator shape (not the entire ZStack containing expanded card)
                             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
@@ -163,14 +156,16 @@ public struct SteppedRailContainerView: View {
     ) -> some View {
         let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
         let cardH = max(itemH, 32.0)
+        let drawerW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0)
+        let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)
 
-            if state == .expandedDrawer {
-                genericSubItemDrawerCard(subItem: subItem, isPinned: isPinned, cardH: cardH, tintColor: tintColor)
-                    .transition(itemDrawerTransition)
-            }
+            genericSubItemDrawerCard(subItem: subItem, isPinned: isPinned, cardH: cardH, tintColor: tintColor)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)

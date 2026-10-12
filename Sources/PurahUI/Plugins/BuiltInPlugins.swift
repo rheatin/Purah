@@ -2749,6 +2749,7 @@ public struct ClipboardItemDrawerView: View {
             return Color(hex: "#FF9F0A")
         }()
         let barW = CGFloat(store.railBarWidth)
+        let drawerW: CGFloat = 290.0
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Pure physical in-rail capsule (co-planar, NO icons)
@@ -2756,10 +2757,10 @@ public struct ClipboardItemDrawerView: View {
                 .fill(itemColor.opacity(isExpanded ? 0.95 : 0.70))
                 .frame(width: barW, height: isExpanded ? cardH : height)
 
-            if isExpanded {
-                steppedCard(cardH: cardH, itemColor: itemColor)
-                    .transition(itemDrawerTransition)
-            }
+            steppedCard(cardH: cardH, itemColor: itemColor)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
         }
         .frame(height: isExpanded ? cardH : height)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)

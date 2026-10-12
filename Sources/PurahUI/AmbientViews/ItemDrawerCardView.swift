@@ -48,6 +48,9 @@ public struct TodoItemDrawerView: View {
             return podColor
         }()
 
+        let effectiveW = store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0)
+        let isExpanded = (state == .expandedDrawer)
+
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline color bar (using native category list color)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
@@ -55,10 +58,10 @@ public struct TodoItemDrawerView: View {
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
                 .transaction { $0.animation = nil }
 
-            if state == .expandedDrawer {
-                expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
-                    .transition(itemDrawerTransition)
-            }
+            expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
@@ -236,6 +239,10 @@ public struct CalendarItemDrawerView: View {
             return podColor
         }()
 
+        let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
+        let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
+        let isExpanded = (state == .expandedDrawer)
+
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Rail-anchored indicator bar (co-planar flush height with dynamic attention beacon)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
@@ -248,17 +255,13 @@ public struct CalendarItemDrawerView: View {
                     baseWidth: CGFloat(store.railBarWidth),
                     color: calColor,
                     alertStyle: store.alertStyle,
-                    onHoverDismiss: {
-                        if store.dismissAlertOnHover {
-                            store.acknowledgeAlert(id: event.id)
-                        }
-                    }
+                    onHoverDismiss: {}
                 )
 
-            if state == .expandedDrawer {
-                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
-                    .transition(itemDrawerTransition)
-            }
+            expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH, alignment: .top)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
@@ -266,10 +269,18 @@ public struct CalendarItemDrawerView: View {
             if isAlerting {
                 store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
             }
+            if isExpanded && isAlerting {
+                store.acknowledgeAlert(id: event.id)
+            }
         }
         .onChange(of: isAlerting) { _, alerting in
             if alerting {
                 store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
+            }
+        }
+        .onChange(of: state) { _, newState in
+            if newState == .expandedDrawer && isAlerting {
+                store.acknowledgeAlert(id: event.id)
             }
         }
     }
@@ -898,6 +909,9 @@ public struct VitalsItemDrawerView: View {
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
 
+        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
+        let isExpanded = (state == .expandedDrawer)
+
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline bar (micro dynamic telemetry meter level)
             ZStack(alignment: .bottom) {
@@ -911,10 +925,10 @@ public struct VitalsItemDrawerView: View {
             }
             .frame(width: barW, height: cardH)
 
-            if state == .expandedDrawer {
-                expandedCard(cardH: cardH)
-                    .transition(itemDrawerTransition)
-            }
+            expandedCard(cardH: cardH)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH)
         .animation(.spring(response: 0.30, dampingFraction: 0.80), value: state)
@@ -1086,6 +1100,9 @@ public struct ScriptItemDrawerView: View {
         let barW = CGFloat(store.railBarWidth)
         let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
 
+        let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0)
+        let isExpanded = (state == .expandedDrawer)
+
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored indicator bar (micro icon, execution state indicator, and tactile feedback)
             ZStack(alignment: .center) {
@@ -1108,10 +1125,10 @@ public struct ScriptItemDrawerView: View {
             .scaleEffect(isHovered ? 1.02 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
 
-            if state == .expandedDrawer {
-                expandedCard(cardH: cardH)
-                    .transition(itemDrawerTransition)
-            }
+            expandedCard(cardH: cardH)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
         }
         .frame(height: cardH)
         .onHover { hovering in
