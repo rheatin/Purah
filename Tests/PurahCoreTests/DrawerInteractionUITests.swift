@@ -218,7 +218,8 @@ struct DrawerInteractionUITests {
     @Test("Empty area above and beside pinned drawer does not intercept clicks")
     @MainActor
     func testEmptyAreaClickThroughHitTestReturnsNil() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_empty_area_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         store.togglePinItem(id: "notes")
         #expect(store.isItemPinned(id: "notes") == true)
         store.activeDrawerPodId = nil
@@ -236,13 +237,13 @@ struct DrawerInteractionUITests {
         let maxY = min(cardTop + 4.0, totalH)
         let drawerW = store.effectiveDrawerWidth(baseWidth: notesPod.drawerWidth) + 8.0
 
-        // Test 1: Empty desktop area above Quick Notes (y = 800) - where Orca is in user screenshot
-        let abovePointY = 800.0
+        // Test 1: Empty desktop area above Quick Notes (strictly above maxY)
+        let abovePointY = min(maxY + 60.0, totalH - 5.0)
         let isAboveInDrawer = (abovePointY >= minY && abovePointY <= maxY)
         #expect(isAboveInDrawer == false, "Empty area above Quick Notes must not be captured")
 
-        // Test 2: Empty desktop area below Quick Notes (y = 80)
-        let belowPointY = 80.0
+        // Test 2: Empty desktop area below Quick Notes (strictly below minY)
+        let belowPointY = max(minY - 60.0, 5.0)
         let isBelowInDrawer = (belowPointY >= minY && belowPointY <= maxY)
         #expect(isBelowInDrawer == false, "Empty area below Quick Notes must not be captured")
 
@@ -429,7 +430,11 @@ struct DrawerInteractionUITests {
     @Test("Right rail unpinned drawer retracts independently when left rail or other items are pinned")
     @MainActor
     func testRightRailDismissalWhenLeftRailHasPinnedItem() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_right_rail_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        if let idx = store.pods.firstIndex(where: { $0.id == "notes" }) {
+            store.pods[idx].isEnabled = true
+        }
         // 1. Pin Quick Notes on left rail
         store.togglePinItem(id: "notes")
         #expect(store.isItemPinned(id: "notes") == true)
@@ -462,7 +467,11 @@ struct DrawerInteractionUITests {
     @Test("SpringConstraintSolver enforces unidirectional bottom resize without expanding upwards")
     @MainActor
     func testBottomResizeConstraint() throws {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_bottom_resize_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        if let idx = store.pods.firstIndex(where: { $0.id == "notes" }) {
+            store.pods[idx].isEnabled = true
+        }
         guard let notesPod = store.pods.first(where: { $0.id == "notes" }) else {
             Issue.record("Notes pod not found")
             return

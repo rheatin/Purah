@@ -11,19 +11,19 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.3</string>
+	<string>0.1.4</string>
 	<key>CFBundleVersion</key>
 	<string>2</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Purah uses audio capture to display real-time music rhythm visualizers on the edge rails.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Purah needs Apple Events access to control Music playback and observe current tracks.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Purah needs full calendar access to display your daily schedule and timeline on edge rails.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Purah needs calendar access to display your daily schedule and timeline on edge rails.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Purah uses audio capture to display real-time music rhythm visualizers on the edge rails.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Purah needs full reminders access to synchronize your tasks with ambient edge gauges.</string>
 	<key>NSRemindersUsageDescription</key>
