@@ -416,6 +416,18 @@ public final class EdgeMouseMonitor {
             return
         }
 
+        let isVerticalFling = flingDetector.evaluate(
+            point: CGPoint(x: (edge == .left) ? point.x - visibleRect.minX : visibleRect.maxX - point.x, y: point.y),
+            velocity: CGPoint(x: vel.x, y: vel.y),
+            edge: edge,
+            edgeMargin: Double(triggerW)
+        ) == .verticalFlingSuppressed
+
+        if isVerticalFling || abs(vel.y) > 250.0 {
+            cancelInitialDwell()
+            return
+        }
+
         let currentWindowY = visibleRect.maxY - point.y
         let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
         let matchedItem = layoutItems.first { item in
@@ -571,8 +583,12 @@ public final class EdgeMouseMonitor {
                 }
             }
         } else {
-            // Drawer already expanded: fast slide transition across pods along rail (40ms)
-            guard hoverDuration >= 0.04 || store.activeDrawerPodId == candidate.id else { return }
+            // Drawer already expanded: require deliberate dwell (160ms) to switch between pods along rail
+            let requiredSwitchDwell = max(store.activeInitialDwellSeconds, 0.16)
+            if isVerticalFling || abs(vel.y) > 200.0 {
+                return
+            }
+            guard hoverDuration >= requiredSwitchDwell || store.activeDrawerPodId == candidate.id else { return }
             activatePodDrawer(candidate: candidate, matched: matched, currentWindowY: currentWindowY, edge: edge)
         }
     }
@@ -610,19 +626,15 @@ public final class EdgeMouseMonitor {
             let subItemId = provider.subItemId(at: rawIdx, store: store) ?? candidate.id
 
             let now = Date()
-            // Sub-item intentional dwell gate (80ms): protects against rapid oscillation and jitter
-            if store.activeDrawerPodId == candidate.id, store.activeDrawerItemId != subItemId {
-                if subItemId != lastCandidateSubItemId {
-                    lastCandidateSubItemId = subItemId
-                    candidateSubItemHoverStartTime = now
-                    return
-                }
-                let subItemHoverDuration = now.timeIntervalSince(candidateSubItemHoverStartTime ?? now)
-                guard subItemHoverDuration >= 0.08 else { return }
-            } else {
+            // Sub-item intentional dwell gate (160ms): protects against rapid sweeping across chips
+            let requiredSubItemDwell = max(store.activeInitialDwellSeconds, 0.16)
+            if subItemId != lastCandidateSubItemId {
                 lastCandidateSubItemId = subItemId
                 candidateSubItemHoverStartTime = now
+                return
             }
+            let subItemHoverDuration = now.timeIntervalSince(candidateSubItemHoverStartTime ?? now)
+            guard subItemHoverDuration >= requiredSubItemDwell else { return }
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {

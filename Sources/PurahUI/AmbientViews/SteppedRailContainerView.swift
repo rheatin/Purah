@@ -13,8 +13,6 @@ public struct SteppedRailContainerView: View {
     public let startY: CGFloat
     public let screenHeight: CGFloat
 
-    @State private var dwellTask: Task<Void, Never>? = nil
-
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -78,28 +76,6 @@ public struct SteppedRailContainerView: View {
                                         if store.dismissAlertOnHover && subItem.state == .alerting {
                                             store.acknowledgeAlert(id: subItem.id)
                                         }
-                                        // If already active, keep steady without retriggering spring animations
-                                        if subItem.id == store.activeDrawerItemId {
-                                            return
-                                        }
-                                        dwellTask?.cancel()
-                                        let dwellSec = store.activeInitialDwellSeconds
-                                        if dwellSec <= 0.02 {
-                                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                                store.activateDrawer(podId: pod.id, itemId: subItem.id)
-                                            }
-                                        } else {
-                                            dwellTask = Task { @MainActor in
-                                                try? await Task.sleep(for: .seconds(dwellSec))
-                                                guard !Task.isCancelled else { return }
-                                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                                    store.activateDrawer(podId: pod.id, itemId: subItem.id)
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        dwellTask?.cancel()
-                                        dwellTask = nil
                                     }
                                 }
 
