@@ -23,6 +23,8 @@
 <!-- ═════════════════════ DEMO SHOWCASE ═════════════════════ -->
 <p align="center">
   <img src="assets/purah-showcase-30s.gif" width="880" alt="Purah macOS 交互演示" style="border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.35);" />
+  <br />
+  <sub>🎬 <em>使用 video-shotcraft 运镜剪辑的 100% 真机屏幕实录 &middot; <a href="assets/purah-showcase-30s.mp4">查看 1080p 原声视频</a></em></sub>
 </p>
 <!-- ═══════════════════════════════════════════════════════════ -->
 

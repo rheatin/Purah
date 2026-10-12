@@ -55,13 +55,17 @@ struct Desktop5PipelineMain {
         let rawVideoPath = "/tmp/purah_d5_full_take.mp4"
         try? FileManager.default.removeItem(atPath: rawVideoPath)
         
+        print("⏳ Waiting 3.5s for desktop switch to settle...")
+        sleep(3)
+        usleep(500000)
+        
         print("🎬 Starting 28-second screen recording on Desktop 5...")
         let captureProcess = Process()
         captureProcess.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         captureProcess.arguments = ["-v", "-k", "-C", "-V28", rawVideoPath]
         try? captureProcess.run()
         
-        usleep(800000) // 0.8s initial buffer
+        usleep(1000000) // 1.0s initial buffer
         
         // 1. Right Edge: Calendar (y=245)
         print("📍 [1/7] Exploring Calendar...")
