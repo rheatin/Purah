@@ -24,8 +24,6 @@ public final class EdgeMouseMonitor {
     private var currentDwellEdge: MountEdge?
     private var lastCandidatePodId: String?
     private var candidateHoverStartTime: Date?
-    private var lastCandidateSubItemId: String?
-    private var candidateSubItemHoverStartTime: Date?
     private var wasAtAbsoluteBezel: Bool = false
     private var bezelArrivalTime: Date? = nil
     private var isRunning: Bool = false
@@ -92,8 +90,6 @@ public final class EdgeMouseMonitor {
         bezelArrivalTime = nil
         lastCandidatePodId = nil
         candidateHoverStartTime = nil
-        lastCandidateSubItemId = nil
-        candidateSubItemHoverStartTime = nil
     }
 
     public func start() {
@@ -416,16 +412,21 @@ public final class EdgeMouseMonitor {
             return
         }
 
-        let isVerticalFling = flingDetector.evaluate(
-            point: CGPoint(x: (edge == .left) ? point.x - visibleRect.minX : visibleRect.maxX - point.x, y: point.y),
-            velocity: CGPoint(x: vel.x, y: vel.y),
-            edge: edge,
-            edgeMargin: Double(triggerW)
-        ) == .verticalFlingSuppressed
+        let isFromDockedState = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
 
-        if isVerticalFling || abs(vel.y) > 250.0 {
-            cancelInitialDwell()
-            return
+        // Rapid vertical movement suppression strictly applies when waking from docked state (prevents accidental popups when reaching for window controls or menus)
+        if isFromDockedState {
+            let isVerticalFling = flingDetector.evaluate(
+                point: CGPoint(x: (edge == .left) ? point.x - visibleRect.minX : visibleRect.maxX - point.x, y: point.y),
+                velocity: CGPoint(x: vel.x, y: vel.y),
+                edge: edge,
+                edgeMargin: Double(triggerW)
+            ) == .verticalFlingSuppressed
+
+            if isVerticalFling || abs(vel.y) > 250.0 {
+                cancelInitialDwell()
+                return
+            }
         }
 
         let currentWindowY = visibleRect.maxY - point.y
@@ -452,8 +453,6 @@ public final class EdgeMouseMonitor {
         }
 
         let hoverDuration = now.timeIntervalSince(candidateHoverStartTime ?? now)
-
-        let isFromDockedState = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
         let isAtAbsoluteBezel = (edge == .left) ? (point.x <= visibleRect.minX + 1.5) : (point.x >= visibleRect.maxX - 1.5)
 
         // 1. Calculate Edge Push Force (Barrier / Input Leap model)
@@ -583,12 +582,7 @@ public final class EdgeMouseMonitor {
                 }
             }
         } else {
-            // Drawer already expanded: require deliberate dwell (160ms) to switch between pods along rail
-            let requiredSwitchDwell = max(store.activeInitialDwellSeconds, 0.16)
-            if isVerticalFling || abs(vel.y) > 200.0 {
-                return
-            }
-            guard hoverDuration >= requiredSwitchDwell || store.activeDrawerPodId == candidate.id else { return }
+            // Drawer already expanded: instant slide transition across pods along rail (0ms latency)
             activatePodDrawer(candidate: candidate, matched: matched, currentWindowY: currentWindowY, edge: edge)
         }
     }
@@ -624,23 +618,6 @@ public final class EdgeMouseMonitor {
             let rawIdx = Int(max(podY, 0.0) / itemPitch)
             guard rawIdx >= 0 && rawIdx < count else { return }
             let subItemId = provider.subItemId(at: rawIdx, store: store) ?? candidate.id
-
-            let now = Date()
-            // Sub-item intentional dwell gate (160ms): protects against rapid sweeping across chips when already expanded
-            let isInitialOpening = (store.activeDrawerPodId == nil)
-            if !Self.isTestingEnvironment && !isInitialOpening {
-                let requiredSubItemDwell = max(store.activeInitialDwellSeconds, 0.16)
-                if subItemId != lastCandidateSubItemId {
-                    lastCandidateSubItemId = subItemId
-                    candidateSubItemHoverStartTime = now
-                    return
-                }
-                let subItemHoverDuration = now.timeIntervalSince(candidateSubItemHoverStartTime ?? now)
-                guard subItemHoverDuration >= requiredSubItemDwell else { return }
-            } else {
-                lastCandidateSubItemId = subItemId
-                candidateSubItemHoverStartTime = now
-            }
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
