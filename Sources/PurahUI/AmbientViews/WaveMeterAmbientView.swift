@@ -149,7 +149,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (赛博霓虹电平塔 - 实时低频滤波与瞬态节拍冲击)
+    // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (Real-time Low-pass Filter & Transient Beat Punch)
     private func neonVUTowerView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isAnimated && !reduceMotion
 
@@ -235,7 +235,7 @@ public struct WaveMeterAmbientView: View {
         .frame(width: barW, height: totalH)
     }
 
-    // MARK: - Sub-Style 2: Aurora Wave Ribbon (极光呼吸声波带)
+    // MARK: - Sub-Style 2: Aurora Wave Ribbon (Breathing Acoustic Ribbon)
     private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
         let shouldAnimate = isAnimated && !reduceMotion
 

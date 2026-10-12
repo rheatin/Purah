@@ -158,11 +158,6 @@ public final class PurahWorkspaceStore {
         onCapacityWarningToast?(message)
     }
 
-    @available(*, deprecated, message: "Use postToastNotification instead")
-    public func notifyEventAlertIfNeeded(for event: CalendarEventItem) {
-        postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
-    }
-
     // Edge Trigger Intentionality Sensitivity & Calibration
     public var edgeTriggerSensitivity: EdgeTriggerSensitivity = .balanced
     public var customInitialDwellMs: Double = 150.0

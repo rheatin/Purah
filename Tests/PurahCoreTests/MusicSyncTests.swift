@@ -45,13 +45,13 @@ struct MusicSyncTests {
     @Test("MusicTrackInfo supports local lyrics property and artwork caching")
     func testMusicTrackLyricsAndArtwork() {
         var track = MusicTrackInfo(
-            title: "会呼吸的痛",
-            artist: "梁静茹",
-            album: "崇拜",
-            lyrics: "在东京铁塔 第一次眺望\n看灯火模仿 坠落的星光"
+            title: "Bohemian Rhapsody",
+            artist: "Queen",
+            album: "A Night at the Opera",
+            lyrics: "Is this the real life? Is this just fantasy?\nCaught in a landslide, no escape from reality"
         )
         #expect(track.lyrics != nil)
-        #expect(track.lyrics?.contains("东京铁塔") == true)
+        #expect(track.lyrics?.contains("landslide") == true)
 
         let dummyData = "mock-artwork-bytes".data(using: .utf8)
         track.artworkData = dummyData

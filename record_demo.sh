@@ -3,13 +3,13 @@ set -e
 
 # ==============================================================================
 # Purah Real Screen Demo Recorder
-# 录制真实的 macOS 屏幕交互，并转换为高质量 GitHub README 演示 GIF
+# Records native macOS screen interactions and converts to high-quality README demo GIF
 # ==============================================================================
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-echo "🎨 [1/4] 检查构建最新版本 Purah..."
+echo "🎨 [1/4] Checking and building latest release of Purah..."
 swift build -c release --disable-sandbox
 
 APP_BIN=".build/out/Products/Release/Purah"
@@ -18,12 +18,12 @@ if [ ! -f "$APP_BIN" ]; then
 fi
 
 if [ ! -f "$APP_BIN" ]; then
-    echo "❌ 未找到构建的可执行文件，请确认 swift build 成功！"
+    echo "❌ Build binary not found, please verify swift build succeeded!"
     exit 1
 fi
 
-echo "🚀 [2/4] 启动真实 Purah 应用程序..."
-# 杀死可能存在的旧进程
+echo "🚀 [2/4] Launching Purah application..."
+# Terminate any existing instance
 pkill -x Purah 2>/dev/null || true
 "$APP_BIN" &
 APP_PID=$!
@@ -33,37 +33,37 @@ RAW_VIDEO="/tmp/purah_raw_capture.mp4"
 rm -f "$RAW_VIDEO"
 
 RECORD_SECONDS=14
-echo "🎬 [3/4] 准备开始录制屏幕 (将持续 $RECORD_SECONDS 秒)..."
-echo "   提示: 请在倒计时结束后，将鼠标滑向屏幕边缘体验交互："
-echo "   1. 滑向屏幕右侧边缘唤出【音乐律动】与【日程】"
-echo "   2. 滑向屏幕左侧边缘唤出【终端】"
-echo "   3. 按下 Option+Tab (⌥⇥) 体验一键冻结"
+echo "🎬 [3/4] Ready to record screen (duration: $RECORD_SECONDS seconds)..."
+echo "   Tip: After countdown, move mouse to screen edges to test interactions:"
+echo "   1. Slide towards right edge to reveal Music Wave & Calendar"
+echo "   2. Slide towards left edge to reveal Terminal"
+echo "   3. Press Option+Tab (⌥⇥) to toggle Freeze Mode"
 echo ""
 
 for i in 3 2 1; do
-    echo "   ⏳ $i 秒后开始录像..."
+    echo "   ⏳ Recording starts in $i seconds..."
     sleep 1
 done
 
-echo "🔴 录像中... 请操作！"
-# -v: 录制视频, -k: 捕获鼠标点击波纹, -C: 捕获光标, -V: 指定录制秒数
+echo "🔴 Recording in progress... Please interact!"
+# -v: record video, -k: capture click ripples, -C: capture cursor, -V: duration in seconds
 screencapture -v -k -C -V "$RECORD_SECONDS" "$RAW_VIDEO"
 
-echo "⏹ 录制完成！关闭演示进程..."
+echo "⏹ Recording complete! Terminating demo process..."
 kill $APP_PID 2>/dev/null || true
 
 if [ ! -f "$RAW_VIDEO" ]; then
-    echo "❌ 录像文件未能成功生成，请检查终端是否有「屏幕录制 (Screen Recording)」系统权限。"
+    echo "❌ Recording video was not generated. Please check Screen Recording system permissions."
     exit 1
 fi
 
-echo "🪄 [4/4] 正在压制高质量自适应调色板 GIF 与高清视频..."
+echo "🪄 [4/4] Encoding high-quality adaptive palette GIF and HD video..."
 mkdir -p assets
 
-# 复制高清 MP4
+# Copy HD MP4
 cp "$RAW_VIDEO" assets/purah-demo.mp4
 
-# 使用 ffmpeg 提取 256 色最优调色板并进行 Bayer 抖动压制
+# Extract optimal 256-color palette and encode with Bayer dithering via ffmpeg
 PALETTE="/tmp/purah_real_palette.png"
 /opt/homebrew/bin/ffmpeg -y -i "$RAW_VIDEO" \
     -vf "fps=25,scale=960:-1:flags=lanczos,palettegen=stats_mode=diff" \
@@ -76,6 +76,6 @@ PALETTE="/tmp/purah_real_palette.png"
 rm -f "$RAW_VIDEO" "$PALETTE"
 
 echo ""
-echo "🎉 真实演示录制成功！"
-echo "   • GIF 演示图: assets/purah-demo.gif ($(du -h assets/purah-demo.gif | awk '{print $1}'))"
-echo "   • MP4 原画视频: assets/purah-demo.mp4 ($(du -h assets/purah-demo.mp4 | awk '{print $1}'))"
+echo "🎉 Demo recording and encoding complete!"
+echo "   • GIF Demo: assets/purah-demo.gif ($(du -h assets/purah-demo.gif | awk '{print $1}'))"
+echo "   • MP4 Video: assets/purah-demo.mp4 ($(du -h assets/purah-demo.mp4 | awk '{print $1}'))"
