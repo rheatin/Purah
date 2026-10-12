@@ -120,8 +120,6 @@ public struct SteppedRailContainerView: View {
                 .frame(height: actualSpanH, alignment: .top)
             }
         }
-        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: store.activeDrawerPodId)
     }
 
     private func makeSubItemContext(for subItem: PurahPluginSubItem, itemH: CGFloat, isActive: Bool, isPinned: Bool) -> PurahPluginContext {

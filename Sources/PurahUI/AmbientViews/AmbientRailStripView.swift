@@ -59,7 +59,7 @@ public struct AmbientRailStripView: View {
                             genericRailBar(pod: pod, totalHeight: spanH)
                         }
                     }
-                    .frame(height: spanH, alignment: .top)
+                    .frame(width: isThisPodActive ? geo.size.width : barW, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
                     .offset(y: startY)
                     .zIndex(isThisPodActive ? 100 : 1)
                 }
@@ -224,8 +224,6 @@ public struct AmbientRailStripView: View {
             }
         }
         .frame(height: slotH, alignment: .top)
-        .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerItemId)
-        .animation(.spring(response: 0.28, dampingFraction: 0.76), value: store.activeDrawerPodId)
     }
 
     @ViewBuilder

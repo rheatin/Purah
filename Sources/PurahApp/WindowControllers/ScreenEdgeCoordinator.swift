@@ -182,7 +182,7 @@ public final class ScreenEdgeCoordinator {
         for targetEdge in targetEdges {
             let activeId = store.activeDrawerItemId ?? store.activeDrawerPodId
             let pod = activeId.flatMap { store.pod(forItemId: $0) }
-            let isCurrentOnEdge = (pod?.edge == targetEdge) || (store.activePod?.edge == targetEdge) || (store.activeDrawerPodId != nil)
+            let isCurrentOnEdge = (pod?.edge == targetEdge) || (store.activePod?.edge == targetEdge)
             let isPinned = activeId.map { store.isItemPinned(id: $0) } ?? false
 
             if isCurrentOnEdge && !isPinned {
