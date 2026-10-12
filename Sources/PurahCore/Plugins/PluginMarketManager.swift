@@ -59,7 +59,7 @@ public final class PluginMarketManager: Sendable {
             let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
             store.pods.removeAll { managedIds.contains($0.id) && !resolvedInstalledIds.contains($0.id) }
             resolvedInstalledIds.formUnion(store.pods.map(\.id))
-            store.autoLayoutAll()
+            store.invalidateLayoutCache()
         } else {
             resolvedInstalledIds = Set(store.pods.map(\.id))
         }
@@ -166,7 +166,7 @@ public final class PluginMarketManager: Sendable {
                 store.pods[i].isEnabled = savedSet.contains(store.pods[i].id)
             }
             self.enabledPluginIds = savedSet.union(store.pods.filter(\.isEnabled).map(\.id))
-            store.autoLayoutAll()
+            store.invalidateLayoutCache()
         }
     }
 

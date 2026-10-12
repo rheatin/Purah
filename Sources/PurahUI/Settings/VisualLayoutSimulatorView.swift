@@ -149,7 +149,11 @@ public struct VisualLayoutSimulatorView: View {
                             subtitle: "Physical trigger bezel thickness (4px ~ 16px)",
                             value: Binding(
                                 get: { store.railBarWidth },
-                                set: { store.railBarWidth = $0 }
+                                set: {
+                                    store.railBarWidth = $0
+                                    store.savePersistentState()
+                                    store.onWindowsRebuildNeeded?()
+                                }
                             ),
                             range: 4.0...16.0,
                             step: 1.0,
@@ -175,7 +179,10 @@ public struct VisualLayoutSimulatorView: View {
                                     options: DrawerWidthMode.allCases,
                                     selection: Binding(
                                         get: { store.drawerWidthMode },
-                                        set: { store.drawerWidthMode = $0 }
+                                        set: {
+                                            store.drawerWidthMode = $0
+                                            store.savePersistentState()
+                                        }
                                     ),
                                     titleForOption: { $0.displayName }
                                 )
@@ -187,7 +194,10 @@ public struct VisualLayoutSimulatorView: View {
                                     title: "Fixed Drawer Length",
                                     value: Binding(
                                         get: { store.fixedDrawerWidth },
-                                        set: { store.fixedDrawerWidth = $0 }
+                                        set: {
+                                            store.fixedDrawerWidth = $0
+                                            store.savePersistentState()
+                                        }
                                     ),
                                     range: 220.0...330.0,
                                     step: 5.0,

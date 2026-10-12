@@ -362,4 +362,33 @@ struct PurahWorkspaceStoreTests {
         let filledCal = storeAfterFill.pods.first(where: { $0.id == "calendar" })!
         #expect(filledCal.range.length > 0.30)
     }
+
+    @Test("App launch sequence with PluginMarketManager does not overwrite custom layout")
+    func testAppLaunchWithMarketManagerPreservesCustomLayout() {
+        let suiteName = "test_launch_preserve_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        // 1. Initial run: customize layout
+        let initialStore = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        initialStore.movePod(id: "music", to: .left)
+        guard let calPod = initialStore.pods.first(where: { $0.id == "calendar" }) else { return }
+        let customRange = NormalizedRange(start: 0.08, length: 0.45)
+        initialStore.updatePodRange(id: calPod.id, newRange: customRange)
+        initialStore.savePersistentState()
+
+        // 2. Simulate next app launch:
+        // PurahWorkspaceStore inits, then PluginRegistry binds store (instantiating PluginMarketManager)
+        let freshStore = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        let market = PluginMarketManager(store: freshStore, userDefaults: isolatedDefaults)
+        freshStore.setMarketManager(market)
+
+        // Custom edge must be preserved!
+        let reloadedMusic = freshStore.pods.first(where: { $0.id == "music" })
+        #expect(reloadedMusic?.edge == .left)
+
+        // Custom range must be preserved (not reset by autoLayoutAll)!
+        let reloadedCal = freshStore.pods.first(where: { $0.id == "calendar" })
+        #expect(abs((reloadedCal?.range.start ?? 0) - 0.08) < 0.05)
+    }
 }

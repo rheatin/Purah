@@ -1209,7 +1209,9 @@ public struct CalendarPluginSettingsView: View {
                                 state.maxRailEvents = Int($0)
                                 state.save()
                                 store.calendarMaxRailEvents = Int($0)
-                                store.autoLayoutAll()
+                                store.savePersistentState()
+                                store.invalidateLayoutCache()
+                                store.onWindowsRebuildNeeded?()
                             }
                         ),
                         range: 2...6,
@@ -1317,7 +1319,9 @@ public struct TodoPluginSettingsView: View {
                         state.maxRailTodos = Int($0)
                         state.save()
                         store.todoMaxRailTasks = Int($0)
-                        store.autoLayoutAll()
+                        store.savePersistentState()
+                        store.invalidateLayoutCache()
+                        store.onWindowsRebuildNeeded?()
                     }
                 ),
                 range: 2...10,

@@ -577,6 +577,7 @@ public final class PurahWorkspaceStore {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[idx].minLength = max(minPt / screenH, 0.05)
             }
+            invalidateLayoutCache()
         }
     }
 
@@ -604,7 +605,12 @@ public final class PurahWorkspaceStore {
         if let data = defaults.data(forKey: "purah.pods"),
            let savedPods = try? JSONDecoder().decode([SlotPod].self, from: data),
            !savedPods.isEmpty {
-            self.pods = savedPods
+            var merged = savedPods
+            let savedIds = Set(savedPods.map(\.id))
+            for def in Self.defaultPods() where !savedIds.contains(def.id) {
+                merged.append(def)
+            }
+            self.pods = merged
         }
 
         if let colors = defaults.dictionary(forKey: "purah.customPodColors") as? [String: String] {
