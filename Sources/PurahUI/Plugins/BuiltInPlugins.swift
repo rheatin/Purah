@@ -704,6 +704,11 @@ public struct CalendarPlugin: PurahPodPlugin {
         state.unmount(store: store)
     }
 
+    public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
+        context.performHaptic(.alignment)
+        context.requestExpand()
+    }
+
     public var supportedDrawerModes: Set<PurahDrawerMode> {
         if state.overflowStrategy == .continuousStream {
             return [.composite]
@@ -2766,7 +2771,8 @@ public struct ClipboardItemDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(height: isExpanded ? cardH : height)
+        .frame(width: drawerW, height: isExpanded ? cardH : height, alignment: edge == .right ? .topTrailing : .topLeading)
+        .transaction { $0.animation = nil }
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 

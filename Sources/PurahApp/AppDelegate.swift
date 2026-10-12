@@ -61,6 +61,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             self?.coordinator?.rebuildWindows()
         }
 
+        store.onRequestExpandCanvas = { [weak self] edge in
+            self?.coordinator?.expandCanvas(for: edge)
+            self?.coordinator?.setInteractive(true, for: edge)
+        }
+
         // Register global freeze/unfreeze hotkey shortcut
         GlobalHotKeyManager.shared.register(shortcut: store.hotKeyShortcut) { [weak self] in
             self?.toggleFreezeMode()

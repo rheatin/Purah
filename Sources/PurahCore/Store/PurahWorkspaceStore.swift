@@ -83,6 +83,9 @@ public final class PurahWorkspaceStore {
     }
 
     public func activateDrawer(podId: String, itemId: String? = nil) {
+        if let pod = pods.first(where: { $0.id == podId }) {
+            onRequestExpandCanvas?(pod.edge)
+        }
         activeDrawerPodId = podId
         activeDrawerItemId = itemId ?? podId
         hoveredPodId = podId
@@ -296,6 +299,7 @@ public final class PurahWorkspaceStore {
     public var onLocalMouseMove: (@MainActor (NSEvent) -> Void)?
     public var onPodEnabledChanged: (@MainActor (String, Bool) -> Void)?
     public var onWindowsRebuildNeeded: (@MainActor () -> Void)?
+    public var onRequestExpandCanvas: (@MainActor (MountEdge) -> Void)?
     private var lastCapacityAlertTime: Date?
 
     public func notifyCapacityWarningIfNeeded() {

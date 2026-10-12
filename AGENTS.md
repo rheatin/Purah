@@ -167,6 +167,16 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
 ---
 
+## 8. Strict Non-Regression & User Inquiry Mandate (防破坏既有功能与主动请示法则 - Mandatory)
+
+1. **Zero Degradation Rule (严禁破坏既有功能法则)**:
+   - When introducing new features, adding UI components, or optimizing layouts, developers/agents **MUST NEVER** casually insert content, alter hierarchy dimensions, or mutate state machines in a way that breaks or degrades existing stable functionality (e.g. ergonomic minimum height, click-through transparency, 0-flash bezel transitions, persistence, or gesture responsiveness).
+2. **Mandatory Inquiry on Ambiguity (不确定时主动向用户请示法则)**:
+   - When in doubt about whether a new UI element, extra control, layout mutation, or architectural change is truly necessary or how it balances against space constraints, **DO NOT make arbitrary assumptions**.
+   - Proactively ask the user targeted clarification questions first to confirm intent and desired trade-offs before implementation.
+
+---
+
 ## 6. Coding & Verification Standards
 
 - **Language Baseline**: Swift 6.0+ with complete strict concurrency checking (`-strict-concurrency=complete`).

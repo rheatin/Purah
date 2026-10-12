@@ -58,11 +58,13 @@ public struct AmbientRailStripView: View {
                         }
                     }
                     .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
+                    .transaction { $0.animation = nil }
                     .offset(y: startY)
                     .zIndex(isThisPodActive ? 100 : 1)
                 }
             }
             .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
+            .transaction { $0.animation = nil }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .left ? .leading : .trailing)
         .ignoresSafeArea()
@@ -85,9 +87,7 @@ public struct AmbientRailStripView: View {
             store: store,
             requestExpand: {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
+                    store.activateDrawer(podId: pod.id)
                 }
             },
             requestDismiss: {
@@ -164,9 +164,7 @@ public struct AmbientRailStripView: View {
             store: store,
             requestExpand: {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                    store.activeDrawerItemId = pod.id
-                    store.activeDrawerPodId = pod.id
-                    store.hoveredPodId = pod.id
+                    store.activateDrawer(podId: pod.id)
                 }
             },
             requestDismiss: {
@@ -201,6 +199,7 @@ public struct AmbientRailStripView: View {
             }
         }
         .frame(height: slotH, alignment: .top)
+        .transaction { $0.animation = nil }
     }
 
     @ViewBuilder

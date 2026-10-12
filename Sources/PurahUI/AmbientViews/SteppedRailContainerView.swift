@@ -79,14 +79,17 @@ public struct SteppedRailContainerView: View {
                                 .contentShape(Rectangle())
                                 .transaction { $0.animation = nil }
                                 .onTapGesture {
-                                    plugin.onRailBarTap(subItemId: subItem.id, context: context)
+                                    let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned)
+                                    plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
                                 }
                         }
                         .frame(height: itemH, alignment: .top)
+                        .transaction { $0.animation = nil }
                         .zIndex(isActive ? 100 : Double(10 - idx))
                     }
                 }
                 .frame(height: actualSpanH, alignment: .top)
+                .transaction { $0.animation = nil }
             }
         }
     }
@@ -167,7 +170,8 @@ public struct SteppedRailContainerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(height: cardH)
+        .frame(width: drawerW, height: cardH, alignment: edge == .right ? .trailing : .leading)
+        .transaction { $0.animation = nil }
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
