@@ -620,17 +620,11 @@ public final class EdgeMouseMonitor {
             let subItemId = provider.subItemId(at: rawIdx, store: store) ?? candidate.id
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                    store.activeDrawerItemId = subItemId
-                    store.activeDrawerPodId = candidate.id
-                }
+                store.activateDrawer(podId: candidate.id, itemId: subItemId)
             }
         } else {
             if store.activeDrawerPodId != candidate.id {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                    store.activeDrawerPodId = candidate.id
-                    store.activeDrawerItemId = candidate.id
-                }
+                store.activateDrawer(podId: candidate.id)
             }
         }
     }
