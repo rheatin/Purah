@@ -2771,8 +2771,7 @@ public struct ClipboardItemDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(width: drawerW, height: isExpanded ? cardH : height, alignment: edge == .right ? .topTrailing : .topLeading)
-        .transaction { $0.animation = nil }
+        .frame(height: isExpanded ? cardH : height)
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 

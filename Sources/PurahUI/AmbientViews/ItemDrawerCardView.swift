@@ -63,8 +63,7 @@ public struct TodoItemDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(width: effectiveW, height: cardH, alignment: edge == .right ? .trailing : .leading)
-        .transaction { $0.animation = nil }
+        .frame(height: cardH)
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
@@ -264,8 +263,7 @@ public struct CalendarItemDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(width: effectiveW, height: cardH, alignment: edge == .right ? .topTrailing : .topLeading)
-        .transaction { $0.animation = nil }
+        .frame(height: cardH, alignment: .top)
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
         .onAppear {
             if isAlerting {
@@ -932,8 +930,7 @@ public struct VitalsItemDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(width: effectiveW, height: cardH, alignment: edge == .right ? .trailing : .leading)
-        .transaction { $0.animation = nil }
+        .frame(height: cardH)
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
@@ -1133,8 +1130,7 @@ public struct ScriptItemDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(width: effectiveW, height: cardH, alignment: edge == .right ? .trailing : .leading)
-        .transaction { $0.animation = nil }
+        .frame(height: cardH)
         .onHover { hovering in
             isHovered = hovering
         }

@@ -473,8 +473,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 .opacity(isExpanded ? 1.0 : 0.0)
                 .allowsHitTesting(isExpanded)
         }
-        .frame(width: drawerW, height: cardH, alignment: edge == .right ? .topTrailing : .topLeading)
-        .transaction { $0.animation = nil }
+        .frame(height: cardH, alignment: .top)
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
