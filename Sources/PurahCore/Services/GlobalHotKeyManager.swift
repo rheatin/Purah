@@ -14,8 +14,16 @@ public final class GlobalHotKeyManager: Sendable {
     private var triggerAction: (@MainActor () -> Void)?
     public private(set) var currentShortcut: HotKeyShortcut?
 
+    public static var isTestingEnvironment: Bool {
+        NSClassFromString("XCTest") != nil ||
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.arguments.contains(where: { $0.contains("swiftpm-testing-helper") || $0.contains("xctest") })
+    }
+
     private init() {
-        installCarbonEventHandler()
+        if !Self.isTestingEnvironment {
+            installCarbonEventHandler()
+        }
     }
 
     public func register(shortcut: HotKeyShortcut, onTrigger: (@MainActor () -> Void)? = nil) {
@@ -23,6 +31,8 @@ public final class GlobalHotKeyManager: Sendable {
         unregister()
         self.triggerAction = action
         self.currentShortcut = shortcut
+
+        guard !Self.isTestingEnvironment else { return }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x50555248), id: 1) // 'PURH'
         var gMyHotKeyRef: EventHotKeyRef?

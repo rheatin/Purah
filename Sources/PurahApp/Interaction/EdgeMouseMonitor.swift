@@ -36,6 +36,12 @@ public final class EdgeMouseMonitor {
     public var customTargetVisibleRect: CGRect?
     public var customCurrentMouseLocation: NSPoint?
 
+    public static var isTestingEnvironment: Bool {
+        NSClassFromString("XCTest") != nil ||
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.arguments.contains(where: { $0.contains("swiftpm-testing-helper") || $0.contains("xctest") })
+    }
+
     public init(store: PurahWorkspaceStore, coordinator: ScreenEdgeCoordinator? = nil) {
         self.store = store
         self.coordinator = coordinator
@@ -91,6 +97,10 @@ public final class EdgeMouseMonitor {
     }
 
     public func start() {
+        guard !Self.isTestingEnvironment else {
+            isRunning = true
+            return
+        }
         stop()
         isRunning = true
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
@@ -104,7 +114,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func updateEventTapState() {
-        guard isRunning else {
+        guard isRunning, !Self.isTestingEnvironment else {
             tearDownEventTap()
             return
         }
@@ -137,6 +147,7 @@ public final class EdgeMouseMonitor {
     }
 
     private func setupEventTap() {
+        guard !Self.isTestingEnvironment else { return }
         tearDownEventTap()
         let eventMask = (1 << CGEventType.mouseMoved.rawValue) | (1 << CGEventType.leftMouseDragged.rawValue)
         let observer = Unmanaged.passUnretained(self).toOpaque()
