@@ -56,6 +56,7 @@ public final class AmbientRailWindow: NSPanel {
         // Symmetrically anchor layer contents to the physical screen border:
         // Left rail anchors to .topLeft, Right rail anchors to .topRight.
         // Even when canvas resizes between 28pt and 580pt, physical content never shifts.
+        hostingView.layerContentsPlacement = (edge == .right) ? .topRight : .topLeft
         hostingView.layer?.contentsGravity = (edge == .right) ? .topRight : .topLeft
         self.contentView = hostingView
     }

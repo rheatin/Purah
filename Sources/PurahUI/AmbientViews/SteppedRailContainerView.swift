@@ -79,6 +79,9 @@ public struct SteppedRailContainerView: View {
                                 .contentShape(Rectangle())
                                 .transaction { $0.animation = nil }
                                 .onTapGesture {
+                                    if store.dismissAlertOnHover && subItem.state == .alerting {
+                                        store.acknowledgeAlert(id: subItem.id)
+                                    }
                                     let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned)
                                     plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
                                 }

@@ -43,6 +43,14 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: isAlerting)
+            .onHover { isHovered in
+                if isHovered && isAlerting {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        onHoverDismiss()
+                    }
+                }
+            }
     }
 
     @ViewBuilder

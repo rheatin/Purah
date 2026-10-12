@@ -247,7 +247,11 @@ public struct CalendarItemDrawerView: View {
                     baseWidth: CGFloat(store.railBarWidth),
                     color: calColor,
                     alertStyle: store.alertStyle,
-                    onHoverDismiss: {}
+                    onHoverDismiss: {
+                        if store.dismissAlertOnHover {
+                            store.acknowledgeAlert(id: event.id)
+                        }
+                    }
                 )
 
             expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
