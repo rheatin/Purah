@@ -347,4 +347,53 @@ struct ClipboardPluginTests {
         let imageKeywordMatch = FuzzySearchEngine.match(query: "photo", in: imageItem.searchableContent)
         #expect(imageKeywordMatch.matched == true)
     }
+
+    @Test("ClipboardFullDrawerView instantiates properly in both compact (<220pt) and spacious (>=220pt) modes")
+    func testClipboardFullDrawerViewTiers() {
+        let store = PurahWorkspaceStore()
+        let state = ClipboardPluginState()
+        let pod = SlotPod(id: "clipboard", name: "Clipboard", systemIcon: "doc.on.clipboard.fill", edge: .left, range: .init(start: 0.1, length: 0.3), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20)
+
+        // 1. Compact Tier (slotHeight = 140pt)
+        let compactContext = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 12.0,
+            slotHeight: 140.0,
+            drawerWidth: 380.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .orange,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        let compactView = ClipboardFullDrawerView(state: state, context: compactContext)
+        let compactHosting = NSHostingView(rootView: compactView)
+        compactHosting.frame = NSRect(x: 0, y: 0, width: 380, height: 140)
+        #expect(compactHosting.bounds.height == 140)
+
+        // 2. Spacious Tier (slotHeight = 350pt)
+        let spaciousContext = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 12.0,
+            slotHeight: 350.0,
+            drawerWidth: 380.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .orange,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        let spaciousView = ClipboardFullDrawerView(state: state, context: spaciousContext)
+        let spaciousHosting = NSHostingView(rootView: spaciousView)
+        spaciousHosting.frame = NSRect(x: 0, y: 0, width: 380, height: 350)
+        #expect(spaciousHosting.bounds.height == 350)
+    }
 }

@@ -2938,6 +2938,10 @@ public struct ClipboardFullDrawerView: View {
         context.palette
     }
 
+    private var isCompact: Bool {
+        context.slotHeight < 220.0
+    }
+
     private var filteredItems: [ClipboardItem] {
         var baseItems = state.items
         switch selectedFilter {
@@ -2973,17 +2977,17 @@ public struct ClipboardFullDrawerView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: isCompact ? 4 : 8) {
             if state.items.isEmpty {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     Spacer()
 
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 32, weight: .regular))
+                        .font(.system(size: isCompact ? 24 : 32, weight: .regular))
                         .foregroundColor(Color(hex: "#FF9F0A"))
 
                     Text("No clipping yet")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: isCompact ? 11.5 : 13, weight: .semibold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
                     Spacer()
@@ -2997,7 +3001,7 @@ public struct ClipboardFullDrawerView: View {
                     emptySearchView
                 } else {
                     ScrollView(.vertical, showsIndicators: true) {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: isCompact ? 4 : 8) {
                             ForEach(itemsToDisplay) { item in
                                 clipboardCard(item: item)
                             }
@@ -3016,94 +3020,164 @@ public struct ClipboardFullDrawerView: View {
 
     @ViewBuilder
     private var searchHeaderView: some View {
-        VStack(spacing: 6) {
-            // Search Input Row
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
-                    .foregroundColor(palette.primaryAccent)
+        if isCompact {
+            // Ultra-Compact Single-Row Header (Height: ~22pt)
+            HStack(spacing: 5) {
+                HStack(spacing: 5) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(palette.primaryAccent)
 
-                TextField("Search clips, colors, hex...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    TextField("Search...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10.5, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                if !searchText.isEmpty {
-                    // Match Count Badge
-                    Text("\(filteredItems.count)/\(state.items.count)")
-                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.08))
-                        .foregroundColor(.secondary)
-                        .cornerRadius(3)
-
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
+                    if !searchText.isEmpty {
+                        Text("\(filteredItems.count)")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 3.5)
+                            .padding(.vertical, 1)
+                            .background(Color.primary.opacity(0.08))
                             .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(palette.surfaceBackground)
-            .cornerRadius(7)
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
-            )
+                            .cornerRadius(3)
 
-            // Category Filter Pills
-            HStack(spacing: 4) {
-                ForEach(ClipboardCategoryFilter.allCases) { filter in
-                    Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
-                            selectedFilter = filter
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
                         }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: filter.iconName)
-                                .font(.system(size: 8.5))
-                            Text(filter.rawValue)
-                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2.5)
-                        .background(selectedFilter == filter ? palette.primaryAccent.opacity(0.2) : Color.primary.opacity(0.04))
-                        .foregroundColor(selectedFilter == filter ? palette.primaryAccent : .secondary)
-                        .cornerRadius(5)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5)
-                                .stroke(selectedFilter == filter ? palette.primaryAccent.opacity(0.4) : Color.clear, lineWidth: 1)
-                        )
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
-                Spacer()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3.5)
+                .background(palette.surfaceBackground)
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(palette.borderColor.opacity(0.3), lineWidth: 1)
+                )
+
+                // Inline Compact Category Menu Picker
+                Menu {
+                    ForEach(ClipboardCategoryFilter.allCases) { filter in
+                        Button {
+                            selectedFilter = filter
+                        } label: {
+                            Label(filter.rawValue, systemImage: filter.iconName)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 2.5) {
+                        Image(systemName: selectedFilter.iconName)
+                            .font(.system(size: 8))
+                        Text(selectedFilter.rawValue)
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 6.5))
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 4)
+                    .background(selectedFilter == .all ? Color.primary.opacity(0.05) : palette.primaryAccent.opacity(0.18))
+                    .foregroundColor(selectedFilter == .all ? .secondary : palette.primaryAccent)
+                    .cornerRadius(5)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+        } else {
+            VStack(spacing: 6) {
+                // Search Input Row
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundColor(palette.primaryAccent)
+
+                    TextField("Search clips, colors, hex...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                    if !searchText.isEmpty {
+                        // Match Count Badge
+                        Text("\(filteredItems.count)/\(state.items.count)")
+                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(Color.primary.opacity(0.08))
+                            .foregroundColor(.secondary)
+                            .cornerRadius(3)
+
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(palette.surfaceBackground)
+                .cornerRadius(7)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
+                )
+
+                // Category Filter Pills
+                HStack(spacing: 4) {
+                    ForEach(ClipboardCategoryFilter.allCases) { filter in
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                selectedFilter = filter
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: filter.iconName)
+                                    .font(.system(size: 8.5))
+                                Text(filter.rawValue)
+                                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2.5)
+                            .background(selectedFilter == filter ? palette.primaryAccent.opacity(0.2) : Color.primary.opacity(0.04))
+                            .foregroundColor(selectedFilter == filter ? palette.primaryAccent : .secondary)
+                            .cornerRadius(5)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(selectedFilter == filter ? palette.primaryAccent.opacity(0.4) : Color.clear, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
             }
         }
     }
 
     @ViewBuilder
     private var emptySearchView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: isCompact ? 4 : 8) {
             Spacer()
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 26))
+                .font(.system(size: isCompact ? 18 : 26))
                 .foregroundColor(.secondary.opacity(0.6))
             Text("No results for \"\(searchText)\"")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: isCompact ? 10.5 : 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.secondary)
             Button {
                 searchText = ""
                 selectedFilter = .all
             } label: {
                 Text("Clear Filters")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: isCompact ? 9 : 10, weight: .medium))
                     .foregroundColor(palette.primaryAccent)
             }
             .buttonStyle(.tactile)
@@ -3116,167 +3190,185 @@ public struct ClipboardFullDrawerView: View {
     private func clipboardCard(item: ClipboardItem) -> some View {
         let isHovered = (hoveredItemId == item.id)
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: isCompact ? 4 : 8) {
             switch item.type {
             case .color(let hex, let r, let g, let b, let a):
-                HStack(spacing: 12) {
+                HStack(spacing: isCompact ? 8 : 12) {
                     // Tactile glass swatch
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: isCompact ? 5 : 8, style: .continuous)
                         .fill(Color(hex: hex))
-                        .frame(width: 42, height: 42)
+                        .frame(width: isCompact ? 24 : 42, height: isCompact ? 24 : 42)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: isCompact ? 5 : 8, style: .continuous)
                                 .stroke(Color.white.opacity(0.35), lineWidth: 1)
                         )
-                        .shadow(color: Color(hex: hex).opacity(0.35), radius: 3, x: 0, y: 1.5)
+                        .shadow(color: Color(hex: hex).opacity(0.35), radius: 2, x: 0, y: 1)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
+                        HStack(spacing: 5) {
                             Text(hex.uppercased())
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .font(.system(size: isCompact ? 11 : 13, weight: .bold, design: .monospaced))
                                 .foregroundColor(palette.style == .native ? .primary : .white)
 
-                            Text("COLOR")
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color(hex: hex).opacity(0.2))
-                                .foregroundColor(Color(hex: hex))
-                                .cornerRadius(3)
+                            if !isCompact {
+                                Text("COLOR")
+                                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color(hex: hex).opacity(0.2))
+                                    .foregroundColor(Color(hex: hex))
+                                    .cornerRadius(3)
+                            }
                         }
 
                         Text("RGB(\(Int(r * 255)), \(Int(g * 255)), \(Int(b * 255)))" + (a < 0.999 ? " • \(Int(a * 100))%" : ""))
-                            .font(.system(size: 9.5, design: .monospaced))
+                            .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
 
                     Spacer()
 
                     // Quick Action Buttons
-                    HStack(spacing: 6) {
+                    if !isCompact {
+                        HStack(spacing: 6) {
+                            Button {
+                                state.copyItem(item)
+                                context.performHaptic(.levelChange)
+                                context.showToast("Copied Hex", nil)
+                                context.requestDismiss()
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "number")
+                                        .font(.system(size: 8.5))
+                                    Text("Hex")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                }
+                            }
+                            .buttonStyle(.tactile)
+
+                            if let snippet = item.swiftUIColorSnippet {
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(snippet, forType: .string)
+                                    context.performHaptic(.levelChange)
+                                    context.showToast("Copied SwiftUI Code", nil)
+                                    context.requestDismiss()
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "swift")
+                                            .font(.system(size: 8.5))
+                                        Text("SwiftUI")
+                                            .font(.system(size: 9.5, weight: .semibold))
+                                    }
+                                }
+                                .buttonStyle(.tactile)
+                                .help("Copy as \(snippet)")
+                            }
+                        }
+                    } else {
                         Button {
                             state.copyItem(item)
                             context.performHaptic(.levelChange)
                             context.showToast("Copied Hex", nil)
                             context.requestDismiss()
                         } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "number")
-                                    .font(.system(size: 8.5))
-                                Text("Hex")
-                                    .font(.system(size: 9.5, weight: .semibold))
-                            }
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
                         }
                         .buttonStyle(.tactile)
-
-                        if let snippet = item.swiftUIColorSnippet {
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(snippet, forType: .string)
-                                context.performHaptic(.levelChange)
-                                context.showToast("Copied SwiftUI Code", nil)
-                                context.requestDismiss()
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "swift")
-                                        .font(.system(size: 8.5))
-                                    Text("SwiftUI")
-                                        .font(.system(size: 9.5, weight: .semibold))
-                                }
-                            }
-                            .buttonStyle(.tactile)
-                            .help("Copy as \(snippet)")
-                        }
                     }
                 }
 
             case .image(let path, let thumbPath, let w, let h, let bytes):
-                HStack(spacing: 12) {
+                HStack(spacing: isCompact ? 8 : 12) {
                     if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
                         let _ = { nsImg.cacheMode = .never }()
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 46, height: 46)
-                            .cornerRadius(8)
+                            .frame(width: isCompact ? 28 : 46, height: isCompact ? 28 : 46)
+                            .cornerRadius(isCompact ? 5 : 8)
                             .clipped()
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: isCompact ? 5 : 8)
                                     .stroke(Color.white.opacity(0.2), lineWidth: 1)
                             )
                     } else {
                         Image(systemName: "photo")
-                            .font(.title3)
-                            .frame(width: 46, height: 46)
+                            .font(.system(size: isCompact ? 14 : 18))
+                            .frame(width: isCompact ? 28 : 46, height: isCompact ? 28 : 46)
                             .background(Color.secondary.opacity(0.12))
-                            .cornerRadius(8)
+                            .cornerRadius(isCompact ? 5 : 8)
                     }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
+                        HStack(spacing: 5) {
                             Text("Image Clip")
-                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                .font(.system(size: isCompact ? 10.5 : 11.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(palette.style == .native ? .primary : .white)
 
                             Text("PNG")
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
+                                .font(.system(size: isCompact ? 7.5 : 8.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 0.5)
                                 .background(Color.blue.opacity(0.15))
                                 .foregroundColor(.blue)
-                                .cornerRadius(3)
+                                .cornerRadius(2.5)
                         }
 
                         Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
-                            .font(.system(size: 9.5, design: .monospaced))
+                            .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
                             .foregroundColor(.secondary)
 
-                        Text("Hover for detached Quick Look • Drag to export")
-                            .font(.system(size: 8.5))
-                            .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
+                        if !isCompact {
+                            Text("Hover for detached Quick Look • Drag to export")
+                                .font(.system(size: 8.5))
+                                .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
+                        }
                     }
 
                     Spacer()
 
                     Image(systemName: isHovered ? "eye.fill" : "arrow.up.and.down.and.arrow.left.and.right")
-                        .font(.system(size: 11))
+                        .font(.system(size: isCompact ? 9.5 : 11))
                         .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.6))
                 }
 
             case .text(let text):
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: isCompact ? 3 : 5) {
                     Text(text)
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(3)
-                        .lineSpacing(2)
+                        .font(.system(size: isCompact ? 10.5 : 11, design: .monospaced))
+                        .lineLimit(isCompact ? 2 : 3)
+                        .lineSpacing(isCompact ? 1 : 2)
                         .foregroundColor(palette.style == .native ? .primary : .white)
 
                     HStack {
                         Text("\(text.count) chars")
-                            .font(.system(size: 9, design: .monospaced))
+                            .font(.system(size: isCompact ? 8 : 9, design: .monospaced))
                             .foregroundColor(.secondary)
 
                         let lines = text.split(separator: "\n").count
                         if lines > 1 {
                             Text("• \(lines) lines")
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(.system(size: isCompact ? 8 : 9, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
 
                         Spacer()
 
-                        Text(isHovered ? "Hover for full text • Tap to copy" : "Click to copy • Drag snippet")
-                            .font(.system(size: 8.5))
+                        Text(isHovered ? "Hover for full text • Tap to copy" : (isCompact ? "Tap to copy" : "Click to copy • Drag snippet"))
+                            .font(.system(size: isCompact ? 8 : 8.5))
                             .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.7))
                     }
                 }
             }
         }
-        .padding(10)
+        .padding(isCompact ? 6 : 10)
         .background(isHovered ? Color.secondary.opacity(0.14) : Color.secondary.opacity(0.08))
-        .cornerRadius(10)
+        .cornerRadius(isCompact ? 7 : 10)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
                 .stroke(isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25), lineWidth: 1)
         )
         .contentShape(Rectangle())
