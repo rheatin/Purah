@@ -67,14 +67,6 @@ public struct TodoItemDrawerView: View {
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
     }
 
-    private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
     @ViewBuilder
     private func expandedCard(isDone: Bool, cardH: CGFloat, listColor: Color) -> some View {
         HStack(spacing: 8) {
@@ -283,14 +275,6 @@ public struct CalendarItemDrawerView: View {
                 store.acknowledgeAlert(id: event.id)
             }
         }
-    }
-
-    private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
     }
 
     @ViewBuilder
@@ -965,14 +949,6 @@ public struct VitalsItemDrawerView: View {
         )
     }
 
-    private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
     @ViewBuilder
     private func expandedCard(cardH: CGFloat) -> some View {
         let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
@@ -1135,14 +1111,6 @@ public struct ScriptItemDrawerView: View {
             isHovered = hovering
         }
         .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
-    }
-
-    private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
     }
 
     @ViewBuilder

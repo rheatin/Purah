@@ -447,14 +447,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
         self.store = store
     }
 
-    private var drawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
     public var body: some View {
         let podColor = palette.podColor(for: "calendar")
         let cardH = max(slotHeight, 32.0)

@@ -288,12 +288,4 @@ public struct SteppedRailContainerView: View {
             )
         }
     }
-
-    private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
 }

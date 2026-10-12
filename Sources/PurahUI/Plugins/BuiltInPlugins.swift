@@ -2740,14 +2740,6 @@ public struct ClipboardItemDrawerView: View {
         }
     }
 
-    private var itemDrawerTransition: AnyTransition {
-        let edgeDirection: Edge = (edge == .right) ? .trailing : .leading
-        return .asymmetric(
-            insertion: .move(edge: edgeDirection),
-            removal: .move(edge: edgeDirection)
-        )
-    }
-
     public var body: some View {
         let isExpanded = (state == .expandedDrawer)
         let cardH = max(height, 44.0)
