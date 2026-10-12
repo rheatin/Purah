@@ -391,4 +391,33 @@ struct PurahWorkspaceStoreTests {
         let reloadedCal = freshStore.pods.first(where: { $0.id == "calendar" })
         #expect(abs((reloadedCal?.range.start ?? 0) - 0.08) < 0.05)
     }
+
+    @Test("Disabling pods to leave only 4 active pods preserves exact 4 pods across app restarts")
+    func testLeavingFourPodsPreservedAcrossRestarts() {
+        let suiteName = "test_four_pods_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        let market = PluginMarketManager(store: store, userDefaults: isolatedDefaults)
+        store.setMarketManager(market)
+
+        // Keep only 4 pods enabled (e.g. calendar, music, vitals, shelf)
+        let keepIds: Set<String> = ["calendar", "music", "vitals", "shelf"]
+        for pod in store.pods {
+            if !keepIds.contains(pod.id) && pod.isEnabled {
+                store.togglePodEnabled(id: pod.id)
+            }
+        }
+        #expect(store.pods.filter(\.isEnabled).count == 4)
+
+        // Simulate app relaunch
+        let relaunchedStore = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        let relaunchedMarket = PluginMarketManager(store: relaunchedStore, userDefaults: isolatedDefaults)
+        relaunchedStore.setMarketManager(relaunchedMarket)
+
+        let enabledPods = relaunchedStore.pods.filter(\.isEnabled)
+        #expect(enabledPods.count == 4)
+        #expect(Set(enabledPods.map(\.id)) == keepIds)
+    }
 }

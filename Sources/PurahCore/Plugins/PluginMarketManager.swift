@@ -159,19 +159,14 @@ public final class PluginMarketManager: Sendable {
     }
 
     public func loadPersistentState() {
-        if let savedEnabled = UserDefaults.standard.stringArray(forKey: "purah.market.enabledPluginIds") {
-            let savedSet = Set(savedEnabled)
-            let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
-            for i in store.pods.indices where managedIds.contains(store.pods[i].id) {
-                store.pods[i].isEnabled = savedSet.contains(store.pods[i].id)
-            }
-            self.enabledPluginIds = savedSet.union(store.pods.filter(\.isEnabled).map(\.id))
-            store.invalidateLayoutCache()
-        }
+        // Derive enabled IDs strictly from store.pods (the single source of truth for pod state)
+        self.enabledPluginIds = Set(store.pods.filter(\.isEnabled).map(\.id))
+        store.invalidateLayoutCache()
     }
 
     public func savePersistentState() {
         userDefaults.set(Array(installedPluginIds), forKey: userDefaultsKey)
-        UserDefaults.standard.setValue(Array(enabledPluginIds), forKey: "purah.market.enabledPluginIds")
+        let enabled = Array(store.pods.filter(\.isEnabled).map(\.id))
+        UserDefaults.standard.setValue(enabled, forKey: "purah.market.enabledPluginIds")
     }
 }

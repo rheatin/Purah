@@ -173,6 +173,12 @@ public struct PodCapsuleView: View {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                 onSnapAbove()
                             }
+                        } else if abs(verticalDistance) >= 4.0 {
+                            let deltaRatio = Double(verticalDistance / canvasHeight)
+                            let newStart = pod.range.start + deltaRatio
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                onMove(newStart)
+                            }
                         }
                     }
             )

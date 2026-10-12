@@ -607,7 +607,8 @@ public final class PurahWorkspaceStore {
            !savedPods.isEmpty {
             var merged = savedPods
             let savedIds = Set(savedPods.map(\.id))
-            for def in Self.defaultPods() where !savedIds.contains(def.id) {
+            for var def in Self.defaultPods() where !savedIds.contains(def.id) {
+                def.isEnabled = false
                 merged.append(def)
             }
             self.pods = merged
@@ -762,6 +763,9 @@ public final class PurahWorkspaceStore {
                 return
             }
             pods[index].isEnabled = true
+            let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
+            let minPt = Double(minimumDrawerHeight(for: pod.id))
+            pods[index].minLength = max(minPt / screenH, 0.05)
             if id == "clipboard" {
                 SystemClipboardSyncService.shared.startListening()
             } else if id == "vitals" {
@@ -782,7 +786,10 @@ public final class PurahWorkspaceStore {
             }
             onPodEnabledChanged?(id, false)
         }
-        autoLayoutAll()
+        _marketManager?.enabledPluginIds = Set(pods.filter(\.isEnabled).map(\.id))
+        _marketManager?.savePersistentState()
+        invalidateLayoutCache()
+        savePersistentState()
         onWindowsRebuildNeeded?()
     }
 
