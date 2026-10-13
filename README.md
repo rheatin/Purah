@@ -65,6 +65,7 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 | **Drop Shelf** | `tray.fill` | Temporary desktop shelf for drag-and-drop file staging. |
 | **Quick Notes** | `note.text` | Instant scratchpad for fleeting thoughts and code snippets. |
 | **Script Runway** | `terminal.fill` | Quick-fire developer automation runway for everyday maintenance tasks. |
+| **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with color preview, image caching, and fuzzy search. |
 
 > 🚀 **More to come**: Additional plugins, custom widgets, and third-party developer extensibility are actively in development.
 

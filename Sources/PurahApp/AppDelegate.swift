@@ -50,9 +50,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         store.onPodEnabledChanged = { [weak self] podId, isEnabled in
             guard let self = self else { return }
             if isEnabled {
-                PluginRegistry.shared.plugin(for: podId)?.onMount(store: self.store)
+                PluginRegistry.shared.mountPlugin(id: podId, store: self.store)
             } else {
-                PluginRegistry.shared.plugin(for: podId)?.onUnmount(store: self.store)
+                PluginRegistry.shared.unmountPlugin(id: podId, store: self.store)
             }
             self.coordinator?.rebuildWindows()
         }

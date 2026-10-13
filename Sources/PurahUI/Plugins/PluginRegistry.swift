@@ -9,6 +9,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     private var registeredPlugins: [String: any PurahPodPlugin] = [:]
     private var catalogPlugins: [String: any PurahPodPlugin] = [:]
     private var pollingTasks: [String: Task<Void, Never>] = [:]
+    private var mountedPluginIds: Set<String> = []
     private weak var boundStore: PurahWorkspaceStore?
 
     public init() {
@@ -38,14 +39,14 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     }
 
     public func register(_ plugin: any PurahPodPlugin, store: PurahWorkspaceStore? = nil) {
-        catalogPlugins[plugin.manifest.id] = plugin
-        registeredPlugins[plugin.manifest.id] = plugin
+        let id = plugin.manifest.id
+        catalogPlugins[id] = plugin
+        registeredPlugins[id] = plugin
         if let store {
             self.boundStore = store
             store.marketManager.addCatalogManifest(plugin.manifest)
             store.registerCapabilityProvider(plugin)
-            plugin.onMount(store: store)
-            startPollingIfNeeded(for: plugin, store: store)
+            mountPlugin(id: id, store: store)
         }
     }
 
@@ -56,39 +57,54 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         market.lifecycleDelegate = self
         PluginMarketManager.globalLifecycleDelegate = self
         for plugin in catalogPlugins.values {
-            if market.isInstalled(id: plugin.manifest.id) {
-                registeredPlugins[plugin.manifest.id] = plugin
+            let id = plugin.manifest.id
+            if market.isInstalled(id: id) {
+                registeredPlugins[id] = plugin
                 store.registerCapabilityProvider(plugin)
                 // Strict on-demand mount: only mount if the pod is actually enabled on an active rail!
                 // Disabled plugins (e.g. terminal, clipboard by default) remain 100% idle with 0 resource footprint.
-                let isEnabledOnRail = store.pods.contains(where: { $0.id == plugin.manifest.id && $0.isEnabled })
+                let isEnabledOnRail = store.pods.contains(where: { $0.id == id && $0.isEnabled })
                 if isEnabledOnRail {
-                    plugin.onMount(store: store)
-                    startPollingIfNeeded(for: plugin, store: store)
+                    mountPlugin(id: id, store: store)
+                } else {
+                    unmountPlugin(id: id, store: store)
                 }
             } else {
-                if let removed = registeredPlugins.removeValue(forKey: plugin.manifest.id) {
-                    store.unregisterCapabilityProvider(for: plugin.manifest.id)
-                    stopPolling(for: plugin.manifest.id)
-                    removed.onUnmount(store: store)
-                } else {
-                    store.unregisterCapabilityProvider(for: plugin.manifest.id)
-                    stopPolling(for: plugin.manifest.id)
-                    plugin.onUnmount(store: store)
+                if let _ = registeredPlugins.removeValue(forKey: id) {
+                    store.unregisterCapabilityProvider(for: id)
+                    unmountPlugin(id: id, store: store)
                 }
             }
         }
     }
 
+    public func mountPlugin(id: String, store: PurahWorkspaceStore) {
+        guard !mountedPluginIds.contains(id), let plugin = registeredPlugins[id] else { return }
+        mountedPluginIds.insert(id)
+        plugin.onMount(store: store)
+        startPollingIfNeeded(for: plugin, store: store)
+    }
+
+    public func unmountPlugin(id: String, store: PurahWorkspaceStore) {
+        guard mountedPluginIds.contains(id), let plugin = registeredPlugins[id] ?? catalogPlugins[id] else { return }
+        mountedPluginIds.remove(id)
+        stopPolling(for: id)
+        plugin.onUnmount(store: store)
+    }
+
+    public func isPluginMounted(id: String) -> Bool {
+        mountedPluginIds.contains(id)
+    }
+
     public func unregister(id: String, store: PurahWorkspaceStore? = nil) {
         stopPolling(for: id)
-        if let plugin = registeredPlugins.removeValue(forKey: id) {
+        if let _ = registeredPlugins.removeValue(forKey: id) {
             let targetStore = store ?? boundStore
             if let targetStore {
                 targetStore.unregisterCapabilityProvider(for: id)
-                plugin.onUnmount(store: targetStore)
+                unmountPlugin(id: id, store: targetStore)
             } else {
-                plugin.onUnmount(store: PurahWorkspaceStore())
+                mountedPluginIds.remove(id)
             }
         }
     }

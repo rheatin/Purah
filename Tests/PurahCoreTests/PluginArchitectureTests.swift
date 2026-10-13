@@ -1286,4 +1286,68 @@ struct PluginArchitectureTests {
             }
         }
     }
+
+    @Test("PluginRegistry enforces mount/unmount symmetry, guards against double mount and never-mounted unmount")
+    @MainActor
+    func testLifecycleGuardsAndDeduplication() {
+        @MainActor
+        final class LifecycleSpyPlugin: PurahPodPlugin {
+            nonisolated let manifest = PurahPluginManifest(
+                id: "com.purah.lifecycle-spy",
+                displayName: "Lifecycle Spy",
+                systemIcon: "eye",
+                description: "Spy plugin",
+                defaultEdge: .left,
+                preferredZone: .glance,
+                defaultColorHex: "#FF00AA"
+            )
+
+            var mountCount = 0
+            var unmountCount = 0
+
+            func makeRailBarView(context: PurahPluginContext) -> AnyView { AnyView(EmptyView()) }
+            func makeDrawerView(context: PurahPluginContext) -> AnyView { AnyView(EmptyView()) }
+
+            func onMount(store: PurahWorkspaceStore) {
+                mountCount += 1
+            }
+
+            func onUnmount(store: PurahWorkspaceStore) {
+                unmountCount += 1
+            }
+        }
+
+        let store = PurahWorkspaceStore()
+        let registry = PluginRegistry.shared
+        let spy = LifecycleSpyPlugin()
+
+        registry.register(spy)
+        #expect(!registry.isPluginMounted(id: spy.manifest.id))
+        #expect(spy.mountCount == 0)
+
+        // 1. Unmounting a never-mounted plugin is a safe NO-OP
+        registry.unmountPlugin(id: spy.manifest.id, store: store)
+        #expect(spy.unmountCount == 0)
+
+        // 2. Mounting once increments mountCount
+        registry.mountPlugin(id: spy.manifest.id, store: store)
+        #expect(registry.isPluginMounted(id: spy.manifest.id))
+        #expect(spy.mountCount == 1)
+
+        // 3. Repeated mount call is suppressed (no double-mount)
+        registry.mountPlugin(id: spy.manifest.id, store: store)
+        #expect(spy.mountCount == 1)
+
+        // 4. Unmount resets mount state and increments unmountCount
+        registry.unmountPlugin(id: spy.manifest.id, store: store)
+        #expect(!registry.isPluginMounted(id: spy.manifest.id))
+        #expect(spy.unmountCount == 1)
+
+        // 5. Subsequent redundant unmount is a safe NO-OP
+        registry.unmountPlugin(id: spy.manifest.id, store: store)
+        #expect(spy.unmountCount == 1)
+
+        // Clean up
+        registry.unregister(id: spy.manifest.id, store: store)
+    }
 }

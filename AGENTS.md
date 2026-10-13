@@ -59,7 +59,7 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
 
 ## 3. Plugin Architecture (`PurahPodPlugin`)
 
-All modules (Vitals, Notes, Music, Shelf, Scripts, Calendar, Todo, Terminal) are implemented as standard plugins conforming to `PurahPodPlugin` and `PurahPodCapabilityProvider`. For comprehensive step-by-step developer documentation, refer to **`docs/PLUGIN_DEVELOPMENT_GUIDE.md`**.
+All modules (Vitals, Notes, Music, Shelf, Scripts, Calendar, Todo, Terminal, Clipboard) are implemented as standard plugins conforming to `PurahPodPlugin` and `PurahPodCapabilityProvider`. For comprehensive step-by-step developer documentation, refer to **`docs/PLUGIN_DEVELOPMENT_GUIDE.md`**.
 
 ```swift
 @MainActor
@@ -113,7 +113,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - Pin button: Tacking into board adds `-25°` rotation with a spring bounce (`1.15x`).
    - Action buttons: Adopt `TactileButtonStyle` with a subtle `scale(0.96)` spring feedback on press.
 5. **Physical Co-Planar Height Rule (物理共面等高法则 - Mandatory)**:
-   - For all single-drawer pods (Music, Vitals, Runway, Shelf, Notes, and custom plugins): **`drawerHeight == barHeight` pixel-for-pixel at all times**.
+   - For all single-drawer pods (Music, Vitals, Runway, Shelf, Notes, Terminal, Clipboard, and custom plugins): **`drawerHeight == barHeight` pixel-for-pixel at all times**.
    - A drawer card must NEVER be taller or shorter than the rail bar it physically extrudes from. When the card glides out, its top and bottom boundaries must match the rail bar seamlessly.
    - To guarantee proper visual space and ergonomics for drawer content, configure min/max height bounds on the pod (`minLength` / `maxLength` in the layout engine), rather than allowing the drawer card to vertically overflow or detach from its rail bar.
    - Exception: Multi-item stepped pods (`Calendar` & `Todo`), where individual task/event chips step out from their respective sub-slots.
