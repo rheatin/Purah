@@ -197,6 +197,9 @@ public struct AmbientRailStripView: View {
             }
         }
         .frame(height: slotH, alignment: .top)
+        .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
+            plugin.onDrop(providers: providers, context: context)
+        })
     }
 
     @ViewBuilder
@@ -240,6 +243,20 @@ public struct AmbientRailStripView: View {
         .frame(width: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), height: totalHeight)
         .liquidDrawerBackground(shape: drawerShape, accentColor: color)
         .contextMenu {
+            ForEach(plugin.contextMenuActions(subItemId: nil, context: context)) { menuAction in
+                Button(role: menuAction.isDestructive ? .destructive : nil) {
+                    menuAction.action()
+                } label: {
+                    if let icon = menuAction.systemImage {
+                        Label(menuAction.title, systemImage: icon)
+                    } else {
+                        Text(menuAction.title)
+                    }
+                }
+            }
+            if !plugin.contextMenuActions(subItemId: nil, context: context).isEmpty {
+                Divider()
+            }
             Button {
                 store.openPluginSettings(id: pod.id)
             } label: {

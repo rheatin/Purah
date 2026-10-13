@@ -8,6 +8,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
 
     private var registeredPlugins: [String: any PurahPodPlugin] = [:]
     private var catalogPlugins: [String: any PurahPodPlugin] = [:]
+    private var pollingTasks: [String: Task<Void, Never>] = [:]
     private weak var boundStore: PurahWorkspaceStore?
 
     public init() {
@@ -44,6 +45,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
             store.marketManager.addCatalogManifest(plugin.manifest)
             store.registerCapabilityProvider(plugin)
             plugin.onMount(store: store)
+            startPollingIfNeeded(for: plugin, store: store)
         }
     }
 
@@ -62,13 +64,16 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
                 let isEnabledOnRail = store.pods.contains(where: { $0.id == plugin.manifest.id && $0.isEnabled })
                 if isEnabledOnRail {
                     plugin.onMount(store: store)
+                    startPollingIfNeeded(for: plugin, store: store)
                 }
             } else {
                 if let removed = registeredPlugins.removeValue(forKey: plugin.manifest.id) {
                     store.unregisterCapabilityProvider(for: plugin.manifest.id)
+                    stopPolling(for: plugin.manifest.id)
                     removed.onUnmount(store: store)
                 } else {
                     store.unregisterCapabilityProvider(for: plugin.manifest.id)
+                    stopPolling(for: plugin.manifest.id)
                     plugin.onUnmount(store: store)
                 }
             }
@@ -76,6 +81,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     }
 
     public func unregister(id: String, store: PurahWorkspaceStore? = nil) {
+        stopPolling(for: id)
         if let plugin = registeredPlugins.removeValue(forKey: id) {
             let targetStore = store ?? boundStore
             if let targetStore {
@@ -85,6 +91,26 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
                 plugin.onUnmount(store: PurahWorkspaceStore())
             }
         }
+    }
+
+    private func startPollingIfNeeded(for plugin: any PurahPodPlugin, store: PurahWorkspaceStore) {
+        stopPolling(for: plugin.manifest.id)
+        guard let interval = plugin.preferredPollingInterval, interval > 0 else { return }
+        pollingTasks[plugin.manifest.id] = Task { [weak store] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard let store, !Task.isCancelled else { break }
+                let isEnabled = store.pods.contains(where: { $0.id == plugin.manifest.id && $0.isEnabled })
+                if isEnabled && !store.isRailsFrozen {
+                    await plugin.onPollingTick(store: store)
+                }
+            }
+        }
+    }
+
+    private func stopPolling(for id: String) {
+        pollingTasks[id]?.cancel()
+        pollingTasks.removeValue(forKey: id)
     }
 
     public func plugin(for id: String) -> (any PurahPodPlugin)? {

@@ -38,14 +38,40 @@ public struct SteppedRailContainerView: View {
     }
 
     public var body: some View {
+        let policy = plugin.decomposedPolicy(store: store)
         let allItems = plugin.steppedItems(context: context)
-        let minChipH: CGFloat = 20.0
-        let spacing: CGFloat = 2.5
-        let maxAllowedItems = max(Int((totalHeight + spacing) / (minChipH + spacing)), 1)
-        let items = (allItems.count > maxAllowedItems) ? Array(allItems.prefix(maxAllowedItems)) : allItems
+        let minChipH: CGFloat = policy.minChipHeight
+        let maxChipH: CGFloat = policy.maxChipHeight
+        let spacing: CGFloat = policy.spacing
+        let maxAllowedItems = max(min(Int((totalHeight + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
+
+        let items: [PurahPluginSubItem] = {
+            guard allItems.count > maxAllowedItems else { return allItems }
+            switch policy.overflowStrategy {
+            case .truncate, .compactScale:
+                return Array(allItems.prefix(maxAllowedItems))
+            case .smartFold:
+                if allItems.last?.id.contains("more_") == true {
+                    return Array(allItems.prefix(maxAllowedItems))
+                }
+                let visibleCount = max(maxAllowedItems - 1, 1)
+                var result = Array(allItems.prefix(visibleCount))
+                let remaining = allItems.count - visibleCount
+                if remaining > 0 {
+                    result.append(PurahPluginSubItem(
+                        id: "\(pod.id)_more_items",
+                        title: "+\(remaining) More",
+                        systemIcon: "ellipsis",
+                        badge: "\(remaining)",
+                        state: .normal
+                    ))
+                }
+                return result
+            }
+        }()
+
         let count = max(items.count, 1)
         let totalSpacing = spacing * CGFloat(count - 1)
-        let maxChipH: CGFloat = 185.0
         let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), minChipH), maxChipH)
         let actualSpanH = CGFloat(items.count) * itemH + spacing * CGFloat(max(items.count - 1, 0))
 
@@ -93,6 +119,9 @@ public struct SteppedRailContainerView: View {
                 .frame(height: actualSpanH, alignment: .top)
             }
         }
+        .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
+            plugin.onDrop(providers: providers, context: context)
+        })
     }
 
     private func makeSubItemContext(for subItem: PurahPluginSubItem, itemH: CGFloat, isActive: Bool, isPinned: Bool) -> PurahPluginContext {
@@ -270,6 +299,35 @@ public struct SteppedRailContainerView: View {
         .padding(.vertical, 4)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: tintColor)
+        .contextMenu {
+            let subCtx = makeSubItemContext(for: subItem, itemH: cardH, isActive: true, isPinned: isPinned)
+            ForEach(plugin.contextMenuActions(subItemId: subItem.id, context: subCtx)) { menuAction in
+                Button(role: menuAction.isDestructive ? .destructive : nil) {
+                    menuAction.action()
+                } label: {
+                    if let icon = menuAction.systemImage {
+                        Label(menuAction.title, systemImage: icon)
+                    } else {
+                        Text(menuAction.title)
+                    }
+                }
+            }
+            if !plugin.contextMenuActions(subItemId: subItem.id, context: subCtx).isEmpty {
+                Divider()
+            }
+            Button {
+                store.openPluginSettings(id: pod.id)
+            } label: {
+                Label("Configure \(plugin.manifest.displayName)...", systemImage: "gearshape")
+            }
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    store.togglePinItem(id: subItem.id)
+                }
+            } label: {
+                Label(isPinned ? "Unpin Item" : "Pin Item", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+        }
     }
 
     private var drawerShape: UnevenRoundedRectangle {

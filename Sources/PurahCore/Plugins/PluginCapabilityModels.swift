@@ -32,17 +32,20 @@ public struct PurahMenuAction: Identifiable, Sendable {
     public let id: String
     public let title: String
     public let systemImage: String?
+    public let isDestructive: Bool
     public let action: @MainActor @Sendable () -> Void
 
     public init(
         id: String = UUID().uuidString,
         title: String,
         systemImage: String? = nil,
+        isDestructive: Bool = false,
         action: @escaping @MainActor @Sendable () -> Void
     ) {
         self.id = id
         self.title = title
         self.systemImage = systemImage
+        self.isDestructive = isDestructive
         self.action = action
     }
 }
