@@ -85,6 +85,10 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
     /// 插件自主声明在 Adaptive 模式下的最佳自适应宽度（例如音乐 360pt, 剪贴板 380pt, 终端 520pt）；返回 nil 则使用 Base 通用算法
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
+
+    // MARK: - 统一在轨拆解人机策略 (Decomposed Policy)
+    /// 声明拆解模式下的在轨数量上限、芯片高度上下限、间隙及溢出折叠策略
+    var decomposedPolicy: PurahDecomposedPolicy { get }
 }
 ```
 
@@ -92,6 +96,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 协议为几乎所有可选能力提供了合理默认值：
 - 单抽屉插件只需实现 `makeRailBarView` 与 `makeDrawerView`。
 - 如果支持在轨拆解（如多条目/多指标），声明 `supportedDrawerModes: [.stepped]` 并实现 `steppedItems(context:)`。
+- **在轨拆解策略 (`PurahDecomposedPolicy`)**：支持拆解的插件可重写 `decomposedPolicy`，开箱即用支持最高在轨显示数量、子芯片最低/最高高度保护、自动算高及 `+N More` 智能折叠胶囊，底座容器自动精准适配。
 - **自适应宽度自主宣告**：底座（Base Store）遵循开闭原则，不硬编码具体插件宽度。插件只需重写 `adaptiveDrawerWidth(store:)` 返回专属宽度（如 `360.0`），即可在用户切换为自适应模式时享受专属最佳排版。
 
 ---
@@ -117,19 +122,67 @@ public struct PurahPluginContext: Sendable {
     // 3. 命名空间独立持久化存储
     public let storage: any PurahPluginStorage
 
-    // 4. 受控动作触发器 (代替直接修改 Store)
-    public let requestExpand: @MainActor () -> Void
-    public let requestDismiss: @MainActor () -> Void
-    public let togglePin: @MainActor () -> Void
-    public let showToast: @MainActor (String, String?) -> Void  // 弹出轻量灵动 Toast
-    public let showWarning: @MainActor (String) -> Void        // 触发容量/警告横幅
-    public let performHaptic: @MainActor (PurahHapticType) -> Void // 触发精密触觉震动
+    // 4. 受控动作与子项精准控制 (严禁直接修改宿主 Store)
+    public func isItemPinned(_ itemId: String? = nil) -> Bool       // 查询 Pod 自身或具体子项的固定状态
+    public func togglePin(_ itemId: String? = nil)                  // 切换 Pod 自身或具体子项常驻
+    public func requestExpand(_ subItemId: String? = nil)           // 展开指定子项抽屉 (nil 则展开整个 Pod)
+    public func requestDismiss(_ subItemId: String? = nil)          // 收起指定子项抽屉
+    public func acknowledgeAlert(id: String)                        // 悬停/点击确认消光并结束告警
+    public func isAlertAcknowledged(id: String) -> Bool             // 检查指定条目的告警确认状态
+    public let requestLayoutRecalculation: @MainActor () -> Void    // 配置或容量改变时申请宿主排版重算
+    public let openSettings: @MainActor () -> Void                  // 唤起当前插件配置页
+    public let showToast: @MainActor (String, String?) -> Void      // 弹出轻量灵动 Toast
+    public let showWarning: @MainActor (String) -> Void             // 触发容量/警告横幅
+    public let performHaptic: @MainActor (PurahHapticType) -> Void  // 触发精密触觉震动
 }
 ```
 
 ---
 
-## 5. 独立命名空间存储 (`PurahPluginStorage`)
+## 5. Pod 呈现套件与通用工具库 (Pod Presentation Kit)
+
+Purah 提供了丰富的通用开箱即用套件，任何插件均可直接调用，杜绝侵入修改 Base：
+
+### 1. 多梯队高度自适应抽屉 (`PurahAdaptiveTierDrawer`)
+支持卡片根据屏幕当前可用高度，在 Compact (<145pt)、Standard (145~265pt)、Immersive (>265pt) 三个梯队间无缝自适应切换排版，极小高度下 0 截断：
+```swift
+PurahAdaptiveTierDrawer(
+    compactThreshold: 145,
+    immersiveThreshold: 265,
+    compact: { h in CompactCapsuleView() },
+    standard: { h in StandardCardView() },
+    immersive: { h in ImmersiveStudioView() }
+)
+```
+
+### 2. 60/120 FPS 高性能流体波形轨条 (`PurahFluidWaveformBarView`)
+通用音频流体波形轨条，支持霓虹 VU 表头 (`.neonVUTower`)、极光波浪 (`.auroraWave`)、平滑进度条 (`.smoothProgress`)：
+```swift
+PurahFluidWaveformBarView(
+    tintColor: context.accentColor,
+    progress: currentProgress,
+    isPlaying: isPlaying,
+    subStyle: .neonVUTower
+)
+```
+
+### 3. 多段指标轨条与遥测变色引擎
+- **`PurahSegmentGaugeBarView`**：渲染多段占比、离散任务指标与呼吸发光点。
+- **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**：通用红黄绿告警变色求解器，支持正向与反向阈值（如电量、RAM、温度）。
+
+### 4. 统一人机容量设置组件 (`PurahDecomposedCapacitySettingRow`)
+一行代码为设置页面嵌入标准的最大在轨条目滑块与溢出折叠选择器：
+```swift
+PurahDecomposedCapacitySettingRow(
+    title: "Max Visible Items",
+    maxItems: $state.maxRailItems,
+    overflowStrategy: $state.overflowStrategy
+)
+```
+
+---
+
+## 6. 独立命名空间存储 (`PurahPluginStorage`)
 
 Purah 为每个插件自动分配独立的 `UserDefaults` 作用域 (`ScopedPluginStorage`)，键前缀统一为 `purah.plugin.<pluginId>.<key>`，杜绝插件间键名污染：
 
@@ -145,7 +198,7 @@ let config = context.storage.codable(forKey: "config", as: MyConfig.self)
 
 ---
 
-## 6. 抽屉卡片设计规范与呼吸感人机工程
+## 7. 抽屉卡片设计规范与呼吸感人机工程
 
 为保证与 macOS 整体界面的和谐统一，卡片设计应遵循：
 
@@ -161,7 +214,7 @@ let config = context.storage.codable(forKey: "config", as: MyConfig.self)
 
 ---
 
-## 7. 完整插件开发范例：倒数日纪念插件 (`CountDownPlugin`)
+## 8. 完整插件开发范例：倒数日纪念插件 (`CountDownPlugin`)
 
 以下是一个完整、可编译且符合 Purah 全部架构规范的倒数日插件示例：
 
@@ -284,9 +337,9 @@ public struct CountDownPlugin: PurahPodPlugin {
 
 ---
 
-## 8. 插件注册与市场接入
+## 9. 插件注册与市场接入
 
-### 8.1 内置静态插件注册
+### 9.1 内置静态插件注册
 在应用启动时，通过单例 `PluginRegistry` 完成注册：
 
 ```swift
@@ -300,7 +353,7 @@ store.marketManager.install(id: "countdown")
 
 ---
 
-### 8.2 动态 SPM 插件架构与 ABI C 桥接引擎 (纯 Swift 零依赖)
+### 9.2 动态 SPM 插件架构与 ABI C 桥接引擎 (纯 Swift 零依赖)
 
 为了让第三方开发者以最轻量的方式开发插件，Purah 提供了 **纯 Swift 6 / SwiftUI 零依赖动态载入方案**。插件**完全不需要引入庞大的宿主工程依赖**，仅需系统原生的 `SwiftUI` 与 `AppKit`，即可在 1 秒内完成编译并动态挂载！
 
@@ -400,7 +453,7 @@ Purah 内置了直通开发者的即时编译工具链，参考仓库内置的�
 
 ---
 
-## 9. 自动化单元测试编写规范
+## 10. 自动化单元测试编写规范
 
 为保证插件生命周期与布局解析的鲁棒性，推荐编写标准 Swift Testing 用例：
 
