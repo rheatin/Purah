@@ -160,6 +160,123 @@ struct PluginArchitectureTests {
         #expect(togglePinCalled == true)
     }
 
+    @Test("PurahDecomposedPolicy calculates minimum heights accurately across overflowing counts")
+    func testDecomposedPolicyMath() {
+        let calPolicy = PurahDecomposedPolicy.calendarDefault
+        #expect(calPolicy.maxRailItems == 4)
+        #expect(calPolicy.minChipHeight == 40.0)
+        #expect(calPolicy.spacing == 2.5)
+
+        // 1 item: 1 * 40.0 + 0 = 40.0
+        #expect(calPolicy.calculateMinimumHeight(activeCount: 1) == 40.0)
+        // 2 items: 2 * 40.0 + 2.5 = 82.5
+        #expect(calPolicy.calculateMinimumHeight(activeCount: 2) == 82.5)
+        // 4 items: 4 * 40.0 + 3 * 2.5 = 167.5
+        #expect(calPolicy.calculateMinimumHeight(activeCount: 4) == 167.5)
+        // 10 items (clamped by maxRailItems 4): still 167.5
+        #expect(calPolicy.calculateMinimumHeight(activeCount: 10) == 167.5)
+
+        let vitalsPolicy = PurahDecomposedPolicy.vitalsDefault
+        #expect(vitalsPolicy.minChipHeight == 56.0)
+        #expect(vitalsPolicy.calculateMinimumHeight(activeCount: 3) == CGFloat(3 * 56.0 + 2 * 2.5))
+    }
+
+    @Test("PurahTelemetryThreshold evaluates normal, warning, and danger levels correctly")
+    func testTelemetryThresholdEvaluation() {
+        let cpuThreshold = PurahTelemetryThreshold(warning: 0.50, danger: 0.80)
+        #expect(cpuThreshold.status(for: 0.20) == .normal)
+        #expect(cpuThreshold.status(for: 0.65) == .warning)
+        #expect(cpuThreshold.status(for: 0.92) == .danger)
+
+        let normalCol = PurahTelemetryMetricResolver.color(for: .normal)
+        let warnCol = PurahTelemetryMetricResolver.color(for: .warning)
+        let dangerCol = PurahTelemetryMetricResolver.color(for: .danger)
+        #expect(normalCol == PurahTelemetryMetricResolver.healthyGreen)
+        #expect(warnCol == PurahTelemetryMetricResolver.warningYellow)
+        #expect(dangerCol == PurahTelemetryMetricResolver.dangerRed)
+
+        // Inverted threshold (battery)
+        let batteryThreshold = PurahTelemetryThreshold(warning: 0.20, danger: 0.10, isInverted: true)
+        #expect(batteryThreshold.status(for: 0.80) == .normal)
+        #expect(batteryThreshold.status(for: 0.15) == .warning)
+        #expect(batteryThreshold.status(for: 0.05) == .danger)
+    }
+
+    @Test("PurahAdaptiveTierDrawer instantiates across all height thresholds")
+    func testAdaptiveTierDrawer() {
+        let drawer = PurahAdaptiveTierDrawer(
+            compactThreshold: 145.0,
+            immersiveThreshold: 265.0,
+            compact: { _ in Text("Compact") },
+            standard: { _ in Text("Standard") },
+            immersive: { _ in Text("Immersive") }
+        )
+        _ = drawer
+    }
+
+    @Test("PurahPluginContext supports sub-item pinning, expand/dismiss, alert ack, and layout refresh")
+    func testPluginContextSubItemCapabilities() {
+        let store = PurahWorkspaceStore()
+        let pod = SlotPod(
+            id: "calendar",
+            name: "Calendar",
+            systemIcon: "calendar",
+            edge: .right,
+            range: .init(start: 0.1, length: 0.3),
+            ambientStyle: .ghostDot,
+            preferredZone: .goldenAction,
+            ergonomicWeight: 35.0
+        )
+
+        var expandedSubItem: String?
+        var dismissedSubItem: String?
+        var pinnedSubItem: String?
+        var acknowledgedAlertId: String?
+        var layoutRecalculated = false
+        var settingsOpened = false
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 160.0,
+            drawerWidth: 280.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .orange,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {},
+            requestExpandItem: { expandedSubItem = $0 },
+            requestDismissItem: { dismissedSubItem = $0 },
+            togglePinItem: { pinnedSubItem = $0 },
+            acknowledgeAlert: { acknowledgedAlertId = $0 },
+            isAlertAcknowledged: { _ in false },
+            requestLayoutRecalculation: { layoutRecalculated = true },
+            openSettings: { settingsOpened = true }
+        )
+
+        context.requestExpand("event-999")
+        #expect(expandedSubItem == "event-999")
+
+        context.requestDismiss("event-999")
+        #expect(dismissedSubItem == "event-999")
+
+        context.togglePin("event-999")
+        #expect(pinnedSubItem == "event-999")
+
+        context.acknowledgeAlert("event-999")
+        #expect(acknowledgedAlertId == "event-999")
+
+        context.requestLayoutRecalculation()
+        #expect(layoutRecalculated == true)
+
+        context.openSettings()
+        #expect(settingsOpened == true)
+    }
+
     @Test("Built-in plugins makeRailBarView and makeDrawerView produce non-nil AnyViews")
     func testBuiltInPluginViews() {
         let store = PurahWorkspaceStore()

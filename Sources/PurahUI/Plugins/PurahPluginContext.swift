@@ -27,9 +27,50 @@ public struct PurahPluginContext: Sendable {
     public let requestDismiss: @MainActor () -> Void
     public let togglePin: @MainActor () -> Void
 
+    public let requestExpandItem: @MainActor (String) -> Void
+    public let requestDismissItem: @MainActor (String) -> Void
+    public let togglePinItem: @MainActor (String) -> Void
+
+    public let acknowledgeAlert: @MainActor (String) -> Void
+    public let isAlertAcknowledged: @MainActor (String) -> Bool
+    public let isHoverDismissEnabled: Bool
+    public let alertStyle: PluginAlertStyle
+
+    public let requestLayoutRecalculation: @MainActor () -> Void
+    public let openSettings: @MainActor () -> Void
+
     public let showToast: @MainActor (String, String?) -> Void
     public let showWarning: @MainActor (String) -> Void
     public let performHaptic: @MainActor (PurahHapticType) -> Void
+
+    public func isItemPinned(_ itemId: String? = nil) -> Bool {
+        guard let itemId else { return isPinned }
+        return _store?.isItemPinned(id: itemId) ?? false
+    }
+
+    public func togglePin(_ itemId: String? = nil) {
+        if let itemId {
+            togglePinItem(itemId)
+        } else {
+            togglePin()
+        }
+    }
+
+    public func requestExpand(_ subItemId: String? = nil) {
+        if let subItemId {
+            requestExpandItem(subItemId)
+        } else {
+            requestExpand()
+        }
+    }
+
+    public func requestDismiss(_ subItemId: String? = nil) {
+        if let subItemId {
+            requestDismissItem(subItemId)
+        } else {
+            requestDismiss()
+        }
+    }
 
     public init(
         pod: SlotPod,
@@ -46,6 +87,15 @@ public struct PurahPluginContext: Sendable {
         requestExpand: @escaping @MainActor () -> Void,
         requestDismiss: @escaping @MainActor () -> Void,
         togglePin: @escaping @MainActor () -> Void,
+        requestExpandItem: (@MainActor (String) -> Void)? = nil,
+        requestDismissItem: (@MainActor (String) -> Void)? = nil,
+        togglePinItem: (@MainActor (String) -> Void)? = nil,
+        acknowledgeAlert: (@MainActor (String) -> Void)? = nil,
+        isAlertAcknowledged: (@MainActor (String) -> Bool)? = nil,
+        isHoverDismissEnabled: Bool? = nil,
+        alertStyle: PluginAlertStyle? = nil,
+        requestLayoutRecalculation: (@MainActor () -> Void)? = nil,
+        openSettings: (@MainActor () -> Void)? = nil,
         showToast: (@MainActor (String, String?) -> Void)? = nil,
         showWarning: (@MainActor (String) -> Void)? = nil,
         performHaptic: (@MainActor (PurahHapticType) -> Void)? = nil
@@ -64,6 +114,43 @@ public struct PurahPluginContext: Sendable {
         self.requestExpand = requestExpand
         self.requestDismiss = requestDismiss
         self.togglePin = togglePin
+
+        let storeRef = store
+        let podIdRef = pod.id
+
+        self.requestExpandItem = requestExpandItem ?? { [weak storeRef] itemId in
+            storeRef?.activateDrawer(podId: podIdRef, itemId: itemId)
+        }
+
+        self.requestDismissItem = requestDismissItem ?? { [weak storeRef] itemId in
+            if storeRef?.activeDrawerItemId == itemId {
+                storeRef?.activeDrawerItemId = nil
+            }
+        }
+
+        self.togglePinItem = togglePinItem ?? { [weak storeRef] itemId in
+            storeRef?.togglePinItem(id: itemId)
+        }
+
+        self.acknowledgeAlert = acknowledgeAlert ?? { [weak storeRef] alertId in
+            storeRef?.acknowledgeAlert(id: alertId)
+        }
+
+        self.isAlertAcknowledged = isAlertAcknowledged ?? { [weak storeRef] alertId in
+            storeRef?.isAlertAcknowledged(id: alertId) ?? false
+        }
+
+        self.isHoverDismissEnabled = isHoverDismissEnabled ?? (storeRef?.dismissAlertOnHover ?? true)
+        self.alertStyle = alertStyle ?? (storeRef?.alertStyle ?? .breathingBeacon)
+
+        self.requestLayoutRecalculation = requestLayoutRecalculation ?? { [weak storeRef] in
+            storeRef?.invalidateLayoutCache()
+            storeRef?.onWindowsRebuildNeeded?()
+        }
+
+        self.openSettings = openSettings ?? { [weak storeRef] in
+            storeRef?.openPluginSettings(id: podIdRef)
+        }
 
         if let showToast {
             self.showToast = showToast

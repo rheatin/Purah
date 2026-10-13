@@ -20,15 +20,24 @@ public protocol PurahPodCapabilityProvider: Sendable {
     /// Autonomously declared preferred drawer width when operating in Adaptive mode.
     /// Return nil to fall back to the base layout engine's text-length estimation.
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
+
+    /// Ergonomic policy defining chip height bounds, maximum visible items, and overflow behavior.
+    var decomposedPolicy: PurahDecomposedPolicy { get }
+    func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy
 }
 
 public extension PurahPodCapabilityProvider {
     var isDecomposed: Bool { false }
     var subItemCount: Int { 0 }
     var subItemTitles: [String] { [] }
+    var decomposedPolicy: PurahDecomposedPolicy { .standardComposite }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         isDecomposed
+    }
+
+    func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {

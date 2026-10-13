@@ -47,9 +47,18 @@ public extension PurahPodPlugin {
     nonisolated var id: String { manifest.id }
     var podId: String { manifest.id }
     var isDecomposed: Bool { supportedDrawerModes.contains(.stepped) }
+    var decomposedPolicy: PurahDecomposedPolicy {
+        isDecomposed ? .calendarDefault : .standardComposite
+    }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { isDecomposed }
-    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 120.0 }
+    func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy { decomposedPolicy }
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if isDecomposed(store: store) {
+            return decomposedPolicy(store: store).calculateMinimumHeight(activeCount: subItemCount(store: store))
+        }
+        return 120.0
+    }
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { itemId.hasPrefix("\(manifest.id)-") }
 

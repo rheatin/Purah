@@ -6,6 +6,7 @@ import AppKit
 struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String = "calendar"
     var isDecomposed: Bool { true }
+    var decomposedPolicy: PurahDecomposedPolicy { .calendarDefault }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -43,6 +44,7 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
 struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String = "todo"
     var isDecomposed: Bool { true }
+    var decomposedPolicy: PurahDecomposedPolicy { .todoDefault }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -80,6 +82,7 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
 struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String = "vitals"
     var isDecomposed: Bool { true }
+    var decomposedPolicy: PurahDecomposedPolicy { .vitalsDefault }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         store._isVitalsDecomposed
@@ -120,6 +123,7 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
 struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String = "scripts"
     var isDecomposed: Bool { true }
+    var decomposedPolicy: PurahDecomposedPolicy { .scriptsDefault }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         store._isScriptsDecomposed
@@ -161,6 +165,10 @@ struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String
     let minHeight: CGFloat
     let adaptiveWidth: CGFloat?
+
+    var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(maxRailItems: 1, minChipHeight: minHeight, maxChipHeight: 800.0, spacing: 0.0, overflowStrategy: .truncate)
+    }
 
     init(podId: String, minHeight: CGFloat, adaptiveWidth: CGFloat? = nil) {
         self.podId = podId
