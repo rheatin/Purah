@@ -61,12 +61,24 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
+    public var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: state.enabledMetrics.count,
+            minChipHeight: 56.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: .truncate
+        )
+    }
+
+    public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
+    }
+
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let isDecomp = state.isDecomposed || store._isVitalsDecomposed
         if isDecomp {
-            let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
-            let count = max(metrics.count, 1)
-            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+            return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledMetrics.count)
         }
         return 300.0
     }
@@ -265,12 +277,24 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
+    public var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: state.enabledActions.count,
+            minChipHeight: 56.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: .truncate
+        )
+    }
+
+    public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
+    }
+
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let isDecomp = state.isDecomposed || store._isScriptsDecomposed
         if isDecomp {
-            let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
-            let count = max(actions.count, 1)
-            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+            return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledActions.count)
         }
         return 160.0
     }
@@ -716,15 +740,28 @@ public struct CalendarPlugin: PurahPodPlugin {
         return [.stepped]
     }
 
+    public var decomposedPolicy: PurahDecomposedPolicy {
+        if state.overflowStrategy == .continuousStream {
+            return .standardComposite
+        }
+        return PurahDecomposedPolicy(
+            maxRailItems: state.maxRailEvents,
+            minChipHeight: 40.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: state.overflowStrategy == .smartFold ? .smartFold : .truncate
+        )
+    }
+
+    public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
+    }
+
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if state.overflowStrategy == .continuousStream {
             return 140.0
         }
-        let maxEvents = max(state.maxRailEvents, 1)
-        let minChipH: CGFloat = 40.0
-        let spacing: CGFloat = 2.5
-        let totalSpacing = CGFloat(maxEvents - 1) * spacing
-        return CGFloat(maxEvents) * minChipH + totalSpacing
+        return decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count)
     }
 
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
@@ -992,12 +1029,22 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
 
+    public var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: state.maxRailTodos,
+            minChipHeight: 32.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: .smartFold
+        )
+    }
+
+    public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
+    }
+
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let maxTasks = max(state.maxRailTodos, 1)
-        let minChipH: CGFloat = 32.0
-        let spacing: CGFloat = 2.5
-        let totalSpacing = CGFloat(maxTasks - 1) * spacing
-        return CGFloat(maxTasks) * minChipH + totalSpacing
+        decomposedPolicy.calculateMinimumHeight(activeCount: state.todos.count)
     }
 
     private func effectiveTodos(store: PurahWorkspaceStore) -> [TodoItem] {
@@ -2568,6 +2615,21 @@ public struct ClipboardPlugin: PurahPodPlugin {
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
     public var isDecomposed: Bool { state.isDecomposed }
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool { state.isDecomposed }
+
+    public var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: state.maxRailItems,
+            minChipHeight: 42.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: .smartFold
+        )
+    }
+
+    public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
+    }
+
     public func subItemCount(store: PurahWorkspaceStore) -> Int { max(min(state.items.count, store.clipboardMaxRailItems), 1) }
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
         if state.items.isEmpty { return "clipboard-empty" }
@@ -2584,8 +2646,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
     }
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if isDecomposed(store: store) {
-            let count = max(min(state.items.count, store.clipboardMaxRailItems), 1)
-            return CGFloat(count) * 42.0 + CGFloat(count - 1) * 2.5
+            return decomposedPolicy.calculateMinimumHeight(activeCount: state.items.count)
         } else {
             return 160.0
         }

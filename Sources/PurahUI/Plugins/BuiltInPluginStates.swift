@@ -1288,6 +1288,7 @@ public final class TerminalPluginState: Sendable {
 @MainActor
 public final class ClipboardPluginState: Sendable {
     public var isDecomposed: Bool
+    public var maxRailItems: Int
     public var items: [ClipboardItem]
     public let storage: any PurahPluginStorage
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -1299,6 +1300,8 @@ public final class ClipboardPluginState: Sendable {
         } else {
             self.isDecomposed = true // Default decomposed principle
         }
+        let savedMax = storage.int(forKey: "maxRailItems")
+        self.maxRailItems = (savedMax > 0) ? savedMax : 4
         // Purge legacy bloated JSON history from UserDefaults to release resident process memory
         storage.removeObject(forKey: "history")
         self.items = SystemClipboardSyncService.shared.history
@@ -1306,6 +1309,7 @@ public final class ClipboardPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
+        store.clipboardMaxRailItems = self.maxRailItems
         // Lazy lifecycle: Only initiate pasteboard polling when the clipboard pod is active/enabled
         if store.pods.first(where: { $0.id == "clipboard" })?.isEnabled == true {
             SystemClipboardSyncService.shared.startListening()
@@ -1327,6 +1331,7 @@ public final class ClipboardPluginState: Sendable {
 
     public func save() {
         storage.set(isDecomposed, forKey: "isDecomposed")
+        storage.set(maxRailItems, forKey: "maxRailItems")
     }
 
     public func copyItem(_ item: ClipboardItem) {

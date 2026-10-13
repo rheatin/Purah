@@ -42,20 +42,19 @@ public struct MusicDrawerView: View {
             let displayProgress = isScrubbing ? scrubbedProgress : liveProgress
             let displaySec = isScrubbing ? (scrubbedProgress * max(state.track.durationSeconds, 1.0)) : liveCurrentSec
 
-            GeometryReader { geo in
-                let h = geo.size.height
-
-                if h < 145 {
-                    // Tier 1: Compact Capsule (Consolidated 2-row layout, 0-clipping)
+            PurahAdaptiveTierDrawer(
+                compactThreshold: 145,
+                immersiveThreshold: 265,
+                compact: { _ in
                     compactCapsuleView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying)
-                } else if h < 265 {
-                    // Tier 2: Classic Studio (Standard 3-row breathing layout)
+                },
+                standard: { _ in
                     classicStudioView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying)
-                } else {
-                    // Tier 3: Immersive Vinyl (Large artwork showcase & ambient dynamic glow)
+                },
+                immersive: { h in
                     immersiveVinylView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
                 }
-            }
+            )
         }
         .onAppear {
             state.mount(store: store)
