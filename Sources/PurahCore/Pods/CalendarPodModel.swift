@@ -47,7 +47,10 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable {
     }
 
     public var isImminent: Bool {
-        let now = Date()
-        return now < startTime && startTime.timeIntervalSince(now) <= 900 // Within 15 minutes
+        isImminent(leadTime: .fifteenMinutes)
+    }
+
+    public func isImminent(leadTime: CalendarAlertLeadTime, now: Date = Date()) -> Bool {
+        leadTime.isAlertWindow(startTime: startTime, now: now)
     }
 }

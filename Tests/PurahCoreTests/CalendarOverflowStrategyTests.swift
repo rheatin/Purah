@@ -138,4 +138,67 @@ struct CalendarOverflowStrategyTests {
         #expect(view.state == .dockedFlush)
         #expect(!view.isPinned)
     }
+
+    @Test("CalendarAlertLeadTime evaluates time boundaries accurately from 0m to 8h and same day")
+    func testCalendarAlertLeadTimeBoundaries() {
+        let now = Date()
+        let in10Min = now.addingTimeInterval(600)
+        let in45Min = now.addingTimeInterval(2700)
+        let in3Hours = now.addingTimeInterval(10800)
+        let in7Hours = now.addingTimeInterval(25200)
+        let tomorrow = now.addingTimeInterval(86400 * 2)
+
+        #expect(CalendarAlertLeadTime.fiveMinutes.isAlertWindow(startTime: in10Min, now: now) == false)
+        #expect(CalendarAlertLeadTime.fifteenMinutes.isAlertWindow(startTime: in10Min, now: now) == true)
+
+        #expect(CalendarAlertLeadTime.thirtyMinutes.isAlertWindow(startTime: in45Min, now: now) == false)
+        #expect(CalendarAlertLeadTime.oneHour.isAlertWindow(startTime: in45Min, now: now) == true)
+
+        #expect(CalendarAlertLeadTime.twoHours.isAlertWindow(startTime: in3Hours, now: now) == false)
+        #expect(CalendarAlertLeadTime.fourHours.isAlertWindow(startTime: in3Hours, now: now) == true)
+
+        #expect(CalendarAlertLeadTime.fourHours.isAlertWindow(startTime: in7Hours, now: now) == false)
+        #expect(CalendarAlertLeadTime.eightHours.isAlertWindow(startTime: in7Hours, now: now) == true)
+
+        #expect(CalendarAlertLeadTime.sameDay.isAlertWindow(startTime: in7Hours, now: now) == true)
+        #expect(CalendarAlertLeadTime.sameDay.isAlertWindow(startTime: tomorrow, now: now) == false)
+    }
+
+    @Test("CalendarPluginState checkUpcomingAlerts dispatches toast and triggers live alerting without app restart")
+    @MainActor
+    func testCheckUpcomingAlertsRealTimeDispatch() {
+        let storage = ScopedPluginStorage(pluginId: "cal_alert_test_\(UUID().uuidString)")
+        let state = CalendarPluginState(storage: storage)
+        state.alertLeadTime = .fourHours
+        state.isEventToastAlertEnabled = true
+        state.isEventGlowAlertEnabled = true
+
+        let now = Date()
+        let event = CalendarEventItem(
+            id: "upcoming-standup",
+            title: "Sprint Retrospective",
+            location: "Room 101",
+            startTime: now.addingTimeInterval(7200), // 2 hours from now
+            endTime: now.addingTimeInterval(10800)
+        )
+        state.events = [event]
+
+        let store = PurahWorkspaceStore()
+        var receivedToast: String?
+        store.onCapacityWarningToast = { receivedToast = $0 }
+
+        // 1. Check alerts: should detect that 2h is within 4h lead time and trigger toast
+        state.checkUpcomingAlerts(store: store, now: now)
+        #expect(receivedToast?.contains("Sprint Retrospective") == true)
+        #expect(receivedToast?.contains("starts in 2h") == true)
+
+        // 2. Second check without time moving: deduplicates and does not re-toast
+        receivedToast = nil
+        state.checkUpcomingAlerts(store: store, now: now)
+        #expect(receivedToast == nil, "Toast must be deduplicated across consecutive ticks")
+
+        // 3. When acknowledged, isAlerting becomes false
+        state.acknowledgeAlert(id: event.id)
+        #expect(state.isAlertAcknowledged(id: event.id))
+    }
 }

@@ -13,6 +13,7 @@ public final class CalendarPluginState: Sendable {
     public var events: [CalendarEventItem]
     public var scope: CalendarTimeScope
     public var alertStyle: PluginAlertStyle
+    public var alertLeadTime: CalendarAlertLeadTime
     public var dismissAlertOnHover: Bool
     public var isEventGlowAlertEnabled: Bool
     public var isEventToastAlertEnabled: Bool
@@ -21,6 +22,8 @@ public final class CalendarPluginState: Sendable {
     public var isUsingRealCalendar: Bool
     public var isSyncing: Bool
     public var acknowledgedAlertIds: Set<String>
+    public var notifiedToastEventIds: Set<String>
+    public var lastAlertTick: Date
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored public var cachedSubItemHeaders: [(id: String, title: String)] = []
@@ -43,6 +46,7 @@ public final class CalendarPluginState: Sendable {
         self.storage = storage
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
         self.alertStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) ?? .subtleGlow
+        self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
         self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         self.isEventGlowAlertEnabled = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
         self.isEventToastAlertEnabled = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) ?? true
@@ -52,6 +56,8 @@ public final class CalendarPluginState: Sendable {
         self.isUsingRealCalendar = false
         self.isSyncing = false
         self.acknowledgedAlertIds = []
+        self.notifiedToastEventIds = []
+        self.lastAlertTick = Date()
         self.events = storage.codable(forKey: "events", as: [CalendarEventItem].self) ?? Self.defaultEvents()
     }
 
@@ -61,6 +67,9 @@ public final class CalendarPluginState: Sendable {
         }
         if let savedStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) {
             self.alertStyle = savedStyle
+        }
+        if let savedLead = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) {
+            self.alertLeadTime = savedLead
         }
         self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         if let glow = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) {
@@ -84,6 +93,7 @@ public final class CalendarPluginState: Sendable {
     public func save() {
         storage.setCodable(scope, forKey: "scope")
         storage.setCodable(alertStyle, forKey: "alertStyle")
+        storage.setCodable(alertLeadTime, forKey: "alertLeadTime")
         storage.set(dismissAlertOnHover, forKey: "dismissAlertOnHover")
         storage.setCodable(isEventGlowAlertEnabled, forKey: "isEventGlowAlertEnabled")
         storage.setCodable(isEventToastAlertEnabled, forKey: "isEventToastAlertEnabled")
@@ -102,6 +112,42 @@ public final class CalendarPluginState: Sendable {
 
     public func resetAcknowledgedAlerts() {
         acknowledgedAlertIds.removeAll()
+    }
+
+    /// Background inspection driving live in-rail attention beacon glow and HUD toast notifications.
+    /// Runs periodically without requiring UI interaction or app restarts.
+    public func checkUpcomingAlerts(store: PurahWorkspaceStore? = nil, now: Date = Date()) {
+        let targetStore = store ?? boundStore
+        self.lastAlertTick = now
+
+        for event in events {
+            let isPast = event.endTime < now
+            let isOngoing = (now >= event.startTime && now <= event.endTime)
+            let isImminent = event.isImminent(leadTime: alertLeadTime, now: now)
+            let isAcknowledged = isAlertAcknowledged(id: event.id) || (targetStore?.isAlertAcknowledged(id: event.id) ?? false)
+            let isAlerting = (isOngoing || isImminent) && isEventGlowAlertEnabled && !isAcknowledged
+
+            if isAlerting {
+                if isEventToastAlertEnabled && !notifiedToastEventIds.contains(event.id) {
+                    notifiedToastEventIds.insert(event.id)
+                    let msg: String
+                    if isOngoing {
+                        msg = "📅 \(event.title) is starting now"
+                    } else {
+                        let mins = max(Int(ceil(event.startTime.timeIntervalSince(now) / 60.0)), 1)
+                        if mins >= 60 {
+                            let hours = max(Int(ceil(Double(mins) / 60.0)), 1)
+                            msg = "📅 \(event.title) starts in \(hours)h"
+                        } else {
+                            msg = "📅 \(event.title) starts in \(mins)m"
+                        }
+                    }
+                    targetStore?.postToastNotification(id: event.id, message: msg)
+                }
+            } else if isPast {
+                notifiedToastEventIds.remove(event.id)
+            }
+        }
     }
 
     public func syncEvents(into store: PurahWorkspaceStore? = nil) {
@@ -167,10 +213,12 @@ public final class CalendarPluginState: Sendable {
             ) { [weak self] _ in
                 Task { @MainActor in
                     self?.syncEvents()
+                    self?.checkUpcomingAlerts()
                 }
             }
         }
         syncEvents(into: store)
+        checkUpcomingAlerts(store: store)
     }
 
     public func unmount(store: PurahWorkspaceStore) {

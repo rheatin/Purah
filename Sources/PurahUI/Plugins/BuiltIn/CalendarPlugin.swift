@@ -51,6 +51,13 @@ public struct CalendarPlugin: PurahPodPlugin {
         state.unmount(store: store)
     }
 
+    // Central managed polling hook driving live time-based alerts and dynamic beacon glow
+    public var preferredPollingInterval: TimeInterval? { 10.0 }
+
+    public func onPollingTick(store: PurahWorkspaceStore) async {
+        state.checkUpcomingAlerts(store: store)
+    }
+
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         context.performHaptic(.alignment)
         context.requestExpand()
@@ -192,13 +199,18 @@ public struct CalendarPlugin: PurahPodPlugin {
         let allEvents = effectiveEvents(store: context.store)
         guard !allEvents.isEmpty else { return [] }
 
+        _ = state.lastAlertTick // Observable heartbeat trigger so SwiftUI live-updates when background tick fires
         let now = Date()
+        let leadTime = state.alertLeadTime
+
         let sortedEvents = allEvents.sorted { a, b in
             if a.isOngoing != b.isOngoing {
                 return a.isOngoing && !b.isOngoing
             }
-            if a.isImminent != b.isImminent {
-                return a.isImminent && !b.isImminent
+            let aImminent = a.isImminent(leadTime: leadTime, now: now)
+            let bImminent = b.isImminent(leadTime: leadTime, now: now)
+            if aImminent != bImminent {
+                return aImminent && !bImminent
             }
             let aPast = a.endTime < now
             let bPast = b.endTime < now
@@ -224,14 +236,16 @@ public struct CalendarPlugin: PurahPodPlugin {
         var subItems = visibleEvents.map { event in
             let isPast = event.endTime < now
             let isOngoing = event.isOngoing
-            let isImminent = event.isImminent
-            let itemState: RailItemActivityState = isOngoing ? .ongoing : (isImminent ? .alerting : (isPast ? .inactive : .normal))
+            let isImminent = event.isImminent(leadTime: leadTime, now: now)
+            let isAcknowledged = state.isAlertAcknowledged(id: event.id) || context.store.isAlertAcknowledged(id: event.id)
+            let isAlerting = (isOngoing || isImminent) && state.isEventGlowAlertEnabled && !isAcknowledged
+            let itemState: RailItemActivityState = isOngoing ? .ongoing : (isAlerting ? .alerting : (isPast ? .inactive : .normal))
             return PurahPluginSubItem(
                 id: event.id,
                 title: event.title,
                 subtitle: event.location,
                 systemIcon: "calendar",
-                badge: isOngoing ? "NOW" : (isImminent ? "SOON" : nil),
+                badge: isOngoing ? "NOW" : (isAlerting ? "SOON" : nil),
                 state: itemState,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
@@ -467,6 +481,29 @@ public struct CalendarPluginSettingsView: View {
                     }
                 ))
                 .font(.caption)
+
+                Divider()
+                    .background(Color.primary.opacity(0.06))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Advance Notice Timing / 提前提醒时间")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Picker("", selection: Binding(
+                        get: { state.alertLeadTime },
+                        set: { newLead in
+                            state.alertLeadTime = newLead
+                            state.save()
+                            state.checkUpcomingAlerts(store: store)
+                        }
+                    )) {
+                        ForEach(CalendarAlertLeadTime.allCases) { lead in
+                            Text(lead.displayName).tag(lead)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
             }
         }
     }
