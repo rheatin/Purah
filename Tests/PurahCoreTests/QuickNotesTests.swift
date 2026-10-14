@@ -1,10 +1,11 @@
 // Tests/PurahCoreTests/QuickNotesTests.swift
 import Testing
 import Foundation
+import AppKit
 @testable import PurahCore
 @testable import PurahUI
 
-@Suite("Quick Notes & Markdown Workspace Tests")
+@Suite("Quick Notes & Markdown Workspace Tests", .serialized)
 @MainActor
 struct QuickNotesTests {
     @Test("NoteDocument derives title from markdown and tracks counts")
@@ -97,128 +98,209 @@ struct QuickNotesTests {
         #expect(!state.documents.contains { $0.id == note.id })
     }
 
-    @Test("applyLineReturn handles smart list continuation and empty prefix clearing")
+    @Test("QuickNotesMarkdownHelper applyLineReturn handles smart list continuation and empty prefix clearing")
     func testApplyLineReturn() {
         // 1. Normal line return
         let normalLines = ["# Title", "Paragraph text"]
-        let (res1, idx1) = NoteDocument.applyLineReturn(lines: normalLines, at: 1)
+        let (res1, idx1) = QuickNotesMarkdownHelper.applyLineReturn(lines: normalLines, at: 1)
         #expect(res1 == ["# Title", "Paragraph text", ""])
         #expect(idx1 == 2)
 
         // 2. Checklist continuation (- [ ] task -> - [ ] )
         let checklistLines = ["- [ ] Buy groceries"]
-        let (res2, idx2) = NoteDocument.applyLineReturn(lines: checklistLines, at: 0)
+        let (res2, idx2) = QuickNotesMarkdownHelper.applyLineReturn(lines: checklistLines, at: 0)
         #expect(res2 == ["- [ ] Buy groceries", "- [ ] "])
         #expect(idx2 == 1)
 
         // 3. Completed checklist continuation (- [x] task -> - [ ] )
         let completedChecklistLines = ["- [x] Complete task"]
-        let (res3, idx3) = NoteDocument.applyLineReturn(lines: completedChecklistLines, at: 0)
+        let (res3, idx3) = QuickNotesMarkdownHelper.applyLineReturn(lines: completedChecklistLines, at: 0)
         #expect(res3 == ["- [x] Complete task", "- [ ] "])
         #expect(idx3 == 1)
 
         // 4. Empty checklist clearing (- [ ]  -> "")
         let emptyChecklistLines = ["- [ ] Buy groceries", "- [ ] "]
-        let (res4, idx4) = NoteDocument.applyLineReturn(lines: emptyChecklistLines, at: 1)
+        let (res4, idx4) = QuickNotesMarkdownHelper.applyLineReturn(lines: emptyChecklistLines, at: 1)
         #expect(res4 == ["- [ ] Buy groceries", ""])
         #expect(idx4 == 1)
 
         // 5. Empty checklist without trailing space (- [ ])
-        let (res5, idx5) = NoteDocument.applyLineReturn(lines: ["- [ ]"], at: 0)
+        let (res5, idx5) = QuickNotesMarkdownHelper.applyLineReturn(lines: ["- [ ]"], at: 0)
         #expect(res5 == [""])
         #expect(idx5 == 0)
 
         // 6. Bullet continuation (- item -> - )
         let bulletLines = ["- First bullet"]
-        let (res6, idx6) = NoteDocument.applyLineReturn(lines: bulletLines, at: 0)
+        let (res6, idx6) = QuickNotesMarkdownHelper.applyLineReturn(lines: bulletLines, at: 0)
         #expect(res6 == ["- First bullet", "- "])
         #expect(idx6 == 1)
 
         // 7. Asterisk bullet continuation (* item -> * )
         let asteriskLines = ["* Star item"]
-        let (res7, idx7) = NoteDocument.applyLineReturn(lines: asteriskLines, at: 0)
+        let (res7, idx7) = QuickNotesMarkdownHelper.applyLineReturn(lines: asteriskLines, at: 0)
         #expect(res7 == ["* Star item", "* "])
         #expect(idx7 == 1)
 
         // 8. Empty bullet clearing (-  -> "")
         let emptyBulletLines = ["- First bullet", "- "]
-        let (res8, idx8) = NoteDocument.applyLineReturn(lines: emptyBulletLines, at: 1)
+        let (res8, idx8) = QuickNotesMarkdownHelper.applyLineReturn(lines: emptyBulletLines, at: 1)
         #expect(res8 == ["- First bullet", ""])
         #expect(idx8 == 1)
 
         // 9. Empty asterisk bullet clearing (*  -> "")
-        let (res9, idx9) = NoteDocument.applyLineReturn(lines: ["* "], at: 0)
+        let (res9, idx9) = QuickNotesMarkdownHelper.applyLineReturn(lines: ["* "], at: 0)
         #expect(res9 == [""])
         #expect(idx9 == 0)
-
-        // 10. Forwarding through NotesPluginState
-        let (res10, idx10) = NotesPluginState.applyLineReturn(lines: ["- [ ] Test item"], at: 0)
-        #expect(res10 == ["- [ ] Test item", "- [ ] "])
-        #expect(idx10 == 1)
     }
 
-    @Test("applyLineEdit handles single-line edits and multi-line paste splitting")
+    @Test("QuickNotesMarkdownHelper applyLineEdit handles single-line edits and multi-line paste splitting")
     func testApplyLineEdit() {
         // 1. Single-line edit
         let lines = ["Line 1", "Line 2"]
-        let (res1, idx1) = NoteDocument.applyLineEdit(lines: lines, at: 0, newValue: "Updated Line 1")
+        let (res1, idx1) = QuickNotesMarkdownHelper.applyLineEdit(lines: lines, at: 0, newValue: "Updated Line 1")
         #expect(res1 == ["Updated Line 1", "Line 2"])
         #expect(idx1 == 0)
 
         // 2. Multi-line paste (Cmd+V) splitting into multiple lines
         let multiLines = ["Before", "Target line", "After"]
         let pasteContent = "Pasted A\nPasted B\nPasted C"
-        let (res2, idx2) = NoteDocument.applyLineEdit(lines: multiLines, at: 1, newValue: pasteContent)
+        let (res2, idx2) = QuickNotesMarkdownHelper.applyLineEdit(lines: multiLines, at: 1, newValue: pasteContent)
         #expect(res2 == ["Before", "Pasted A", "Pasted B", "Pasted C", "After"])
         #expect(idx2 == 3) // Focus moves to index 1 + 3 - 1 = 3 ("Pasted C")
 
         // 3. Multi-line paste into empty document
         let emptyDocLines = [""]
-        let (res3, idx3) = NoteDocument.applyLineEdit(lines: emptyDocLines, at: 0, newValue: "Hello\nWorld")
+        let (res3, idx3) = QuickNotesMarkdownHelper.applyLineEdit(lines: emptyDocLines, at: 0, newValue: "Hello\nWorld")
         #expect(res3 == ["Hello", "World"])
         #expect(idx3 == 1)
-
-        // 4. Forwarding through NotesPluginState
-        let (res4, idx4) = NotesPluginState.applyLineEdit(lines: ["A", "B"], at: 1, newValue: "X\nY")
-        #expect(res4 == ["A", "X", "Y"])
-        #expect(idx4 == 2)
     }
 
-    @Test("applyBackspaceOnEmptyLine deletes empty line when index > 0 and returns previous index")
+    @Test("QuickNotesMarkdownHelper applyBackspaceOnEmptyLine deletes empty line when index > 0 and returns previous index")
     func testApplyBackspaceOnEmptyLine() {
         // 1. Delete middle empty line
         let lines1 = ["First line", "", "Third line"]
-        let res1 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines1, at: 1)
+        let res1 = QuickNotesMarkdownHelper.applyBackspaceOnEmptyLine(lines: lines1, at: 1)
         #expect(res1 != nil)
         #expect(res1?.updatedLines == ["First line", "Third line"])
         #expect(res1?.nextActiveIndex == 0)
 
         // 2. Delete trailing empty line
         let lines2 = ["Header", "Content", ""]
-        let res2 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines2, at: 2)
+        let res2 = QuickNotesMarkdownHelper.applyBackspaceOnEmptyLine(lines: lines2, at: 2)
         #expect(res2 != nil)
         #expect(res2?.updatedLines == ["Header", "Content"])
         #expect(res2?.nextActiveIndex == 1)
 
         // 3. Do not delete if line is not empty
         let lines3 = ["First", "Second"]
-        let res3 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines3, at: 1)
+        let res3 = QuickNotesMarkdownHelper.applyBackspaceOnEmptyLine(lines: lines3, at: 1)
         #expect(res3 == nil)
 
         // 4. Do not delete if index == 0 even if line is empty
         let lines4 = ["", "Second"]
-        let res4 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines4, at: 0)
+        let res4 = QuickNotesMarkdownHelper.applyBackspaceOnEmptyLine(lines: lines4, at: 0)
         #expect(res4 == nil)
 
         // 5. Out of bounds index returns nil
         let lines5 = ["Single"]
-        #expect(NoteDocument.applyBackspaceOnEmptyLine(lines: lines5, at: -1) == nil)
-        #expect(NoteDocument.applyBackspaceOnEmptyLine(lines: lines5, at: 5) == nil)
+        #expect(QuickNotesMarkdownHelper.applyBackspaceOnEmptyLine(lines: lines5, at: -1) == nil)
+        #expect(QuickNotesMarkdownHelper.applyBackspaceOnEmptyLine(lines: lines5, at: 5) == nil)
+    }
 
-        // 6. Forwarding through NotesPluginState
-        let forwarded = NotesPluginState.applyBackspaceOnEmptyLine(lines: ["A", ""], at: 1)
-        #expect(forwarded != nil)
-        #expect(forwarded?.updatedLines == ["A"])
-        #expect(forwarded?.nextActiveIndex == 0)
+    @Test("QuickNotesMarkdownHelper styleAttributedString applies live Markdown styling across NSTextStorage")
+    @MainActor
+    func testStyleAttributedString() {
+        let sampleMarkdown = """
+        # Main Title
+        ## Subheading
+        ### Minor Heading
+        - [ ] Open task
+        - [x] Done task
+        > A wise quote
+        - Bullet point
+        * Asterisk bullet
+        Normal paragraph with **bold text**, *italic text*, and `code snippet`.
+        """
+
+        let storage = NSTextStorage(string: sampleMarkdown)
+        let accent = NSColor.systemTeal
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent)
+
+        #expect(storage.length > 0)
+
+        // 1. Verify H1 styling at location 0
+        let h1Font = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(h1Font?.pointSize == 14.5)
+        let h1PrefixColor = storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(h1PrefixColor == accent)
+
+        // 2. Verify H2 styling
+        let h2Location = (sampleMarkdown as NSString).range(of: "## Subheading").location
+        let h2Font = storage.attribute(.font, at: h2Location, effectiveRange: nil) as? NSFont
+        #expect(h2Font?.pointSize == 13.0)
+
+        // 3. Verify H3 styling
+        let h3Location = (sampleMarkdown as NSString).range(of: "### Minor Heading").location
+        let h3Font = storage.attribute(.font, at: h3Location, effectiveRange: nil) as? NSFont
+        #expect(h3Font?.pointSize == 12.0)
+
+        // 4. Verify checklist open prefix styling
+        let taskOpenLocation = (sampleMarkdown as NSString).range(of: "- [ ] Open task").location
+        let taskOpenColor = storage.attribute(.foregroundColor, at: taskOpenLocation, effectiveRange: nil) as? NSColor
+        #expect(taskOpenColor == accent)
+
+        // 5. Verify checklist completed task has strikethrough on content
+        let taskDoneTextLocation = (sampleMarkdown as NSString).range(of: "Done task").location
+        let strikethrough = storage.attribute(.strikethroughStyle, at: taskDoneTextLocation, effectiveRange: nil) as? Int
+        #expect(strikethrough == NSUnderlineStyle.single.rawValue)
+
+        // 6. Verify quote leading '>' has accentColor
+        let quoteLocation = (sampleMarkdown as NSString).range(of: "> A wise quote").location
+        let quotePrefixColor = storage.attribute(.foregroundColor, at: quoteLocation, effectiveRange: nil) as? NSColor
+        #expect(quotePrefixColor == accent)
+
+        // 7. Verify inline bold
+        let boldLocation = (sampleMarkdown as NSString).range(of: "**bold text**").location
+        let boldFont = storage.attribute(.font, at: boldLocation, effectiveRange: nil) as? NSFont
+        #expect(boldFont?.pointSize == 11.5)
+
+        // 8. Verify inline code has monospaced font and background color
+        let codeLocation = (sampleMarkdown as NSString).range(of: "`code snippet`").location
+        let codeBgColor = storage.attribute(.backgroundColor, at: codeLocation, effectiveRange: nil) as? NSColor
+        #expect(codeBgColor != nil)
+    }
+
+    @Test("PurahNotesNSTextView supports native multi-line selection, deletion, and wrap shortcuts")
+    @MainActor
+    func testPurahNotesNSTextViewMultiLineCapabilities() {
+        let textStorage = NSTextStorage(string: "First Line\nSecond Line\nThird Line\n- [ ] Task A")
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let textContainer = NSTextContainer(containerSize: NSSize(width: 300, height: 1000))
+        layoutManager.addTextContainer(textContainer)
+
+        let textView = PurahNotesNSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 400), textContainer: textContainer)
+        #expect(textView.acceptsFirstMouse(for: nil) == true)
+
+        // 1. Multi-line drag selection spanning from "First" to "Third"
+        let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+        textView.setSelectedRange(fullRange)
+        #expect(textView.selectedRange().length == fullRange.length)
+
+        // 2. Wrap selected text with bold (**...**)
+        let initialSnippet = "SelectMe"
+        textView.string = initialSnippet
+        textView.setSelectedRange(NSRange(location: 0, length: initialSnippet.count))
+        textView.wrapSelectedText(prefix: "**", suffix: "**")
+        #expect(textView.string == "**SelectMe**")
+        #expect(textView.selectedRange() == NSRange(location: 2, length: initialSnippet.count))
+
+        // 3. Multi-line deletion across lines
+        textView.string = "Line 1\nLine 2\nLine 3"
+        let deleteRange = (textView.string as NSString).range(of: "Line 1\nLine 2\n")
+        _ = textView.shouldChangeText(in: deleteRange, replacementString: "")
+        textView.replaceCharacters(in: deleteRange, with: "")
+        textView.didChangeText()
+        #expect(textView.string == "Line 3")
     }
 }

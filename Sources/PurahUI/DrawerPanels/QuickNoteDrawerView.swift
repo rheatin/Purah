@@ -1,5 +1,6 @@
 // Sources/PurahUI/DrawerPanels/QuickNoteDrawerView.swift
 import SwiftUI
+import AppKit
 import PurahCore
 
 /// Cheat sheet popover displaying Markdown syntax hints and keyboard conventions.
@@ -194,12 +195,488 @@ public struct InteractiveMarkdownPreviewView: View {
     }
 }
 
+// MARK: - Quick Notes Markdown Helper (Plugin Level)
+
+/// Plugin-level helper providing pure Markdown editing and live NSTextStorage syntax styling.
+public struct QuickNotesMarkdownHelper: Sendable {
+    private static let boldRegex = try? NSRegularExpression(pattern: #"\*\*(.+?)\*\*"#)
+    private static let italicRegex = try? NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)"#)
+    private static let codeRegex = try? NSRegularExpression(pattern: #"`([^`\n]+?)`"#)
+
+    /// Handles smart line return and list/checklist continuation in Typora block-level live preview.
+    public static func applyLineReturn(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int) {
+        guard !lines.isEmpty else {
+            return (["", ""], 1)
+        }
+        let safeIndex = max(0, min(index, lines.count - 1))
+        let currentLine = lines[safeIndex]
+        let trimmed = currentLine.trimmingCharacters(in: .whitespaces)
+
+        // Empty checklist item: clear prefix and exit checklist mode
+        if trimmed == "- [ ]" || trimmed == "- [x]" || trimmed == "- [X]" || currentLine == "- [ ] " || currentLine == "- [x] " || currentLine == "- [X] " {
+            var updated = lines
+            updated[safeIndex] = ""
+            return (updated, safeIndex)
+        }
+        // Empty bullet item: clear prefix and exit bullet mode
+        else if trimmed == "-" || trimmed == "*" || currentLine == "- " || currentLine == "* " {
+            var updated = lines
+            updated[safeIndex] = ""
+            return (updated, safeIndex)
+        }
+        // Non-empty line: determine prefix continuation for next line
+        else {
+            let prefix: String
+            if trimmed.hasPrefix("- [ ] ") || trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
+                prefix = "- [ ] "
+            } else if trimmed.hasPrefix("- ") {
+                prefix = "- "
+            } else if trimmed.hasPrefix("* ") {
+                prefix = "* "
+            } else {
+                prefix = ""
+            }
+            var updated = lines
+            updated.insert(prefix, at: safeIndex + 1)
+            return (updated, safeIndex + 1)
+        }
+    }
+
+    /// Handles line edits and multi-line paste operations.
+    public static func applyLineEdit(lines: [String], at index: Int, newValue: String) -> (updatedLines: [String], nextActiveIndex: Int) {
+        var currentLines = lines.isEmpty ? [""] : lines
+        let safeIndex = max(0, min(index, currentLines.count - 1))
+
+        if newValue.contains("\n") {
+            let pastedLines = newValue.components(separatedBy: "\n")
+            currentLines.remove(at: safeIndex)
+            currentLines.insert(contentsOf: pastedLines, at: safeIndex)
+            let nextIndex = safeIndex + pastedLines.count - 1
+            return (currentLines, max(0, nextIndex))
+        } else {
+            currentLines[safeIndex] = newValue
+            return (currentLines, safeIndex)
+        }
+    }
+
+    /// Deletes the line at `index` if it is empty and `index > 0`, returning the updated lines and `index - 1`.
+    public static func applyBackspaceOnEmptyLine(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int)? {
+        guard lines.indices.contains(index), index > 0, lines[index].isEmpty else {
+            return nil
+        }
+        var updated = lines
+        updated.remove(at: index)
+        return (updated, index - 1)
+    }
+
+    /// Applies live in-place Markdown typography attributes across the full string of textStorage.
+    @MainActor
+    public static func styleAttributedString(_ textStorage: NSTextStorage, accentColor: NSColor) {
+        let string = textStorage.string
+        let fullRange = NSRange(location: 0, length: (string as NSString).length)
+        guard fullRange.length > 0 else { return }
+
+        textStorage.beginEditing()
+        defer { textStorage.endEditing() }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 2.5
+
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        textStorage.setAttributes(baseAttributes, range: fullRange)
+
+        let nsString = string as NSString
+        let italicDescriptor = NSFont.systemFont(ofSize: 11.5).fontDescriptor.withSymbolicTraits(.italic)
+        let italicFont = NSFont(descriptor: italicDescriptor, size: 11.5) ?? NSFontManager.shared.convert(NSFont.systemFont(ofSize: 11.5), toHaveTrait: .italicFontMask)
+
+        nsString.enumerateSubstrings(in: fullRange, options: .byLines) { substring, substringRange, _, _ in
+            guard let line = substring else { return }
+            let trimmedLeading = line.drop(while: { $0.isWhitespace })
+            let leadingWhitespaceCount = line.count - trimmedLeading.count
+            let trimmedString = String(trimmedLeading)
+
+            if trimmedString.hasPrefix("### ") {
+                textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .bold), range: substringRange)
+                let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 3)
+                textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: hashRange)
+            } else if trimmedString.hasPrefix("## ") {
+                textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .bold), range: substringRange)
+                let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 2)
+                textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: hashRange)
+            } else if trimmedString.hasPrefix("# ") {
+                textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 14.5, weight: .bold), range: substringRange)
+                let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
+                textStorage.addAttribute(.foregroundColor, value: accentColor, range: hashRange)
+            } else if trimmedString.hasPrefix("- [ ] ") {
+                let prefixRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 5)
+                textStorage.addAttributes([
+                    .foregroundColor: accentColor,
+                    .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .bold)
+                ], range: prefixRange)
+            } else if trimmedString.hasPrefix("- [x] ") || trimmedString.hasPrefix("- [X] ") {
+                let prefixRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 5)
+                textStorage.addAttributes([
+                    .foregroundColor: accentColor,
+                    .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .bold)
+                ], range: prefixRange)
+
+                let textStart = substringRange.location + leadingWhitespaceCount + 6
+                let textEnd = substringRange.location + substringRange.length
+                if textEnd > textStart {
+                    let restRange = NSRange(location: textStart, length: textEnd - textStart)
+                    textStorage.addAttributes([
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                        .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                        .strikethroughColor: NSColor.secondaryLabelColor
+                    ], range: restRange)
+                }
+            } else if trimmedString.hasPrefix("> ") {
+                textStorage.addAttributes([
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .font: italicFont
+                ], range: substringRange)
+                let quoteRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
+                textStorage.addAttribute(.foregroundColor, value: accentColor, range: quoteRange)
+            } else if trimmedString.hasPrefix("- ") || trimmedString.hasPrefix("* ") {
+                let bulletRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
+                textStorage.addAttributes([
+                    .foregroundColor: accentColor,
+                    .font: NSFont.systemFont(ofSize: 11.5, weight: .bold)
+                ], range: bulletRange)
+            }
+        }
+
+        if let boldRegex {
+            let matches = boldRegex.matches(in: string, range: fullRange)
+            for match in matches {
+                textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 11.5, weight: .bold), range: match.range)
+            }
+        }
+
+        if let italicRegex {
+            let matches = italicRegex.matches(in: string, range: fullRange)
+            for match in matches {
+                textStorage.addAttribute(.font, value: italicFont, range: match.range)
+            }
+        }
+
+        if let codeRegex {
+            let matches = codeRegex.matches(in: string, range: fullRange)
+            for match in matches {
+                textStorage.addAttributes([
+                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+                    .foregroundColor: accentColor,
+                    .backgroundColor: accentColor.withAlphaComponent(0.12)
+                ], range: match.range)
+            }
+        }
+    }
+}
+
+// MARK: - Native AppKit Text View Canvas
+
+/// Native AppKit text view subclass specialized for continuous live Markdown editing.
+@MainActor
+public final class PurahNotesNSTextView: NSTextView {
+    public override init(frame frameRect: NSRect, textContainer: NSTextContainer?) {
+        super.init(frame: frameRect, textContainer: textContainer)
+        setupProperties()
+    }
+
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupProperties()
+    }
+
+    private func setupProperties() {
+        drawsBackground = false
+        isRichText = false
+        importsGraphics = false
+        allowsUndo = true
+        isAutomaticQuoteSubstitutionEnabled = false
+        isAutomaticDashSubstitutionEnabled = false
+        isAutomaticTextReplacementEnabled = false
+        textContainerInset = NSSize(width: 4, height: 6)
+        isVerticallyResizable = true
+        isHorizontallyResizable = false
+        autoresizingMask = [.width]
+        font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
+        textColor = NSColor.labelColor
+    }
+
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    public override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let containerPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+
+        if let layoutManager = self.layoutManager, let textContainer = self.textContainer {
+            let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+            let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+            let nsString = string as NSString
+
+            if charIndex < nsString.length {
+                let lineRange = nsString.lineRange(for: NSRange(location: charIndex, length: 0))
+                let lineString = nsString.substring(with: lineRange)
+
+                var prefixOffset = 0
+                for scalar in lineString.unicodeScalars {
+                    if CharacterSet.whitespaces.contains(scalar) {
+                        prefixOffset += 1
+                    } else {
+                        break
+                    }
+                }
+
+                let trimmedFromStart = String(lineString.dropFirst(prefixOffset))
+                let isUnchecked = trimmedFromStart.hasPrefix("- [ ]")
+                let isChecked = trimmedFromStart.hasPrefix("- [x]") || trimmedFromStart.hasPrefix("- [X]")
+
+                if (isUnchecked || isChecked) && point.x < 48 {
+                    let clickOffsetInLine = charIndex - lineRange.location
+                    if clickOffsetInLine >= prefixOffset && clickOffsetInLine <= prefixOffset + 5 {
+                        let hasTrailingSpace = trimmedFromStart.hasPrefix("- [ ] ") || trimmedFromStart.hasPrefix("- [x] ") || trimmedFromStart.hasPrefix("- [X] ")
+                        let prefixLen = hasTrailingSpace ? 6 : 5
+                        let toggledPrefix = isUnchecked ? (hasTrailingSpace ? "- [x] " : "- [x]") : (hasTrailingSpace ? "- [ ] " : "- [ ]")
+                        let replacementRange = NSRange(location: lineRange.location + prefixOffset, length: prefixLen)
+
+                        if shouldChangeText(in: replacementRange, replacementString: toggledPrefix) {
+                            replaceCharacters(in: replacementRange, with: toggledPrefix)
+                            didChangeText()
+                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                            return
+                        }
+                    }
+                }
+            }
+        }
+
+        super.mouseDown(with: event)
+    }
+
+    public override func insertNewline(_ sender: Any?) {
+        guard selectedRange().length == 0, !hasMarkedText() else {
+            super.insertNewline(sender)
+            return
+        }
+
+        let cursorLocation = selectedRange().location
+        let nsString = string as NSString
+        let lineRange = nsString.lineRange(for: NSRange(location: cursorLocation, length: 0))
+        let fullLine = nsString.substring(with: lineRange)
+
+        let newlineLen = fullLine.hasSuffix("\r\n") ? 2 : (fullLine.hasSuffix("\n") ? 1 : 0)
+        let lineContent = String(fullLine.dropLast(newlineLen))
+        let trimmed = lineContent.trimmingCharacters(in: .whitespaces)
+
+        // 1. If the current line is an empty checklist item or empty bullet, clear it and exit list mode
+        let isEmptyChecklist = (trimmed == "- [ ]" || trimmed == "- [x]" || trimmed == "- [X]" || lineContent == "- [ ] " || lineContent == "- [x] " || lineContent == "- [X] ")
+        let isEmptyBullet = (trimmed == "-" || trimmed == "*" || lineContent == "- " || lineContent == "* ")
+
+        if isEmptyChecklist || isEmptyBullet {
+            let contentRange = NSRange(location: lineRange.location, length: lineRange.length - newlineLen)
+            if shouldChangeText(in: contentRange, replacementString: "") {
+                replaceCharacters(in: contentRange, with: "")
+                didChangeText()
+                setSelectedRange(NSRange(location: lineRange.location, length: 0))
+                return
+            }
+        }
+
+        // 2. If the cursor is at the end of the line, continue smart list
+        let isAtEndOfLine = (cursorLocation == lineRange.location + lineRange.length - newlineLen)
+        if isAtEndOfLine {
+            if trimmed.hasPrefix("- [ ] ") || trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
+                insertText("\n- [ ] ", replacementRange: selectedRange())
+                return
+            } else if trimmed.hasPrefix("- ") && !trimmed.hasPrefix("- [") {
+                insertText("\n- ", replacementRange: selectedRange())
+                return
+            } else if trimmed.hasPrefix("* ") {
+                insertText("\n* ", replacementRange: selectedRange())
+                return
+            }
+        }
+
+        super.insertNewline(sender)
+    }
+
+    public func wrapSelectedText(prefix: String, suffix: String) {
+        let range = selectedRange()
+        let nsString = string as NSString
+        guard range.location != NSNotFound, range.location + range.length <= nsString.length else { return }
+        let selectedText = nsString.substring(with: range)
+        let replacement = "\(prefix)\(selectedText)\(suffix)"
+        if shouldChangeText(in: range, replacementString: replacement) {
+            replaceCharacters(in: range, with: replacement)
+            didChangeText()
+            if range.length > 0 {
+                let newSelection = NSRange(location: range.location + prefix.count, length: range.length)
+                setSelectedRange(newSelection)
+            } else {
+                let newSelection = NSRange(location: range.location + prefix.count, length: 0)
+                setSelectedRange(newSelection)
+            }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        }
+    }
+
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command {
+            if let chars = event.charactersIgnoringModifiers?.lowercased() {
+                if chars == "b" {
+                    wrapSelectedText(prefix: "**", suffix: "**")
+                    return true
+                } else if chars == "i" {
+                    wrapSelectedText(prefix: "*", suffix: "*")
+                    return true
+                } else if chars == "k" {
+                    wrapSelectedText(prefix: "`", suffix: "`")
+                    return true
+                }
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+// MARK: - SwiftUI Representable Wrapper
+
+/// SwiftUI wrapper bridging AppKit's NSTextView into SwiftUI with live Markdown styling.
+@MainActor
+public struct NotesMarkdownEditorView: NSViewRepresentable {
+    public let text: String
+    public let accentColor: Color
+    public let onTextChange: (String) -> Void
+    public var onTextViewCreated: ((PurahNotesNSTextView) -> Void)? = nil
+
+    public init(
+        text: String,
+        accentColor: Color,
+        onTextChange: @escaping (String) -> Void,
+        onTextViewCreated: ((PurahNotesNSTextView) -> Void)? = nil
+    ) {
+        self.text = text
+        self.accentColor = accentColor
+        self.onTextChange = onTextChange
+        self.onTextViewCreated = onTextViewCreated
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    public func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let contentSize = scrollView.contentSize
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let textContainer = NSTextContainer(containerSize: NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        layoutManager.addTextContainer(textContainer)
+
+        let textView = PurahNotesNSTextView(frame: NSRect(origin: .zero, size: contentSize), textContainer: textContainer)
+        textView.minSize = NSSize(width: 0.0, height: 0.0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.delegate = context.coordinator
+        scrollView.documentView = textView
+
+        textView.string = text
+        let nsAccentColor = NSColor(accentColor)
+        QuickNotesMarkdownHelper.styleAttributedString(textView.textStorage ?? textStorage, accentColor: nsAccentColor)
+        textView.typingAttributes = [
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+            .foregroundColor: NSColor.labelColor
+        ]
+
+        DispatchQueue.main.async {
+            onTextViewCreated?(textView)
+        }
+
+        return scrollView
+    }
+
+    public func updateNSView(_ nsView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = nsView.documentView as? PurahNotesNSTextView else { return }
+
+        if textView.string != text && !textView.hasMarkedText() {
+            let savedRanges = textView.selectedRanges
+            textView.string = text
+            if let textStorage = textView.textStorage {
+                let nsAccentColor = NSColor(accentColor)
+                QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor)
+            }
+            let maxLen = (text as NSString).length
+            let clampedRanges = savedRanges.compactMap { val -> NSValue? in
+                let r = val.rangeValue
+                guard r.location != NSNotFound else { return nil }
+                let loc = min(r.location, maxLen)
+                let len = min(r.length, maxLen - loc)
+                return NSValue(range: NSRange(location: loc, length: len))
+            }
+            if !clampedRanges.isEmpty {
+                textView.selectedRanges = clampedRanges
+            }
+            textView.typingAttributes = [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+                .foregroundColor: NSColor.labelColor
+            ]
+        }
+    }
+
+    @MainActor
+    public final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: NotesMarkdownEditorView
+
+        init(parent: NotesMarkdownEditorView) {
+            self.parent = parent
+        }
+
+        public func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? PurahNotesNSTextView ?? notification.object as? NSTextView else { return }
+            let currentString = textView.string
+            parent.onTextChange(currentString)
+
+            guard !textView.hasMarkedText() else { return }
+
+            if let textStorage = textView.textStorage {
+                let savedRanges = textView.selectedRanges
+                let nsAccentColor = NSColor(parent.accentColor)
+                QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor)
+                textView.selectedRanges = savedRanges
+                textView.typingAttributes = [
+                    .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+                    .foregroundColor: NSColor.labelColor
+                ]
+            }
+        }
+    }
+}
+
+// MARK: - Quick Note Drawer View
+
 public struct QuickNoteDrawerView: View {
     public let state: NotesPluginState
     public let store: PurahWorkspaceStore
 
-    @State private var activeLineIndex: Int? = nil
-    @FocusState private var focusedLineIndex: Int?
+    @State private var activeTextView: PurahNotesNSTextView? = nil
     @State private var isCopied: Bool = false
     @State private var isShowingTips: Bool = false
 
@@ -213,14 +690,6 @@ public struct QuickNoteDrawerView: View {
 
     private var currentText: String {
         state.currentDocument?.content ?? state.noteContent.text
-    }
-
-    private var lines: [String] {
-        let text = currentText
-        if text.isEmpty {
-            return [""]
-        }
-        return text.components(separatedBy: "\n")
     }
 
     private var wordCount: Int {
@@ -244,7 +713,7 @@ public struct QuickNoteDrawerView: View {
             // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Tips, Star
             navigationToolbar
 
-            // 2. Typora-Style Block-Level Live Preview Document Canvas
+            // 2. Single Continuous Native NSTextView Live Markdown Document Canvas
             documentCanvasView
 
             // 3. Bottom status bar & actions
@@ -253,56 +722,41 @@ public struct QuickNoteDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(keyboardShortcutsOverlay)
         .onDisappear {
-            activeLineIndex = nil
-            focusedLineIndex = nil
             state.save()
             store.savePersistentState()
         }
     }
 
-    // MARK: - Typora Block-Level Live Preview Canvas
+    // MARK: - Native Live Markdown Canvas
     private var documentCanvasView: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 4) {
-                let currentLines = self.lines
-                let isEmptyDoc = currentLines.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
-
-                if isEmptyDoc && activeLineIndex == nil {
-                    HStack(spacing: 5) {
-                        Image(systemName: "pencil.line")
-                            .font(.system(size: 10))
-                            .foregroundColor(noteColor.opacity(0.7))
-                        Text("notes.empty".localized)
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundColor(.secondary.opacity(0.45))
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        handleEmptyAreaClick()
-                    }
-                } else {
-                    ForEach(Array(currentLines.enumerated()), id: \.offset) { index, line in
-                        if activeLineIndex == index {
-                            activeLineView(index: index)
-                        } else {
-                            inactiveLineView(line: line, index: index)
-                        }
-                    }
+        ZStack(alignment: .topLeading) {
+            NotesMarkdownEditorView(
+                text: currentText,
+                accentColor: noteColor,
+                onTextChange: { newText in
+                    updateNoteText(newText)
+                },
+                onTextViewCreated: { textView in
+                    self.activeTextView = textView
                 }
+            )
 
-                Spacer(minLength: 28)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        handleEmptyAreaClick()
-                    }
+            if currentText.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "pencil.line")
+                        .font(.system(size: 10))
+                        .foregroundColor(noteColor.opacity(0.7))
+                    Text("notes.empty".localized)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.45))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .allowsHitTesting(false)
             }
-            .padding(6)
-            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
         }
+        .padding(4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(0.45))
@@ -311,267 +765,6 @@ public struct QuickNoteDrawerView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
         )
-        .onChange(of: focusedLineIndex) { _, newIndex in
-            if let newIndex {
-                if activeLineIndex != newIndex {
-                    activeLineIndex = newIndex
-                }
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    if focusedLineIndex == nil {
-                        activeLineIndex = nil
-                        state.save()
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Active Line Editor
-    @ViewBuilder
-    private func activeLineView(index: Int) -> some View {
-        HStack(spacing: 4) {
-            Rectangle()
-                .fill(noteColor)
-                .frame(width: 2)
-                .cornerRadius(1)
-
-            TextField("", text: lineBinding(for: index))
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .focused($focusedLineIndex, equals: index)
-                .onSubmit {
-                    commitLineAndInsertBelow(at: index)
-                }
-                .onExitCommand {
-                    activeLineIndex = nil
-                    focusedLineIndex = nil
-                    state.save()
-                }
-                .onKeyPress(.upArrow) {
-                    if index > 0 {
-                        activateLine(index - 1)
-                        return .handled
-                    }
-                    return .ignored
-                }
-                .onKeyPress(.downArrow) {
-                    if index + 1 < lines.count {
-                        activateLine(index + 1)
-                        return .handled
-                    }
-                    return .ignored
-                }
-                .onKeyPress { press in
-                    if press.key == .delete || press.characters == "\u{7F}" || press.characters == "\u{08}" {
-                        if let result = NoteDocument.applyBackspaceOnEmptyLine(lines: self.lines, at: index) {
-                            updateNoteText(result.updatedLines.joined(separator: "\n"))
-                            state.save()
-                            activateLine(result.nextActiveIndex)
-                            return .handled
-                        }
-                    }
-                    return .ignored
-                }
-                .padding(.vertical, 2)
-                .padding(.horizontal, 4)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - Inactive Line Preview
-    @ViewBuilder
-    private func inactiveLineView(line: String, index: Int) -> some View {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-        if trimmed.hasPrefix("- [ ] ") {
-            let itemText = String(trimmed.dropFirst(6))
-            HStack(alignment: .top, spacing: 6) {
-                Button {
-                    state.toggleChecklist(at: index)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-                } label: {
-                    Image(systemName: "square")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-
-                Text(LocalizedStringKey(itemText))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        activateLine(index)
-                    }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else if trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
-            let itemText = String(trimmed.dropFirst(6))
-            HStack(alignment: .top, spacing: 6) {
-                Button {
-                    state.toggleChecklist(at: index)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
-                } label: {
-                    Image(systemName: "checkmark.square.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(noteColor)
-                }
-                .buttonStyle(.plain)
-
-                Text(LocalizedStringKey(itemText))
-                    .font(.system(size: 11, design: .rounded))
-                    .strikethrough(true, color: .secondary.opacity(0.6))
-                    .foregroundColor(.secondary.opacity(0.7))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        activateLine(index)
-                    }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else if trimmed.hasPrefix("###") {
-            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            Text(String(content))
-                .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activateLine(index)
-                }
-        } else if trimmed.hasPrefix("##") {
-            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            Text(String(content))
-                .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.top, 1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activateLine(index)
-                }
-        } else if trimmed.hasPrefix("#") {
-            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            Text(String(content))
-                .font(.system(size: 13.5, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.top, 2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activateLine(index)
-                }
-        } else if trimmed.hasPrefix(">") {
-            let content = trimmed.drop(while: { $0 == ">" || $0.isWhitespace })
-            HStack(spacing: 6) {
-                Rectangle()
-                    .fill(noteColor.opacity(0.7))
-                    .frame(width: 2.5)
-                Text(LocalizedStringKey(String(content)))
-                    .font(.system(size: 10.5, design: .rounded))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.vertical, 1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                activateLine(index)
-            }
-        } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
-            HStack(alignment: .top, spacing: 5) {
-                Circle()
-                    .fill(noteColor.opacity(0.85))
-                    .frame(width: 3.5, height: 3.5)
-                    .padding(.top, 5)
-                Text(LocalizedStringKey(String(trimmed.dropFirst(2))))
-                    .font(.system(size: 11, design: .rounded))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                activateLine(index)
-            }
-        } else if trimmed.isEmpty {
-            Spacer()
-                .frame(height: 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activateLine(index)
-                }
-        } else {
-            Text(LocalizedStringKey(line))
-                .font(.system(size: 11, design: .rounded))
-                .lineSpacing(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activateLine(index)
-                }
-        }
-    }
-
-    // MARK: - Line Editing & Continuation Actions
-    private func lineBinding(for index: Int) -> Binding<String> {
-        Binding(
-            get: {
-                let currentLines = self.lines
-                guard currentLines.indices.contains(index) else { return "" }
-                return currentLines[index]
-            },
-            set: { newValue in
-                let currentLines = self.lines
-                guard currentLines.indices.contains(index) else { return }
-                let (updatedLines, nextIndex) = NoteDocument.applyLineEdit(lines: currentLines, at: index, newValue: newValue)
-                let newContent = updatedLines.joined(separator: "\n")
-                updateNoteText(newContent)
-                if nextIndex != index {
-                    activateLine(nextIndex)
-                }
-            }
-        )
-    }
-
-    private func commitLineAndInsertBelow(at index: Int) {
-        let currentLines = self.lines
-        guard currentLines.indices.contains(index) else { return }
-        let (updatedLines, nextIndex) = NoteDocument.applyLineReturn(lines: currentLines, at: index)
-        let newContent = updatedLines.joined(separator: "\n")
-        updateNoteText(newContent)
-        state.save()
-        activateLine(nextIndex)
-    }
-
-    private func activateLine(_ index: Int) {
-        let currentLines = self.lines
-        let safeIndex = max(0, min(index, max(0, currentLines.count - 1)))
-        activeLineIndex = safeIndex
-        DispatchQueue.main.async {
-            focusedLineIndex = safeIndex
-        }
-    }
-
-    private func handleEmptyAreaClick() {
-        let currentLines = self.lines
-        if currentLines.isEmpty {
-            updateNoteText("")
-            activateLine(0)
-        } else if let last = currentLines.last, last.isEmpty {
-            activateLine(currentLines.count - 1)
-        } else {
-            var updated = currentLines
-            updated.append("")
-            let newContent = updated.joined(separator: "\n")
-            updateNoteText(newContent)
-            activateLine(updated.count - 1)
-        }
     }
 
     private func updateNoteText(_ newText: String) {
@@ -597,29 +790,14 @@ public struct QuickNoteDrawerView: View {
     }
 
     private func wrapSelection(prefix: String, suffix: String) {
-        let snippet = "\(prefix)\(suffix)"
-        let currentLines = self.lines
-
-        if let activeIndex = activeLineIndex, currentLines.indices.contains(activeIndex) {
-            var updated = currentLines
-            let line = updated[activeIndex]
-            updated[activeIndex] = line.isEmpty ? snippet : "\(line)\(snippet)"
-            let newContent = updated.joined(separator: "\n")
-            updateNoteText(newContent)
-            state.save()
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        if let textView = activeTextView {
+            textView.wrapSelectedText(prefix: prefix, suffix: suffix)
         } else {
-            if currentLines.isEmpty || (currentLines.count == 1 && currentLines[0].isEmpty) {
-                updateNoteText(snippet)
-                activateLine(0)
-            } else {
-                var updated = currentLines
-                updated.append(snippet)
-                let newContent = updated.joined(separator: "\n")
-                updateNoteText(newContent)
-                state.save()
-                activateLine(updated.count - 1)
-            }
+            let snippet = "\(prefix)\(suffix)"
+            let text = currentText
+            let updated = text.isEmpty ? snippet : "\(text)\n\(snippet)"
+            updateNoteText(updated)
+            state.save()
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
         }
     }
@@ -632,8 +810,6 @@ public struct QuickNoteDrawerView: View {
                 ForEach(state.availableFolders, id: \.self) { folder in
                     Button {
                         state.selectFolder(folder)
-                        activeLineIndex = nil
-                        focusedLineIndex = nil
                         state.save()
                     } label: {
                         HStack {
@@ -669,8 +845,6 @@ public struct QuickNoteDrawerView: View {
                 ForEach(state.documentsInCurrentFolder) { doc in
                     Button {
                         state.selectedNoteId = doc.id
-                        activeLineIndex = nil
-                        focusedLineIndex = nil
                         state.save()
                     } label: {
                         HStack {
@@ -687,7 +861,8 @@ public struct QuickNoteDrawerView: View {
                 Divider()
                 Button {
                     _ = state.createNote(folder: state.selectedFolder)
-                    activateLine(0)
+                    activeTextView?.setSelectedRange(NSRange(location: 0, length: 0))
+                    activeTextView?.window?.makeFirstResponder(activeTextView)
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
                 } label: {
                     Label("New Note in \(state.selectedFolder)", systemImage: "plus")
@@ -715,7 +890,8 @@ public struct QuickNoteDrawerView: View {
             // New Note Button
             Button {
                 _ = state.createNote(folder: state.selectedFolder)
-                activateLine(0)
+                activeTextView?.setSelectedRange(NSRange(location: 0, length: 0))
+                activeTextView?.window?.makeFirstResponder(activeTextView)
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
             } label: {
                 Image(systemName: "plus")
