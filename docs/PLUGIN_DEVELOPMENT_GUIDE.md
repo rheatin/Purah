@@ -182,9 +182,12 @@ PurahDecomposedCapacitySettingRow(
 
 ---
 
-## 6. 独立命名空间存储 (`PurahPluginStorage`)
+## 6. 存储引擎与持久化架构 (`PurahPluginStorage` & `PurahPluginFileStorage`)
 
-Purah 为每个插件自动分配独立的 `UserDefaults` 作用域 (`ScopedPluginStorage`)，键前缀统一为 `purah.plugin.<pluginId>.<key>`，杜绝插件间键名污染：
+Purah 为插件提供了**双轨分级持久化体系**：
+
+### 6.1 轻量键值存储 (`ScopedPluginStorage`)
+用于保存插件的轻量配置、开关或简单状态，自动分配专属的 `UserDefaults` 作用域，键前缀统一为 `purah.plugin.<pluginId>.<key>`，杜绝插件间键名污染：
 
 ```swift
 // 读写基础类型
@@ -194,6 +197,45 @@ let token = context.storage.string(forKey: "userToken")
 // 读写 Codable 复杂模型
 context.storage.setCodable(myConfig, forKey: "config")
 let config = context.storage.codable(forKey: "config", as: MyConfig.self)
+```
+
+### 6.2 物理硬盘沙盒与大文件存储 (`PurahPluginFileStorage`)
+若插件涉及大文件、图片原图、音频缓存或长期历史数据，**严禁存入 `UserDefaults`**（否则常驻进程内存会暴涨）。
+每个插件通过 `context.fileStorage` 自动拥有独立的 Application Support 沙盒目录（`~/Library/Application Support/Purah/Plugins/<pluginId>/`）：
+- `context.fileStorage.dataDirectory`：持久业务数据与附件存放目录；
+- `context.fileStorage.cacheDirectory`：可随时清空的临时缓存与缩略图目录；
+- `context.fileStorage.diskUsageFormatted`：自动递归统计真实硬盘占用（例如 `"4.8 MB"`）；
+- `context.fileStorage.openInFinder()`：一键在 macOS 访达中穿透打开插件存储目录。
+
+### 6.3 通用历史仓库引擎 (`PurahDiskRepository<Item>`)
+凡是涉及列表、历史记录、已完成归档等条目的插件，可直接使用 Base 提供的原子磁盘仓库：
+```swift
+let repo = PurahDiskRepository<MyItem>(
+    pluginId: "my-plugin",
+    retentionPeriod: .sevenDays, // 1天 ~ 90天 ~ 永不过期
+    diskQuota: .mb500            // 100MB ~ 2GB ~ 无限制
+)
+
+// 插入、重排、收藏
+repo.insert(newItem)
+repo.moveItem(from: 0, to: 3)
+repo.toggleFavorite(id: "item-123")
+```
+
+#### 🛡️ 核心守则：收藏 (Star) 享有绝对免死保护 (Star Protection Immunity Rule)
+> **概念解耦说明**：在 Purah 中，**“外部 Pin (图钉)”** 专指将抽屉卡片物理常驻在屏幕边缘不自动滑回收起；而 **“内部 Star (收藏)”** 专指将具体数据内容赋予免死金牌永久留存。
+在任何自动过期清理 (`cleanExpired`) 或磁盘配额超额修剪 (`enforceQuota`) 过程中，**凡是标记为 `isFavorite == true` 的条目享有最高优先级绝对免死保护**，永远不会被系统自动清理或修剪，直至用户主动手动删除。
+
+### 6.4 统一人机存储设置组件 (`PurahStoragePolicySection`)
+一行代码为插件设置面板嵌入完整的保留期限、磁盘配额选择器、自动修剪开关及访达文件穿透按钮：
+```swift
+PurahStoragePolicySection(
+    retention: $state.retentionPeriod,
+    quota: $state.diskQuota,
+    autoPrune: $state.autoPruneOnQuota,
+    fileStorage: context.fileStorage,
+    onClearAll: { state.clearAll() }
+)
 ```
 
 ---

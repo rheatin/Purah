@@ -1,8 +1,8 @@
-// Sources/PurahCore/Models/ClipboardStoragePolicies.swift
+// Sources/PurahCore/Storage/PurahStoragePolicies.swift
 import Foundation
 
-/// Retention duration policy for clipboard history items.
-public enum ClipboardRetentionPeriod: String, CaseIterable, Identifiable, Codable, Sendable {
+/// Retention duration policy for time-stamped history collections.
+public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, Sendable {
     case never = "never"
     case oneDay = "1day"
     case threeDays = "3days"
@@ -27,10 +27,9 @@ public enum ClipboardRetentionPeriod: String, CaseIterable, Identifiable, Codabl
 
     @MainActor
     public var localizedDisplayName: String {
-        "clipboard.retention.\(rawValue)".localized
+        "storage.retention.\(rawValue)".localized
     }
 
-    /// Expiration threshold in seconds (nil for never)
     public var expirationSeconds: TimeInterval? {
         switch self {
         case .never: return nil
@@ -43,15 +42,14 @@ public enum ClipboardRetentionPeriod: String, CaseIterable, Identifiable, Codabl
         }
     }
 
-    /// Checks whether an item created at `timestamp` has expired at `now`.
     public func isExpired(timestamp: Date, now: Date = Date()) -> Bool {
         guard let seconds = expirationSeconds else { return false }
         return now.timeIntervalSince(timestamp) > seconds
     }
 }
 
-/// Disk storage quota policy for clipboard media and index files.
-public enum ClipboardDiskQuota: String, CaseIterable, Identifiable, Codable, Sendable {
+/// Disk storage quota policy for plugin media and index files.
+public enum PurahDiskQuota: String, CaseIterable, Identifiable, Codable, Sendable {
     case mb100 = "100mb"
     case mb250 = "250mb"
     case mb500 = "500mb"
@@ -74,10 +72,9 @@ public enum ClipboardDiskQuota: String, CaseIterable, Identifiable, Codable, Sen
 
     @MainActor
     public var localizedDisplayName: String {
-        "clipboard.quota.\(rawValue)".localized
+        "storage.quota.\(rawValue)".localized
     }
 
-    /// Max bytes threshold for the quota (nil for unlimited)
     public var maxBytes: Int64? {
         switch self {
         case .mb100: return 100 * 1024 * 1024
@@ -94,3 +91,24 @@ public enum ClipboardDiskQuota: String, CaseIterable, Identifiable, Codable, Sen
         return totalBytes > max
     }
 }
+
+/// Common protocol for historical items managed by Purah disk repositories.
+/// Guarantees that items have a unique identifier, a creation timestamp for retention evaluation,
+/// and a favorite/star flag for absolute deletion protection.
+public protocol PurahStorableItem: Identifiable, Codable, Sendable {
+    var id: String { get }
+    var timestamp: Date { get }
+    var isFavorite: Bool { get set }
+}
+
+public extension PurahStorableItem {
+    /// Backward-compatibility alias: isPinned bridges directly to isFavorite.
+    var isPinned: Bool {
+        get { isFavorite }
+        set { isFavorite = newValue }
+    }
+}
+
+// Backward-compatibility type aliases
+public typealias ClipboardRetentionPeriod = PurahRetentionPeriod
+public typealias ClipboardDiskQuota = PurahDiskQuota

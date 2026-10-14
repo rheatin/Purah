@@ -15,6 +15,7 @@ public struct PurahPluginContext: Sendable {
     public let accentColor: Color
     public let palette: ThemePalette
     public let storage: any PurahPluginStorage
+    public let fileStorage: PurahPluginFileStorage
     private let _store: PurahWorkspaceStore?
 
     /// Legacy host store reference for built-in panels during transition.
@@ -83,6 +84,7 @@ public struct PurahPluginContext: Sendable {
         accentColor: Color,
         palette: ThemePalette,
         storage: (any PurahPluginStorage)? = nil,
+        fileStorage: PurahPluginFileStorage? = nil,
         store: PurahWorkspaceStore? = nil,
         requestExpand: @escaping @MainActor () -> Void,
         requestDismiss: @escaping @MainActor () -> Void,
@@ -110,6 +112,7 @@ public struct PurahPluginContext: Sendable {
         self.accentColor = accentColor
         self.palette = palette
         self.storage = storage ?? ScopedPluginStorage(pluginId: pod.id)
+        self.fileStorage = fileStorage ?? PurahPluginFileStorage(pluginId: pod.id)
         self._store = store
         self.requestExpand = requestExpand
         self.requestDismiss = requestDismiss

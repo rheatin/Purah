@@ -1415,9 +1415,13 @@ public final class ClipboardPluginState: Sendable {
         SystemClipboardSyncService.shared.autoPruneOnQuota = self.autoPruneOnQuota
     }
 
-    public func togglePin(id: String) {
-        SystemClipboardSyncService.shared.togglePin(id: id)
+    public func toggleFavorite(id: String) {
+        SystemClipboardSyncService.shared.toggleFavorite(id: id)
         self.items = SystemClipboardSyncService.shared.history
+    }
+
+    public func togglePin(id: String) {
+        toggleFavorite(id: id)
     }
 
     public func moveItem(from sourceIndex: Int, to destinationIndex: Int) {
@@ -1434,8 +1438,12 @@ public final class ClipboardPluginState: Sendable {
         self.items = SystemClipboardSyncService.shared.history
     }
 
-    public func clearAll(keepPinned: Bool = true) {
-        SystemClipboardSyncService.shared.clearAll(keepPinned: keepPinned)
+    public func clearAll(keepFavorites: Bool = true) {
+        SystemClipboardSyncService.shared.clearAll(keepFavorites: keepFavorites)
         self.items = SystemClipboardSyncService.shared.history
+    }
+
+    public func clearAll(keepPinned: Bool) {
+        clearAll(keepFavorites: keepPinned)
     }
 }

@@ -91,19 +91,25 @@ public struct ShelfPluginSettingsView: View {
     }
 
     public var body: some View {
+        let storage = PurahPluginFileStorage(pluginId: "shelf")
         HStack {
             Text("Stashed Files: \(state.files.count) item(s)")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
+            Button("Open in Finder") {
+                storage.openInFinder()
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+
             if !state.files.isEmpty {
-                Button("Clear Shelf") {
+                Button("Clear Shelf", role: .destructive) {
                     state.clear()
                     store._shelfFiles.removeAll()
                 }
-                .buttonStyle(.plain)
-                .font(.caption.weight(.medium))
-                .foregroundColor(.red)
+                .buttonStyle(.bordered)
+                .font(.caption)
             }
         }
     }

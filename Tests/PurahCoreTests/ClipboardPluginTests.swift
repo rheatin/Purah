@@ -418,36 +418,37 @@ struct ClipboardPluginTests {
         #expect(ClipboardDiskQuota.unlimited.isExceeded(totalBytes: 10 * 1024 * 1024 * 1024) == false)
     }
 
-    @Test("SystemClipboardSyncService togglePin, moveItem, and cleanExpiredItems with pin protection")
+    @Test("SystemClipboardSyncService toggleFavorite, moveItem, and cleanExpiredItems with star protection")
     @MainActor
-    func testClipboardPinAndExpirationLifecycle() {
+    func testClipboardStarAndExpirationLifecycle() {
         let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
         defer { cleanup() }
 
         let now = Date()
-        let freshItem = ClipboardItem(type: .text("Fresh Text"), timestamp: now, isPinned: false)
-        let expiredUnpinned = ClipboardItem(type: .text("Old Unpinned Text"), timestamp: now.addingTimeInterval(-86400 * 10), isPinned: false)
-        let expiredPinned = ClipboardItem(type: .text("Old Pinned Important Snippet"), timestamp: now.addingTimeInterval(-86400 * 10), isPinned: true)
+        let freshItem = ClipboardItem(type: .text("Fresh Text"), timestamp: now, isFavorite: false)
+        let expiredUnstarred = ClipboardItem(type: .text("Old Unstarred Text"), timestamp: now.addingTimeInterval(-86400 * 10), isFavorite: false)
+        let expiredStarred = ClipboardItem(type: .text("Old Starred Important Snippet"), timestamp: now.addingTimeInterval(-86400 * 10), isFavorite: true)
 
-        service.history = [freshItem, expiredUnpinned, expiredPinned]
+        service.history = [freshItem, expiredUnstarred, expiredStarred]
         #expect(service.history.count == 3)
 
         // 1. Reordering (moveItem)
         service.moveItem(from: 0, to: 2)
         #expect(service.history[2].id == freshItem.id)
-        #expect(service.history[0].id == expiredUnpinned.id)
+        #expect(service.history[0].id == expiredUnstarred.id)
 
-        // 2. Pin toggling
-        service.togglePin(id: freshItem.id)
-        #expect(service.history.first(where: { $0.id == freshItem.id })?.isPinned == true)
-        service.togglePin(id: freshItem.id)
-        #expect(service.history.first(where: { $0.id == freshItem.id })?.isPinned == false)
+        // 2. Star toggling
+        service.toggleFavorite(id: freshItem.id)
+        #expect(service.history.first(where: { $0.id == freshItem.id })?.isFavorite == true)
+        #expect(service.history.first(where: { $0.id == freshItem.id })?.isPinned == true, "isPinned bridge must match isFavorite")
+        service.toggleFavorite(id: freshItem.id)
+        #expect(service.history.first(where: { $0.id == freshItem.id })?.isFavorite == false)
 
-        // 3. Expiration cleaning (7 days): expiredPinned must be strictly protected, expiredUnpinned removed
+        // 3. Expiration cleaning (7 days): expiredStarred must be strictly protected, expiredUnstarred removed
         let removed = service.cleanExpiredItems(retention: .sevenDays, now: now)
         #expect(removed == 1)
         #expect(service.history.contains(where: { $0.id == freshItem.id }))
-        #expect(service.history.contains(where: { $0.id == expiredPinned.id }), "Pinned item MUST be strictly protected from expiration cleanup")
-        #expect(!service.history.contains(where: { $0.id == expiredUnpinned.id }), "Expired unpinned item must be deleted")
+        #expect(service.history.contains(where: { $0.id == expiredStarred.id }), "Starred item MUST be strictly protected from expiration cleanup")
+        #expect(!service.history.contains(where: { $0.id == expiredUnstarred.id }), "Expired unstarred item must be deleted")
     }
 }

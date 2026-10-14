@@ -450,6 +450,7 @@ struct ClipboardItemDropDelegate: DropDelegate {
 public struct ClipboardFullDrawerView: View {
     public enum ClipboardCategoryFilter: String, CaseIterable, Identifiable {
         case all = "All"
+        case favorite = "Starred"
         case text = "Text"
         case color = "Color"
         case image = "Image"
@@ -458,6 +459,7 @@ public struct ClipboardFullDrawerView: View {
         public var iconName: String {
             switch self {
             case .all: return "square.grid.2x2"
+            case .favorite: return "star.fill"
             case .text: return "doc.text"
             case .color: return "paintpalette"
             case .image: return "photo"
@@ -485,6 +487,8 @@ public struct ClipboardFullDrawerView: View {
         switch selectedFilter {
         case .all:
             break
+        case .favorite:
+            baseItems = baseItems.filter(\.isFavorite)
         case .text:
             baseItems = baseItems.filter {
                 if case .text = $0.type { return true }
@@ -907,24 +911,24 @@ public struct ClipboardFullDrawerView: View {
         .cornerRadius(isCompact ? 7 : 10)
         .overlay(alignment: .topTrailing) {
             Button {
-                state.togglePin(id: item.id)
+                state.toggleFavorite(id: item.id)
                 context.performHaptic(.alignment)
             } label: {
-                Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                Image(systemName: item.isFavorite ? "star.fill" : "star")
                     .font(.system(size: isCompact ? 9 : 10.5))
-                    .foregroundColor(item.isPinned ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
-                    .rotationEffect(.degrees(item.isPinned ? -25 : 0))
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isPinned)
+                    .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
+                    .scaleEffect(item.isFavorite ? 1.05 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
             }
             .buttonStyle(.plain)
             .padding(isCompact ? 4 : 6)
-            .help(item.isPinned ? "Unpin item" : "Pin item")
+            .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
         }
         .overlay(
             RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
                 .stroke(
-                    item.isPinned ? Color(hex: "#FF9F0A").opacity(0.65) : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
-                    lineWidth: item.isPinned ? 1.5 : 1
+                    item.isFavorite ? Color(hex: "#FF9F0A").opacity(0.65) : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
+                    lineWidth: item.isFavorite ? 1.5 : 1
                 )
         )
         .contentShape(Rectangle())
@@ -958,8 +962,8 @@ public struct ClipboardFullDrawerView: View {
             context.requestDismiss()
         }
         .contextMenu {
-            Button(item.isPinned ? "Unpin Item" : "Pin Item") {
-                state.togglePin(id: item.id)
+            Button(item.isFavorite ? "Unstar Item" : "Star Item") {
+                state.toggleFavorite(id: item.id)
                 context.performHaptic(.alignment)
             }
             Divider()
@@ -1052,57 +1056,26 @@ public struct ClipboardPluginSettingsView: View {
             .background(Color.primary.opacity(0.04))
             .cornerRadius(8)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("clipboard.settings.storagePolicy".localized)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                HStack {
-                    Text("clipboard.settings.retentionPeriod".localized)
-                        .font(.caption)
-                    Spacer()
-                    Picker("", selection: Binding(
-                        get: { state.retentionPeriod },
-                        set: {
-                            state.retentionPeriod = $0
-                            state.save()
-                            _ = SystemClipboardSyncService.shared.cleanExpiredItems(retention: $0)
-                            state.items = SystemClipboardSyncService.shared.history
-                        }
-                    )) {
-                        ForEach(ClipboardRetentionPeriod.allCases) { period in
-                            Text(period.localizedDisplayName).tag(period)
-                        }
+            PurahStoragePolicySection(
+                retention: Binding(
+                    get: { state.retentionPeriod },
+                    set: {
+                        state.retentionPeriod = $0
+                        state.save()
+                        _ = SystemClipboardSyncService.shared.cleanExpiredItems(retention: $0)
+                        state.items = SystemClipboardSyncService.shared.history
                     }
-                    .pickerStyle(.menu)
-                    .frame(width: 170)
-                }
-
-                Divider()
-                    .opacity(0.3)
-
-                HStack {
-                    Text("clipboard.settings.diskQuota".localized)
-                        .font(.caption)
-                    Spacer()
-                    Picker("", selection: Binding(
-                        get: { state.diskQuota },
-                        set: {
-                            state.diskQuota = $0
-                            state.save()
-                            _ = SystemClipboardSyncService.shared.enforceDiskQuota(quota: $0)
-                            state.items = SystemClipboardSyncService.shared.history
-                        }
-                    )) {
-                        ForEach(ClipboardDiskQuota.allCases) { quota in
-                            Text(quota.localizedDisplayName).tag(quota)
-                        }
+                ),
+                quota: Binding(
+                    get: { state.diskQuota },
+                    set: {
+                        state.diskQuota = $0
+                        state.save()
+                        _ = SystemClipboardSyncService.shared.enforceDiskQuota(quota: $0)
+                        state.items = SystemClipboardSyncService.shared.history
                     }
-                    .pickerStyle(.menu)
-                    .frame(width: 170)
-                }
-
-                Toggle("clipboard.settings.autoPrune".localized, isOn: Binding(
+                ),
+                autoPrune: Binding(
                     get: { state.autoPruneOnQuota },
                     set: {
                         state.autoPruneOnQuota = $0
@@ -1112,50 +1085,13 @@ public struct ClipboardPluginSettingsView: View {
                             state.items = SystemClipboardSyncService.shared.history
                         }
                     }
-                ))
-                .font(.caption)
-
-                Text("clipboard.settings.pinProtectionNotice".localized)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Permanent Disk Storage")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text("Clipboard history is persistently preserved in Application Support with 100px tiny downsampled thumbnails. In-memory footprint is strictly bounded to the active in-rail items.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-
-                HStack {
-                    Text("Disk Usage:")
-                        .font(.caption)
-                    Text(SystemClipboardSyncService.shared.diskUsageFormatted)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(hex: "#FF9F0A"))
-                    Spacer()
-                    Button("Open in Finder") {
-                        SystemClipboardSyncService.shared.openStorageInFinder()
-                    }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
-
-                    Button("Clear All", role: .destructive) {
-                        state.clearAll()
-                        SystemClipboardSyncService.shared.clearDiskStorage()
-                    }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
+                ),
+                fileStorage: PurahPluginFileStorage(pluginId: "clipboard"),
+                onClearAll: {
+                    state.clearAll()
+                    SystemClipboardSyncService.shared.clearDiskStorage()
                 }
-                .padding(.top, 4)
-            }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
+            )
         }
         .padding()
     }

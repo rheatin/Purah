@@ -222,23 +222,31 @@ public final class SystemClipboardSyncService {
         }
     }
 
-    public func clearAll(keepPinned: Bool = true) {
-        let itemsToDelete = keepPinned ? history.filter { !$0.isPinned } : history
+    public func clearAll(keepFavorites: Bool = true) {
+        let itemsToDelete = keepFavorites ? history.filter { !$0.isFavorite } : history
         for item in itemsToDelete {
             if case .image(let path, let thumbPath, _, _, _) = item.type {
                 try? FileManager.default.removeItem(atPath: path)
                 try? FileManager.default.removeItem(atPath: thumbPath)
             }
         }
-        history = keepPinned ? history.filter(\.isPinned) : []
+        history = keepFavorites ? history.filter(\.isFavorite) : []
         saveToDisk()
     }
 
-    public func togglePin(id: String) {
+    public func clearAll(keepPinned: Bool) {
+        clearAll(keepFavorites: keepPinned)
+    }
+
+    public func toggleFavorite(id: String) {
         if let idx = history.firstIndex(where: { $0.id == id }) {
-            history[idx].isPinned.toggle()
+            history[idx].isFavorite.toggle()
             saveToDisk()
         }
+    }
+
+    public func togglePin(id: String) {
+        toggleFavorite(id: id)
     }
 
     public func moveItem(from sourceIndex: Int, to destinationIndex: Int) {
@@ -259,8 +267,8 @@ public final class SystemClipboardSyncService {
         var kept: [ClipboardItem] = []
 
         for item in history {
-            // Pinned items are STRICTLY immune to expiration
-            if item.isPinned {
+            // Starred / Favorite items are STRICTLY immune to expiration
+            if item.isFavorite {
                 kept.append(item)
             } else if period.isExpired(timestamp: item.timestamp, now: now) {
                 removedCount += 1
@@ -296,15 +304,15 @@ public final class SystemClipboardSyncService {
         var prunedCount = 0
 
         if shouldPrune {
-            // Find unpinned items ordered by oldest timestamp first
+            // Find unstarred items ordered by oldest timestamp first
             while currentSize > maxBytes {
-                guard let oldestUnpinnedIdx = history.indices
-                    .filter({ !history[$0].isPinned })
+                guard let oldestUnstarredIdx = history.indices
+                    .filter({ !history[$0].isFavorite })
                     .min(by: { history[$0].timestamp < history[$1].timestamp }) else {
-                    break // All remaining items are pinned; cannot prune further
+                    break // All remaining items are starred; cannot prune further
                 }
 
-                let removed = history.remove(at: oldestUnpinnedIdx)
+                let removed = history.remove(at: oldestUnstarredIdx)
                 prunedCount += 1
                 if case .image(let path, let thumbPath, _, _, _) = removed.type {
                     try? FileManager.default.removeItem(atPath: path)

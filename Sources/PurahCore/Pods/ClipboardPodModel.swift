@@ -37,22 +37,36 @@ public enum ClipboardContentType: Codable, Sendable, Equatable {
     }
 }
 
-public struct ClipboardItem: Identifiable, Codable, Sendable, Equatable {
+public struct ClipboardItem: Identifiable, Codable, Sendable, Equatable, PurahStorableItem {
     public let id: String
     public let type: ClipboardContentType
     public let timestamp: Date
-    public var isPinned: Bool
+    public var isFavorite: Bool
+
+    public var isPinned: Bool {
+        get { isFavorite }
+        set { isFavorite = newValue }
+    }
 
     public init(
         id: String = UUID().uuidString,
         type: ClipboardContentType,
         timestamp: Date = Date(),
-        isPinned: Bool = false
+        isFavorite: Bool = false
     ) {
         self.id = id
         self.type = type
         self.timestamp = timestamp
-        self.isPinned = isPinned
+        self.isFavorite = isFavorite
+    }
+
+    public init(
+        id: String = UUID().uuidString,
+        type: ClipboardContentType,
+        timestamp: Date = Date(),
+        isPinned: Bool
+    ) {
+        self.init(id: id, type: type, timestamp: timestamp, isFavorite: isPinned)
     }
 
     /// Generates idiomatic SwiftUI Color source code for developers
