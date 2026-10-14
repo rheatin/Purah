@@ -224,7 +224,7 @@ struct QuickNotesTests {
 
         let storage = NSTextStorage(string: sampleMarkdown)
         let accent = NSColor.systemTeal
-        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent)
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: 0, length: (sampleMarkdown as NSString).length))
 
         #expect(storage.length > 0)
 
@@ -268,6 +268,75 @@ struct QuickNotesTests {
         let codeLocation = (sampleMarkdown as NSString).range(of: "`code snippet`").location
         let codeBgColor = storage.attribute(.backgroundColor, at: codeLocation, effectiveRange: nil) as? NSColor
         #expect(codeBgColor != nil)
+    }
+
+    @Test("QuickNotesMarkdownHelper hides Markdown delimiters on inactive lines and reveals on active line")
+    @MainActor
+    func testHideMarkdownDelimitersOnInactiveLines() {
+        let markdown = """
+        # First Heading
+        A paragraph with **bold text** and `code`.
+        # Second Heading
+        """
+        let storage = NSTextStorage(string: markdown)
+        let accent = NSColor.systemYellow
+
+        // 1. When selectedRange is nil (all lines inactive):
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: nil)
+
+        // Verify H1 delimiter '# ' is hidden on Line 1
+        let h1FontInactive = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(h1FontInactive?.pointSize == 0.01)
+        let h1ColorInactive = storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(h1ColorInactive == .clear)
+
+        // Verify heading text on Line 1 still has bold 14.5
+        let h1TextLocation = (markdown as NSString).range(of: "First Heading").location
+        let h1TextFont = storage.attribute(.font, at: h1TextLocation, effectiveRange: nil) as? NSFont
+        #expect(h1TextFont?.pointSize == 14.5)
+
+        // Verify bold delimiter '**' is hidden on Line 2
+        let boldDelimLocation = (markdown as NSString).range(of: "**bold text**").location
+        let boldDelimFont = storage.attribute(.font, at: boldDelimLocation, effectiveRange: nil) as? NSFont
+        #expect(boldDelimFont?.pointSize == 0.01)
+        let boldDelimColor = storage.attribute(.foregroundColor, at: boldDelimLocation, effectiveRange: nil) as? NSColor
+        #expect(boldDelimColor == .clear)
+
+        // Verify inner bold text still has 11.5 bold
+        let boldTextLocation = (markdown as NSString).range(of: "bold text").location
+        let boldTextFont = storage.attribute(.font, at: boldTextLocation, effectiveRange: nil) as? NSFont
+        #expect(boldTextFont?.pointSize == 11.5)
+
+        // 2. When cursor is on Line 1 (selectedRange at location 3):
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: 3, length: 0))
+
+        // Line 1 is active: '# ' is revealed
+        let h1FontActive = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(h1FontActive?.pointSize == 14.5)
+        let h1ColorActive = storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(h1ColorActive == accent)
+
+        // Line 2 is still inactive: '**' is still hidden
+        let boldDelimFontWhileLine1Active = storage.attribute(.font, at: boldDelimLocation, effectiveRange: nil) as? NSFont
+        #expect(boldDelimFontWhileLine1Active?.pointSize == 0.01)
+
+        // Line 3 is still inactive: '# ' is hidden on Line 3
+        let h2Location = (markdown as NSString).range(of: "# Second Heading").location
+        let h2FontInactive = storage.attribute(.font, at: h2Location, effectiveRange: nil) as? NSFont
+        #expect(h2FontInactive?.pointSize == 0.01)
+
+        // 3. When cursor moves to Line 2:
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: boldTextLocation, length: 0))
+
+        // Line 2 is active: '**' is revealed with secondaryLabelColor
+        let boldDelimFontActive = storage.attribute(.font, at: boldDelimLocation, effectiveRange: nil) as? NSFont
+        #expect(boldDelimFontActive?.pointSize == 11.5)
+        let boldDelimColorActive = storage.attribute(.foregroundColor, at: boldDelimLocation, effectiveRange: nil) as? NSColor
+        #expect(boldDelimColorActive == NSColor.secondaryLabelColor)
+
+        // Line 1 is now inactive: '# ' is hidden on Line 1
+        let h1FontNowInactive = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(h1FontNowInactive?.pointSize == 0.01)
     }
 
     @Test("PurahNotesNSTextView supports native multi-line selection, deletion, and wrap shortcuts")

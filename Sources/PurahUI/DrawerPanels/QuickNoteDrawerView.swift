@@ -271,7 +271,11 @@ public struct QuickNotesMarkdownHelper: Sendable {
 
     /// Applies live in-place Markdown typography attributes across the full string of textStorage.
     @MainActor
-    public static func styleAttributedString(_ textStorage: NSTextStorage, accentColor: NSColor) {
+    public static func styleAttributedString(
+        _ textStorage: NSTextStorage,
+        accentColor: NSColor,
+        selectedRange: NSRange? = nil
+    ) {
         let string = textStorage.string
         let fullRange = NSRange(location: 0, length: (string as NSString).length)
         guard fullRange.length > 0 else { return }
@@ -293,24 +297,74 @@ public struct QuickNotesMarkdownHelper: Sendable {
         let italicDescriptor = NSFont.systemFont(ofSize: 11.5).fontDescriptor.withSymbolicTraits(.italic)
         let italicFont = NSFont(descriptor: italicDescriptor, size: 11.5) ?? NSFontManager.shared.convert(NSFont.systemFont(ofSize: 11.5), toHaveTrait: .italicFontMask)
 
+        let hiddenSyntaxAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 0.01),
+            .foregroundColor: NSColor.clear,
+            .backgroundColor: NSColor.clear
+        ]
+
+        func isLineActive(_ lineRange: NSRange) -> Bool {
+            guard let sel = selectedRange, sel.location != NSNotFound else { return false }
+            if sel.length == 0 {
+                return sel.location >= lineRange.location && sel.location <= lineRange.location + lineRange.length
+            } else {
+                return NSIntersectionRange(lineRange, sel).length > 0
+            }
+        }
+
+        func trimmedLineRange(for range: NSRange) -> NSRange {
+            var lineRange = nsString.lineRange(for: range)
+            while lineRange.length > 0 {
+                let char = nsString.character(at: lineRange.location + lineRange.length - 1)
+                if char == 0x0A || char == 0x0D {
+                    lineRange.length -= 1
+                } else {
+                    break
+                }
+            }
+            return lineRange
+        }
+
         nsString.enumerateSubstrings(in: fullRange, options: .byLines) { substring, substringRange, _, _ in
             guard let line = substring else { return }
             let trimmedLeading = line.drop(while: { $0.isWhitespace })
             let leadingWhitespaceCount = line.count - trimmedLeading.count
             let trimmedString = String(trimmedLeading)
+            let lineActive = isLineActive(substringRange)
 
-            if trimmedString.hasPrefix("### ") {
+            if trimmedString.hasPrefix("### ") || (trimmedString.hasPrefix("###") && !trimmedString.hasPrefix("####") && trimmedString.count > 3) {
                 textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .bold), range: substringRange)
-                let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 3)
-                textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: hashRange)
-            } else if trimmedString.hasPrefix("## ") {
+                let spacesCount = trimmedString.dropFirst(3).prefix(while: { $0 == " " }).count
+                let delimiterLength = 3 + spacesCount
+                let delimiterRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: delimiterLength)
+                if lineActive {
+                    let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 3)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: hashRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: delimiterRange)
+                }
+            } else if trimmedString.hasPrefix("## ") || (trimmedString.hasPrefix("##") && !trimmedString.hasPrefix("###") && trimmedString.count > 2) {
                 textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .bold), range: substringRange)
-                let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 2)
-                textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: hashRange)
-            } else if trimmedString.hasPrefix("# ") {
+                let spacesCount = trimmedString.dropFirst(2).prefix(while: { $0 == " " }).count
+                let delimiterLength = 2 + spacesCount
+                let delimiterRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: delimiterLength)
+                if lineActive {
+                    let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 2)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: hashRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: delimiterRange)
+                }
+            } else if trimmedString.hasPrefix("# ") || (trimmedString.hasPrefix("#") && !trimmedString.hasPrefix("##") && trimmedString.count > 1) {
                 textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 14.5, weight: .bold), range: substringRange)
-                let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
-                textStorage.addAttribute(.foregroundColor, value: accentColor, range: hashRange)
+                let spacesCount = trimmedString.dropFirst(1).prefix(while: { $0 == " " }).count
+                let delimiterLength = 1 + spacesCount
+                let delimiterRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: delimiterLength)
+                if lineActive {
+                    let hashRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
+                    textStorage.addAttribute(.foregroundColor, value: accentColor, range: hashRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: delimiterRange)
+                }
             } else if trimmedString.hasPrefix("- [ ] ") {
                 let prefixRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 5)
                 textStorage.addAttributes([
@@ -334,13 +388,28 @@ public struct QuickNotesMarkdownHelper: Sendable {
                         .strikethroughColor: NSColor.secondaryLabelColor
                     ], range: restRange)
                 }
-            } else if trimmedString.hasPrefix("> ") {
+            } else if trimmedString.hasPrefix("> ") || (trimmedString.hasPrefix(">") && trimmedString.count > 1) {
+                let quoteParagraph = NSMutableParagraphStyle()
+                quoteParagraph.lineSpacing = 2.5
+                quoteParagraph.headIndent = 12
+                quoteParagraph.firstLineHeadIndent = 12
+
                 textStorage.addAttributes([
                     .foregroundColor: NSColor.secondaryLabelColor,
-                    .font: italicFont
+                    .font: italicFont,
+                    .paragraphStyle: quoteParagraph
                 ], range: substringRange)
-                let quoteRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
-                textStorage.addAttribute(.foregroundColor, value: accentColor, range: quoteRange)
+
+                let quoteSpaces = trimmedString.dropFirst(1).prefix(while: { $0 == " " }).count
+                let delimiterLength = 1 + quoteSpaces
+                let delimiterRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: delimiterLength)
+
+                if lineActive {
+                    let quoteSymbolRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
+                    textStorage.addAttribute(.foregroundColor, value: accentColor, range: quoteSymbolRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: delimiterRange)
+                }
             } else if trimmedString.hasPrefix("- ") || trimmedString.hasPrefix("* ") {
                 let bulletRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 1)
                 textStorage.addAttributes([
@@ -354,6 +423,17 @@ public struct QuickNotesMarkdownHelper: Sendable {
             let matches = boldRegex.matches(in: string, range: fullRange)
             for match in matches {
                 textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 11.5, weight: .bold), range: match.range)
+                guard match.range.length >= 4 else { continue }
+                let lineRange = trimmedLineRange(for: match.range)
+                let openRange = NSRange(location: match.range.location, length: 2)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 2, length: 2)
+                if isLineActive(lineRange) {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: openRange)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: closeRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: openRange)
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: closeRange)
+                }
             }
         }
 
@@ -361,6 +441,17 @@ public struct QuickNotesMarkdownHelper: Sendable {
             let matches = italicRegex.matches(in: string, range: fullRange)
             for match in matches {
                 textStorage.addAttribute(.font, value: italicFont, range: match.range)
+                guard match.range.length >= 2 else { continue }
+                let lineRange = trimmedLineRange(for: match.range)
+                let openRange = NSRange(location: match.range.location, length: 1)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+                if isLineActive(lineRange) {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: openRange)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: closeRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: openRange)
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: closeRange)
+                }
             }
         }
 
@@ -372,6 +463,17 @@ public struct QuickNotesMarkdownHelper: Sendable {
                     .foregroundColor: accentColor,
                     .backgroundColor: accentColor.withAlphaComponent(0.12)
                 ], range: match.range)
+                guard match.range.length >= 2 else { continue }
+                let lineRange = trimmedLineRange(for: match.range)
+                let openRange = NSRange(location: match.range.location, length: 1)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+                if isLineActive(lineRange) {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: openRange)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: closeRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: openRange)
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: closeRange)
+                }
             }
         }
     }
@@ -545,6 +647,24 @@ public final class PurahNotesNSTextView: NSTextView {
         }
         return super.performKeyEquivalent(with: event)
     }
+
+    public var accentColor: NSColor = .controlAccentColor
+
+    public override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        if result, let textStorage = self.textStorage {
+            QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: accentColor, selectedRange: nil)
+        }
+        return result
+    }
+
+    public override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result, let textStorage = self.textStorage {
+            QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: accentColor, selectedRange: selectedRange())
+        }
+        return result
+    }
 }
 
 // MARK: - SwiftUI Representable Wrapper
@@ -599,7 +719,8 @@ public struct NotesMarkdownEditorView: NSViewRepresentable {
 
         textView.string = text
         let nsAccentColor = NSColor(accentColor)
-        QuickNotesMarkdownHelper.styleAttributedString(textView.textStorage ?? textStorage, accentColor: nsAccentColor)
+        textView.accentColor = nsAccentColor
+        QuickNotesMarkdownHelper.styleAttributedString(textView.textStorage ?? textStorage, accentColor: nsAccentColor, selectedRange: nil)
         textView.typingAttributes = [
             .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
             .foregroundColor: NSColor.labelColor
@@ -616,12 +737,18 @@ public struct NotesMarkdownEditorView: NSViewRepresentable {
         context.coordinator.parent = self
         guard let textView = nsView.documentView as? PurahNotesNSTextView else { return }
 
+        let nsAccentColor = NSColor(accentColor)
+        if textView.accentColor != nsAccentColor {
+            textView.accentColor = nsAccentColor
+        }
+
         if textView.string != text && !textView.hasMarkedText() {
             let savedRanges = textView.selectedRanges
             textView.string = text
             if let textStorage = textView.textStorage {
-                let nsAccentColor = NSColor(accentColor)
-                QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor)
+                let isFocused = (textView.window != nil) ? (textView.window?.firstResponder === textView) : true
+                let activeRange: NSRange? = isFocused ? textView.selectedRange() : nil
+                QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor, selectedRange: activeRange)
             }
             let maxLen = (text as NSString).length
             let clampedRanges = savedRanges.compactMap { val -> NSValue? in
@@ -644,9 +771,31 @@ public struct NotesMarkdownEditorView: NSViewRepresentable {
     @MainActor
     public final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: NotesMarkdownEditorView
+        private var isStyling = false
 
         init(parent: NotesMarkdownEditorView) {
             self.parent = parent
+        }
+
+        public func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? PurahNotesNSTextView ?? notification.object as? NSTextView,
+                  !textView.hasMarkedText(),
+                  let textStorage = textView.textStorage else { return }
+
+            guard !isStyling else { return }
+            isStyling = true
+            defer { isStyling = false }
+
+            let savedRanges = textView.selectedRanges
+            let isFocused = (textView.window != nil) ? (textView.window?.firstResponder === textView) : true
+            let activeRange: NSRange? = isFocused ? textView.selectedRange() : nil
+            let nsAccentColor = NSColor(parent.accentColor)
+            QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor, selectedRange: activeRange)
+            textView.selectedRanges = savedRanges
+            textView.typingAttributes = [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+                .foregroundColor: NSColor.labelColor
+            ]
         }
 
         public func textDidChange(_ notification: Notification) {
@@ -656,10 +805,16 @@ public struct NotesMarkdownEditorView: NSViewRepresentable {
 
             guard !textView.hasMarkedText() else { return }
 
+            guard !isStyling else { return }
+            isStyling = true
+            defer { isStyling = false }
+
             if let textStorage = textView.textStorage {
                 let savedRanges = textView.selectedRanges
                 let nsAccentColor = NSColor(parent.accentColor)
-                QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor)
+                let isFocused = (textView.window != nil) ? (textView.window?.firstResponder === textView) : true
+                let activeRange: NSRange? = isFocused ? textView.selectedRange() : nil
+                QuickNotesMarkdownHelper.styleAttributedString(textStorage, accentColor: nsAccentColor, selectedRange: activeRange)
                 textView.selectedRanges = savedRanges
                 textView.typingAttributes = [
                     .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
