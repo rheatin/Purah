@@ -51,12 +51,12 @@ public struct NoteDocument: Identifiable, Codable, Sendable, Equatable, PurahSto
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("# ") {
                 let heading = trimmed.dropFirst(2).trimmingCharacters(in: .whitespaces)
-                if !heading.isEmpty { return heading }
+                if !heading.isEmpty { return String(heading.prefix(20)) }
             } else if trimmed.hasPrefix("## ") {
                 let heading = trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces)
-                if !heading.isEmpty { return heading }
+                if !heading.isEmpty { return String(heading.prefix(20)) }
             } else if !trimmed.isEmpty && !trimmed.hasPrefix("- ") && !trimmed.hasPrefix("* ") {
-                return String(trimmed.prefix(32))
+                return String(trimmed.prefix(20))
             }
         }
         return fallback

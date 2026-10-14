@@ -152,6 +152,16 @@ public final class LocalizationManager {
             "notes.mode.preview": "Preview",
             "notes.newNote": "New Note",
             "notes.empty": "Type quick scratchpad or drop thoughts...",
+            "notes.tips.title": "Markdown Shortcuts",
+            "notes.tips.h1": "H1 Heading",
+            "notes.tips.h2": "H2 Heading",
+            "notes.tips.bold": "Bold (⌘B)",
+            "notes.tips.italic": "Italic (⌘I)",
+            "notes.tips.code": "Inline Code (⌘K)",
+            "notes.tips.codeBlock": "Code Block",
+            "notes.tips.checklist": "Interactive Checklist",
+            "notes.tips.list": "Bullet List",
+            "notes.tips.quote": "Quote Block",
 
             // Actions & UI
             "simulator.title": "Settings",
@@ -269,6 +279,16 @@ public final class LocalizationManager {
             "notes.mode.preview": "预览",
             "notes.newNote": "新建笔记",
             "notes.empty": "记录闪念或随手粘贴想法...",
+            "notes.tips.title": "Markdown 快捷键与语法",
+            "notes.tips.h1": "一级标题 (H1)",
+            "notes.tips.h2": "二级标题 (H2)",
+            "notes.tips.bold": "加粗 (⌘B)",
+            "notes.tips.italic": "斜体 (⌘I)",
+            "notes.tips.code": "行内代码 (⌘K)",
+            "notes.tips.codeBlock": "多行代码块",
+            "notes.tips.checklist": "交互待办复选框",
+            "notes.tips.list": "无序列表",
+            "notes.tips.quote": "引用文本块",
 
             // Actions & UI
             "simulator.title": "设置",

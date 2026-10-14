@@ -2,6 +2,51 @@
 import SwiftUI
 import PurahCore
 
+/// Cheat sheet popover displaying Markdown syntax hints and keyboard conventions.
+public struct MarkdownTipsPopoverView: View {
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.accentColor)
+                Text("notes.tips.title".localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 3.5) {
+                shortcutRow(syntax: "# Title", meaning: "notes.tips.h1".localized)
+                shortcutRow(syntax: "## Subtitle", meaning: "notes.tips.h2".localized)
+                shortcutRow(syntax: "**bold**", meaning: "notes.tips.bold".localized)
+                shortcutRow(syntax: "*italic*", meaning: "notes.tips.italic".localized)
+                shortcutRow(syntax: "`code`", meaning: "notes.tips.code".localized)
+                shortcutRow(syntax: "```code```", meaning: "notes.tips.codeBlock".localized)
+                shortcutRow(syntax: "- [ ] task", meaning: "notes.tips.checklist".localized)
+                shortcutRow(syntax: "- item", meaning: "notes.tips.list".localized)
+                shortcutRow(syntax: "> quote", meaning: "notes.tips.quote".localized)
+            }
+        }
+        .padding(8)
+        .frame(width: 200)
+    }
+
+    private func shortcutRow(syntax: String, meaning: String) -> some View {
+        HStack {
+            Text(syntax)
+                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                .foregroundColor(.primary)
+            Spacer()
+            Text(meaning)
+                .font(.system(size: 9, design: .rounded))
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
 /// Interactive rich Markdown preview supporting live checklist toggling,
 /// headings, quotes, and styled typography.
 public struct InteractiveMarkdownPreviewView: View {
@@ -36,6 +81,7 @@ public struct InteractiveMarkdownPreviewView: View {
                 } else {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         renderLine(line, index: index)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -84,19 +130,18 @@ public struct InteractiveMarkdownPreviewView: View {
             }
         } else if trimmed.hasPrefix("# ") {
             Text(String(trimmed.dropFirst(2)))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.top, 3)
-        } else if trimmed.hasPrefix("## ") {
-            Text(String(trimmed.dropFirst(3)))
-                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
                 .padding(.top, 2)
+        } else if trimmed.hasPrefix("## ") {
+            Text(String(trimmed.dropFirst(3)))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.top, 1)
         } else if trimmed.hasPrefix("### ") {
             Text(String(trimmed.dropFirst(4)))
                 .font(.system(size: 11.5, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
-                .padding(.top, 1)
         } else if trimmed.hasPrefix("> ") {
             HStack(spacing: 6) {
                 Rectangle()
@@ -131,8 +176,7 @@ public struct QuickNoteDrawerView: View {
     public let store: PurahWorkspaceStore
     @State private var debounceTask: Task<Void, Never>?
     @State private var isCopied: Bool = false
-    @State private var newFolderSheetText: String = ""
-    @State private var isCreatingFolder: Bool = false
+    @State private var isShowingTips: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -164,15 +208,10 @@ public struct QuickNoteDrawerView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // 1. Navigation Toolbar: Folder Picker, Note Switcher, Mode Toggle & Star
+            // 1. Navigation Toolbar: Folder Picker, Note Switcher, Tips Popover, Star & Preview
             navigationToolbar
 
-            // 2. Formatting Bar (Visible in Edit mode)
-            if !state.isPreviewMode {
-                formattingToolbar
-            }
-
-            // 3. Document Content: Edit TextEditor vs Rich Preview
+            // 2. Document Content: Edit TextEditor vs Rich Preview
             ZStack(alignment: .topLeading) {
                 if state.isPreviewMode {
                     InteractiveMarkdownPreviewView(
@@ -194,9 +233,10 @@ public struct QuickNoteDrawerView: View {
                     .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
             )
 
-            // 4. Bottom status bar & actions
+            // 3. Bottom status bar & actions
             bottomStatusBar
         }
+        .overlay(keyboardShortcutsOverlay)
         .onDisappear {
             debounceTask?.cancel()
             debounceTask = nil
@@ -205,9 +245,31 @@ public struct QuickNoteDrawerView: View {
         }
     }
 
-    // MARK: - Navigation Toolbar
+    // MARK: - Keyboard Shortcuts
+    private var keyboardShortcutsOverlay: some View {
+        Group {
+            Button("") { wrapSelection(prefix: "**", suffix: "**") }
+                .keyboardShortcut("b", modifiers: .command)
+            Button("") { wrapSelection(prefix: "*", suffix: "*") }
+                .keyboardShortcut("i", modifiers: .command)
+            Button("") { wrapSelection(prefix: "`", suffix: "`") }
+                .keyboardShortcut("k", modifiers: .command)
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+    }
+
+    private func wrapSelection(prefix: String, suffix: String) {
+        guard let doc = state.currentDocument else { return }
+        let snippet = "\(prefix)\(suffix)"
+        let updated = doc.content.isEmpty ? snippet : "\(doc.content)\n\(snippet)"
+        state.updateNoteContent(id: doc.id, content: updated)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+    }
+
+    // MARK: - Navigation Toolbar (Clean Single Row)
     private var navigationToolbar: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             // Folder Picker Menu
             Menu {
                 ForEach(state.availableFolders, id: \.self) { folder in
@@ -223,16 +285,19 @@ public struct QuickNoteDrawerView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 3) {
+                HStack(spacing: 2.5) {
                     Image(systemName: "folder.fill")
-                        .font(.system(size: 8.5))
+                        .font(.system(size: 8))
                     Text(state.selectedFolder)
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 65, alignment: .leading)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 6.5))
+                        .font(.system(size: 6))
                 }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2.5)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
                 .background(Color.primary.opacity(0.06))
                 .cornerRadius(4)
                 .foregroundColor(.primary)
@@ -265,17 +330,19 @@ public struct QuickNoteDrawerView: View {
                     Label("New Note in \(state.selectedFolder)", systemImage: "plus")
                 }
             } label: {
-                HStack(spacing: 3) {
+                HStack(spacing: 2.5) {
                     Image(systemName: "doc.text")
-                        .font(.system(size: 8.5))
+                        .font(.system(size: 8))
                     Text(state.currentDocument?.title ?? "Untitled")
                         .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 80, alignment: .leading)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 6.5))
+                        .font(.system(size: 6))
                 }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2.5)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
                 .background(Color.primary.opacity(0.06))
                 .cornerRadius(4)
                 .foregroundColor(noteColor)
@@ -289,15 +356,29 @@ public struct QuickNoteDrawerView: View {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 9, weight: .bold))
-                    .padding(3)
+                    .font(.system(size: 8.5, weight: .bold))
+                    .padding(2.5)
                     .background(Color.primary.opacity(0.05))
                     .cornerRadius(3)
             }
             .buttonStyle(.plain)
             .help("New Note")
 
-            Spacer()
+            Spacer(minLength: 4)
+
+            // Markdown Tips button with popover
+            Button {
+                isShowingTips.toggle()
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(isShowingTips ? noteColor : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Markdown Syntax & Shortcuts Tips")
+            .popover(isPresented: $isShowingTips, arrowEdge: .bottom) {
+                MarkdownTipsPopoverView()
+            }
 
             // Star (Favorite) button
             if let doc = state.currentDocument {
@@ -306,7 +387,7 @@ public struct QuickNoteDrawerView: View {
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
                 } label: {
                     Image(systemName: doc.isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 10))
+                        .font(.system(size: 9.5))
                         .foregroundColor(doc.isFavorite ? Color(hex: "#FF9F0A") : .secondary.opacity(0.8))
                 }
                 .buttonStyle(.plain)
@@ -322,9 +403,9 @@ public struct QuickNoteDrawerView: View {
             } label: {
                 HStack(spacing: 2) {
                     Image(systemName: state.isPreviewMode ? "pencil" : "eye.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: 7.5))
                     Text(state.isPreviewMode ? "Edit" : "Preview")
-                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                        .font(.system(size: 8, weight: .semibold, design: .rounded))
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
@@ -334,66 +415,7 @@ public struct QuickNoteDrawerView: View {
             }
             .buttonStyle(.plain)
         }
-    }
-
-    // MARK: - Formatting Toolbar
-    private var formattingToolbar: some View {
-        HStack(spacing: 3) {
-            formatButton("B", help: "Bold (**text**)") { appendOrWrap(prefix: "**", suffix: "**") }
-            formatButton("I", help: "Italic (*text*)") { appendOrWrap(prefix: "*", suffix: "*") }
-            formatButton("`", help: "Inline Code (`code`)") { appendOrWrap(prefix: "`", suffix: "`") }
-            formatButton("H1", help: "Heading 1 (# Title)") { appendOrWrap(prefix: "# ") }
-            formatButton("✓", help: "Checklist item (- [ ])") { appendOrWrap(prefix: "- [ ] ") }
-            formatButton(">", help: "Quote block (> quote)") { appendOrWrap(prefix: "> ") }
-
-            Spacer()
-
-            Button {
-                if let pbText = NSPasteboard.general.string(forType: .string) {
-                    state.appendTextToCurrentDocument(pbText)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-                }
-            } label: {
-                HStack(spacing: 2) {
-                    Image(systemName: "arrow.down.doc")
-                        .font(.system(size: 7.5))
-                    Text("Paste")
-                        .font(.system(size: 8, weight: .medium, design: .rounded))
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1.5)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(3)
-                .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Append clipboard content to note")
-        }
-        .padding(.horizontal, 2)
-    }
-
-    private func formatButton(_ title: String, help: String, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-        } label: {
-            Text(title)
-                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1.5)
-                .background(Color.primary.opacity(0.05))
-                .cornerRadius(3)
-                .foregroundColor(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-
-    private func appendOrWrap(prefix: String, suffix: String = "") {
-        guard let doc = state.currentDocument else { return }
-        let addition = suffix.isEmpty ? "\(prefix)" : "\(prefix)\(suffix)"
-        let updated = doc.content.isEmpty ? addition : "\(doc.content)\n\(addition)"
-        state.updateNoteContent(id: doc.id, content: updated)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Editor View
@@ -419,6 +441,7 @@ public struct QuickNoteDrawerView: View {
             .font(.system(size: 11, design: .monospaced))
             .scrollContentBackground(.hidden)
             .padding(4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if currentText.isEmpty {
                 HStack(spacing: 5) {

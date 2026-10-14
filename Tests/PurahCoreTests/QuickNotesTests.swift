@@ -11,7 +11,8 @@ struct QuickNotesTests {
     func testNoteDocumentModel() {
         let md = "# System Architecture Design\n- Verify liquid physics\n- Test checklist"
         let title = NoteDocument.deriveTitle(from: md)
-        #expect(title == "System Architecture Design")
+        #expect(title == "System Architecture ")
+        #expect(title.count <= 20)
 
         let doc = NoteDocument(
             id: "test-note-1",
@@ -25,6 +26,14 @@ struct QuickNotesTests {
         #expect(doc.characterCount == md.count)
         #expect(doc.folder == "Work")
         #expect(!doc.isFavorite)
+    }
+
+    @Test("NoteDocument derives title from markdown with strict 20-character cap")
+    func testNoteDocumentTitleCapping() {
+        let longHeading = "# This is a very long heading that has more than twenty characters and would previously blow up the toolbar"
+        let title = NoteDocument.deriveTitle(from: longHeading)
+        #expect(title.count <= 20)
+        #expect(title == "This is a very long ")
     }
 
     @Test("NotesPluginState manages folders, notes, and syncs physical markdown files")
