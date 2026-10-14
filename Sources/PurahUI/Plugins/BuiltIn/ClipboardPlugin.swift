@@ -420,6 +420,33 @@ public struct ClipboardItemDrawerView: View {
 }
 
 // MARK: - Clipboard Full Drawer View (Polished Apple Design with Fuzzy Search)
+struct ClipboardItemDropDelegate: DropDelegate {
+    let targetItem: ClipboardItem
+    let state: ClipboardPluginState
+    @Binding var draggedItem: ClipboardItem?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = draggedItem, dragged.id != targetItem.id else { return }
+        guard let from = state.items.firstIndex(where: { $0.id == dragged.id }),
+              let to = state.items.firstIndex(where: { $0.id == targetItem.id }) else { return }
+
+        if from != to {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                state.moveItem(from: from, to: to)
+            }
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedItem = nil
+        return true
+    }
+}
+
 public struct ClipboardFullDrawerView: View {
     public enum ClipboardCategoryFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -443,6 +470,7 @@ public struct ClipboardFullDrawerView: View {
     @State private var searchText: String = ""
     @State private var selectedFilter: ClipboardCategoryFilter = .all
     @State private var hoveredItemId: String? = nil
+    @State private var draggedItem: ClipboardItem? = nil
 
     private var palette: ThemePalette {
         context.palette
@@ -877,9 +905,27 @@ public struct ClipboardFullDrawerView: View {
         .padding(isCompact ? 6 : 10)
         .background(isHovered ? Color.secondary.opacity(0.14) : Color.secondary.opacity(0.08))
         .cornerRadius(isCompact ? 7 : 10)
+        .overlay(alignment: .topTrailing) {
+            Button {
+                state.togglePin(id: item.id)
+                context.performHaptic(.alignment)
+            } label: {
+                Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: isCompact ? 9 : 10.5))
+                    .foregroundColor(item.isPinned ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
+                    .rotationEffect(.degrees(item.isPinned ? -25 : 0))
+                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isPinned)
+            }
+            .buttonStyle(.plain)
+            .padding(isCompact ? 4 : 6)
+            .help(item.isPinned ? "Unpin item" : "Pin item")
+        }
         .overlay(
             RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
-                .stroke(isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25), lineWidth: 1)
+                .stroke(
+                    item.isPinned ? Color(hex: "#FF9F0A").opacity(0.65) : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
+                    lineWidth: item.isPinned ? 1.5 : 1
+                )
         )
         .contentShape(Rectangle())
         .onHover { isHovering in
@@ -899,8 +945,12 @@ public struct ClipboardFullDrawerView: View {
             }
         }
         .onDrag {
-            makeDragProvider(for: item)
+            if searchText.isEmpty {
+                draggedItem = item
+            }
+            return makeDragProvider(for: item)
         }
+        .onDrop(of: [.text, .fileURL], delegate: ClipboardItemDropDelegate(targetItem: item, state: state, draggedItem: $draggedItem))
         .onTapGesture {
             state.copyItem(item)
             context.performHaptic(.levelChange)
@@ -908,6 +958,11 @@ public struct ClipboardFullDrawerView: View {
             context.requestDismiss()
         }
         .contextMenu {
+            Button(item.isPinned ? "Unpin Item" : "Pin Item") {
+                state.togglePin(id: item.id)
+                context.performHaptic(.alignment)
+            }
+            Divider()
             Button("Copy to Clipboard") {
                 state.copyItem(item)
                 context.showToast("Copied to Clipboard", nil)
@@ -990,6 +1045,77 @@ public struct ClipboardPluginSettingsView: View {
                 ), in: 2...8, step: 1)
 
                 Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .padding(10)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("clipboard.settings.storagePolicy".localized)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                HStack {
+                    Text("clipboard.settings.retentionPeriod".localized)
+                        .font(.caption)
+                    Spacer()
+                    Picker("", selection: Binding(
+                        get: { state.retentionPeriod },
+                        set: {
+                            state.retentionPeriod = $0
+                            state.save()
+                            _ = SystemClipboardSyncService.shared.cleanExpiredItems(retention: $0)
+                            state.items = SystemClipboardSyncService.shared.history
+                        }
+                    )) {
+                        ForEach(ClipboardRetentionPeriod.allCases) { period in
+                            Text(period.localizedDisplayName).tag(period)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 170)
+                }
+
+                Divider()
+                    .opacity(0.3)
+
+                HStack {
+                    Text("clipboard.settings.diskQuota".localized)
+                        .font(.caption)
+                    Spacer()
+                    Picker("", selection: Binding(
+                        get: { state.diskQuota },
+                        set: {
+                            state.diskQuota = $0
+                            state.save()
+                            _ = SystemClipboardSyncService.shared.enforceDiskQuota(quota: $0)
+                            state.items = SystemClipboardSyncService.shared.history
+                        }
+                    )) {
+                        ForEach(ClipboardDiskQuota.allCases) { quota in
+                            Text(quota.localizedDisplayName).tag(quota)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 170)
+                }
+
+                Toggle("clipboard.settings.autoPrune".localized, isOn: Binding(
+                    get: { state.autoPruneOnQuota },
+                    set: {
+                        state.autoPruneOnQuota = $0
+                        state.save()
+                        if $0 {
+                            _ = SystemClipboardSyncService.shared.enforceDiskQuota(autoPrune: true)
+                            state.items = SystemClipboardSyncService.shared.history
+                        }
+                    }
+                ))
+                .font(.caption)
+
+                Text("clipboard.settings.pinProtectionNotice".localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

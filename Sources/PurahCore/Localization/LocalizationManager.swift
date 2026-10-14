@@ -109,6 +109,26 @@ public final class LocalizationManager {
             "calendar.alert.leadTime.8hours": "8 hours before",
             "calendar.alert.leadTime.sameDay": "Day of event",
 
+            // Clipboard Policies
+            "clipboard.settings.storagePolicy": "Storage & Retention Policies",
+            "clipboard.settings.retentionPeriod": "History Retention Period",
+            "clipboard.settings.diskQuota": "Disk Storage Quota",
+            "clipboard.settings.autoPrune": "Auto-prune oldest items when quota is exceeded",
+            "clipboard.settings.pinProtectionNotice": "📌 Pinned items are strictly protected and never removed by auto-cleanup.",
+            "clipboard.retention.never": "Never (Keep all)",
+            "clipboard.retention.1day": "1 Day",
+            "clipboard.retention.3days": "3 Days",
+            "clipboard.retention.7days": "7 Days",
+            "clipboard.retention.14days": "14 Days",
+            "clipboard.retention.30days": "30 Days",
+            "clipboard.retention.90days": "90 Days",
+            "clipboard.quota.100mb": "100 MB",
+            "clipboard.quota.250mb": "250 MB",
+            "clipboard.quota.500mb": "500 MB",
+            "clipboard.quota.1gb": "1 GB",
+            "clipboard.quota.2gb": "2 GB",
+            "clipboard.quota.unlimited": "Unlimited",
+
             // Actions & UI
             "simulator.title": "Settings",
             "simulator.subtitle": "Bilateral Magnetic Rails & Ergonomic Assembly",
@@ -181,6 +201,26 @@ public final class LocalizationManager {
             "calendar.alert.leadTime.4hours": "提前 4 小时",
             "calendar.alert.leadTime.8hours": "提前 8 小时",
             "calendar.alert.leadTime.sameDay": "当天日程",
+
+            // Clipboard Policies
+            "clipboard.settings.storagePolicy": "存储与保留策略",
+            "clipboard.settings.retentionPeriod": "历史保留期限",
+            "clipboard.settings.diskQuota": "磁盘占用配额",
+            "clipboard.settings.autoPrune": "超出限额时自动修剪最旧数据",
+            "clipboard.settings.pinProtectionNotice": "📌 固定 (Pin) 的条目享有免死保护，绝不被自动清理或配额修剪。",
+            "clipboard.retention.never": "永不过期 (全部保留)",
+            "clipboard.retention.1day": "1 天",
+            "clipboard.retention.3days": "3 天",
+            "clipboard.retention.7days": "7 天",
+            "clipboard.retention.14days": "14 天",
+            "clipboard.retention.30days": "30 天",
+            "clipboard.retention.90days": "90 天",
+            "clipboard.quota.100mb": "100 MB",
+            "clipboard.quota.250mb": "250 MB",
+            "clipboard.quota.500mb": "500 MB",
+            "clipboard.quota.1gb": "1 GB",
+            "clipboard.quota.2gb": "2 GB",
+            "clipboard.quota.unlimited": "无限制",
 
             // Actions & UI
             "simulator.title": "设置",

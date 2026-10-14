@@ -396,4 +396,58 @@ struct ClipboardPluginTests {
         spaciousHosting.frame = NSRect(x: 0, y: 0, width: 380, height: 350)
         #expect(spaciousHosting.bounds.height == 350)
     }
+
+    @Test("Clipboard storage policies retention and quota boundary evaluation")
+    func testClipboardStoragePolicies() {
+        let now = Date()
+        let twoHoursAgo = now.addingTimeInterval(-7200)
+        let twoDaysAgo = now.addingTimeInterval(-86400 * 2)
+        let tenDaysAgo = now.addingTimeInterval(-86400 * 10)
+
+        // Retention expiration
+        #expect(ClipboardRetentionPeriod.never.isExpired(timestamp: tenDaysAgo, now: now) == false)
+        #expect(ClipboardRetentionPeriod.oneDay.isExpired(timestamp: twoHoursAgo, now: now) == false)
+        #expect(ClipboardRetentionPeriod.oneDay.isExpired(timestamp: twoDaysAgo, now: now) == true)
+        #expect(ClipboardRetentionPeriod.sevenDays.isExpired(timestamp: twoDaysAgo, now: now) == false)
+        #expect(ClipboardRetentionPeriod.sevenDays.isExpired(timestamp: tenDaysAgo, now: now) == true)
+
+        // Disk quota threshold
+        let quota = ClipboardDiskQuota.mb100
+        #expect(quota.isExceeded(totalBytes: 50 * 1024 * 1024) == false)
+        #expect(quota.isExceeded(totalBytes: 150 * 1024 * 1024) == true)
+        #expect(ClipboardDiskQuota.unlimited.isExceeded(totalBytes: 10 * 1024 * 1024 * 1024) == false)
+    }
+
+    @Test("SystemClipboardSyncService togglePin, moveItem, and cleanExpiredItems with pin protection")
+    @MainActor
+    func testClipboardPinAndExpirationLifecycle() {
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
+
+        let now = Date()
+        let freshItem = ClipboardItem(type: .text("Fresh Text"), timestamp: now, isPinned: false)
+        let expiredUnpinned = ClipboardItem(type: .text("Old Unpinned Text"), timestamp: now.addingTimeInterval(-86400 * 10), isPinned: false)
+        let expiredPinned = ClipboardItem(type: .text("Old Pinned Important Snippet"), timestamp: now.addingTimeInterval(-86400 * 10), isPinned: true)
+
+        service.history = [freshItem, expiredUnpinned, expiredPinned]
+        #expect(service.history.count == 3)
+
+        // 1. Reordering (moveItem)
+        service.moveItem(from: 0, to: 2)
+        #expect(service.history[2].id == freshItem.id)
+        #expect(service.history[0].id == expiredUnpinned.id)
+
+        // 2. Pin toggling
+        service.togglePin(id: freshItem.id)
+        #expect(service.history.first(where: { $0.id == freshItem.id })?.isPinned == true)
+        service.togglePin(id: freshItem.id)
+        #expect(service.history.first(where: { $0.id == freshItem.id })?.isPinned == false)
+
+        // 3. Expiration cleaning (7 days): expiredPinned must be strictly protected, expiredUnpinned removed
+        let removed = service.cleanExpiredItems(retention: .sevenDays, now: now)
+        #expect(removed == 1)
+        #expect(service.history.contains(where: { $0.id == freshItem.id }))
+        #expect(service.history.contains(where: { $0.id == expiredPinned.id }), "Pinned item MUST be strictly protected from expiration cleanup")
+        #expect(!service.history.contains(where: { $0.id == expiredUnpinned.id }), "Expired unpinned item must be deleted")
+    }
 }

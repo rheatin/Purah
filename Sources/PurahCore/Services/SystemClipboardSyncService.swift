@@ -25,6 +25,11 @@ public final class SystemClipboardSyncService {
 
     public private(set) var isListening: Bool = false
     public var onItemAdded: ((ClipboardItem) -> Void)?
+    public var onQuotaWarning: ((String) -> Void)?
+
+    public var retentionPeriod: ClipboardRetentionPeriod = .sevenDays
+    public var diskQuota: ClipboardDiskQuota = .mb500
+    public var autoPruneOnQuota: Bool = true
 
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var lastChangeCount: Int = -1
@@ -229,6 +234,102 @@ public final class SystemClipboardSyncService {
         saveToDisk()
     }
 
+    public func togglePin(id: String) {
+        if let idx = history.firstIndex(where: { $0.id == id }) {
+            history[idx].isPinned.toggle()
+            saveToDisk()
+        }
+    }
+
+    public func moveItem(from sourceIndex: Int, to destinationIndex: Int) {
+        guard history.indices.contains(sourceIndex),
+              history.indices.contains(destinationIndex),
+              sourceIndex != destinationIndex else { return }
+        let item = history.remove(at: sourceIndex)
+        history.insert(item, at: destinationIndex)
+        saveToDisk()
+    }
+
+    @discardableResult
+    public func cleanExpiredItems(retention: ClipboardRetentionPeriod? = nil, now: Date = Date()) -> Int {
+        let period = retention ?? self.retentionPeriod
+        guard period != .never else { return 0 }
+
+        var removedCount = 0
+        var kept: [ClipboardItem] = []
+
+        for item in history {
+            // Pinned items are STRICTLY immune to expiration
+            if item.isPinned {
+                kept.append(item)
+            } else if period.isExpired(timestamp: item.timestamp, now: now) {
+                removedCount += 1
+                if case .image(let path, let thumbPath, _, _, _) = item.type {
+                    try? FileManager.default.removeItem(atPath: path)
+                    try? FileManager.default.removeItem(atPath: thumbPath)
+                }
+            } else {
+                kept.append(item)
+            }
+        }
+
+        if removedCount > 0 {
+            history = kept
+            saveToDisk()
+        }
+        return removedCount
+    }
+
+    @discardableResult
+    public func enforceDiskQuota(
+        quota: ClipboardDiskQuota? = nil,
+        autoPrune: Bool? = nil,
+        onWarning: ((Int64, Int64) -> Void)? = nil
+    ) -> Int {
+        let activeQuota = quota ?? self.diskQuota
+        let shouldPrune = autoPrune ?? self.autoPruneOnQuota
+        guard let maxBytes = activeQuota.maxBytes else { return 0 }
+
+        var currentSize = computeDirectorySize(url: storageDirectory)
+        guard currentSize > maxBytes else { return 0 }
+
+        var prunedCount = 0
+
+        if shouldPrune {
+            // Find unpinned items ordered by oldest timestamp first
+            while currentSize > maxBytes {
+                guard let oldestUnpinnedIdx = history.indices
+                    .filter({ !history[$0].isPinned })
+                    .min(by: { history[$0].timestamp < history[$1].timestamp }) else {
+                    break // All remaining items are pinned; cannot prune further
+                }
+
+                let removed = history.remove(at: oldestUnpinnedIdx)
+                prunedCount += 1
+                if case .image(let path, let thumbPath, _, _, _) = removed.type {
+                    try? FileManager.default.removeItem(atPath: path)
+                    try? FileManager.default.removeItem(atPath: thumbPath)
+                }
+                currentSize = computeDirectorySize(url: storageDirectory)
+            }
+
+            if prunedCount > 0 {
+                saveToDisk()
+            }
+        }
+
+        if currentSize > maxBytes {
+            let callback = onWarning ?? { [weak self] current, max in
+                let curMB = Double(current) / (1024.0 * 1024.0)
+                let maxMB = Double(max) / (1024.0 * 1024.0)
+                self?.onQuotaWarning?("⚠️ Clipboard storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
+            }
+            callback(currentSize, maxBytes)
+        }
+
+        return prunedCount
+    }
+
     // MARK: - Internal Processors
     private func addItem(_ item: ClipboardItem) {
         if let latest = history.first {
@@ -239,17 +340,9 @@ public final class SystemClipboardSyncService {
 
         history.insert(item, at: 0)
 
-        // Store up to 100 historical items permanently on disk
-        if history.count > 100 {
-            let overflow = history.suffix(from: 100)
-            for oldItem in overflow where !oldItem.isPinned {
-                if case .image(let path, let thumbPath, _, _, _) = oldItem.type {
-                    try? FileManager.default.removeItem(atPath: path)
-                    try? FileManager.default.removeItem(atPath: thumbPath)
-                }
-            }
-            history = Array(history.prefix(100))
-        }
+        // Enforce user-defined retention policy and disk quota instead of hardcoded count
+        cleanExpiredItems()
+        enforceDiskQuota()
 
         saveToDisk()
         onItemAdded?(item)
