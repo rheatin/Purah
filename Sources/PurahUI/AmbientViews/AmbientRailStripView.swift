@@ -240,7 +240,12 @@ public struct AmbientRailStripView: View {
             plugin.makeDrawerView(context: context)
         }
         .padding(8)
-        .frame(width: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), height: totalHeight)
+        .frame(
+            width: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id),
+            height: totalHeight,
+            alignment: edge == .left ? .topLeading : .topTrailing
+        )
+        .clipped()
         .liquidDrawerBackground(shape: drawerShape, accentColor: color)
         .contextMenu {
             ForEach(plugin.contextMenuActions(subItemId: nil, context: context)) { menuAction in

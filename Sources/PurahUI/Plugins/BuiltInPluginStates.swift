@@ -982,7 +982,7 @@ public final class NotesPluginState: Sendable {
         let loadedFolders = storage.codable(forKey: "availableFolders", as: [String].self) ?? ["General", "Work", "Ideas", "Snippets"]
         self.availableFolders = loadedFolders
         self.selectedFolder = storage.string(forKey: "selectedFolder") ?? "General"
-        self.isPreviewMode = storage.bool(forKey: "isPreviewMode")
+        self.isPreviewMode = storage.string(forKey: "isPreviewMode") != nil ? storage.bool(forKey: "isPreviewMode") : true
 
         // Load legacy single-note content if present
         let legacyContent: NoteContent = {
@@ -1109,6 +1109,7 @@ public final class NotesPluginState: Sendable {
         selectedFolder = targetFolder
         noteContent.text = content
         noteContent.lastModified = doc.timestamp
+        isPreviewMode = !content.isEmpty
 
         saveToDisk()
         if let boundStore {

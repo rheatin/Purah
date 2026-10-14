@@ -31,7 +31,7 @@ public struct MarkdownTipsPopoverView: View {
             }
         }
         .padding(8)
-        .frame(width: 200)
+        .frame(width: 210)
     }
 
     private func shortcutRow(syntax: String, meaning: String) -> some View {
@@ -48,20 +48,23 @@ public struct MarkdownTipsPopoverView: View {
 }
 
 /// Interactive rich Markdown preview supporting live checklist toggling,
-/// headings, quotes, and styled typography.
+/// headings, quotes, styled typography, and click-to-edit transition.
 public struct InteractiveMarkdownPreviewView: View {
     public let markdown: String
     public let accentColor: Color
     public let onToggleChecklist: (Int) -> Void
+    public let onRequestEdit: () -> Void
 
     public init(
         markdown: String,
         accentColor: Color,
-        onToggleChecklist: @escaping (Int) -> Void
+        onToggleChecklist: @escaping (Int) -> Void,
+        onRequestEdit: @escaping () -> Void = {}
     ) {
         self.markdown = markdown
         self.accentColor = accentColor
         self.onToggleChecklist = onToggleChecklist
+        self.onRequestEdit = onRequestEdit
     }
 
     public var body: some View {
@@ -70,14 +73,15 @@ public struct InteractiveMarkdownPreviewView: View {
                 let lines = markdown.components(separatedBy: "\n")
                 if lines.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.plaintext")
+                        Image(systemName: "pencil.line")
                             .font(.system(size: 11))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text("Empty Note — Switch to Edit to write Markdown...")
+                            .foregroundColor(accentColor.opacity(0.75))
+                        Text("notes.empty".localized)
                             .font(.system(size: 11, design: .rounded))
                             .foregroundColor(.secondary.opacity(0.5))
                     }
                     .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         renderLine(line, index: index)
@@ -86,6 +90,11 @@ public struct InteractiveMarkdownPreviewView: View {
                 }
             }
             .padding(6)
+            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onRequestEdit()
+            }
         }
     }
 
@@ -109,6 +118,11 @@ public struct InteractiveMarkdownPreviewView: View {
                 Text(LocalizedStringKey(itemText))
                     .font(.system(size: 11, design: .rounded))
                     .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onRequestEdit()
+                    }
             }
         } else if trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
             let itemText = String(trimmed.dropFirst(6))
@@ -127,27 +141,36 @@ public struct InteractiveMarkdownPreviewView: View {
                     .font(.system(size: 11, design: .rounded))
                     .strikethrough(true, color: .secondary.opacity(0.6))
                     .foregroundColor(.secondary.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onRequestEdit()
+                    }
             }
-        } else if trimmed.hasPrefix("# ") {
-            Text(String(trimmed.dropFirst(2)))
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.top, 2)
-        } else if trimmed.hasPrefix("## ") {
-            Text(String(trimmed.dropFirst(3)))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.top, 1)
-        } else if trimmed.hasPrefix("### ") {
-            Text(String(trimmed.dropFirst(4)))
+        } else if trimmed.hasPrefix("###") {
+            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
+            Text(String(content))
                 .font(.system(size: 11.5, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
-        } else if trimmed.hasPrefix("> ") {
+        } else if trimmed.hasPrefix("##") {
+            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
+            Text(String(content))
+                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.top, 1)
+        } else if trimmed.hasPrefix("#") {
+            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
+            Text(String(content))
+                .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.top, 2)
+        } else if trimmed.hasPrefix(">") {
+            let content = trimmed.drop(while: { $0 == ">" || $0.isWhitespace })
             HStack(spacing: 6) {
                 Rectangle()
                     .fill(accentColor.opacity(0.7))
                     .frame(width: 2.5)
-                Text(LocalizedStringKey(String(trimmed.dropFirst(2))))
+                Text(LocalizedStringKey(String(content)))
                     .font(.system(size: 10.5, design: .rounded))
                     .foregroundColor(.secondary)
             }
@@ -174,9 +197,10 @@ public struct InteractiveMarkdownPreviewView: View {
 public struct QuickNoteDrawerView: View {
     public let state: NotesPluginState
     public let store: PurahWorkspaceStore
-    @State private var debounceTask: Task<Void, Never>?
+    @State private var autoMorphTask: Task<Void, Never>?
     @State private var isCopied: Bool = false
     @State private var isShowingTips: Bool = false
+    @FocusState private var isEditorFocused: Bool
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -208,20 +232,27 @@ public struct QuickNoteDrawerView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // 1. Navigation Toolbar: Folder Picker, Note Switcher, Tips Popover, Star & Preview
+            // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Tips, Star
             navigationToolbar
 
-            // 2. Document Content: Edit TextEditor vs Rich Preview
+            // 2. Typora-style Auto-Morphing Document Content:
+            // Click to edit -> 1.2s pause automatically morphs back to rendered Markdown!
             ZStack(alignment: .topLeading) {
-                if state.isPreviewMode {
+                if state.isPreviewMode && !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     InteractiveMarkdownPreviewView(
                         markdown: currentText,
-                        accentColor: noteColor
-                    ) { lineIndex in
-                        state.toggleChecklist(at: lineIndex)
-                    }
+                        accentColor: noteColor,
+                        onToggleChecklist: { lineIndex in
+                            state.toggleChecklist(at: lineIndex)
+                        },
+                        onRequestEdit: {
+                            enterEditMode()
+                        }
+                    )
+                    .transition(.opacity)
                 } else {
                     editorView
+                        .transition(.opacity)
                 }
             }
             .background(
@@ -236,12 +267,43 @@ public struct QuickNoteDrawerView: View {
             // 3. Bottom status bar & actions
             bottomStatusBar
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(keyboardShortcutsOverlay)
         .onDisappear {
-            debounceTask?.cancel()
-            debounceTask = nil
+            autoMorphTask?.cancel()
+            autoMorphTask = nil
+            isEditorFocused = false
+            state.isPreviewMode = true
             state.save()
             store.savePersistentState()
+        }
+    }
+
+    private func enterEditMode() {
+        autoMorphTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.15)) {
+            state.isPreviewMode = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isEditorFocused = true
+        }
+        scheduleAutoMorphToPreview()
+    }
+
+    /// Schedules a 1.2-second inactivity timer that smoothly morphs the raw editor back into rich Markdown preview.
+    private func scheduleAutoMorphToPreview() {
+        autoMorphTask?.cancel()
+        autoMorphTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s golden ergonomic pause
+            guard !Task.isCancelled else { return }
+            state.save()
+            store.savePersistentState()
+            if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                isEditorFocused = false
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    state.isPreviewMode = true
+                }
+            }
         }
     }
 
@@ -265,9 +327,10 @@ public struct QuickNoteDrawerView: View {
         let updated = doc.content.isEmpty ? snippet : "\(doc.content)\n\(snippet)"
         state.updateNoteContent(id: doc.id, content: updated)
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        scheduleAutoMorphToPreview()
     }
 
-    // MARK: - Navigation Toolbar (Clean Single Row)
+    // MARK: - Navigation Toolbar (Strictly Bounded Single Row)
     private var navigationToolbar: some View {
         HStack(spacing: 4) {
             // Folder Picker Menu
@@ -292,24 +355,24 @@ public struct QuickNoteDrawerView: View {
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .frame(maxWidth: 65, alignment: .leading)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 6))
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
+                .frame(maxWidth: 72, alignment: .leading)
                 .background(Color.primary.opacity(0.06))
                 .cornerRadius(4)
                 .foregroundColor(.primary)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
 
             // Note Selector Menu
             Menu {
                 ForEach(state.documentsInCurrentFolder) { doc in
                     Button {
                         state.selectedNoteId = doc.id
+                        state.isPreviewMode = true
                     } label: {
                         HStack {
                             if doc.isFavorite {
@@ -325,6 +388,7 @@ public struct QuickNoteDrawerView: View {
                 Divider()
                 Button {
                     _ = state.createNote(folder: state.selectedFolder)
+                    enterEditMode()
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
                 } label: {
                     Label("New Note in \(state.selectedFolder)", systemImage: "plus")
@@ -337,22 +401,22 @@ public struct QuickNoteDrawerView: View {
                         .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .frame(maxWidth: 80, alignment: .leading)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 6))
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
+                .frame(maxWidth: 110, alignment: .leading)
                 .background(Color.primary.opacity(0.06))
                 .cornerRadius(4)
                 .foregroundColor(noteColor)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
 
             // New Note Button
             Button {
                 _ = state.createNote(folder: state.selectedFolder)
+                enterEditMode()
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
             } label: {
                 Image(systemName: "plus")
@@ -366,16 +430,19 @@ public struct QuickNoteDrawerView: View {
 
             Spacer(minLength: 4)
 
-            // Markdown Tips button with popover
+            // Markdown Tips icon: triggers popover immediately on mouse hover or click
             Button {
                 isShowingTips.toggle()
             } label: {
                 Image(systemName: "questionmark.circle")
-                    .font(.system(size: 9.5))
+                    .font(.system(size: 10))
                     .foregroundColor(isShowingTips ? noteColor : .secondary)
+                    .padding(2)
             }
             .buttonStyle(.plain)
-            .help("Markdown Syntax & Shortcuts Tips")
+            .onHover { hovering in
+                isShowingTips = hovering
+            }
             .popover(isPresented: $isShowingTips, arrowEdge: .bottom) {
                 MarkdownTipsPopoverView()
             }
@@ -387,33 +454,13 @@ public struct QuickNoteDrawerView: View {
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
                 } label: {
                     Image(systemName: doc.isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 9.5))
+                        .font(.system(size: 10))
                         .foregroundColor(doc.isFavorite ? Color(hex: "#FF9F0A") : .secondary.opacity(0.8))
+                        .padding(2)
                 }
                 .buttonStyle(.plain)
                 .help(doc.isFavorite ? "Unstar note" : "Star note")
             }
-
-            // Edit / Preview Toggle Button
-            Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    state.isPreviewMode.toggle()
-                    state.save()
-                }
-            } label: {
-                HStack(spacing: 2) {
-                    Image(systemName: state.isPreviewMode ? "pencil" : "eye.fill")
-                        .font(.system(size: 7.5))
-                    Text(state.isPreviewMode ? "Edit" : "Preview")
-                        .font(.system(size: 8, weight: .semibold, design: .rounded))
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(state.isPreviewMode ? noteColor.opacity(0.18) : Color.primary.opacity(0.06))
-                .foregroundColor(state.isPreviewMode ? noteColor : .secondary)
-                .cornerRadius(4)
-            }
-            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
     }
@@ -429,15 +476,10 @@ public struct QuickNoteDrawerView: View {
                     } else {
                         state.updateText(newText)
                     }
-                    debounceTask?.cancel()
-                    debounceTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        guard !Task.isCancelled else { return }
-                        state.save()
-                        store.savePersistentState()
-                    }
+                    scheduleAutoMorphToPreview()
                 }
             ))
+            .focused($isEditorFocused)
             .font(.system(size: 11, design: .monospaced))
             .scrollContentBackground(.hidden)
             .padding(4)
@@ -448,7 +490,7 @@ public struct QuickNoteDrawerView: View {
                     Image(systemName: "pencil.line")
                         .font(.system(size: 10))
                         .foregroundColor(noteColor.opacity(0.7))
-                    Text("Type quick scratchpad or drop thoughts...")
+                    Text("notes.empty".localized)
                         .font(.system(size: 11, design: .rounded))
                         .foregroundColor(.secondary.opacity(0.45))
                 }

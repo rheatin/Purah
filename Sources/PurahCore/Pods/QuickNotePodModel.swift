@@ -49,14 +49,16 @@ public struct NoteDocument: Identifiable, Codable, Sendable, Equatable, PurahSto
         let lines = markdown.components(separatedBy: .newlines)
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("# ") {
-                let heading = trimmed.dropFirst(2).trimmingCharacters(in: .whitespaces)
-                if !heading.isEmpty { return String(heading.prefix(20)) }
-            } else if trimmed.hasPrefix("## ") {
-                let heading = trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces)
-                if !heading.isEmpty { return String(heading.prefix(20)) }
-            } else if !trimmed.isEmpty && !trimmed.hasPrefix("- ") && !trimmed.hasPrefix("* ") {
-                return String(trimmed.prefix(20))
+            guard !trimmed.isEmpty else { continue }
+            guard !trimmed.hasPrefix("- ") && !trimmed.hasPrefix("* ") && !trimmed.hasPrefix("- [") else { continue }
+
+            // Strip any leading '#', '>', '*', '_', '`', and whitespace characters
+            let stripped = trimmed
+                .drop(while: { $0 == "#" || $0 == ">" || $0 == "*" || $0 == "_" || $0 == "`" || $0.isWhitespace })
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !stripped.isEmpty {
+                return String(stripped.prefix(16))
             }
         }
         return fallback
