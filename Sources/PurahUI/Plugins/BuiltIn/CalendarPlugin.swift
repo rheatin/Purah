@@ -486,7 +486,7 @@ public struct CalendarPluginSettingsView: View {
                     .background(Color.primary.opacity(0.06))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Advance Notice Timing / 提前提醒时间")
+                    Text("calendar.alert.advanceNotice".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
 
@@ -499,7 +499,7 @@ public struct CalendarPluginSettingsView: View {
                         }
                     )) {
                         ForEach(CalendarAlertLeadTime.allCases) { lead in
-                            Text(lead.displayName).tag(lead)
+                            Text(lead.localizedDisplayName).tag(lead)
                         }
                     }
                     .pickerStyle(.menu)

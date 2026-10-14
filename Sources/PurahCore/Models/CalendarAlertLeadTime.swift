@@ -17,16 +17,21 @@ public enum CalendarAlertLeadTime: String, CaseIterable, Identifiable, Codable, 
 
     public var displayName: String {
         switch self {
-        case .atEventTime: return "At event time (准时)"
-        case .fiveMinutes: return "5 minutes before (提前5分钟)"
-        case .fifteenMinutes: return "15 minutes before (提前15分钟)"
-        case .thirtyMinutes: return "30 minutes before (提前30分钟)"
-        case .oneHour: return "1 hour before (提前1小时)"
-        case .twoHours: return "2 hours before (提前2小时)"
-        case .fourHours: return "4 hours before (提前4小时)"
-        case .eightHours: return "8 hours before (提前8小时)"
-        case .sameDay: return "Day of event (当天)"
+        case .atEventTime: return "At event time"
+        case .fiveMinutes: return "5 minutes before"
+        case .fifteenMinutes: return "15 minutes before"
+        case .thirtyMinutes: return "30 minutes before"
+        case .oneHour: return "1 hour before"
+        case .twoHours: return "2 hours before"
+        case .fourHours: return "4 hours before"
+        case .eightHours: return "8 hours before"
+        case .sameDay: return "Day of event"
         }
+    }
+
+    @MainActor
+    public var localizedDisplayName: String {
+        "calendar.alert.leadTime.\(rawValue)".localized
     }
 
     /// Evaluates whether an event starting at `startTime` is within the alert window relative to `now`.

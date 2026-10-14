@@ -97,6 +97,18 @@ public final class LocalizationManager {
             "calendar.overview.title": "Upcoming Agenda",
             "calendar.overview.moreEvents": "+%d More Events",
 
+            // Calendar Alert Lead Time
+            "calendar.alert.advanceNotice": "Advance Notice Timing",
+            "calendar.alert.leadTime.atEventTime": "At event time",
+            "calendar.alert.leadTime.5min": "5 minutes before",
+            "calendar.alert.leadTime.15min": "15 minutes before",
+            "calendar.alert.leadTime.30min": "30 minutes before",
+            "calendar.alert.leadTime.1hour": "1 hour before",
+            "calendar.alert.leadTime.2hours": "2 hours before",
+            "calendar.alert.leadTime.4hours": "4 hours before",
+            "calendar.alert.leadTime.8hours": "8 hours before",
+            "calendar.alert.leadTime.sameDay": "Day of event",
+
             // Actions & UI
             "simulator.title": "Settings",
             "simulator.subtitle": "Bilateral Magnetic Rails & Ergonomic Assembly",
@@ -157,6 +169,18 @@ public final class LocalizationManager {
             "calendar.overflow.continuous.desc": "折叠为纯粹沉静的边缘时间光柱，悬停滑出全天日程大抽屉",
             "calendar.overview.title": "全日程总览",
             "calendar.overview.moreEvents": "+%d 个更多日程",
+
+            // Calendar Alert Lead Time
+            "calendar.alert.advanceNotice": "提前提醒时间",
+            "calendar.alert.leadTime.atEventTime": "准时",
+            "calendar.alert.leadTime.5min": "提前 5 分钟",
+            "calendar.alert.leadTime.15min": "提前 15 分钟",
+            "calendar.alert.leadTime.30min": "提前 30 分钟",
+            "calendar.alert.leadTime.1hour": "提前 1 小时",
+            "calendar.alert.leadTime.2hours": "提前 2 小时",
+            "calendar.alert.leadTime.4hours": "提前 4 小时",
+            "calendar.alert.leadTime.8hours": "提前 8 小时",
+            "calendar.alert.leadTime.sameDay": "当天日程",
 
             // Actions & UI
             "simulator.title": "设置",
