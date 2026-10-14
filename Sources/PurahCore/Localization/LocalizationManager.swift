@@ -143,6 +143,16 @@ public final class LocalizationManager {
             "storage.quota.2gb": "2 GB",
             "storage.quota.unlimited": "Unlimited",
 
+            // Quick Notes
+            "notes.folder.general": "General",
+            "notes.folder.work": "Work",
+            "notes.folder.ideas": "Ideas",
+            "notes.folder.snippets": "Snippets",
+            "notes.mode.edit": "Edit",
+            "notes.mode.preview": "Preview",
+            "notes.newNote": "New Note",
+            "notes.empty": "Type quick scratchpad or drop thoughts...",
+
             // Actions & UI
             "simulator.title": "Settings",
             "simulator.subtitle": "Bilateral Magnetic Rails & Ergonomic Assembly",
@@ -249,6 +259,16 @@ public final class LocalizationManager {
             "storage.quota.1gb": "1 GB",
             "storage.quota.2gb": "2 GB",
             "storage.quota.unlimited": "无限制",
+
+            // Quick Notes
+            "notes.folder.general": "常规",
+            "notes.folder.work": "工作",
+            "notes.folder.ideas": "灵感",
+            "notes.folder.snippets": "代码片段",
+            "notes.mode.edit": "编辑",
+            "notes.mode.preview": "预览",
+            "notes.newNote": "新建笔记",
+            "notes.empty": "记录闪念或随手粘贴想法...",
 
             // Actions & UI
             "simulator.title": "设置",

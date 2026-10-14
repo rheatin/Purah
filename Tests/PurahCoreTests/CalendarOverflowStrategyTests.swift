@@ -141,7 +141,9 @@ struct CalendarOverflowStrategyTests {
 
     @Test("CalendarAlertLeadTime evaluates time boundaries accurately from 0m to 8h and same day")
     func testCalendarAlertLeadTimeBoundaries() {
-        let now = Date()
+        let cal = Calendar.current
+        let today = Date()
+        let now = cal.date(bySettingHour: 10, minute: 0, second: 0, of: today) ?? today
         let in10Min = now.addingTimeInterval(600)
         let in45Min = now.addingTimeInterval(2700)
         let in3Hours = now.addingTimeInterval(10800)
