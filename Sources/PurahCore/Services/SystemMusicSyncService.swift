@@ -36,6 +36,12 @@ public final class SystemMusicSyncService {
     public var isListening: Bool { musicObserver != nil || spotifyObserver != nil || mediaRemoteObserver != nil }
     public var onTrackChanged: ((MusicTrackInfo) -> Void)?
 
+    public static var isTestingEnvironment: Bool {
+        NSClassFromString("XCTest") != nil ||
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.arguments.contains(where: { $0.contains("swiftpm-testing-helper") || $0.contains("xctest") })
+    }
+
     public init() {
         // Dormant by default: listening is started strictly on-demand when MusicPlugin mounts
     }
@@ -144,21 +150,25 @@ public final class SystemMusicSyncService {
         }
 
         // 4. Query initial playback state if Apple Music player is already running
-        Task { [weak self, weak store] in
-            await self?.pollCurrentPlayingState(store: store)
+        if !Self.isTestingEnvironment {
+            Task { [weak self, weak store] in
+                await self?.pollCurrentPlayingState(store: store)
+            }
         }
 
         // 5. Periodic 2.0s heartbeat to guarantee continuous real-time state sync across all players
         statusHeartbeatTimer?.invalidate()
-        statusHeartbeatTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self, weak store] _ in
-            MainActor.assumeIsolated {
-                guard let self = self, let store = store else { return }
-                guard !store.isRailsFrozen else { return }
-                if SystemMediaRemoteBridge.shared.isAvailable {
-                    self.handleMediaRemoteInfoUpdate(store: store)
-                } else if self.isMusicAppRunning {
-                    Task { [weak self, weak store] in
-                        await self?.pollCurrentPlayingState(store: store)
+        if !Self.isTestingEnvironment {
+            statusHeartbeatTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self, weak store] _ in
+                MainActor.assumeIsolated {
+                    guard let self = self, let store = store else { return }
+                    guard !store.isRailsFrozen else { return }
+                    if SystemMediaRemoteBridge.shared.isAvailable {
+                        self.handleMediaRemoteInfoUpdate(store: store)
+                    } else if self.isMusicAppRunning {
+                        Task { [weak self, weak store] in
+                            await self?.pollCurrentPlayingState(store: store)
+                        }
                     }
                 }
             }
@@ -414,6 +424,7 @@ public final class SystemMusicSyncService {
     }
 
     public func pollCurrentPlayingState(store: PurahWorkspaceStore?) async {
+        guard !Self.isTestingEnvironment else { return }
         guard isMusicAppRunning else { return }
         let queryStartTime = Date()
         let script = """

@@ -27,6 +27,7 @@ struct MultiDisplayTests {
     }
 
     @Test("Coordinator resolves target screen for follow cursor mode")
+    @MainActor
     func testCoordinatorTargetScreen() {
         let store = PurahWorkspaceStore()
         let coordinator = ScreenEdgeCoordinator(store: store)

@@ -75,4 +75,70 @@ public struct NoteDocument: Identifiable, Codable, Sendable, Equatable, PurahSto
     public var characterCount: Int {
         content.count
     }
+
+    /// Handles smart line return and list/checklist continuation in Typora block-level live preview.
+    public static func applyLineReturn(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int) {
+        guard !lines.isEmpty else {
+            return (["", ""], 1)
+        }
+        let safeIndex = max(0, min(index, lines.count - 1))
+        let currentLine = lines[safeIndex]
+        let trimmed = currentLine.trimmingCharacters(in: .whitespaces)
+
+        // Empty checklist item: clear prefix and exit checklist mode
+        if trimmed == "- [ ]" || trimmed == "- [x]" || trimmed == "- [X]" || currentLine == "- [ ] " || currentLine == "- [x] " || currentLine == "- [X] " {
+            var updated = lines
+            updated[safeIndex] = ""
+            return (updated, safeIndex)
+        }
+        // Empty bullet item: clear prefix and exit bullet mode
+        else if trimmed == "-" || trimmed == "*" || currentLine == "- " || currentLine == "* " {
+            var updated = lines
+            updated[safeIndex] = ""
+            return (updated, safeIndex)
+        }
+        // Non-empty line: determine prefix continuation for next line
+        else {
+            let prefix: String
+            if trimmed.hasPrefix("- [ ] ") || trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
+                prefix = "- [ ] "
+            } else if trimmed.hasPrefix("- ") {
+                prefix = "- "
+            } else if trimmed.hasPrefix("* ") {
+                prefix = "* "
+            } else {
+                prefix = ""
+            }
+            var updated = lines
+            updated.insert(prefix, at: safeIndex + 1)
+            return (updated, safeIndex + 1)
+        }
+    }
+
+    /// Handles line edits and multi-line paste operations.
+    public static func applyLineEdit(lines: [String], at index: Int, newValue: String) -> (updatedLines: [String], nextActiveIndex: Int) {
+        var currentLines = lines.isEmpty ? [""] : lines
+        let safeIndex = max(0, min(index, currentLines.count - 1))
+
+        if newValue.contains("\n") {
+            let pastedLines = newValue.components(separatedBy: "\n")
+            currentLines.remove(at: safeIndex)
+            currentLines.insert(contentsOf: pastedLines, at: safeIndex)
+            let nextIndex = safeIndex + pastedLines.count - 1
+            return (currentLines, max(0, nextIndex))
+        } else {
+            currentLines[safeIndex] = newValue
+            return (currentLines, safeIndex)
+        }
+    }
+
+    /// Deletes the line at `index` if it is empty and `index > 0`, returning the updated lines and `index - 1`.
+    public static func applyBackspaceOnEmptyLine(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int)? {
+        guard lines.indices.contains(index), index > 0, lines[index].isEmpty else {
+            return nil
+        }
+        var updated = lines
+        updated.remove(at: index)
+        return (updated, index - 1)
+    }
 }

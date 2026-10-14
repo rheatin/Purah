@@ -1236,6 +1236,18 @@ public final class NotesPluginState: Sendable {
         let updated = doc.content.isEmpty ? snippet : "\(doc.content)\n\n\(snippet)"
         updateNoteContent(id: doc.id, content: updated)
     }
+
+    public static func applyLineReturn(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int) {
+        NoteDocument.applyLineReturn(lines: lines, at: index)
+    }
+
+    public static func applyLineEdit(lines: [String], at index: Int, newValue: String) -> (updatedLines: [String], nextActiveIndex: Int) {
+        NoteDocument.applyLineEdit(lines: lines, at: index, newValue: newValue)
+    }
+
+    public static func applyBackspaceOnEmptyLine(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int)? {
+        NoteDocument.applyBackspaceOnEmptyLine(lines: lines, at: index)
+    }
 }
 
 // MARK: - Vitals Plugin State

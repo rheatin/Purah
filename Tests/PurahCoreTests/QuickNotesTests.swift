@@ -96,4 +96,129 @@ struct QuickNotesTests {
         state.deleteNote(id: note.id)
         #expect(!state.documents.contains { $0.id == note.id })
     }
+
+    @Test("applyLineReturn handles smart list continuation and empty prefix clearing")
+    func testApplyLineReturn() {
+        // 1. Normal line return
+        let normalLines = ["# Title", "Paragraph text"]
+        let (res1, idx1) = NoteDocument.applyLineReturn(lines: normalLines, at: 1)
+        #expect(res1 == ["# Title", "Paragraph text", ""])
+        #expect(idx1 == 2)
+
+        // 2. Checklist continuation (- [ ] task -> - [ ] )
+        let checklistLines = ["- [ ] Buy groceries"]
+        let (res2, idx2) = NoteDocument.applyLineReturn(lines: checklistLines, at: 0)
+        #expect(res2 == ["- [ ] Buy groceries", "- [ ] "])
+        #expect(idx2 == 1)
+
+        // 3. Completed checklist continuation (- [x] task -> - [ ] )
+        let completedChecklistLines = ["- [x] Complete task"]
+        let (res3, idx3) = NoteDocument.applyLineReturn(lines: completedChecklistLines, at: 0)
+        #expect(res3 == ["- [x] Complete task", "- [ ] "])
+        #expect(idx3 == 1)
+
+        // 4. Empty checklist clearing (- [ ]  -> "")
+        let emptyChecklistLines = ["- [ ] Buy groceries", "- [ ] "]
+        let (res4, idx4) = NoteDocument.applyLineReturn(lines: emptyChecklistLines, at: 1)
+        #expect(res4 == ["- [ ] Buy groceries", ""])
+        #expect(idx4 == 1)
+
+        // 5. Empty checklist without trailing space (- [ ])
+        let (res5, idx5) = NoteDocument.applyLineReturn(lines: ["- [ ]"], at: 0)
+        #expect(res5 == [""])
+        #expect(idx5 == 0)
+
+        // 6. Bullet continuation (- item -> - )
+        let bulletLines = ["- First bullet"]
+        let (res6, idx6) = NoteDocument.applyLineReturn(lines: bulletLines, at: 0)
+        #expect(res6 == ["- First bullet", "- "])
+        #expect(idx6 == 1)
+
+        // 7. Asterisk bullet continuation (* item -> * )
+        let asteriskLines = ["* Star item"]
+        let (res7, idx7) = NoteDocument.applyLineReturn(lines: asteriskLines, at: 0)
+        #expect(res7 == ["* Star item", "* "])
+        #expect(idx7 == 1)
+
+        // 8. Empty bullet clearing (-  -> "")
+        let emptyBulletLines = ["- First bullet", "- "]
+        let (res8, idx8) = NoteDocument.applyLineReturn(lines: emptyBulletLines, at: 1)
+        #expect(res8 == ["- First bullet", ""])
+        #expect(idx8 == 1)
+
+        // 9. Empty asterisk bullet clearing (*  -> "")
+        let (res9, idx9) = NoteDocument.applyLineReturn(lines: ["* "], at: 0)
+        #expect(res9 == [""])
+        #expect(idx9 == 0)
+
+        // 10. Forwarding through NotesPluginState
+        let (res10, idx10) = NotesPluginState.applyLineReturn(lines: ["- [ ] Test item"], at: 0)
+        #expect(res10 == ["- [ ] Test item", "- [ ] "])
+        #expect(idx10 == 1)
+    }
+
+    @Test("applyLineEdit handles single-line edits and multi-line paste splitting")
+    func testApplyLineEdit() {
+        // 1. Single-line edit
+        let lines = ["Line 1", "Line 2"]
+        let (res1, idx1) = NoteDocument.applyLineEdit(lines: lines, at: 0, newValue: "Updated Line 1")
+        #expect(res1 == ["Updated Line 1", "Line 2"])
+        #expect(idx1 == 0)
+
+        // 2. Multi-line paste (Cmd+V) splitting into multiple lines
+        let multiLines = ["Before", "Target line", "After"]
+        let pasteContent = "Pasted A\nPasted B\nPasted C"
+        let (res2, idx2) = NoteDocument.applyLineEdit(lines: multiLines, at: 1, newValue: pasteContent)
+        #expect(res2 == ["Before", "Pasted A", "Pasted B", "Pasted C", "After"])
+        #expect(idx2 == 3) // Focus moves to index 1 + 3 - 1 = 3 ("Pasted C")
+
+        // 3. Multi-line paste into empty document
+        let emptyDocLines = [""]
+        let (res3, idx3) = NoteDocument.applyLineEdit(lines: emptyDocLines, at: 0, newValue: "Hello\nWorld")
+        #expect(res3 == ["Hello", "World"])
+        #expect(idx3 == 1)
+
+        // 4. Forwarding through NotesPluginState
+        let (res4, idx4) = NotesPluginState.applyLineEdit(lines: ["A", "B"], at: 1, newValue: "X\nY")
+        #expect(res4 == ["A", "X", "Y"])
+        #expect(idx4 == 2)
+    }
+
+    @Test("applyBackspaceOnEmptyLine deletes empty line when index > 0 and returns previous index")
+    func testApplyBackspaceOnEmptyLine() {
+        // 1. Delete middle empty line
+        let lines1 = ["First line", "", "Third line"]
+        let res1 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines1, at: 1)
+        #expect(res1 != nil)
+        #expect(res1?.updatedLines == ["First line", "Third line"])
+        #expect(res1?.nextActiveIndex == 0)
+
+        // 2. Delete trailing empty line
+        let lines2 = ["Header", "Content", ""]
+        let res2 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines2, at: 2)
+        #expect(res2 != nil)
+        #expect(res2?.updatedLines == ["Header", "Content"])
+        #expect(res2?.nextActiveIndex == 1)
+
+        // 3. Do not delete if line is not empty
+        let lines3 = ["First", "Second"]
+        let res3 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines3, at: 1)
+        #expect(res3 == nil)
+
+        // 4. Do not delete if index == 0 even if line is empty
+        let lines4 = ["", "Second"]
+        let res4 = NoteDocument.applyBackspaceOnEmptyLine(lines: lines4, at: 0)
+        #expect(res4 == nil)
+
+        // 5. Out of bounds index returns nil
+        let lines5 = ["Single"]
+        #expect(NoteDocument.applyBackspaceOnEmptyLine(lines: lines5, at: -1) == nil)
+        #expect(NoteDocument.applyBackspaceOnEmptyLine(lines: lines5, at: 5) == nil)
+
+        // 6. Forwarding through NotesPluginState
+        let forwarded = NotesPluginState.applyBackspaceOnEmptyLine(lines: ["A", ""], at: 1)
+        #expect(forwarded != nil)
+        #expect(forwarded?.updatedLines == ["A"])
+        #expect(forwarded?.nextActiveIndex == 0)
+    }
 }

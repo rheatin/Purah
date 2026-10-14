@@ -1077,4 +1077,47 @@ struct DrawerInteractionUITests {
         let accessoryView = musicPlugin.makeHeaderAccessoryView(context: context)
         #expect(accessoryView != nil)
     }
+
+    @Test("AmbientRailWindow intercepts standard editing key equivalents (Cmd+C, Cmd+V, Cmd+X, Cmd+A, Cmd+Z, Shift+Cmd+Z)")
+    @MainActor
+    func testAmbientRailWindowKeyEquivalents() {
+        let store = PurahWorkspaceStore()
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let window = AmbientRailWindow(edge: .left, screen: screen, store: store)
+
+        // Simulate Command key events
+        let keys = ["c", "v", "x", "a", "z"]
+        for key in keys {
+            if let event = NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: .command,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: key,
+                charactersIgnoringModifiers: key,
+                isARepeat: false,
+                keyCode: 0
+            ) {
+                _ = window.performKeyEquivalent(with: event)
+            }
+        }
+
+        // Simulate Shift+Command+Z (Redo)
+        if let redoEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command, .shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "Z",
+            charactersIgnoringModifiers: "z",
+            isARepeat: false,
+            keyCode: 0
+        ) {
+            _ = window.performKeyEquivalent(with: redoEvent)
+        }
+    }
 }

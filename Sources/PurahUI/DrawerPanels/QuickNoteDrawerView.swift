@@ -197,10 +197,11 @@ public struct InteractiveMarkdownPreviewView: View {
 public struct QuickNoteDrawerView: View {
     public let state: NotesPluginState
     public let store: PurahWorkspaceStore
-    @State private var autoMorphTask: Task<Void, Never>?
+
+    @State private var activeLineIndex: Int? = nil
+    @FocusState private var focusedLineIndex: Int?
     @State private var isCopied: Bool = false
     @State private var isShowingTips: Bool = false
-    @FocusState private var isEditorFocused: Bool
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -212,6 +213,14 @@ public struct QuickNoteDrawerView: View {
 
     private var currentText: String {
         state.currentDocument?.content ?? state.noteContent.text
+    }
+
+    private var lines: [String] {
+        let text = currentText
+        if text.isEmpty {
+            return [""]
+        }
+        return text.components(separatedBy: "\n")
     }
 
     private var wordCount: Int {
@@ -235,34 +244,8 @@ public struct QuickNoteDrawerView: View {
             // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Tips, Star
             navigationToolbar
 
-            // 2. Typora-style Auto-Morphing Document Content:
-            // Click to edit -> 1.2s pause automatically morphs back to rendered Markdown!
-            ZStack(alignment: .topLeading) {
-                if state.isPreviewMode && !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    InteractiveMarkdownPreviewView(
-                        markdown: currentText,
-                        accentColor: noteColor,
-                        onToggleChecklist: { lineIndex in
-                            state.toggleChecklist(at: lineIndex)
-                        },
-                        onRequestEdit: {
-                            enterEditMode()
-                        }
-                    )
-                    .transition(.opacity)
-                } else {
-                    editorView
-                        .transition(.opacity)
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.45))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
-            )
+            // 2. Typora-Style Block-Level Live Preview Document Canvas
+            documentCanvasView
 
             // 3. Bottom status bar & actions
             bottomStatusBar
@@ -270,40 +253,332 @@ public struct QuickNoteDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(keyboardShortcutsOverlay)
         .onDisappear {
-            autoMorphTask?.cancel()
-            autoMorphTask = nil
-            isEditorFocused = false
-            state.isPreviewMode = true
+            activeLineIndex = nil
+            focusedLineIndex = nil
             state.save()
             store.savePersistentState()
         }
     }
 
-    private func enterEditMode() {
-        autoMorphTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.15)) {
-            state.isPreviewMode = false
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            isEditorFocused = true
-        }
-        scheduleAutoMorphToPreview()
-    }
+    // MARK: - Typora Block-Level Live Preview Canvas
+    private var documentCanvasView: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 4) {
+                let currentLines = self.lines
+                let isEmptyDoc = currentLines.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
 
-    /// Schedules a 1.2-second inactivity timer that smoothly morphs the raw editor back into rich Markdown preview.
-    private func scheduleAutoMorphToPreview() {
-        autoMorphTask?.cancel()
-        autoMorphTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s golden ergonomic pause
-            guard !Task.isCancelled else { return }
-            state.save()
-            store.savePersistentState()
-            if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                isEditorFocused = false
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    state.isPreviewMode = true
+                if isEmptyDoc && activeLineIndex == nil {
+                    HStack(spacing: 5) {
+                        Image(systemName: "pencil.line")
+                            .font(.system(size: 10))
+                            .foregroundColor(noteColor.opacity(0.7))
+                        Text("notes.empty".localized)
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.45))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        handleEmptyAreaClick()
+                    }
+                } else {
+                    ForEach(Array(currentLines.enumerated()), id: \.offset) { index, line in
+                        if activeLineIndex == index {
+                            activeLineView(index: index)
+                        } else {
+                            inactiveLineView(line: line, index: index)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 28)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        handleEmptyAreaClick()
+                    }
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
+        )
+        .onChange(of: focusedLineIndex) { _, newIndex in
+            if let newIndex {
+                if activeLineIndex != newIndex {
+                    activeLineIndex = newIndex
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if focusedLineIndex == nil {
+                        activeLineIndex = nil
+                        state.save()
+                    }
                 }
             }
+        }
+    }
+
+    // MARK: - Active Line Editor
+    @ViewBuilder
+    private func activeLineView(index: Int) -> some View {
+        HStack(spacing: 4) {
+            Rectangle()
+                .fill(noteColor)
+                .frame(width: 2)
+                .cornerRadius(1)
+
+            TextField("", text: lineBinding(for: index))
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .focused($focusedLineIndex, equals: index)
+                .onSubmit {
+                    commitLineAndInsertBelow(at: index)
+                }
+                .onExitCommand {
+                    activeLineIndex = nil
+                    focusedLineIndex = nil
+                    state.save()
+                }
+                .onKeyPress(.upArrow) {
+                    if index > 0 {
+                        activateLine(index - 1)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.downArrow) {
+                    if index + 1 < lines.count {
+                        activateLine(index + 1)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress { press in
+                    if press.key == .delete || press.characters == "\u{7F}" || press.characters == "\u{08}" {
+                        if let result = NoteDocument.applyBackspaceOnEmptyLine(lines: self.lines, at: index) {
+                            updateNoteText(result.updatedLines.joined(separator: "\n"))
+                            state.save()
+                            activateLine(result.nextActiveIndex)
+                            return .handled
+                        }
+                    }
+                    return .ignored
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 4)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Inactive Line Preview
+    @ViewBuilder
+    private func inactiveLineView(line: String, index: Int) -> some View {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+        if trimmed.hasPrefix("- [ ] ") {
+            let itemText = String(trimmed.dropFirst(6))
+            HStack(alignment: .top, spacing: 6) {
+                Button {
+                    state.toggleChecklist(at: index)
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                } label: {
+                    Image(systemName: "square")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+
+                Text(LocalizedStringKey(itemText))
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        activateLine(index)
+                    }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
+            let itemText = String(trimmed.dropFirst(6))
+            HStack(alignment: .top, spacing: 6) {
+                Button {
+                    state.toggleChecklist(at: index)
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                } label: {
+                    Image(systemName: "checkmark.square.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(noteColor)
+                }
+                .buttonStyle(.plain)
+
+                Text(LocalizedStringKey(itemText))
+                    .font(.system(size: 11, design: .rounded))
+                    .strikethrough(true, color: .secondary.opacity(0.6))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        activateLine(index)
+                    }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if trimmed.hasPrefix("###") {
+            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
+            Text(String(content))
+                .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activateLine(index)
+                }
+        } else if trimmed.hasPrefix("##") {
+            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
+            Text(String(content))
+                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.top, 1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activateLine(index)
+                }
+        } else if trimmed.hasPrefix("#") {
+            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
+            Text(String(content))
+                .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.top, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activateLine(index)
+                }
+        } else if trimmed.hasPrefix(">") {
+            let content = trimmed.drop(while: { $0 == ">" || $0.isWhitespace })
+            HStack(spacing: 6) {
+                Rectangle()
+                    .fill(noteColor.opacity(0.7))
+                    .frame(width: 2.5)
+                Text(LocalizedStringKey(String(content)))
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                activateLine(index)
+            }
+        } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+            HStack(alignment: .top, spacing: 5) {
+                Circle()
+                    .fill(noteColor.opacity(0.85))
+                    .frame(width: 3.5, height: 3.5)
+                    .padding(.top, 5)
+                Text(LocalizedStringKey(String(trimmed.dropFirst(2))))
+                    .font(.system(size: 11, design: .rounded))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                activateLine(index)
+            }
+        } else if trimmed.isEmpty {
+            Spacer()
+                .frame(height: 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activateLine(index)
+                }
+        } else {
+            Text(LocalizedStringKey(line))
+                .font(.system(size: 11, design: .rounded))
+                .lineSpacing(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    activateLine(index)
+                }
+        }
+    }
+
+    // MARK: - Line Editing & Continuation Actions
+    private func lineBinding(for index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                let currentLines = self.lines
+                guard currentLines.indices.contains(index) else { return "" }
+                return currentLines[index]
+            },
+            set: { newValue in
+                let currentLines = self.lines
+                guard currentLines.indices.contains(index) else { return }
+                let (updatedLines, nextIndex) = NoteDocument.applyLineEdit(lines: currentLines, at: index, newValue: newValue)
+                let newContent = updatedLines.joined(separator: "\n")
+                updateNoteText(newContent)
+                if nextIndex != index {
+                    activateLine(nextIndex)
+                }
+            }
+        )
+    }
+
+    private func commitLineAndInsertBelow(at index: Int) {
+        let currentLines = self.lines
+        guard currentLines.indices.contains(index) else { return }
+        let (updatedLines, nextIndex) = NoteDocument.applyLineReturn(lines: currentLines, at: index)
+        let newContent = updatedLines.joined(separator: "\n")
+        updateNoteText(newContent)
+        state.save()
+        activateLine(nextIndex)
+    }
+
+    private func activateLine(_ index: Int) {
+        let currentLines = self.lines
+        let safeIndex = max(0, min(index, max(0, currentLines.count - 1)))
+        activeLineIndex = safeIndex
+        DispatchQueue.main.async {
+            focusedLineIndex = safeIndex
+        }
+    }
+
+    private func handleEmptyAreaClick() {
+        let currentLines = self.lines
+        if currentLines.isEmpty {
+            updateNoteText("")
+            activateLine(0)
+        } else if let last = currentLines.last, last.isEmpty {
+            activateLine(currentLines.count - 1)
+        } else {
+            var updated = currentLines
+            updated.append("")
+            let newContent = updated.joined(separator: "\n")
+            updateNoteText(newContent)
+            activateLine(updated.count - 1)
+        }
+    }
+
+    private func updateNoteText(_ newText: String) {
+        if let doc = state.currentDocument {
+            state.updateNoteContent(id: doc.id, content: newText)
+        } else {
+            state.updateText(newText)
         }
     }
 
@@ -322,12 +597,31 @@ public struct QuickNoteDrawerView: View {
     }
 
     private func wrapSelection(prefix: String, suffix: String) {
-        guard let doc = state.currentDocument else { return }
         let snippet = "\(prefix)\(suffix)"
-        let updated = doc.content.isEmpty ? snippet : "\(doc.content)\n\(snippet)"
-        state.updateNoteContent(id: doc.id, content: updated)
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-        scheduleAutoMorphToPreview()
+        let currentLines = self.lines
+
+        if let activeIndex = activeLineIndex, currentLines.indices.contains(activeIndex) {
+            var updated = currentLines
+            let line = updated[activeIndex]
+            updated[activeIndex] = line.isEmpty ? snippet : "\(line)\(snippet)"
+            let newContent = updated.joined(separator: "\n")
+            updateNoteText(newContent)
+            state.save()
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        } else {
+            if currentLines.isEmpty || (currentLines.count == 1 && currentLines[0].isEmpty) {
+                updateNoteText(snippet)
+                activateLine(0)
+            } else {
+                var updated = currentLines
+                updated.append(snippet)
+                let newContent = updated.joined(separator: "\n")
+                updateNoteText(newContent)
+                state.save()
+                activateLine(updated.count - 1)
+            }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        }
     }
 
     // MARK: - Navigation Toolbar (Strictly Bounded Single Row)
@@ -338,6 +632,9 @@ public struct QuickNoteDrawerView: View {
                 ForEach(state.availableFolders, id: \.self) { folder in
                     Button {
                         state.selectFolder(folder)
+                        activeLineIndex = nil
+                        focusedLineIndex = nil
+                        state.save()
                     } label: {
                         HStack {
                             Text(folder)
@@ -372,7 +669,9 @@ public struct QuickNoteDrawerView: View {
                 ForEach(state.documentsInCurrentFolder) { doc in
                     Button {
                         state.selectedNoteId = doc.id
-                        state.isPreviewMode = true
+                        activeLineIndex = nil
+                        focusedLineIndex = nil
+                        state.save()
                     } label: {
                         HStack {
                             if doc.isFavorite {
@@ -388,7 +687,7 @@ public struct QuickNoteDrawerView: View {
                 Divider()
                 Button {
                     _ = state.createNote(folder: state.selectedFolder)
-                    enterEditMode()
+                    activateLine(0)
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
                 } label: {
                     Label("New Note in \(state.selectedFolder)", systemImage: "plus")
@@ -416,7 +715,7 @@ public struct QuickNoteDrawerView: View {
             // New Note Button
             Button {
                 _ = state.createNote(folder: state.selectedFolder)
-                enterEditMode()
+                activateLine(0)
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
             } label: {
                 Image(systemName: "plus")
@@ -463,42 +762,6 @@ public struct QuickNoteDrawerView: View {
             }
         }
         .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - Editor View
-    private var editorView: some View {
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: Binding(
-                get: { currentText },
-                set: { newText in
-                    if let doc = state.currentDocument {
-                        state.updateNoteContent(id: doc.id, content: newText)
-                    } else {
-                        state.updateText(newText)
-                    }
-                    scheduleAutoMorphToPreview()
-                }
-            ))
-            .focused($isEditorFocused)
-            .font(.system(size: 11, design: .monospaced))
-            .scrollContentBackground(.hidden)
-            .padding(4)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            if currentText.isEmpty {
-                HStack(spacing: 5) {
-                    Image(systemName: "pencil.line")
-                        .font(.system(size: 10))
-                        .foregroundColor(noteColor.opacity(0.7))
-                    Text("notes.empty".localized)
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.45))
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 8)
-                .allowsHitTesting(false)
-            }
-        }
     }
 
     // MARK: - Bottom Status Bar

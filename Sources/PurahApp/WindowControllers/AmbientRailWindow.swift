@@ -96,6 +96,35 @@ public final class AmbientRailWindow: NSPanel {
         super.sendEvent(event)
     }
 
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.type == .keyDown else {
+            return super.performKeyEquivalent(with: event)
+        }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+        if flags == .command {
+            switch chars {
+            case "c":
+                if NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self) { return true }
+            case "v":
+                if NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self) { return true }
+            case "x":
+                if NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self) { return true }
+            case "a":
+                if NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self) { return true }
+            case "z":
+                if NSApp.sendAction(Selector(("undo:")), to: nil, from: self) { return true }
+            default:
+                break
+            }
+        } else if flags == [.command, .shift] && chars == "z" {
+            if NSApp.sendAction(Selector(("redo:")), to: nil, from: self) { return true }
+        }
+
+        return super.performKeyEquivalent(with: event)
+    }
+
     public func updateWidth() {
         updateFrame(display: true)
     }

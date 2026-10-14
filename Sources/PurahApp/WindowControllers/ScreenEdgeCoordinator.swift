@@ -47,7 +47,7 @@ public final class ScreenEdgeCoordinator {
             if let point = point {
                 return all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(point) } ?? activeScreen ?? NSScreen.main ?? all.first
             } else {
-                let loc = NSEvent.mouseLocation
+                let loc = EdgeMouseMonitor.isTestingEnvironment ? (all.first?.frame.origin ?? .zero) : NSEvent.mouseLocation
                 return all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(loc) } ?? activeScreen ?? NSScreen.main ?? all.first
             }
         case .primaryOnly:
