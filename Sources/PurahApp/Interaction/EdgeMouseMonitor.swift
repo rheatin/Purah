@@ -330,8 +330,14 @@ public final class EdgeMouseMonitor {
         let isInsideLeftDrawer = isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: .left)
         let isInsideRightDrawer = isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: .right)
 
-        let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer
-        let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer
+        let isDraggingFromDrawer = store.isDraggingFromDrawer
+        let activeEdge = store.activePod?.edge
+
+        let isDraggingActiveLeft = isDraggingFromDrawer && (activeEdge == .left || (activeEdge == nil && store.hasPinnedItem(on: .left)) || activeEdge == nil)
+        let isDraggingActiveRight = isDraggingFromDrawer && (activeEdge == .right || (activeEdge == nil && store.hasPinnedItem(on: .right)) || activeEdge == nil)
+
+        let shouldBeInteractiveLeft = isAtLeftEdge || isInsideLeftDrawer || isDraggingActiveLeft
+        let shouldBeInteractiveRight = isAtRightEdge || isInsideRightDrawer || isDraggingActiveRight
 
         let activeIdLeft = store.activeDrawerItemId ?? store.activeDrawerPodId
         let isLeftActiveUnpinned = (store.activePod?.edge == .left) && (activeIdLeft != nil && !store.isItemPinned(id: activeIdLeft!))
@@ -399,6 +405,9 @@ public final class EdgeMouseMonitor {
             candidateHoverStartTime = nil
             return
         }
+
+        // Suppress triggering new drawer expansions while dragging items from drawer
+        guard !store.isDraggingFromDrawer else { return }
 
         // Only trigger drawer expansion when physically on the trigger edge
         guard isAtLeftEdge || isAtRightEdge else {

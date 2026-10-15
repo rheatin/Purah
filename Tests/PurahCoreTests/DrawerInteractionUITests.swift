@@ -315,21 +315,132 @@ struct DrawerInteractionUITests {
         #expect(provider.canLoadObject(ofClass: URL.self))
     }
 
-    @Test("PreferencesTab includes interaction tab with valid icon and localized title")
+    @Test("PreferencesTab cases order, valid icons, and localized titles")
     @MainActor
-    func testPreferencesTabInteraction() {
-        #expect(PreferencesTab.allCases.contains(.interaction))
-        #expect(PreferencesTab.interaction.id == "interaction")
-        #expect(PreferencesTab.interaction.title == "Motion & General")
-        #expect(PreferencesTab.interaction.icon == "wand.and.stars")
+    func testPreferencesTabCasesAndLocalization() {
+        #expect(PreferencesTab.allCases == [.general, .layout, .motion, .plugins, .permissions, .diagnostics])
+
+        #expect(PreferencesTab.general.id == "general")
+        #expect(PreferencesTab.general.title == "General")
+        #expect(PreferencesTab.general.icon == "gearshape.fill")
+
+        #expect(PreferencesTab.layout.id == "layout")
+        #expect(PreferencesTab.layout.title == "Layout")
+        #expect(PreferencesTab.layout.icon == "slider.horizontal.2.square")
+
+        #expect(PreferencesTab.motion.id == "motion")
+        #expect(PreferencesTab.motion.title == "Motion")
+        #expect(PreferencesTab.motion.icon == "wand.and.stars")
 
         let previous = LocalizationManager.shared.currentLanguage
         defer { LocalizationManager.shared.currentLanguage = previous }
 
         LocalizationManager.shared.currentLanguage = .english
-        #expect(PreferencesTab.interaction.localizedTitle == "Motion & General")
+        #expect(PreferencesTab.general.localizedTitle == "General")
+        #expect(PreferencesTab.motion.localizedTitle == "Motion")
+
         LocalizationManager.shared.currentLanguage = .french
-        #expect(PreferencesTab.interaction.localizedTitle == "Mouvement et Général")
+        #expect(PreferencesTab.general.localizedTitle == "Général")
+        #expect(PreferencesTab.motion.localizedTitle == "Mouvement")
+    }
+
+    @Test("ShelfPluginState and DraggableShelfItemNSView drag completion callback")
+    @MainActor
+    func testShelfItemDragSourceCompletionCallback() {
+        let store = PurahWorkspaceStore()
+        let state = ShelfPluginState()
+        state.mount(store: store)
+        state.files.removeAll()
+        state.autoRemoveOnDrag = true
+
+        let item1 = ShelfFileItem(id: "item1", name: "File1.txt", sizeDescription: "12 KB", fileExtension: "txt", isFavorite: false)
+        let item2 = ShelfFileItem(id: "item2", name: "File2.txt", sizeDescription: "24 KB", fileExtension: "txt", isFavorite: true)
+        state.files = [item1, item2]
+
+        let view1 = DraggableShelfItemNSView(
+            file: item1,
+            onDragStarted: {
+                store.isDraggingFromDrawer = true
+            },
+            onDragCompleted: { succeeded in
+                store.isDraggingFromDrawer = false
+                if succeeded {
+                    state.handleDragOutCompleted(id: item1.id)
+                }
+            }
+        )
+
+        // 1. Drag started sets isDraggingFromDrawer
+        view1.onDragStarted?()
+        #expect(store.isDraggingFromDrawer == true)
+
+        // 2. Drag cancelled (succeeded == false): file must NOT be removed
+        view1.onDragCompleted?(false)
+        #expect(store.isDraggingFromDrawer == false)
+        #expect(state.files.contains(where: { $0.id == "item1" }))
+
+        // 3. Drag succeeded (succeeded == true): non-starred file is removed
+        view1.onDragStarted?()
+        #expect(store.isDraggingFromDrawer == true)
+        view1.onDragCompleted?(true)
+        #expect(store.isDraggingFromDrawer == false)
+        #expect(!state.files.contains(where: { $0.id == "item1" }))
+
+        // 4. Drag succeeded for starred item: file is protected and NOT removed
+        let view2 = DraggableShelfItemNSView(
+            file: item2,
+            onDragStarted: {
+                store.isDraggingFromDrawer = true
+            },
+            onDragCompleted: { succeeded in
+                store.isDraggingFromDrawer = false
+                if succeeded {
+                    state.handleDragOutCompleted(id: item2.id)
+                }
+            }
+        )
+        view2.onDragCompleted?(true)
+        #expect(state.files.contains(where: { $0.id == "item2" }))
+    }
+
+    @Test("EdgeMouseMonitor preserves active drawer when store.isDraggingFromDrawer is true")
+    @MainActor
+    func testEdgeMouseMonitorPreservesDrawerDuringDrag() async {
+        let store = PurahWorkspaceStore()
+        store.edgeTriggerMode = .hoverDwell
+        store.edgeTriggerSensitivity = .agile
+
+        let coordinator = ScreenEdgeCoordinator(store: store)
+        let monitor = EdgeMouseMonitor(store: store, coordinator: coordinator)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        guard let firstItem = layoutItems.first else { return }
+        let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
+        let edgePoint = NSPoint(x: 8.0, y: targetY)
+        let desktopPoint = NSPoint(x: 500.0, y: targetY)
+
+        // 1. Hover on edge to open drawer
+        monitor.customCurrentMouseLocation = edgePoint
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
+        #expect(store.activeDrawerPodId == firstItem.pod.id)
+
+        // 2. Begin dragging from drawer out towards Desktop
+        store.isDraggingFromDrawer = true
+
+        // 3. Move mouse to desktop
+        monitor.customCurrentMouseLocation = desktopPoint
+        monitor.processMouse(point: desktopPoint, now: Date(), customVelocity: .zero)
+
+        // Give any grace task chance to run
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        // The drawer must remain open and not be dismissed
+        #expect(store.activeDrawerPodId == firstItem.pod.id)
+
+        // 4. Finish drag
+        store.isDraggingFromDrawer = false
     }
 
     @Test("DropShelf full-row drag URL resolution and drop delegates proposal")
@@ -551,6 +662,7 @@ struct DrawerInteractionUITests {
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "notes" }) {
             store.pods[idx].isEnabled = true
+            store.autoLayoutAll()
         }
         guard let notesPod = store.pods.first(where: { $0.id == "notes" }) else {
             Issue.record("Notes pod not found")
@@ -776,6 +888,16 @@ struct DrawerInteractionUITests {
         let store = PurahWorkspaceStore()
         let view = VisualLayoutSimulatorView(store: store)
         #expect(view.store.hotKeyShortcut == .defaultShortcut)
+    }
+
+    @Test("GeneralSettingsView and InteractionSettingsView instantiate cleanly")
+    @MainActor
+    func testGeneralAndInteractionSettingsViews() {
+        let store = PurahWorkspaceStore()
+        let generalView = GeneralSettingsView(store: store)
+        #expect(generalView.store === store)
+        let interactionView = InteractionSettingsView(store: store)
+        #expect(interactionView.store === store)
     }
 
     @Test("MusicDrawerView instantiates properly across all 3 height tiers without fatal errors")

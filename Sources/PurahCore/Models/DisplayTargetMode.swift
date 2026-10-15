@@ -16,6 +16,15 @@ public enum DisplayTargetMode: String, CaseIterable, Codable, Sendable, Identifi
         }
     }
 
+    @MainActor
+    public var localizedDisplayName: String {
+        switch self {
+        case .followCursor: return "display.target.followCursor".localized
+        case .primaryOnly: return "display.target.primaryOnly".localized
+        case .externalOnly: return "display.target.externalOnly".localized
+        }
+    }
+
     public var systemIcon: String {
         switch self {
         case .followCursor: "cursorarrow.and.square.on.square.dashed"

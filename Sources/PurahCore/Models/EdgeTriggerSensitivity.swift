@@ -16,6 +16,16 @@ public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    @MainActor
+    public var localizedDisplayName: String {
+        switch self {
+        case .agile: return "trigger.sensitivity.agile".localized
+        case .balanced: return "trigger.sensitivity.balanced".localized
+        case .cautious: return "trigger.sensitivity.cautious".localized
+        case .custom: return "trigger.sensitivity.custom".localized
+        }
+    }
+
     public var initialDwellSeconds: Double {
         switch self {
         case .agile: return 0.08

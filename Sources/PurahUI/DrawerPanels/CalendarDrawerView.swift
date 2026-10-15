@@ -36,11 +36,11 @@ public struct CalendarDrawerView: View {
                         .font(.system(size: 26))
                         .foregroundColor(palette.borderColor)
 
-                    Text("No events in current range")
+                    Text("calendar.empty.title".localized)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("Configure scope in Settings")
+                    Text("calendar.empty.subtitle".localized)
                         .font(.system(size: 10))
                         .foregroundColor(.gray)
                     Spacer()
@@ -112,7 +112,7 @@ public struct CalendarDrawerView: View {
                             Circle()
                                 .fill(Color.white)
                                 .frame(width: 3.5, height: 3.5)
-                            Text("NOW")
+                            Text("calendar.status.now".localized)
                                 .font(.system(size: 8, weight: .heavy, design: .rounded))
                         }
                         .padding(.horizontal, 5)
@@ -122,7 +122,7 @@ public struct CalendarDrawerView: View {
                         .shadow(color: podColor.opacity(0.6), radius: 3)
                     } else if isImminent {
                         HStack(spacing: 3) {
-                            Text("SOON")
+                            Text("calendar.status.soon".localized)
                                 .font(.system(size: 8, weight: .bold, design: .rounded))
                         }
                         .padding(.horizontal, 4)
@@ -141,7 +141,7 @@ public struct CalendarDrawerView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "video.fill")
                                     .font(.system(size: 10, weight: .bold))
-                                Text("Join")
+                                Text("calendar.action.join".localized)
                                     .font(.system(size: 10, weight: .bold, design: .rounded))
                             }
                             .padding(.horizontal, 8)
@@ -312,7 +312,7 @@ public struct CalendarDrawerView: View {
                 Spacer()
 
                 if isOngoing {
-                    Text("NOW")
+                    Text("calendar.status.now".localized)
                         .font(.system(size: 7.5, weight: .bold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -320,7 +320,7 @@ public struct CalendarDrawerView: View {
                         .foregroundColor(.green)
                         .cornerRadius(3)
                 } else if isImminent {
-                    Text("SOON")
+                    Text("calendar.status.soon".localized)
                         .font(.system(size: 7.5, weight: .bold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -336,7 +336,7 @@ public struct CalendarDrawerView: View {
                         HStack(spacing: 2) {
                             Image(systemName: "video.fill")
                                 .font(.system(size: 7))
-                            Text("Join")
+                            Text("calendar.action.join".localized)
                                 .font(.system(size: 8.5, weight: .bold))
                         }
                         .padding(.horizontal, 5)
@@ -640,7 +640,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 Spacer()
 
                 if isOngoing {
-                    Text("NOW")
+                    Text("calendar.status.now".localized)
                         .font(.system(size: 7.5, weight: .bold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -648,7 +648,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         .foregroundColor(.green)
                         .cornerRadius(3)
                 } else if isImminent {
-                    Text("SOON")
+                    Text("calendar.status.soon".localized)
                         .font(.system(size: 7.5, weight: .bold))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -664,7 +664,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         HStack(spacing: 2) {
                             Image(systemName: "video.fill")
                                 .font(.system(size: 7))
-                            Text("Join")
+                            Text("calendar.action.join".localized)
                                 .font(.system(size: 8.5, weight: .bold))
                         }
                         .padding(.horizontal, 5)

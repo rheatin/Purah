@@ -2264,7 +2264,7 @@ public struct QuickNoteDrawerView: View {
                 Circle()
                     .fill(noteColor.opacity(0.85))
                     .frame(width: 4.5, height: 4.5)
-                Text("Saved · \(state.noteContent.lastModified.formatted(date: .omitted, time: .shortened))")
+                Text(String(format: "notes.savedTime".localized, state.noteContent.lastModified.formatted(date: .omitted, time: .shortened)))
                     .font(.system(size: 8, design: .rounded))
                     .foregroundColor(.secondary.opacity(0.7))
             }
@@ -2297,7 +2297,7 @@ public struct QuickNoteDrawerView: View {
                 HStack(spacing: 3) {
                     Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 8))
-                    Text(isCopied ? "Copied" : "Copy")
+                    Text(isCopied ? "notes.copied".localized : "notes.copy".localized)
                         .font(.system(size: 8, weight: .medium, design: .rounded))
                 }
                 .padding(.horizontal, 5)

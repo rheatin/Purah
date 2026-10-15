@@ -34,11 +34,11 @@ public struct TodoDrawerView: View {
                         .font(.system(size: 26))
                         .foregroundColor(palette.borderColor)
 
-                    Text("No pending tasks")
+                    Text("todo.empty.title".localized)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("Configure filter in Settings")
+                    Text("todo.empty.subtitle".localized)
                         .font(.system(size: 10))
                         .foregroundColor(.gray)
                     Spacer()

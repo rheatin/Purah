@@ -137,13 +137,13 @@ public struct ShelfPluginSettingsView: View {
             }
 
             HStack {
-                Text("Stashed Files: \(state.files.count) item(s)")
+                Text(String(format: "shelf.settings.stashedFiles".localized, state.files.count))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 let starredCount = state.files.filter { $0.isFavorite }.count
                 if starredCount > 0 {
-                    Text("\(starredCount) Starred")
+                    Text(String(format: "shelf.settings.starred".localized, starredCount))
                         .font(.caption2)
                         .foregroundColor(Color(hex: "#FF9F0A"))
                 }

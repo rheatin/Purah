@@ -89,7 +89,7 @@ public struct NotesPluginSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             // 1. Folders Management Card
             VStack(alignment: .leading, spacing: 8) {
-                Text("Notebook Folders")
+                Text("notes.settings.folders".localized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
 
@@ -114,18 +114,18 @@ public struct NotesPluginSettingsView: View {
                                     .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .help("Delete folder and move its notes to General")
+                            .help("notes.settings.deleteFolderHelp".localized)
                         }
                     }
                     .padding(.vertical, 2)
                 }
 
                 HStack {
-                    TextField("New folder name...", text: $newFolderName)
+                    TextField("notes.settings.newFolderPlaceholder".localized, text: $newFolderName)
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.small)
 
-                    Button("Add Folder") {
+                    Button("notes.settings.addFolder".localized) {
                         state.addFolder(newFolderName)
                         newFolderName = ""
                     }

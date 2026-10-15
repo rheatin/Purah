@@ -20,4 +20,20 @@ public enum EdgeTriggerMode: String, CaseIterable, Identifiable, Codable, Sendab
         case .pushForce: return "Thrust cursor firmly into bezel to pop open instantly"
         }
     }
+
+    @MainActor
+    public var localizedDisplayName: String {
+        switch self {
+        case .hoverDwell: return "trigger.mode.hoverDwell".localized
+        case .pushForce: return "trigger.mode.pushForce".localized
+        }
+    }
+
+    @MainActor
+    public var localizedSubtitle: String {
+        switch self {
+        case .hoverDwell: return "trigger.mode.hoverDwell.subtitle".localized
+        case .pushForce: return "trigger.mode.pushForce.subtitle".localized
+        }
+    }
 }

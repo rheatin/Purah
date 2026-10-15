@@ -14,6 +14,14 @@ public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
         case .adaptive: return "Adaptive"
         }
     }
+
+    @MainActor
+    public var localizedDisplayName: String {
+        switch self {
+        case .fixed: return "drawer.width.fixed".localized
+        case .adaptive: return "drawer.width.adaptive".localized
+        }
+    }
 }
 
 @Observable
@@ -25,6 +33,7 @@ public final class PurahWorkspaceStore {
     public var hoveredPodId: String? = nil
     public var isDrawerPinned: Bool = false
     public var pinnedDrawerItemIds: Set<String> = []
+    public var isDraggingFromDrawer: Bool = false
     public var currentPreset: PodPreset = .balanced
     public var isRailsFrozen: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut

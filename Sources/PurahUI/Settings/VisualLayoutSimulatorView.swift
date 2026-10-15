@@ -141,11 +141,11 @@ public struct VisualLayoutSimulatorView: View {
                 }
 
                 // 3. Rail & Drawer Geometry Card
-                settingsCard(title: "Rail & Drawer Geometry", icon: "ruler.fill") {
+                settingsCard(title: "layout.geometry.title".localized, icon: "ruler.fill") {
                     VStack(spacing: 16) {
                         // Rail bar width
                         PurahThemedSliderRow(
-                            title: "Edge Rail Width",
+                            title: "layout.geometry.railWidth.title".localized,
                             subtitle: "Physical trigger bezel thickness (4px ~ 16px)",
                             value: Binding(
                                 get: { store.railBarWidth },
@@ -167,7 +167,7 @@ public struct VisualLayoutSimulatorView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Drawer Extrusion Width")
+                                    Text("layout.geometry.drawerWidth.title".localized)
                                         .font(.system(size: 11.5, weight: .medium, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                                     Text("Fixed width or content-driven adaptive sizing")
@@ -184,14 +184,14 @@ public struct VisualLayoutSimulatorView: View {
                                             store.savePersistentState()
                                         }
                                     ),
-                                    titleForOption: { $0.displayName }
+                                    titleForOption: { $0.localizedDisplayName }
                                 )
                                 .frame(width: 170)
                             }
 
                             if store.drawerWidthMode == .fixed {
                                 PurahThemedSliderRow(
-                                    title: "Fixed Drawer Length",
+                                    title: "layout.geometry.fixedLength.title".localized,
                                     value: Binding(
                                         get: { store.fixedDrawerWidth },
                                         set: {
@@ -204,38 +204,10 @@ public struct VisualLayoutSimulatorView: View {
                                     valueBadgeText: "\(Int(store.fixedDrawerWidth)) px"
                                 )
                             } else {
-                                Text("Automatically sizes drawer width based on content length (230px ~ 330px)")
+                                Text("layout.geometry.adaptiveSubtitle".localized)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
-                        }
-
-                        Divider()
-                            .background(palette.borderColor.opacity(0.3))
-
-                        // Multi-Display Target Mode
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Multi-Display Target")
-                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                Text("Choose which display hosts edge rails in multi-monitor setups")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            PurahThemedMenuPicker(
-                                options: DisplayTargetMode.allCases,
-                                selection: Binding(
-                                    get: { store.displayTargetMode },
-                                    set: {
-                                        store.displayTargetMode = $0
-                                        store.savePersistentState()
-                                    }
-                                ),
-                                titleForOption: { $0.displayName }
-                            )
-                            .frame(width: 250)
                         }
                     }
                 }
@@ -252,10 +224,10 @@ public struct VisualLayoutSimulatorView: View {
         let mountedPods = store.pods.filter { $0.isEnabled }.sorted { ($0.edge == $1.edge) ? ($0.range.start < $1.range.start) : ($0.edge == .left) }
         let unmountedPods = store.pods.filter { !$0.isEnabled }
 
-        return settingsCard(title: "Rail Module Assembly", icon: "square.grid.2x2.fill") {
+        return settingsCard(title: "layout.moduleAssembly.title".localized, icon: "square.grid.2x2.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Toggle and reorder modules on rails. Use ↑ / ↓ or drag in simulator to adjust order.")
+                    Text("layout.moduleAssembly.subtitle".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()

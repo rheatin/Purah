@@ -182,7 +182,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     }
 
     @objc private func openPreferences() {
-        showPreferences(initialTab: .layout)
+        showPreferences(initialTab: .general)
     }
 
     @objc private func openPermissions() {

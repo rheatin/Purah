@@ -26,4 +26,24 @@ public enum PluginAlertStyle: String, CaseIterable, Identifiable, Codable, Senda
         case .off: return "Disable attention animations"
         }
     }
+
+    @MainActor
+    public var localizedDisplayName: String {
+        switch self {
+        case .breathingBeacon: return "alert.style.breathingBeacon".localized
+        case .sonarWave: return "alert.style.sonarWave".localized
+        case .subtleGlow: return "alert.style.subtleGlow".localized
+        case .off: return "alert.style.off".localized
+        }
+    }
+
+    @MainActor
+    public var localizedSubtitle: String {
+        switch self {
+        case .breathingBeacon: return "alert.style.breathingBeacon.subtitle".localized
+        case .sonarWave: return "alert.style.sonarWave.subtitle".localized
+        case .subtleGlow: return "alert.style.subtleGlow.subtitle".localized
+        case .off: return "alert.style.off.subtitle".localized
+        }
+    }
 }

@@ -41,12 +41,12 @@ public struct DropShelfDrawerView: View {
                                 .font(.system(size: isCompact ? 14 : 24))
                                 .foregroundColor(shelfColor.opacity(0.85))
 
-                            Text("Drop to Stash Files")
+                            Text("dropshelf.dropToStash".localized)
                                 .font(.system(size: isCompact ? 11 : 12, weight: .bold, design: .rounded))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
 
                             if !isCompact {
-                                Text("Hold files for dragging out into other apps or chat")
+                                Text("dropshelf.holdFiles".localized)
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
@@ -79,12 +79,12 @@ public struct DropShelfDrawerView: View {
                                 .font(.system(size: isCompact ? 14 : 24))
                                 .foregroundColor(Color.blue)
 
-                            Text("Drop to AirDrop Directly")
+                            Text("dropshelf.dropToAirDrop".localized)
                                 .font(.system(size: isCompact ? 11 : 12, weight: .bold, design: .rounded))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
 
                             if !isCompact {
-                                Text("Immediately beam to nearby iPhone, iPad, or Mac")
+                                Text("dropshelf.immediatelyBeam".localized)
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
@@ -156,7 +156,7 @@ public struct DropShelfDrawerView: View {
                                     Image(systemName: "tray.and.arrow.down.fill")
                                         .font(.system(size: 14))
                                         .foregroundColor(shelfColor)
-                                    Text("Drop files to stash")
+                                    Text("dropshelf.dropFilesEmpty".localized)
                                         .font(.system(size: 11, weight: .bold, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 }
@@ -182,10 +182,10 @@ public struct DropShelfDrawerView: View {
                         .foregroundColor(isAirDropTargeted ? .cyan : .blue)
 
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(isAirDropTargeted ? "Release to AirDrop instantly!" : "Drag file here to AirDrop immediately")
+                        Text(isAirDropTargeted ? "dropshelf.releaseToAirDrop".localized : "dropshelf.dragHereToAirDrop".localized)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(isAirDropTargeted ? .cyan : (palette.style == .native ? .primary : .white))
-                        Text("Or tap to AirDrop all \(state.files.count) stashed items")
+                        Text(String(format: "dropshelf.orTapToAirDropAll".localized, state.files.count))
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
@@ -222,12 +222,12 @@ public struct DropShelfDrawerView: View {
                 }
 
                 HStack {
-                    Text("\(state.files.count) item(s) stashed")
+                    Text(String(format: "dropshelf.itemsStashed".localized, state.files.count))
                         .font(.system(size: 9.5))
                         .foregroundColor(.gray)
                     Spacer()
 
-                    Button("Clear All") {
+                    Button("dropshelf.clearAll".localized) {
                         state.clear()
                         store._shelfFiles.removeAll()
                     }
@@ -436,6 +436,160 @@ public struct ShelfAirDropDelegate: DropDelegate {
     }
 }
 
+// MARK: - Native AppKit Drag Source View
+
+public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
+    public var file: ShelfFileItem
+    public var iconImage: NSImage?
+    public var onOpen: (() -> Void)?
+    public var onHover: ((Bool) -> Void)?
+    public var onDragStarted: (() -> Void)?
+    public var onDragCompleted: ((Bool) -> Void)?
+
+    private var mouseDownEvent: NSEvent?
+    private var didStartDrag = false
+    private var trackingArea: NSTrackingArea?
+
+    public init(
+        file: ShelfFileItem,
+        iconImage: NSImage? = nil,
+        onOpen: (() -> Void)? = nil,
+        onHover: ((Bool) -> Void)? = nil,
+        onDragStarted: (() -> Void)? = nil,
+        onDragCompleted: ((Bool) -> Void)? = nil
+    ) {
+        self.file = file
+        self.iconImage = iconImage
+        self.onOpen = onOpen
+        self.onHover = onHover
+        self.onDragStarted = onDragStarted
+        self.onDragCompleted = onDragCompleted
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override public func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override public func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+
+    override public func mouseEntered(with event: NSEvent) {
+        onHover?(true)
+    }
+
+    override public func mouseExited(with event: NSEvent) {
+        onHover?(false)
+    }
+
+    override public func mouseDown(with event: NSEvent) {
+        mouseDownEvent = event
+        didStartDrag = false
+    }
+
+    override public func mouseUp(with event: NSEvent) {
+        if !didStartDrag && event.clickCount == 2 {
+            onOpen?()
+        }
+        mouseDownEvent = nil
+        didStartDrag = false
+    }
+
+    override public func mouseDragged(with event: NSEvent) {
+        guard let start = mouseDownEvent?.locationInWindow else { return }
+        let distance = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
+        if distance > 3.0 && !didStartDrag {
+            didStartDrag = true
+            onDragStarted?()
+
+            let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
+            let draggingItem = NSDraggingItem(pasteboardWriter: targetURL as NSURL)
+            let img = iconImage ?? NSWorkspace.shared.icon(forFile: targetURL.path)
+            img.size = NSSize(width: 32, height: 32)
+
+            let localPoint = convert(event.locationInWindow, from: nil)
+            draggingItem.setDraggingFrame(
+                NSRect(x: localPoint.x - 16, y: localPoint.y - 16, width: 32, height: 32),
+                contents: img
+            )
+
+            beginDraggingSession(with: [draggingItem], event: mouseDownEvent ?? event, source: self)
+        }
+    }
+
+    // MARK: - NSDraggingSource
+
+    public func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        return .copy
+    }
+
+    public func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        let succeeded = !operation.isEmpty && operation != .delete
+        onDragCompleted?(succeeded)
+    }
+}
+
+public struct ShelfItemDragSourceView: NSViewRepresentable {
+    public let file: ShelfFileItem
+    public var iconImage: NSImage? = nil
+    public var onOpen: (() -> Void)? = nil
+    public var onHover: ((Bool) -> Void)? = nil
+    public var onDragStarted: (() -> Void)? = nil
+    public var onDragCompleted: ((Bool) -> Void)? = nil
+
+    public init(
+        file: ShelfFileItem,
+        iconImage: NSImage? = nil,
+        onOpen: (() -> Void)? = nil,
+        onHover: ((Bool) -> Void)? = nil,
+        onDragStarted: (() -> Void)? = nil,
+        onDragCompleted: ((Bool) -> Void)? = nil
+    ) {
+        self.file = file
+        self.iconImage = iconImage
+        self.onOpen = onOpen
+        self.onHover = onHover
+        self.onDragStarted = onDragStarted
+        self.onDragCompleted = onDragCompleted
+    }
+
+    public func makeNSView(context: Context) -> DraggableShelfItemNSView {
+        DraggableShelfItemNSView(
+            file: file,
+            iconImage: iconImage,
+            onOpen: onOpen,
+            onHover: onHover,
+            onDragStarted: onDragStarted,
+            onDragCompleted: onDragCompleted
+        )
+    }
+
+    public func updateNSView(_ nsView: DraggableShelfItemNSView, context: Context) {
+        nsView.file = file
+        nsView.iconImage = iconImage
+        nsView.onOpen = onOpen
+        nsView.onHover = onHover
+        nsView.onDragStarted = onDragStarted
+        nsView.onDragCompleted = onDragCompleted
+    }
+}
+
 // MARK: - Draggable File Row View
 
 public struct ShelfFileRowView: View {
@@ -476,29 +630,51 @@ public struct ShelfFileRowView: View {
 
     public var body: some View {
         HStack(spacing: 8) {
-            // Drag grip indicator
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 8))
-                .foregroundColor(.secondary.opacity(isHovered ? 0.8 : 0.3))
-                .frame(width: 8)
+            // Drag grip indicator + File Icon & Title/Size wrapped with native AppKit Drag Source overlay
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary.opacity(isHovered ? 0.8 : 0.3))
+                    .frame(width: 8)
 
-            // File Icon & Title/Size directly in HStack (no Button wrapping to allow row dragging)
-            Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
-                .font(.system(size: 14))
-                .foregroundColor(shelfColor)
+                Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
+                    .font(.system(size: 14))
+                    .foregroundColor(shelfColor)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(file.name)
-                    .purahBody(size: 11, weight: .medium, design: .rounded)
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-                Text(file.sizeDescription)
-                    .purahCaption(size: 8)
-                    .foregroundColor(.gray)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(file.name)
+                        .purahBody(size: 11, weight: .medium, design: .rounded)
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+                    Text(file.sizeDescription)
+                        .purahCaption(size: 8)
+                        .foregroundColor(.gray)
+                }
+
+                Spacer()
             }
+            .contentShape(Rectangle())
+            .overlay(
+                ShelfItemDragSourceView(
+                    file: file,
+                    onOpen: onOpen,
+                    onHover: { isHovered = $0 },
+                    onDragStarted: {
+                        isDragging = true
+                        store.isDraggingFromDrawer = true
+                        store.triggerControlHaptic(.alignment)
+                    },
+                    onDragCompleted: { succeeded in
+                        isDragging = false
+                        store.isDraggingFromDrawer = false
+                        if succeeded {
+                            state?.handleDragOutCompleted(id: file.id)
+                        }
+                    }
+                )
+            )
 
-            Spacer()
-
+            // Trailing action buttons (remains directly clickable)
             Button {
                 if let onToggleFavorite {
                     onToggleFavorite()
@@ -512,7 +688,7 @@ public struct ShelfFileRowView: View {
                     .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
             }
             .buttonStyle(.plain)
-            .help(file.isFavorite ? "Unstar file" : "Star file (protected from auto-pruning)")
+            .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
 
             Button {
                 let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
@@ -523,7 +699,7 @@ public struct ShelfFileRowView: View {
                     .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
             }
             .buttonStyle(.plain)
-            .help("AirDrop file to nearby Apple device")
+            .help("dropshelf.airdrop".localized)
 
             Button(action: onReveal) {
                 Image(systemName: "magnifyingglass")
@@ -531,7 +707,7 @@ public struct ShelfFileRowView: View {
                     .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
             }
             .buttonStyle(.plain)
-            .help("Reveal in Finder")
+            .help("dropshelf.reveal".localized)
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
@@ -539,7 +715,7 @@ public struct ShelfFileRowView: View {
                     .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
             }
             .buttonStyle(.plain)
-            .help("Remove from shelf")
+            .help("dropshelf.remove".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -550,34 +726,7 @@ public struct ShelfFileRowView: View {
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))
         .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isHovered)
         .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isDragging)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: onOpen)
-        .help("Double-click to open · Drag anywhere on row to move out")
+        .help("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }
-        // Native drag out to Finder, Desktop, Mail, etc.
-        .onDrag {
-            isDragging = true
-            store.triggerControlHaptic(.alignment)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                isDragging = false
-                state?.handleDragOutCompleted(id: file.id)
-            }
-            let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
-            return NSItemProvider(object: targetURL as NSURL)
-        } preview: {
-            HStack(spacing: 6) {
-                Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
-                    .font(.system(size: 14))
-                    .foregroundColor(shelfColor)
-                Text(file.name)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.85))
-            .cornerRadius(8)
-            .shadow(color: shelfColor.opacity(0.4), radius: 6, y: 3)
-        }
     }
 }

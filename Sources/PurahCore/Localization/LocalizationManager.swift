@@ -101,13 +101,24 @@ public final class LocalizationManager {
             "menu.quit": "Quit Purah",
 
             // Tabs
+            "tab.general": "General",
             "tab.layout": "Layout",
+            "tab.motion": "Motion",
             "tab.interaction": "Motion & General",
             "tab.plugins": "Plugins",
             "tab.permissions": "Permissions",
             "tab.diagnostics": "Diagnostics",
 
-            // Interaction & General
+            // General Settings
+            "general.title": "General Settings",
+            "general.subtitle": "Language, multi-display targets, and global freeze shortcut",
+            "general.display.card": "Display & Multi-Monitor",
+            "general.display.title": "Multi-Display Target",
+            "general.display.subtitle": "Choose which display hosts edge rails in multi-monitor setups",
+
+            // Motion & Interaction Settings
+            "motion.title": "Motion, Trigger Physics & Sensory Feedback",
+            "motion.subtitle": "Fine-tune edge dwell timing, bezel push force barrier, and tactile haptics",
             "interaction.title": "Motion, Sensory & General Settings",
             "interaction.subtitle": "Configure language, edge trigger physics, dynamic alerts, sound chimes, and trackpad haptics",
             "interaction.language.card": "Language & Regional",
@@ -117,6 +128,95 @@ public final class LocalizationManager {
             "interaction.alerts.card": "Dynamic Attention Alerts",
             "interaction.sensory.card": "Sensory Feedback (Sound & Trackpad Haptics)",
             "interaction.hotkeys.card": "Global Hotkeys & Freeze Mode",
+            "interaction.hotkeys.description": "Toggle to hide and freeze all rails instantly for clean screenshots or edge-docked buttons.",
+
+            // Trigger & Sensitivity
+            "interaction.trigger.mode.title": "Initial Trigger Mode",
+            "trigger.mode.hoverDwell": "Hover Dwell",
+            "trigger.mode.pushForce": "Push Force",
+            "trigger.mode.hoverDwell.subtitle": "Rest on edge rail for dwell duration to open",
+            "trigger.mode.pushForce.subtitle": "Thrust cursor firmly into bezel to pop open instantly",
+            "interaction.trigger.sensitivity.title": "Sensitivity Preset",
+            "interaction.trigger.sensitivity.subtitle": "Governs dwell intent, push-force threshold, and overshoot corridor",
+            "trigger.sensitivity.agile": "Agile (Instant 0ms hover · 180ms grace)",
+            "trigger.sensitivity.balanced": "Balanced (150ms dwell · 36px barrier · 280ms grace · Recommended)",
+            "trigger.sensitivity.cautious": "Cautious (400ms dwell · 52px barrier · 400ms grace)",
+            "trigger.sensitivity.custom": "Custom Calibration (0ms ~ 1000ms)",
+            "interaction.trigger.dwell.title": "Initial Hover Dwell",
+            "interaction.trigger.dwell.subtitle": "Duration required to rest on bar before drawer opens (up to 1000ms)",
+            "interaction.trigger.barrier.title": "Push Resistance Barrier",
+            "interaction.trigger.barrier.subtitle": "Physical push force required at bezel before drawer breaks through (20px ~ 120px)",
+            "interaction.trigger.grace.title": "Exit Grace Window",
+            "interaction.trigger.grace.subtitle": "Hysteresis window before unpinned drawer retracts",
+            "interaction.trigger.corridor.title": "Catch Corridor Buffer",
+            "interaction.trigger.corridor.subtitle": "Floating edge invisible hit-test padding to prevent mouse drop",
+
+            // Dynamic Alerts
+            "interaction.alerts.dynamic.title": "Attention Alert Dynamic",
+            "interaction.alerts.dismissOnHover": "Dismiss dynamic alert animation on mouse hover",
+            "alert.style.breathingBeacon": "Breathing Beacon",
+            "alert.style.sonarWave": "Sonar Ripple",
+            "alert.style.subtleGlow": "Subtle Glow",
+            "alert.style.off": "Off",
+            "alert.style.breathingBeacon.subtitle": "Physical 18pt breathing extrusion with beacon dot",
+            "alert.style.sonarWave.subtitle": "Outward expanding luminous sonar wave",
+            "alert.style.subtleGlow.subtitle": "Classic optical shadow glow",
+            "alert.style.off.subtitle": "Disable attention animations",
+
+            // Multi-Display & Layout Simulator
+            "display.target.followCursor": "Follow Active Cursor Screen (Recommended)",
+            "display.target.primaryOnly": "Primary Display Only",
+            "display.target.externalOnly": "External Display Only",
+            "drawer.width.fixed": "Fixed",
+            "drawer.width.adaptive": "Adaptive",
+            "layout.moduleAssembly.title": "Rail Module Assembly",
+            "layout.moduleAssembly.subtitle": "Toggle and reorder modules on rails. Use ↑ / ↓ or drag in simulator to adjust order.",
+            "layout.geometry.title": "Rail & Drawer Geometry",
+            "layout.geometry.railWidth.title": "Edge Rail Width",
+            "layout.geometry.drawerWidth.title": "Drawer Extrusion Width",
+            "layout.geometry.fixedLength.title": "Fixed Drawer Length",
+            "layout.geometry.adaptiveSubtitle": "Automatically sizes drawer width based on content length (230px ~ 330px)",
+            "layout.presets.title": "Presets & Ergo Solvers",
+            "layout.presets.distribution.title": "Ergonomic Distribution Presets",
+            "layout.presets.magicAutoLayout": "Magic Auto-Layout",
+
+            // DropShelf
+            "dropshelf.dropToStash": "Drop to Stash Files",
+            "dropshelf.holdFiles": "Hold files for dragging out into other apps or chat",
+            "dropshelf.dropToAirDrop": "Drop to AirDrop Directly",
+            "dropshelf.immediatelyBeam": "Immediately beam to nearby iPhone, iPad, or Mac",
+            "dropshelf.dropFilesEmpty": "Drop files to stash",
+            "dropshelf.releaseToAirDrop": "Release to AirDrop instantly!",
+            "dropshelf.dragHereToAirDrop": "Drag file here to AirDrop immediately",
+            "dropshelf.orTapToAirDropAll": "Or tap to AirDrop all %d stashed items",
+            "dropshelf.itemsStashed": "%d item(s) stashed",
+            "dropshelf.clearAll": "Clear All",
+            "dropshelf.unstar": "Unstar file",
+            "dropshelf.star": "Star file (protected from auto-pruning)",
+            "dropshelf.airdrop": "AirDrop file to nearby Apple device",
+            "dropshelf.reveal": "Reveal in Finder",
+            "dropshelf.remove": "Remove from shelf",
+            "dropshelf.doubleClickHint": "Double-click to open · Drag anywhere on row to move out",
+            "shelf.settings.stashedFiles": "Stashed Files: %d item(s)",
+            "shelf.settings.starred": "%d Starred",
+
+            // QuickNotes
+            "notes.settings.folders": "Notebook Folders",
+            "notes.settings.newFolderPlaceholder": "New folder name...",
+            "notes.settings.addFolder": "Add Folder",
+            "notes.settings.deleteFolderHelp": "Delete folder and move its notes to General",
+            "notes.savedTime": "Saved · %@",
+            "notes.copy": "Copy",
+            "notes.copied": "Copied",
+
+            // Todo & Calendar
+            "todo.empty.title": "No pending tasks",
+            "todo.empty.subtitle": "Configure filter in Settings",
+            "calendar.empty.title": "No events in current range",
+            "calendar.empty.subtitle": "Configure scope in Settings",
+            "calendar.status.now": "NOW",
+            "calendar.status.soon": "SOON",
+            "calendar.action.join": "Join",
 
             // Marketplace Tabs
             "marketplace.tab.market": "Market",
@@ -262,13 +362,24 @@ public final class LocalizationManager {
             "menu.quit": "退出 Purah",
 
             // Tabs
+            "tab.general": "通用",
             "tab.layout": "布局",
+            "tab.motion": "动效",
             "tab.interaction": "动效与通用",
             "tab.plugins": "插件",
             "tab.permissions": "权限",
             "tab.diagnostics": "诊断",
 
+            // 通用设置
+            "general.title": "通用设置",
+            "general.subtitle": "界面语言、多屏幕显示与全局冻结快捷键",
+            "general.display.card": "显示器与多屏幕",
+            "general.display.title": "边缘轨宿主屏幕",
+            "general.display.subtitle": "在多显示器环境下选择边缘导轨的激活屏幕",
+
             // 交互动效与通用设置
+            "motion.title": "动效、边缘触发与感官反馈",
+            "motion.subtitle": "精细调节悬停驻留时钟、边框推力阻尼结界与触控板震感",
             "interaction.title": "交互动效、感官反馈与通用设置",
             "interaction.subtitle": "配置界面语言、边缘触发物理阻尼、动态视觉提醒、声音通知与触控板震感",
             "interaction.language.card": "语言与区域 (Language)",
@@ -278,6 +389,95 @@ public final class LocalizationManager {
             "interaction.alerts.card": "动态视觉提醒动效",
             "interaction.sensory.card": "感官反馈（声音通知与触控板震感）",
             "interaction.hotkeys.card": "全局快捷键与冻结模式",
+            "interaction.hotkeys.description": "一键隐匿并冻结所有边缘轨，方便进行全屏截图或操作屏幕边缘按钮。",
+
+            // 触发模式与灵敏度
+            "interaction.trigger.mode.title": "初始触发门禁模式",
+            "trigger.mode.hoverDwell": "抗微颤悬停驻留",
+            "trigger.mode.pushForce": "推力阻力结界",
+            "trigger.mode.hoverDwell.subtitle": "光标在边缘轨停留预设时长后平滑滑出抽屉",
+            "trigger.mode.pushForce.subtitle": "快速向屏幕外沿推压边框突破阻尼结界秒开",
+            "interaction.trigger.sensitivity.title": "灵敏度预设挡位",
+            "interaction.trigger.sensitivity.subtitle": "联动调谐悬停意图时钟、推力阻尼与滑行捕获缓冲区",
+            "trigger.sensitivity.agile": "极速敏捷 (0ms 秒开 · 180ms 退出缓冲)",
+            "trigger.sensitivity.balanced": "平衡适中 (150ms 驻留 · 36px 阻尼 · 280ms 缓冲 · 推荐)",
+            "trigger.sensitivity.cautious": "防误触审慎 (400ms 驻留 · 52px 阻尼 · 400ms 缓冲)",
+            "trigger.sensitivity.custom": "自定义物理标定 (0ms ~ 1000ms)",
+            "interaction.trigger.dwell.title": "初始悬停驻留时限",
+            "interaction.trigger.dwell.subtitle": "光标落在轨条上需停留的时长（最高 1000ms）",
+            "interaction.trigger.barrier.title": "推力阻尼结界阈值",
+            "interaction.trigger.barrier.subtitle": "撞击屏幕外沿并突破结界所需的物理推力（20px ~ 120px）",
+            "interaction.trigger.grace.title": "退出回缩宽容时限",
+            "interaction.trigger.grace.subtitle": "光标离开抽屉卡片后的防手抖回缩宽限时钟",
+            "interaction.trigger.corridor.title": "追随捕获走廊缓冲",
+            "interaction.trigger.corridor.subtitle": "浮动边缘外隐形碰撞走廊，防止手部惯性滑出卡片",
+
+            // 动态视觉提醒
+            "interaction.alerts.dynamic.title": "动态视觉提醒动效",
+            "interaction.alerts.dismissOnHover": "鼠标悬停时自动静默并确认动态提醒",
+            "alert.style.breathingBeacon": "呼吸信标",
+            "alert.style.sonarWave": "声呐涟漪",
+            "alert.style.subtleGlow": "微光光晕",
+            "alert.style.off": "关闭",
+            "alert.style.breathingBeacon.subtitle": "物理 18pt 呼吸伸缩搭配信标圆点",
+            "alert.style.sonarWave.subtitle": "向外层层扩散的光学声呐波纹",
+            "alert.style.subtleGlow.subtitle": "经典优雅边缘投影呼吸光晕",
+            "alert.style.off.subtitle": "完全静默视觉警示动效",
+
+            // 多显示器与布局
+            "display.target.followCursor": "随光标自适应当前活动屏幕 (推荐)",
+            "display.target.primaryOnly": "仅在主显示器显示",
+            "display.target.externalOnly": "仅在外接扩展显示器显示",
+            "drawer.width.fixed": "固定宽度",
+            "drawer.width.adaptive": "自适应宽度",
+            "layout.moduleAssembly.title": "边缘轨模块挂载编排",
+            "layout.moduleAssembly.subtitle": "启停并在左右边缘轨自由重排模块。可点击 ↑ / ↓ 调整顺序。",
+            "layout.geometry.title": "导轨与抽屉物理尺寸",
+            "layout.geometry.railWidth.title": "边缘常驻导轨宽度",
+            "layout.geometry.drawerWidth.title": "抽屉卡片滑出宽度",
+            "layout.geometry.fixedLength.title": "固定抽屉宽度",
+            "layout.geometry.adaptiveSubtitle": "由各插件根据内容密度自主宣告最佳自适应宽度 (230px ~ 330px)",
+            "layout.presets.title": "人体工程学预设与数学求解器",
+            "layout.presets.distribution.title": "经典人体工学黄金分布预设",
+            "layout.presets.magicAutoLayout": "智能自适应重排",
+
+            // 拖拽暂存架
+            "dropshelf.dropToStash": "释放以暂存文件",
+            "dropshelf.holdFiles": "在此暂存文件，方便随时拖拽至其他 App 或聊天窗口",
+            "dropshelf.dropToAirDrop": "释放立即隔空投送",
+            "dropshelf.immediatelyBeam": "立即极速投送至附近的 iPhone、iPad 或 Mac",
+            "dropshelf.dropFilesEmpty": "拖拽文件至此暂存",
+            "dropshelf.releaseToAirDrop": "松开立即隔空投送！",
+            "dropshelf.dragHereToAirDrop": "拖拽文件至此立即隔空投送",
+            "dropshelf.orTapToAirDropAll": "或点击一键投送全部 %d 个暂存项目",
+            "dropshelf.itemsStashed": "已暂存 %d 个文件",
+            "dropshelf.clearAll": "清空全部",
+            "dropshelf.unstar": "取消标星",
+            "dropshelf.star": "标星文件 (享受防自动清理特权)",
+            "dropshelf.airdrop": "隔空投送至附近的 Apple 设备",
+            "dropshelf.reveal": "在访达中显示",
+            "dropshelf.remove": "从暂存架移除",
+            "dropshelf.doubleClickHint": "双击直接打开 · 拖拽行拖出至其他应用",
+            "shelf.settings.stashedFiles": "已暂存文件：%d 个",
+            "shelf.settings.starred": "%d 个已标星",
+
+            // 便签
+            "notes.settings.folders": "便签文件夹",
+            "notes.settings.newFolderPlaceholder": "新文件夹名称...",
+            "notes.settings.addFolder": "新建文件夹",
+            "notes.settings.deleteFolderHelp": "删除文件夹并将便签移至通用文件夹",
+            "notes.savedTime": "已保存 · %@",
+            "notes.copy": "复制",
+            "notes.copied": "已复制",
+
+            // 待办与日历
+            "todo.empty.title": "无待办事项",
+            "todo.empty.subtitle": "可在设置中调整过滤条件",
+            "calendar.empty.title": "当前时段无日程安排",
+            "calendar.empty.subtitle": "可在设置中调整时间跨度",
+            "calendar.status.now": "进行中",
+            "calendar.status.soon": "即将开始",
+            "calendar.action.join": "加入",
 
             // Marketplace Tabs
             "marketplace.tab.market": "市场",
@@ -414,6 +614,9 @@ public final class LocalizationManager {
             "sound.funk": "Funk (清脆节拍)"
         ],
         .traditionalChinese: [
+            "tab.general": "通用",
+            "tab.layout": "布局",
+            "tab.motion": "動效",
             "tab.interaction": "動效與通用",
             "interaction.title": "互動動效、感官反饋與通用設定",
             "interaction.subtitle": "配置介面語言、邊緣觸發物理阻尼、動態視覺提醒、聲音通知與觸控板震感",
@@ -444,6 +647,9 @@ public final class LocalizationManager {
             "sound.funk": "Funk (清脆節拍)"
         ],
         .japanese: [
+            "tab.general": "一般",
+            "tab.layout": "レイアウト",
+            "tab.motion": "モーション",
             "tab.interaction": "モーションと一般",
             "interaction.title": "モーション、感覚フィードバックおよび一般設定",
             "interaction.subtitle": "言語、エッジトリガー物理挙動、動的アラート、通知音、トラックパッド触覚を設定",
@@ -474,6 +680,9 @@ public final class LocalizationManager {
             "sound.funk": "Funk (ポップ)"
         ],
         .korean: [
+            "tab.general": "일반",
+            "tab.layout": "레이아웃",
+            "tab.motion": "모션",
             "tab.interaction": "모션 및 일반",
             "interaction.title": "모션, 감각 피드백 및 일반 설정",
             "interaction.subtitle": "인터페이스 언어, 에지 트리거 물리 감쇠, 동적 알림, 알림음 및 트랙패드 햅틱 설정",
@@ -504,6 +713,9 @@ public final class LocalizationManager {
             "sound.funk": "Funk (경쾌한 비트)"
         ],
         .french: [
+            "tab.general": "Général",
+            "tab.layout": "Disposition",
+            "tab.motion": "Mouvement",
             "tab.interaction": "Mouvement et Général",
             "interaction.title": "Mouvement, Sensations et Paramètres Généraux",
             "interaction.subtitle": "Configurer la langue, la physique des bords, les alertes dynamiques, les sons et les retours haptiques",
@@ -534,6 +746,9 @@ public final class LocalizationManager {
             "sound.funk": "Funk (Pop)"
         ],
         .german: [
+            "tab.general": "Allgemein",
+            "tab.layout": "Layout",
+            "tab.motion": "Bewegung",
             "tab.interaction": "Bewegung & Allgemein",
             "interaction.title": "Bewegung, Sensorik & Allgemeine Einstellungen",
             "interaction.subtitle": "Sprache, Auslöser-Physik, dynamische Benachrichtigungen, Töne und Haptik konfigurieren",
@@ -564,6 +779,9 @@ public final class LocalizationManager {
             "sound.funk": "Funk (Pop)"
         ],
         .spanish: [
+            "tab.general": "General",
+            "tab.layout": "Diseño",
+            "tab.motion": "Movimiento",
             "tab.interaction": "Movimiento y General",
             "interaction.title": "Movimiento, Sensaciones y Ajustes Generales",
             "interaction.subtitle": "Configura idioma, física de activación de bordes, alertas dinámicas, sonidos y háptica",

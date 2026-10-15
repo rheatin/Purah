@@ -25,12 +25,12 @@ public struct InteractionSettingsView: View {
                             Image(systemName: "wand.and.stars")
                                 .foregroundColor(palette.primaryAccent)
                                 .font(.title2)
-                            Text("interaction.title".localized)
+                            Text("motion.title".localized)
                                 .font(.title3.weight(.bold))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 .lineLimit(1)
                         }
-                        Text("interaction.subtitle".localized)
+                        Text("motion.subtitle".localized)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
@@ -39,39 +39,15 @@ public struct InteractionSettingsView: View {
                 }
                 .padding(.horizontal, 4)
 
-                // 1. Language & Regional Card
-                settingsCard(title: "interaction.language.card".localized, icon: "globe") {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("interaction.language.title".localized)
-                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            Text("interaction.language.subtitle".localized)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        PurahThemedMenuPicker(
-                            options: AppLanguage.allCases,
-                            selection: Binding(
-                                get: { LocalizationManager.shared.currentLanguage },
-                                set: { LocalizationManager.shared.currentLanguage = $0 }
-                            ),
-                            titleForOption: { $0.displayName }
-                        )
-                        .frame(width: 200)
-                    }
-                }
-
-                // 2. Edge Trigger & Motion Physics Card
+                // 1. Edge Trigger & Motion Physics Card
                 settingsCard(title: "interaction.trigger.card".localized, icon: "cursorarrow.motionlines") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Initial Trigger Mode")
+                                Text("interaction.trigger.mode.title".localized)
                                     .font(.system(size: 11.5, weight: .medium, design: .rounded))
                                     .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                Text(store.edgeTriggerMode.subtitle)
+                                Text(store.edgeTriggerMode.localizedSubtitle)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
@@ -85,17 +61,17 @@ public struct InteractionSettingsView: View {
                                         store.savePersistentState()
                                     }
                                 ),
-                                titleForOption: { $0.displayName }
+                                titleForOption: { $0.localizedDisplayName }
                             )
                             .frame(width: 210)
                         }
 
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Sensitivity Preset")
+                                Text("interaction.trigger.sensitivity.title".localized)
                                     .font(.system(size: 11.5, weight: .medium, design: .rounded))
                                     .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                Text("Governs dwell intent, push-force threshold, and overshoot corridor")
+                                Text("interaction.trigger.sensitivity.subtitle".localized)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
@@ -106,7 +82,7 @@ public struct InteractionSettingsView: View {
                                     get: { store.edgeTriggerSensitivity },
                                     set: { store.applySensitivityPreset($0) }
                                 ),
-                                titleForOption: { $0.displayName }
+                                titleForOption: { $0.localizedDisplayName }
                             )
                             .frame(width: 280)
                         }
@@ -114,8 +90,8 @@ public struct InteractionSettingsView: View {
                         VStack(spacing: 8) {
                             if store.edgeTriggerMode == .hoverDwell {
                                 PurahThemedSliderRow(
-                                    title: "Initial Hover Dwell",
-                                    subtitle: "Duration required to rest on bar before drawer opens (up to 1000ms)",
+                                    title: "interaction.trigger.dwell.title".localized,
+                                    subtitle: "interaction.trigger.dwell.subtitle".localized,
                                     value: Binding(
                                         get: { store.customInitialDwellMs },
                                         set: {
@@ -130,8 +106,8 @@ public struct InteractionSettingsView: View {
                                 )
                             } else {
                                 PurahThemedSliderRow(
-                                    title: "Push Resistance Barrier",
-                                    subtitle: "Physical push force required at bezel before drawer breaks through (20px ~ 120px)",
+                                    title: "interaction.trigger.barrier.title".localized,
+                                    subtitle: "interaction.trigger.barrier.subtitle".localized,
                                     value: Binding(
                                         get: { store.customPushResistanceBarrier },
                                         set: {
@@ -147,8 +123,8 @@ public struct InteractionSettingsView: View {
                             }
 
                             PurahThemedSliderRow(
-                                title: "Exit Grace Window",
-                                subtitle: "Hysteresis window before unpinned drawer retracts",
+                                title: "interaction.trigger.grace.title".localized,
+                                subtitle: "interaction.trigger.grace.subtitle".localized,
                                 value: Binding(
                                     get: { store.customExitGraceMs },
                                     set: {
@@ -163,8 +139,8 @@ public struct InteractionSettingsView: View {
                             )
 
                             PurahThemedSliderRow(
-                                title: "Catch Corridor Buffer",
-                                subtitle: "Floating edge invisible hit-test padding to prevent mouse drop",
+                                title: "interaction.trigger.corridor.title".localized,
+                                subtitle: "interaction.trigger.corridor.subtitle".localized,
                                 value: Binding(
                                     get: { store.customCatchCorridorPt },
                                     set: {
@@ -188,15 +164,15 @@ public struct InteractionSettingsView: View {
                     }
                 }
 
-                // 3. Dynamic Attention Alerts Card
+                // 2. Dynamic Attention Alerts Card
                 settingsCard(title: "interaction.alerts.card".localized, icon: "bell.badge.waveform.fill") {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Attention Alert Dynamic")
+                                Text("interaction.alerts.dynamic.title".localized)
                                     .font(.system(size: 11.5, weight: .medium, design: .rounded))
                                     .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                Text(store.alertStyle.subtitle)
+                                Text(store.alertStyle.localizedSubtitle)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
@@ -211,13 +187,13 @@ public struct InteractionSettingsView: View {
                                         store.savePersistentState()
                                     }
                                 ),
-                                titleForOption: { $0.displayName }
+                                titleForOption: { $0.localizedDisplayName }
                             )
                             .frame(width: 220)
                         }
 
                         if store.alertStyle != .off {
-                            Toggle("Dismiss dynamic alert animation on mouse hover", isOn: Binding(
+                            Toggle("interaction.alerts.dismissOnHover".localized, isOn: Binding(
                                 get: { store.dismissAlertOnHover },
                                 set: {
                                     store.dismissAlertOnHover = $0
@@ -229,7 +205,7 @@ public struct InteractionSettingsView: View {
                     }
                 }
 
-                // 4. Sensory Feedback Card
+                // 3. Sensory Feedback Card
                 settingsCard(title: "interaction.sensory.card".localized, icon: "hand.tap.fill") {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -351,17 +327,6 @@ public struct InteractionSettingsView: View {
                                 .padding(.leading, 18)
                             }
                         }
-                    }
-                }
-
-                // 5. Global Hotkeys & Freeze Mode Card
-                settingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Toggle to hide and freeze all rails instantly for clean screenshots or edge-docked buttons.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        KeyboardShortcutRecorderView(store: store)
                     }
                 }
             }
