@@ -253,10 +253,18 @@ public struct InteractiveMarkdownPreviewView: View {
 
 public typealias FencedCodeBlock = QuickNotesMarkdownHelper.FencedCodeBlock
 public typealias TableBlock = QuickNotesMarkdownHelper.TableBlock
+public typealias TableColumnAlignment = QuickNotesMarkdownHelper.TableColumnAlignment
 public typealias ParsedMarkdownBlocks = QuickNotesMarkdownHelper.ParsedMarkdownBlocks
 
 /// Plugin-level helper providing pure Markdown editing and live NSTextStorage syntax styling.
 public struct QuickNotesMarkdownHelper: Sendable {
+    /// Column text alignment parsed from table separator row.
+    public enum TableColumnAlignment: Sendable, Equatable {
+        case left
+        case center
+        case right
+    }
+
     /// Represents a detected fenced code block (``` ... ```) in a Markdown document.
     public struct FencedCodeBlock: Sendable, Equatable {
         public let fullRange: NSRange
@@ -288,6 +296,8 @@ public struct QuickNotesMarkdownHelper: Sendable {
         public let separatorRowIndices: Set<Int>
         public let columnCount: Int
         public let isActive: Bool
+        public let activeRowIndices: Set<Int>
+        public let columnAlignments: [TableColumnAlignment]
 
         public init(
             fullRange: NSRange,
@@ -295,7 +305,9 @@ public struct QuickNotesMarkdownHelper: Sendable {
             rowsCells: [[String]],
             separatorRowIndices: Set<Int>,
             columnCount: Int,
-            isActive: Bool
+            isActive: Bool,
+            activeRowIndices: Set<Int> = [],
+            columnAlignments: [TableColumnAlignment] = []
         ) {
             self.fullRange = fullRange
             self.rowRanges = rowRanges
@@ -303,6 +315,8 @@ public struct QuickNotesMarkdownHelper: Sendable {
             self.separatorRowIndices = separatorRowIndices
             self.columnCount = columnCount
             self.isActive = isActive
+            self.activeRowIndices = activeRowIndices
+            self.columnAlignments = columnAlignments
         }
     }
 
@@ -321,6 +335,89 @@ public struct QuickNotesMarkdownHelper: Sendable {
     private static let italicRegex = try? NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)"#)
     private static let inlineCodeBlockRegex = try? NSRegularExpression(pattern: #"```([^`\n]+?)```"#)
     private static let codeRegex = try? NSRegularExpression(pattern: #"(?<!`)`(?!`)([^`\n]+?)(?<!`)`(?!`)"#)
+
+    // Code syntax highlighting regexes
+    private static let codeNumberRegex = try? NSRegularExpression(pattern: #"\b\d+(?:\.\d+)?\b"#)
+    private static let codeFuncCallRegex = try? NSRegularExpression(pattern: #"\b[A-Za-z_][A-Za-z0-9_]*(?=\s*\()"#)
+    private static let codeBuiltInModuleRegex = try? NSRegularExpression(pattern: #"\b(?:math|string|table|io|os|coroutine|print|ipairs|pairs|tonumber|tostring|Console|JSON|Math|Object|Array)\b"#)
+    private static let codeKeywordRegex = try? NSRegularExpression(pattern: #"\b(?:local|function|for|in|do|end|if|then|else|elseif|while|repeat|until|return|break|and|or|not|nil|true|false|let|var|func|struct|class|enum|protocol|extension|import|public|private|internal|fileprivate|open|static|guard|switch|case|default|where|async|await|try|catch|throw|throws|def|from|as|with|pass|lambda|yield|const|export|interface|type|void|int|float|double|bool|char|self|super|null|undefined)\b"#)
+    private static let codeStringRegex = try? NSRegularExpression(pattern: #""[^"\n]*"|'[^'\n]*'"#)
+    private static let codeCommentRegex = try? NSRegularExpression(pattern: #"(?:--|//)[^\n]*|(?<!\S)#[^\n]*"#)
+
+    /// Highlights code syntax inside fenced code blocks with custom palettes for numbers, functions, keywords, strings, and comments.
+    @MainActor
+    public static func highlightCodeSyntax(in textStorage: NSTextStorage, range: NSRange, fullString: NSString) {
+        guard range.length > 0 else { return }
+
+        let baseFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let keywordFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        let italicDescriptor = baseFont.fontDescriptor.withSymbolicTraits([.italic, .monoSpace])
+        let commentFont = NSFont(descriptor: italicDescriptor, size: 11)
+            ?? NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+
+        let numberColor = NSColor(red: 0.82, green: 0.60, blue: 0.40, alpha: 1.0)
+        let functionColor = NSColor(red: 0.38, green: 0.69, blue: 0.94, alpha: 1.0)
+        let keywordColor = NSColor(red: 1.0, green: 0.47, blue: 0.78, alpha: 1.0)
+        let stringColor = NSColor(red: 0.60, green: 0.76, blue: 0.47, alpha: 1.0)
+        let commentColor = NSColor.secondaryLabelColor
+
+        let searchString = fullString as String
+
+        // 1. Numbers (\b\d+(?:\.\d+)?\b)
+        if let codeNumberRegex {
+            let matches = codeNumberRegex.matches(in: searchString, range: range)
+            for match in matches {
+                textStorage.addAttribute(.foregroundColor, value: numberColor, range: match.range)
+            }
+        }
+
+        // 2. Function Calls & Built-in Modules
+        if let codeFuncCallRegex {
+            let matches = codeFuncCallRegex.matches(in: searchString, range: range)
+            for match in matches {
+                textStorage.addAttribute(.foregroundColor, value: functionColor, range: match.range)
+            }
+        }
+        if let codeBuiltInModuleRegex {
+            let matches = codeBuiltInModuleRegex.matches(in: searchString, range: range)
+            for match in matches {
+                textStorage.addAttribute(.foregroundColor, value: functionColor, range: match.range)
+            }
+        }
+
+        // 3. Keywords
+        if let codeKeywordRegex {
+            let matches = codeKeywordRegex.matches(in: searchString, range: range)
+            for match in matches {
+                textStorage.addAttributes([
+                    .foregroundColor: keywordColor,
+                    .font: keywordFont
+                ], range: match.range)
+            }
+        }
+
+        // 4. Strings
+        if let codeStringRegex {
+            let matches = codeStringRegex.matches(in: searchString, range: range)
+            for match in matches {
+                textStorage.addAttributes([
+                    .foregroundColor: stringColor,
+                    .font: baseFont
+                ], range: match.range)
+            }
+        }
+
+        // 5. Single-line Comments
+        if let codeCommentRegex {
+            let matches = codeCommentRegex.matches(in: searchString, range: range)
+            for match in matches {
+                textStorage.addAttributes([
+                    .foregroundColor: commentColor,
+                    .font: commentFont
+                ], range: match.range)
+            }
+        }
+    }
 
     /// Parses structural fenced code blocks and contiguous table blocks across the Markdown document.
     public static func parseBlocks(in string: String, selectedRange: NSRange?) -> ParsedMarkdownBlocks {
@@ -504,13 +601,48 @@ public struct QuickNotesMarkdownHelper: Sendable {
                 isActive = false
             }
 
+            var activeRowIndices = Set<Int>()
+            if let sel = selectedRange, sel.location != NSNotFound {
+                for (rIdx, rowRange) in rowRanges.enumerated() {
+                    if sel.length == 0 {
+                        if sel.location >= rowRange.location && sel.location <= (rowRange.location + rowRange.length) {
+                            activeRowIndices.insert(rIdx)
+                        }
+                    } else {
+                        if NSIntersectionRange(rowRange, sel).length > 0 {
+                            activeRowIndices.insert(rIdx)
+                        }
+                    }
+                }
+            }
+
+            var columnAlignments: [TableColumnAlignment] = []
+            if let firstSepIdx = separatorRowIndices.sorted().first, firstSepIdx < rowsCells.count {
+                let sepCells = rowsCells[firstSepIdx]
+                for cell in sepCells {
+                    let trimmed = cell.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix(":") && trimmed.hasSuffix(":") && trimmed.count >= 2 {
+                        columnAlignments.append(.center)
+                    } else if trimmed.hasSuffix(":") {
+                        columnAlignments.append(.right)
+                    } else {
+                        columnAlignments.append(.left)
+                    }
+                }
+            }
+            while columnAlignments.count < max(1, maxCols) {
+                columnAlignments.append(.left)
+            }
+
             tables.append(TableBlock(
                 fullRange: fullRange,
                 rowRanges: rowRanges,
                 rowsCells: rowsCells,
                 separatorRowIndices: separatorRowIndices,
                 columnCount: max(1, maxCols),
-                isActive: isActive
+                isActive: isActive,
+                activeRowIndices: activeRowIndices,
+                columnAlignments: columnAlignments
             ))
         }
 
@@ -713,6 +845,8 @@ public struct QuickNotesMarkdownHelper: Sendable {
                     .foregroundColor: NSColor.labelColor,
                     .paragraphStyle: codeParagraphStyle
                 ], range: innerRange)
+
+                highlightCodeSyntax(in: textStorage, range: innerRange, fullString: nsString)
             }
 
             // Closing fence: ALWAYS hide backticks with hiddenSyntaxAttributes unless active multi-character selection intersects it
@@ -734,28 +868,25 @@ public struct QuickNotesMarkdownHelper: Sendable {
         var tableBlockRanges: [NSRange] = []
         for table in parsedBlocks.tables {
             tableBlockRanges.append(table.fullRange)
-            if !table.isActive {
-                // Inactive table: hide raw text completely while preserving layout height
-                textStorage.addAttributes([
-                    .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
-                    .foregroundColor: NSColor.clear,
-                    .backgroundColor: NSColor.clear
-                ], range: table.fullRange)
-            } else {
-                // Active table: reveal raw Markdown in monospaced font
-                for (rIdx, rowRange) in table.rowRanges.enumerated() {
+            for (rIdx, rowRange) in table.rowRanges.enumerated() {
+                if table.activeRowIndices.contains(rIdx) {
+                    // Active row: reveal raw Markdown in monospaced font
                     let rowString = nsString.substring(with: rowRange)
                     let isSep = table.separatorRowIndices.contains(rIdx)
+                    let firstSep = table.separatorRowIndices.min()
+                    let isHeader = (firstSep != nil && rIdx < firstSep!) || (firstSep == nil && rIdx == 0 && table.rowRanges.count > 1)
+
                     if isSep {
                         textStorage.addAttributes([
                             .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular),
-                            .foregroundColor: accentColor.withAlphaComponent(0.55)
+                            .foregroundColor: accentColor.withAlphaComponent(0.55),
+                            .backgroundColor: NSColor.clear
                         ], range: rowRange)
                     } else {
-                        let isHeader = (rIdx == 0 && table.separatorRowIndices.contains(1))
                         textStorage.addAttributes([
                             .font: NSFont.monospacedSystemFont(ofSize: 11, weight: isHeader ? .bold : .regular),
-                            .foregroundColor: isHeader ? accentColor : NSColor.labelColor
+                            .foregroundColor: isHeader ? accentColor : NSColor.labelColor,
+                            .backgroundColor: NSColor.clear
                         ], range: rowRange)
                     }
 
@@ -773,6 +904,13 @@ public struct QuickNotesMarkdownHelper: Sendable {
                             textStorage.addAttribute(.foregroundColor, value: accentColor.withAlphaComponent(0.45), range: charRange)
                         }
                     }
+                } else {
+                    // Inactive row: set foregroundColor: .clear and backgroundColor: .clear on rowRange, keeping font: systemFont(ofSize: 11.5, weight: .regular)
+                    textStorage.addAttributes([
+                        .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+                        .foregroundColor: NSColor.clear,
+                        .backgroundColor: NSColor.clear
+                    ], range: rowRange)
                 }
             }
         }
@@ -1209,21 +1347,52 @@ public final class PurahNotesNSTextView: NSTextView {
             codeBoxPath.stroke()
         }
 
-        // Draw unified subtle background for active tables (Issue 2)
-        for table in parsedBlocks.tables where table.isActive {
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: table.fullRange, actualCharacterRange: nil)
-            guard glyphRange.length > 0 else { continue }
-            var boundingRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-            boundingRect.origin.x = textContainerOrigin.x + 2
-            boundingRect.origin.y += textContainerOrigin.y
-            boundingRect.size.width = max(120, bounds.width - (textContainerOrigin.x * 2) - 4)
+        // Draw connected table frame & row highlights for all tables (Issue 2)
+        for table in parsedBlocks.tables {
+            guard !table.rowRanges.isEmpty else { continue }
+            let firstRowRange = table.rowRanges[0]
+            let lastRowRange = table.rowRanges[table.rowRanges.count - 1]
+            let firstGlyph = layoutManager.glyphRange(forCharacterRange: firstRowRange, actualCharacterRange: nil)
+            let lastGlyph = layoutManager.glyphRange(forCharacterRange: lastRowRange, actualCharacterRange: nil)
+            guard firstGlyph.length > 0, lastGlyph.length > 0 else { continue }
 
-            let tableBoxPath = NSBezierPath(roundedRect: boundingRect.insetBy(dx: 0, dy: -2), xRadius: 6, yRadius: 6)
-            NSColor.black.withAlphaComponent(0.20).setFill()
-            tableBoxPath.fill()
-            accentColor.withAlphaComponent(0.28).setStroke()
-            tableBoxPath.lineWidth = 1.0
-            tableBoxPath.stroke()
+            let firstLineRect = layoutManager.boundingRect(forGlyphRange: firstGlyph, in: textContainer)
+            let lastLineRect = layoutManager.boundingRect(forGlyphRange: lastGlyph, in: textContainer)
+
+            let x = textContainerOrigin.x + 2
+            let width = max(120, bounds.width - (textContainerOrigin.x * 2) - 4)
+            let y = firstLineRect.minY + textContainerOrigin.y
+            let maxY = lastLineRect.maxY + textContainerOrigin.y
+            let height = max(24, maxY - y)
+            let tableRect = NSRect(x: x, y: y, width: width, height: height)
+
+            let outerPath = NSBezierPath(roundedRect: tableRect.insetBy(dx: 0, dy: -2), xRadius: 6, yRadius: 6)
+            NSColor.black.withAlphaComponent(0.22).setFill()
+            outerPath.fill()
+
+            NSGraphicsContext.saveGraphicsState()
+            outerPath.addClip()
+
+            let firstSep = table.separatorRowIndices.min()
+            for (rIdx, rowRange) in table.rowRanges.enumerated() {
+                let rowGlyph = layoutManager.glyphRange(forCharacterRange: rowRange, actualCharacterRange: nil)
+                guard rowGlyph.length > 0 else { continue }
+                let rowLineRect = layoutManager.boundingRect(forGlyphRange: rowGlyph, in: textContainer)
+                let rowY = rowLineRect.minY + textContainerOrigin.y
+                let rowH = rowLineRect.height
+                let rowRect = NSRect(x: tableRect.minX, y: rowY, width: tableRect.width, height: rowH)
+
+                let isHeader = (firstSep != nil && rIdx < firstSep!) || (firstSep == nil && rIdx == 0 && table.rowRanges.count > 1)
+                if isHeader {
+                    accentColor.withAlphaComponent(0.16).setFill()
+                    NSBezierPath(rect: rowRect).fill()
+                }
+                if table.activeRowIndices.contains(rIdx) {
+                    accentColor.withAlphaComponent(0.08).setFill()
+                    NSBezierPath(rect: rowRect).fill()
+                }
+            }
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
@@ -1234,115 +1403,131 @@ public final class PurahNotesNSTextView: NSTextView {
         let effectiveSelectedRange = isFocused ? selectedRange() : nil
         let parsedBlocks = QuickNotesMarkdownHelper.parseBlocks(in: self.string, selectedRange: effectiveSelectedRange)
 
-        for table in parsedBlocks.tables where !table.isActive {
-            var displayRows: [(rowIndex: Int, cells: [String], isHeader: Bool)] = []
-            let firstSep = table.separatorRowIndices.min()
-            for (rIdx, cells) in table.rowsCells.enumerated() {
-                if table.separatorRowIndices.contains(rIdx) {
-                    continue
-                }
-                let isHeader: Bool
-                if let sep = firstSep {
-                    isHeader = rIdx < sep
-                } else {
-                    isHeader = false
-                }
-                displayRows.append((rowIndex: rIdx, cells: cells, isHeader: isHeader))
-            }
+        for table in parsedBlocks.tables {
+            guard !table.rowRanges.isEmpty else { continue }
+            let firstRowRange = table.rowRanges[0]
+            let lastRowRange = table.rowRanges[table.rowRanges.count - 1]
+            let firstGlyph = layoutManager.glyphRange(forCharacterRange: firstRowRange, actualCharacterRange: nil)
+            let lastGlyph = layoutManager.glyphRange(forCharacterRange: lastRowRange, actualCharacterRange: nil)
+            guard firstGlyph.length > 0, lastGlyph.length > 0 else { continue }
 
-            guard !displayRows.isEmpty else { continue }
-
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: table.fullRange, actualCharacterRange: nil)
-            guard glyphRange.length > 0 else { continue }
-            let boundingRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            let firstLineRect = layoutManager.boundingRect(forGlyphRange: firstGlyph, in: textContainer)
+            let lastLineRect = layoutManager.boundingRect(forGlyphRange: lastGlyph, in: textContainer)
 
             let x = textContainerOrigin.x + 2
             let width = max(120, bounds.width - (textContainerOrigin.x * 2) - 4)
-            let y = boundingRect.origin.y + textContainerOrigin.y
-            let height = max(24, boundingRect.height)
+            let y = firstLineRect.minY + textContainerOrigin.y
+            let maxY = lastLineRect.maxY + textContainerOrigin.y
+            let height = max(24, maxY - y)
             let tableRect = NSRect(x: x, y: y, width: width, height: height)
 
-            // 1. Outer Rounded Frame & Background
-            let outerPath = NSBezierPath(roundedRect: tableRect, xRadius: 6, yRadius: 6)
-            NSColor.black.withAlphaComponent(0.20).setFill()
-            outerPath.fill()
-
-            let rowHeight = tableRect.height / CGFloat(max(1, displayRows.count))
-
-            // 2. Header Row Background (clipped to outerPath)
-            NSGraphicsContext.saveGraphicsState()
-            outerPath.addClip()
-            for (rIdx, displayRow) in displayRows.enumerated() {
-                if displayRow.isHeader {
-                    let rowRect = NSRect(
-                        x: tableRect.minX,
-                        y: tableRect.minY + CGFloat(rIdx) * rowHeight,
-                        width: tableRect.width,
-                        height: rowHeight
-                    )
-                    accentColor.withAlphaComponent(0.18).setFill()
-                    NSBezierPath(rect: rowRect).fill()
-                }
-            }
-            NSGraphicsContext.restoreGraphicsState()
-
-            // 3. Connected Horizontal Row Lines
-            if displayRows.count > 1 {
-                for r in 1..<displayRows.count {
-                    let lineY = tableRect.minY + CGFloat(r) * rowHeight
-                    let linePath = NSBezierPath()
-                    linePath.move(to: NSPoint(x: tableRect.minX, y: lineY))
-                    linePath.line(to: NSPoint(x: tableRect.maxX, y: lineY))
-                    linePath.lineWidth = 1.0
-                    let lineAlpha: CGFloat = displayRows[r - 1].isHeader ? 0.50 : 0.25
-                    accentColor.withAlphaComponent(lineAlpha).setStroke()
-                    linePath.stroke()
-                }
-            }
-
-            // 4. Connected Vertical Column Lines
-            let colCount = max(1, table.columnCount)
-            let colWidth = tableRect.width / CGFloat(colCount)
-            if colCount > 1 {
-                for c in 1..<colCount {
-                    let lineX = tableRect.minX + CGFloat(c) * colWidth
-                    let linePath = NSBezierPath()
-                    linePath.move(to: NSPoint(x: lineX, y: tableRect.minY))
-                    linePath.line(to: NSPoint(x: lineX, y: tableRect.maxY))
-                    linePath.lineWidth = 1.0
-                    accentColor.withAlphaComponent(0.28).setStroke()
-                    linePath.stroke()
-                }
-            }
-
-            // 5. Outer Border Stroke
+            let outerPath = NSBezierPath(roundedRect: tableRect.insetBy(dx: 0, dy: -2), xRadius: 6, yRadius: 6)
             accentColor.withAlphaComponent(0.45).setStroke()
             outerPath.lineWidth = 1.0
             outerPath.stroke()
 
-            // 6. Draw Cell Text
-            for (rIdx, displayRow) in displayRows.enumerated() {
-                let rowY = tableRect.minY + CGFloat(rIdx) * rowHeight
-                for cIdx in 0..<colCount {
-                    let cellText = cIdx < displayRow.cells.count ? displayRow.cells[cIdx] : ""
-                    guard !cellText.isEmpty else { continue }
-                    let font = NSFont.systemFont(ofSize: 11, weight: displayRow.isHeader ? .bold : .regular)
-                    let textColor = displayRow.isHeader ? accentColor : NSColor.labelColor
-                    let attributes: [NSAttributedString.Key: Any] = [
-                        .font: font,
-                        .foregroundColor: textColor
-                    ]
-                    let textSize = (cellText as NSString).size(withAttributes: attributes)
-                    let textY = rowY + max(0, (rowHeight - textSize.height) / 2.0)
-                    let cellRect = NSRect(
-                        x: tableRect.minX + CGFloat(cIdx) * colWidth + 8,
-                        y: textY,
-                        width: max(0, colWidth - 16),
-                        height: textSize.height
-                    )
-                    (cellText as NSString).draw(with: cellRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin], attributes: attributes)
+            let firstSep = table.separatorRowIndices.min()
+            let colCount = max(1, table.columnCount)
+            let colWidth = tableRect.width / CGFloat(colCount)
+
+            NSGraphicsContext.saveGraphicsState()
+            outerPath.addClip()
+
+            for (rIdx, rowRange) in table.rowRanges.enumerated() {
+                let rowGlyph = layoutManager.glyphRange(forCharacterRange: rowRange, actualCharacterRange: nil)
+                guard rowGlyph.length > 0 else { continue }
+                let rowLineRect = layoutManager.boundingRect(forGlyphRange: rowGlyph, in: textContainer)
+                let rowY = rowLineRect.minY + textContainerOrigin.y
+                let rowH = rowLineRect.height
+
+                let isSeparator = table.separatorRowIndices.contains(rIdx)
+                let isHeader = (firstSep != nil && rIdx < firstSep!) || (firstSep == nil && rIdx == 0 && table.rowRanges.count > 1)
+                let isActiveRow = table.activeRowIndices.contains(rIdx)
+
+                if isSeparator {
+                    if !isActiveRow {
+                        let midY = rowY + (rowH / 2.0)
+                        let sepLine = NSBezierPath()
+                        sepLine.move(to: NSPoint(x: tableRect.minX, y: midY))
+                        sepLine.line(to: NSPoint(x: tableRect.maxX, y: midY))
+                        sepLine.lineWidth = 1.5
+                        accentColor.withAlphaComponent(0.65).setStroke()
+                        sepLine.stroke()
+
+                        if colCount > 1 {
+                            for c in 1..<colCount {
+                                let colX = tableRect.minX + CGFloat(c) * colWidth
+                                let vLine = NSBezierPath()
+                                vLine.move(to: NSPoint(x: colX, y: rowY))
+                                vLine.line(to: NSPoint(x: colX, y: rowY + rowH))
+                                vLine.lineWidth = 1.0
+                                accentColor.withAlphaComponent(0.28).setStroke()
+                                vLine.stroke()
+                            }
+                        }
+                    }
+                } else {
+                    if rIdx + 1 < table.rowRanges.count && !table.separatorRowIndices.contains(rIdx + 1) {
+                        let bottomY = rowY + rowH
+                        let hLine = NSBezierPath()
+                        hLine.move(to: NSPoint(x: tableRect.minX, y: bottomY))
+                        hLine.line(to: NSPoint(x: tableRect.maxX, y: bottomY))
+                        hLine.lineWidth = 1.0
+                        let lineAlpha: CGFloat = isHeader ? 0.50 : 0.25
+                        accentColor.withAlphaComponent(lineAlpha).setStroke()
+                        hLine.stroke()
+                    }
+
+                    if colCount > 1 {
+                        for c in 1..<colCount {
+                            let colX = tableRect.minX + CGFloat(c) * colWidth
+                            let vLine = NSBezierPath()
+                            vLine.move(to: NSPoint(x: colX, y: rowY))
+                            vLine.line(to: NSPoint(x: colX, y: rowY + rowH))
+                            vLine.lineWidth = 1.0
+                            accentColor.withAlphaComponent(0.28).setStroke()
+                            vLine.stroke()
+                        }
+                    }
+
+                    if !isActiveRow && rIdx < table.rowsCells.count {
+                        let cells = table.rowsCells[rIdx]
+                        for cIdx in 0..<colCount {
+                            let cellText = cIdx < cells.count ? cells[cIdx] : ""
+                            guard !cellText.isEmpty else { continue }
+                            let alignment = cIdx < table.columnAlignments.count ? table.columnAlignments[cIdx] : .left
+                            let pStyle = NSMutableParagraphStyle()
+                            switch alignment {
+                            case .left:
+                                pStyle.alignment = .left
+                            case .center:
+                                pStyle.alignment = .center
+                            case .right:
+                                pStyle.alignment = .right
+                            }
+
+                            let font = NSFont.systemFont(ofSize: 11, weight: isHeader ? .bold : .regular)
+                            let textColor = isHeader ? accentColor : NSColor.labelColor
+                            let attributes: [NSAttributedString.Key: Any] = [
+                                .font: font,
+                                .foregroundColor: textColor,
+                                .paragraphStyle: pStyle
+                            ]
+
+                            let textSize = (cellText as NSString).size(withAttributes: attributes)
+                            let textY = rowY + max(0, (rowH - textSize.height) / 2.0)
+                            let cellRect = NSRect(
+                                x: tableRect.minX + CGFloat(cIdx) * colWidth + 6,
+                                y: textY,
+                                width: max(0, colWidth - 12),
+                                height: textSize.height
+                            )
+                            (cellText as NSString).draw(with: cellRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin], attributes: attributes)
+                        }
+                    }
                 }
             }
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 

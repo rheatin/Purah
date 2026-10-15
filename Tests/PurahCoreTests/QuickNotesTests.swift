@@ -431,7 +431,7 @@ struct QuickNotesTests {
         let colorInactive = storage3.attribute(.foregroundColor, at: headerTextLoc, effectiveRange: nil) as? NSColor
         #expect(colorInactive == .clear)
 
-        // When active (selectedRange inside table): reveal raw Markdown in monospaced font
+        // When active on row 0: reveal raw Markdown of Row 0 only in monospaced font, while other rows remain transparent
         QuickNotesMarkdownHelper.styleAttributedString(storage3, accentColor: accent, selectedRange: NSRange(location: headerTextLoc, length: 0))
 
         // Header row above separator: bold monospaced accentColor
@@ -446,13 +446,23 @@ struct QuickNotesTests {
         let fontPipe = storage3.attribute(.font, at: pipeLoc, effectiveRange: nil) as? NSFont
         #expect(fontPipe?.fontDescriptor.symbolicTraits.contains(.bold) == true)
 
-        // Separator row: 10.5pt font
+        // Separator row is inactive while cursor is on header row: transparent (.clear)
         let sepLoc = (tableMd as NSString).range(of: "---").location
+        let colorSepWhileHeaderActive = storage3.attribute(.foregroundColor, at: sepLoc, effectiveRange: nil) as? NSColor
+        #expect(colorSepWhileHeaderActive == .clear)
+
+        // Data row is inactive while cursor is on header row: transparent (.clear)
+        let dataTextLoc = (tableMd as NSString).range(of: "CPU").location
+        let colorDataWhileHeaderActive = storage3.attribute(.foregroundColor, at: dataTextLoc, effectiveRange: nil) as? NSColor
+        #expect(colorDataWhileHeaderActive == .clear)
+
+        // When cursor moves to separator row: separator is revealed with 10.5pt font
+        QuickNotesMarkdownHelper.styleAttributedString(storage3, accentColor: accent, selectedRange: NSRange(location: sepLoc, length: 0))
         let fontSep = storage3.attribute(.font, at: sepLoc, effectiveRange: nil) as? NSFont
         #expect(fontSep?.pointSize == 10.5)
 
-        // Data row: monospaced table cells, regular weight, labelColor
-        let dataTextLoc = (tableMd as NSString).range(of: "CPU").location
+        // When cursor moves to data row: data row is revealed in monospaced font with labelColor
+        QuickNotesMarkdownHelper.styleAttributedString(storage3, accentColor: accent, selectedRange: NSRange(location: dataTextLoc, length: 0))
         let fontData = storage3.attribute(.font, at: dataTextLoc, effectiveRange: nil) as? NSFont
         #expect(fontData?.pointSize == 11)
         let colorData = storage3.attribute(.foregroundColor, at: dataTextLoc, effectiveRange: nil) as? NSColor
@@ -518,12 +528,75 @@ struct QuickNotesTests {
         #expect(colorRevealedClose == NSColor.secondaryLabelColor)
     }
 
-    @Test("QuickNotesMarkdownHelper parseBlocks identifies TableBlocks, separator rows, column counts, and handles inactive transparency")
+    @Test("QuickNotesMarkdownHelper highlightCodeSyntax highlights keywords, numbers, functions, strings, and comments")
+    @MainActor
+    func testHighlightCodeSyntax() {
+        let code = """
+        local count = 10
+        for i = 1, count do
+            math.floor(0.5)
+            let result = "hello" -- note
+        end
+        """
+        let nsCode = code as NSString
+        let storage = NSTextStorage(string: code)
+        QuickNotesMarkdownHelper.highlightCodeSyntax(in: storage, range: NSRange(location: 0, length: nsCode.length), fullString: nsCode)
+
+        let pinkKeywordColor = NSColor(red: 1.0, green: 0.47, blue: 0.78, alpha: 1.0)
+        let orangeNumberColor = NSColor(red: 0.82, green: 0.60, blue: 0.40, alpha: 1.0)
+        let blueFuncColor = NSColor(red: 0.38, green: 0.69, blue: 0.94, alpha: 1.0)
+        let greenStringColor = NSColor(red: 0.60, green: 0.76, blue: 0.47, alpha: 1.0)
+
+        // 1. Verify keyword "local", "for", "end" in pink
+        let localLoc = nsCode.range(of: "local").location
+        let localColor = storage.attribute(.foregroundColor, at: localLoc, effectiveRange: nil) as? NSColor
+        #expect(localColor == pinkKeywordColor)
+        let localFont = storage.attribute(.font, at: localLoc, effectiveRange: nil) as? NSFont
+        #expect(localFont?.pointSize == 11)
+
+        let forLoc = nsCode.range(of: "for").location
+        let forColor = storage.attribute(.foregroundColor, at: forLoc, effectiveRange: nil) as? NSColor
+        #expect(forColor == pinkKeywordColor)
+
+        let endLoc = nsCode.range(of: "end").location
+        let endColor = storage.attribute(.foregroundColor, at: endLoc, effectiveRange: nil) as? NSColor
+        #expect(endColor == pinkKeywordColor)
+
+        // 2. Verify numbers "10", "0.5" in orange
+        let tenLoc = nsCode.range(of: "10").location
+        let tenColor = storage.attribute(.foregroundColor, at: tenLoc, effectiveRange: nil) as? NSColor
+        #expect(tenColor == orangeNumberColor)
+
+        let pointFiveLoc = nsCode.range(of: "0.5").location
+        let pointFiveColor = storage.attribute(.foregroundColor, at: pointFiveLoc, effectiveRange: nil) as? NSColor
+        #expect(pointFiveColor == orangeNumberColor)
+
+        // 3. Verify function call / module "math.floor(" in blue
+        let mathLoc = nsCode.range(of: "math").location
+        let mathColor = storage.attribute(.foregroundColor, at: mathLoc, effectiveRange: nil) as? NSColor
+        #expect(mathColor == blueFuncColor)
+
+        let floorLoc = nsCode.range(of: "floor").location
+        let floorColor = storage.attribute(.foregroundColor, at: floorLoc, effectiveRange: nil) as? NSColor
+        #expect(floorColor == blueFuncColor)
+
+        // 4. Verify string "\"hello\"" in green
+        let strLoc = nsCode.range(of: "\"hello\"").location
+        let strColor = storage.attribute(.foregroundColor, at: strLoc, effectiveRange: nil) as? NSColor
+        #expect(strColor == greenStringColor)
+
+        // 5. Verify comment "-- note" in secondaryLabelColor
+        let commentLoc = nsCode.range(of: "-- note").location
+        let commentColor = storage.attribute(.foregroundColor, at: commentLoc, effectiveRange: nil) as? NSColor
+        #expect(commentColor == NSColor.secondaryLabelColor)
+    }
+
+    @Test("QuickNotesMarkdownHelper parseBlocks identifies TableBlocks, separator rows, column counts, and handles per-row active rendering")
     @MainActor
     func testTableBlockParsingAndInactiveRendering() {
         let tableMd = """
         | Name | Role | Status |
-        | --- | --- | --- |
+        | :--- | :---: | ---: |
         | Purah | Kernel | Active |
         | Zelda | Core | Idle |
         """
@@ -535,12 +608,14 @@ struct QuickNotesTests {
         #expect(parsed.tables.count == 1)
         let table = parsed.tables[0]
         #expect(!table.isActive)
+        #expect(table.activeRowIndices.isEmpty)
         #expect(table.columnCount == 3)
         #expect(table.rowRanges.count == 4)
         #expect(table.separatorRowIndices == Set([1]))
         #expect(table.rowsCells.count == 4)
         #expect(table.rowsCells[0] == ["Name", "Role", "Status"])
         #expect(table.rowsCells[2] == ["Purah", "Kernel", "Active"])
+        #expect(table.columnAlignments == [.left, .center, .right])
 
         // 2. Inactive styling: whole table fullRange is transparent
         let storage = NSTextStorage(string: tableMd)
@@ -554,16 +629,34 @@ struct QuickNotesTests {
         let bgCell = storage.attribute(.backgroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
         #expect(bgCell == .clear)
 
-        // 3. Active styling: when cursor is inside table, text becomes visible
+        // 3. Per-row active styling: when cursor is inside Row 2 ("Purah"), only Row 2 is active and visible
+        let parsedRow2 = QuickNotesMarkdownHelper.parseBlocks(in: tableMd, selectedRange: NSRange(location: cellLoc, length: 0))
+        #expect(parsedRow2.tables[0].activeRowIndices == Set([2]))
+
         QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: cellLoc, length: 0))
         let activeFontCell = storage.attribute(.font, at: cellLoc, effectiveRange: nil) as? NSFont
         #expect(activeFontCell?.pointSize == 11)
         let activeColorCell = storage.attribute(.foregroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
         #expect(activeColorCell == NSColor.labelColor)
 
-        // Header row has bold accent
+        // Row 0 (header "Name") and Row 1 (separator) are inactive (.clear)
         let headerLoc = nsMd.range(of: "Name").location
+        let headerColorWhileRow2Active = storage.attribute(.foregroundColor, at: headerLoc, effectiveRange: nil) as? NSColor
+        #expect(headerColorWhileRow2Active == .clear)
+
+        let sepLoc = nsMd.range(of: ":---").location
+        let sepColorWhileRow2Active = storage.attribute(.foregroundColor, at: sepLoc, effectiveRange: nil) as? NSColor
+        #expect(sepColorWhileRow2Active == .clear)
+
+        // 4. When cursor moves to Row 0 ("Name"), Row 0 is active while Row 2 becomes inactive (.clear)
+        let parsedRow0 = QuickNotesMarkdownHelper.parseBlocks(in: tableMd, selectedRange: NSRange(location: headerLoc, length: 0))
+        #expect(parsedRow0.tables[0].activeRowIndices == Set([0]))
+
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: headerLoc, length: 0))
         let activeHeaderColor = storage.attribute(.foregroundColor, at: headerLoc, effectiveRange: nil) as? NSColor
         #expect(activeHeaderColor == accent)
+
+        let colorCellWhileRow0Active = storage.attribute(.foregroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
+        #expect(colorCellWhileRow0Active == .clear)
     }
 }
