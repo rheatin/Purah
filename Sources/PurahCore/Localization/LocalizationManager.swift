@@ -173,6 +173,10 @@ public final class LocalizationManager {
             "storage.quota.2gb": "2 GB",
             "storage.quota.unlimited": "Unlimited",
 
+            // Drop Shelf
+            "shelf.settings.autoRemoveOnDrag": "Auto-remove item after dragging out",
+            "shelf.settings.autoRemoveSubtitle": "Automatically clears transient items once dragged out (★ Starred items stay pinned)",
+
             // Quick Notes
             "notes.folder.general": "General",
             "notes.folder.work": "Work",
@@ -318,6 +322,10 @@ public final class LocalizationManager {
             "storage.quota.2gb": "2 GB",
             "storage.quota.unlimited": "无限制",
 
+            // 拖拽暂存架
+            "shelf.settings.autoRemoveOnDrag": "拖出后自动从文件架移除",
+            "shelf.settings.autoRemoveSubtitle": "文件拖出使用后自动清空，点亮 ★ 星标的文件将常驻保留",
+
             // Quick Notes
             "notes.folder.general": "常规",
             "notes.folder.work": "工作",
@@ -371,6 +379,8 @@ public final class LocalizationManager {
             "sound.funk": "Funk (清脆节拍)"
         ],
         .traditionalChinese: [
+            "shelf.settings.autoRemoveOnDrag": "拖出後自動從檔案架移除",
+            "shelf.settings.autoRemoveSubtitle": "檔案拖出使用後自動清空，點亮 ★ 星標的檔案將常駐保留",
             "notes.tips.table": "表格",
             "sensory.section.title": "聲音與觸控板反饋",
             "sensory.toastSound.title": "Toast 聲音通知",
@@ -389,6 +399,8 @@ public final class LocalizationManager {
             "sound.funk": "Funk (清脆節拍)"
         ],
         .japanese: [
+            "shelf.settings.autoRemoveOnDrag": "ドラッグアウト後に自動削除",
+            "shelf.settings.autoRemoveSubtitle": "ドラッグアウトしたアイテムを自動消去（★スター付きは保持）",
             "notes.tips.table": "テーブル",
             "sensory.section.title": "サウンドと触覚フィードバック",
             "sensory.toastSound.title": "Toast サウンド通知",
@@ -407,6 +419,8 @@ public final class LocalizationManager {
             "sound.funk": "Funk (ポップ)"
         ],
         .korean: [
+            "shelf.settings.autoRemoveOnDrag": "드래그 아웃 후 자동 제거",
+            "shelf.settings.autoRemoveSubtitle": "드래그 아웃된 임시 항목 자동 정리 (★ 즐겨찾기 항목은 유지)",
             "notes.tips.table": "표",
             "sensory.section.title": "사운드 및 트랙패드 햅틱 피드백",
             "sensory.toastSound.title": "토스트 사운드 알림",
@@ -425,6 +439,8 @@ public final class LocalizationManager {
             "sound.funk": "Funk (경쾌한 비트)"
         ],
         .french: [
+            "shelf.settings.autoRemoveOnDrag": "Supprimer automatiquement après glisser-déposer",
+            "shelf.settings.autoRemoveSubtitle": "Efface automatiquement les éléments glissés (les éléments marqués ★ restent épinglés)",
             "notes.tips.table": "Tableau",
             "sensory.section.title": "Retour sensoriel",
             "sensory.toastSound.title": "Notifications sonores",
@@ -443,6 +459,8 @@ public final class LocalizationManager {
             "sound.funk": "Funk (Pop)"
         ],
         .german: [
+            "shelf.settings.autoRemoveOnDrag": "Objekt nach dem Herausziehen automatisch entfernen",
+            "shelf.settings.autoRemoveSubtitle": "Löscht temporäre Dateien nach dem Herausziehen (★ markierte Dateien bleiben erhalten)",
             "notes.tips.table": "Tabelle",
             "sensory.section.title": "Sensorisches Feedback",
             "sensory.toastSound.title": "Toast-Tonbenachrichtigungen",
@@ -461,6 +479,8 @@ public final class LocalizationManager {
             "sound.funk": "Funk (Pop)"
         ],
         .spanish: [
+            "shelf.settings.autoRemoveOnDrag": "Eliminar automáticamente tras arrastrar fuera",
+            "shelf.settings.autoRemoveSubtitle": "Borra automáticamente los archivos temporales arrastrados (los elementos marcados con ★ se mantienen)",
             "notes.tips.table": "Tabla",
             "sensory.section.title": "Retroalimentación sensorial",
             "sensory.toastSound.title": "Notificaciones sonoras",

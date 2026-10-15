@@ -92,6 +92,21 @@ public struct ShelfPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Toggle("shelf.settings.autoRemoveOnDrag".localized, isOn: Binding(
+                    get: { state.autoRemoveOnDrag },
+                    set: {
+                        state.autoRemoveOnDrag = $0
+                        state.save()
+                    }
+                ))
+                .font(.caption)
+
+                Text("shelf.settings.autoRemoveSubtitle".localized)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
             HStack {
                 Text("Stashed Files: \(state.files.count) item(s)")
                     .font(.caption)

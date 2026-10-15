@@ -9,8 +9,8 @@ import Foundation
 @Suite("Plugin Polish Batch 2 Tests", .serialized)
 struct PluginPolishBatch2Tests {
 
-    // MARK: - Task 1: DropShelfPlugin Sandbox Storage & Star Immunity
-    @Test("ShelfPluginState copies stashed files into assetsDirectory, supports toggleFavorite, and preserves starred files in clear")
+    // MARK: - Task 1: DropShelfPlugin Zero-Copy Bookmark Storage & Auto-Remove on Drag Out
+    @Test("ShelfPluginState zero-copy bookmark reference, deduplication, star protection, and auto-remove on drag out")
     @MainActor
     func testShelfPluginStorageAndStarImmunity() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("shelf_test_\(UUID().uuidString)")
@@ -29,7 +29,7 @@ struct PluginPolishBatch2Tests {
         let state = ShelfPluginState(storage: scopedStorage, fileStorage: customStorage)
         state.clearAllIncludingFavorites()
 
-        // 2. Add file: must copy into fileStorage.assetsDirectory
+        // 2. Add file: must store zero-copy reference without duplicating into assetsDirectory
         state.addFile(url: originalFileURL)
         #expect(state.files.count == 1)
         let stashedItem = state.files[0]
@@ -37,37 +37,89 @@ struct PluginPolishBatch2Tests {
         #expect(stashedItem.fileExtension == "pdf")
         #expect(stashedItem.isFavorite == false)
         #expect(stashedItem.isPinned == false)
-        #expect(stashedItem.filePath != nil)
-        #expect(stashedItem.filePath?.hasPrefix(customStorage.assetsDirectory.path) == true)
-        #expect(FileManager.default.fileExists(atPath: stashedItem.filePath!))
+        #expect(stashedItem.filePath == originalFileURL.standardizedFileURL.path)
+        #expect(stashedItem.bookmarkData != nil)
+        #expect(stashedItem.resolvedURL?.standardizedFileURL.path == originalFileURL.standardizedFileURL.path)
+        #expect(stashedItem.filePath?.hasPrefix(customStorage.assetsDirectory.path) == false)
+        #expect(FileManager.default.fileExists(atPath: originalFileURL.path))
 
-        // 3. Toggle favorite
-        state.toggleFavorite(id: stashedItem.id)
-        #expect(state.files[0].isFavorite == true)
-        #expect(state.files[0].isPinned == true)
+        // Verify assetsDirectory has not received a duplicated file copy
+        let assetContents = (try? FileManager.default.contentsOfDirectory(atPath: customStorage.assetsDirectory.path)) ?? []
+        #expect(assetContents.isEmpty, "Original file must not be duplicated into assetsDirectory")
 
-        // 4. Add a second file (unstarred)
+        // Verify metadata was serialized into index.json with bookmark data
+        let indexURL = customStorage.dataDirectory.appendingPathComponent("index.json")
+        #expect(FileManager.default.fileExists(atPath: indexURL.path))
+        let indexData = try Data(contentsOf: indexURL)
+        let decodedItems = try JSONDecoder().decode([ShelfFileItem].self, from: indexData)
+        #expect(decodedItems.count == 1)
+        #expect(decodedItems[0].name == "design_spec.pdf")
+        #expect(decodedItems[0].bookmarkData != nil)
+
+        // 3. Deduplicate repeated drop of the same URL
+        state.addFile(url: originalFileURL)
+        #expect(state.files.count == 1, "Repeated drop of identical URL must be deduplicated")
+
+        // Add a second file
         let secondFileURL = tempDir.appendingPathComponent("scratch.tmp")
         try "Transient Data".data(using: .utf8)!.write(to: secondFileURL)
         state.addFile(url: secondFileURL)
         #expect(state.files.count == 2)
-        let unstarredItem = state.files[1]
-        #expect(unstarredItem.isFavorite == false)
-        let unstarredPath = unstarredItem.filePath!
-        #expect(FileManager.default.fileExists(atPath: unstarredPath))
+        #expect(state.files[0].name == "scratch.tmp")
+        #expect(state.files[1].name == "design_spec.pdf")
 
-        // 5. Test clear() - Star Protection Immunity Rule
+        // Re-dropping the first file moves it to index 0
+        state.addFile(url: originalFileURL)
+        #expect(state.files.count == 2)
+        #expect(state.files[0].name == "design_spec.pdf")
+
+        // 4. Test handleDragOutCompleted with autoRemoveOnDrag enabled
+        #expect(state.autoRemoveOnDrag == true)
+        let secondItemId = state.files.first(where: { $0.name == "scratch.tmp" })!.id
+        state.handleDragOutCompleted(id: secondItemId)
+        #expect(!state.files.contains(where: { $0.id == secondItemId }), "Unstarred item must be removed from shelf on drag out")
+        #expect(FileManager.default.fileExists(atPath: secondFileURL.path), "User's original file must remain intact on disk")
+
+        // 5. Star Protection Immunity: Starred item must stay pinned even when dragged out
+        let firstItemId = state.files[0].id
+        state.toggleFavorite(id: firstItemId)
+        #expect(state.files[0].isFavorite == true)
+        state.handleDragOutCompleted(id: firstItemId)
+        #expect(state.files.contains(where: { $0.id == firstItemId }), "Starred item must not be removed on drag out")
+
+        // 6. Test autoRemoveOnDrag == false
+        let thirdFileURL = tempDir.appendingPathComponent("keep_me.txt")
+        try "Keep Content".data(using: .utf8)!.write(to: thirdFileURL)
+        state.addFile(url: thirdFileURL)
+        #expect(state.files.count == 2)
+        let thirdItemId = state.files[0].id
+
+        state.autoRemoveOnDrag = false
+        state.handleDragOutCompleted(id: thirdItemId)
+        #expect(state.files.contains(where: { $0.id == thirdItemId }), "Item must remain on shelf when autoRemoveOnDrag is false")
+
+        // 7. Test clear() - Star Protection Immunity Rule
         state.clear()
         #expect(state.files.count == 1, "Starred item must be preserved by clear()")
-        #expect(state.files[0].id == stashedItem.id)
+        #expect(state.files[0].id == firstItemId)
         #expect(state.files[0].isFavorite == true)
-        #expect(FileManager.default.fileExists(atPath: stashedItem.filePath!), "Starred asset must not be deleted")
-        #expect(!FileManager.default.fileExists(atPath: unstarredPath), "Unstarred asset must be removed from disk")
+        #expect(FileManager.default.fileExists(atPath: originalFileURL.path), "Original file must remain intact")
+        #expect(FileManager.default.fileExists(atPath: thirdFileURL.path), "Original file must remain intact")
 
-        // 6. Test clearAllIncludingFavorites()
+        // 8. Test cleanupInvalidItems() self-healing
+        let ghostFileURL = tempDir.appendingPathComponent("ghost.txt")
+        try "Ghost".data(using: .utf8)!.write(to: ghostFileURL)
+        state.addFile(url: ghostFileURL)
+        #expect(state.files.count == 2)
+        try FileManager.default.removeItem(at: ghostFileURL)
+        state.cleanupInvalidItems()
+        #expect(state.files.count == 1)
+        #expect(state.files[0].id == firstItemId)
+
+        // 9. Hard clear clears stashed references but leaves original files on disk intact
         state.clearAllIncludingFavorites()
         #expect(state.files.isEmpty)
-        #expect(!FileManager.default.fileExists(atPath: stashedItem.filePath!), "Asset must be deleted on hard clear")
+        #expect(FileManager.default.fileExists(atPath: originalFileURL.path), "Original file on disk must not be deleted by shelf clear")
     }
 
     // MARK: - Task 2: QuickNotes Storage Policy & clearNonFavoriteNotes

@@ -14,6 +14,7 @@ public final class ShelfPluginState: Sendable {
     public var retentionPeriod: PurahRetentionPeriod
     public var diskQuota: PurahDiskQuota
     public var autoPrune: Bool
+    public var autoRemoveOnDrag: Bool
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var shelfFiles: [ShelfFileItem] {
@@ -30,6 +31,7 @@ public final class ShelfPluginState: Sendable {
         self.retentionPeriod = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) ?? .days7
         self.diskQuota = storage.codable(forKey: "diskQuota", as: PurahDiskQuota.self) ?? .mb250
         self.autoPrune = storage.string(forKey: "autoPrune") != nil ? storage.bool(forKey: "autoPrune") : true
+        self.autoRemoveOnDrag = storage.string(forKey: "autoRemoveOnDrag") != nil ? storage.bool(forKey: "autoRemoveOnDrag") : true
 
         let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
         if let data = try? Data(contentsOf: indexURL),
@@ -59,6 +61,9 @@ public final class ShelfPluginState: Sendable {
         if storage.string(forKey: "autoPrune") != nil {
             self.autoPrune = storage.bool(forKey: "autoPrune")
         }
+        if storage.string(forKey: "autoRemoveOnDrag") != nil {
+            self.autoRemoveOnDrag = storage.bool(forKey: "autoRemoveOnDrag")
+        }
     }
 
     public func save() {
@@ -66,6 +71,7 @@ public final class ShelfPluginState: Sendable {
         storage.setCodable(retentionPeriod, forKey: "retentionPeriod")
         storage.setCodable(diskQuota, forKey: "diskQuota")
         storage.set(autoPrune, forKey: "autoPrune")
+        storage.set(autoRemoveOnDrag, forKey: "autoRemoveOnDrag")
 
         let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
         let encoder = JSONEncoder()
@@ -77,42 +83,85 @@ public final class ShelfPluginState: Sendable {
     }
 
     public func addFile(url: URL) {
+        let standardized = url.standardizedFileURL
+        let targetPath = standardized.path
+
+        if let existingIndex = files.firstIndex(where: {
+            $0.filePath == targetPath || $0.resolvedURL?.standardizedFileURL.path == targetPath
+        }) {
+            var existingItem = files.remove(at: existingIndex)
+            existingItem.timestamp = Date()
+            files.insert(existingItem, at: 0)
+            save()
+            if let boundStore {
+                if let boundIndex = boundStore._shelfFiles.firstIndex(where: {
+                    $0.filePath == targetPath || $0.resolvedURL?.standardizedFileURL.path == targetPath
+                }) {
+                    var boundItem = boundStore._shelfFiles.remove(at: boundIndex)
+                    boundItem.timestamp = Date()
+                    boundStore._shelfFiles.insert(boundItem, at: 0)
+                } else {
+                    boundStore._shelfFiles.insert(existingItem, at: 0)
+                }
+            }
+            return
+        }
+
         let itemId = UUID().uuidString
-        let name = url.lastPathComponent
-        let ext = url.pathExtension
-        let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let name = standardized.lastPathComponent
+        let ext = standardized.pathExtension
+        let attr = try? FileManager.default.attributesOfItem(atPath: targetPath)
         let size = (attr?[.size] as? Int64) ?? 0
         let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
 
-        var finalPath: String? = url.path
-        if FileManager.default.fileExists(atPath: url.path) {
-            if size <= 100_000_000 {
-                let destURL = fileStorage.assetsDirectory.appendingPathComponent("\(itemId)_\(name)")
-                try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
-                if (try? FileManager.default.copyItem(at: url, to: destURL)) != nil {
-                    finalPath = destURL.path
-                }
-            }
-        }
+        let bookmark = try? standardized.bookmarkData(
+            options: [.minimalBookmark],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
 
         let item = ShelfFileItem(
             id: itemId,
             name: name,
             sizeDescription: sizeDesc,
             fileExtension: ext,
-            filePath: finalPath,
+            filePath: targetPath,
+            bookmarkData: bookmark,
             timestamp: Date(),
             isFavorite: false
         )
-        files.append(item)
+        files.insert(item, at: 0)
         save()
-        boundStore?._shelfFiles.append(item)
+        boundStore?._shelfFiles.insert(item, at: 0)
     }
 
     public func addFileItem(_ item: ShelfFileItem) {
-        files.append(item)
+        files.insert(item, at: 0)
         save()
-        boundStore?._shelfFiles.append(item)
+        boundStore?._shelfFiles.insert(item, at: 0)
+    }
+
+    /// Removes the item from the shelf after it is dragged out if `autoRemoveOnDrag` is enabled
+    /// and the item is not starred (`isFavorite == false`). Never deletes the user's original file on disk!
+    public func handleDragOutCompleted(id: String) {
+        guard autoRemoveOnDrag else { return }
+        guard let item = files.first(where: { $0.id == id }), !item.isFavorite else { return }
+        removeFile(id: id)
+    }
+
+    /// Removes any item from the shelf whose referenced file no longer exists on disk.
+    public func cleanupInvalidItems() {
+        let invalidIds = files.filter { item in
+            guard item.filePath != nil else { return false }
+            let path = item.resolvedURL?.path ?? ""
+            return !FileManager.default.fileExists(atPath: path)
+        }.map { $0.id }
+
+        if !invalidIds.isEmpty {
+            files.removeAll { invalidIds.contains($0.id) }
+            save()
+            boundStore?._shelfFiles.removeAll { invalidIds.contains($0.id) }
+        }
     }
 
     public func toggleFavorite(id: String) {

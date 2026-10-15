@@ -7,6 +7,7 @@ public struct ShelfFileItem: Identifiable, Codable, Sendable, Equatable, PurahSt
     public var sizeDescription: String
     public var fileExtension: String
     public var filePath: String?
+    public var bookmarkData: Data?
     public var timestamp: Date
     public var isFavorite: Bool
 
@@ -15,12 +16,31 @@ public struct ShelfFileItem: Identifiable, Codable, Sendable, Equatable, PurahSt
         set { isFavorite = newValue }
     }
 
+    public var resolvedURL: URL? {
+        if let data = bookmarkData {
+            var isStale = false
+            if let url = try? URL(
+                resolvingBookmarkData: data,
+                options: [.withoutUI, .withoutMounting],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) {
+                return url
+            }
+        }
+        if let path = filePath {
+            return URL(fileURLWithPath: path)
+        }
+        return nil
+    }
+
     public init(
         id: String = UUID().uuidString,
         name: String,
         sizeDescription: String,
         fileExtension: String,
         filePath: String? = nil,
+        bookmarkData: Data? = nil,
         timestamp: Date = Date(),
         isFavorite: Bool = false
     ) {
@@ -29,6 +49,7 @@ public struct ShelfFileItem: Identifiable, Codable, Sendable, Equatable, PurahSt
         self.sizeDescription = sizeDescription
         self.fileExtension = fileExtension
         self.filePath = filePath
+        self.bookmarkData = bookmarkData
         self.timestamp = timestamp
         self.isFavorite = isFavorite
     }

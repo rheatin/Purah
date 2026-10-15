@@ -115,13 +115,13 @@ public struct DropShelfDrawerView: View {
                                 store: store,
                                 state: state,
                                 onOpen: {
-                                    if let path = file.filePath {
-                                        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                                    if let url = file.resolvedURL ?? file.filePath.map({ URL(fileURLWithPath: $0) }) {
+                                        NSWorkspace.shared.open(url)
                                     }
                                 },
                                 onReveal: {
-                                    if let path = file.filePath {
-                                        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                                    if let url = file.resolvedURL ?? file.filePath.map({ URL(fileURLWithPath: $0) }) {
+                                        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
                                     }
                                 },
                                 onRemove: {
@@ -176,7 +176,7 @@ public struct DropShelfDrawerView: View {
                     return true
                 }
                 .onTapGesture {
-                    let urls = state.files.compactMap { $0.filePath.map { URL(fileURLWithPath: $0) } }
+                    let urls = state.files.compactMap { $0.resolvedURL ?? $0.filePath.map { URL(fileURLWithPath: $0) } }
                     DropShelfDrawerView.shareViaAirDrop(urls: urls)
                 }
 
@@ -331,9 +331,9 @@ public struct ShelfFileRowView: View {
             .buttonStyle(.plain)
             .help(file.isFavorite ? "Unstar file" : "Star file (protected from auto-pruning)")
 
-            if let path = file.filePath {
+            if let targetURL = file.resolvedURL ?? file.filePath.map({ URL(fileURLWithPath: $0) }) {
                 Button {
-                    DropShelfDrawerView.shareViaAirDrop(urls: [URL(fileURLWithPath: path)])
+                    DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
                 } label: {
                     Image(systemName: "airdrop")
                         .font(.system(size: 11))
@@ -373,11 +373,12 @@ public struct ShelfFileRowView: View {
         .onDrag {
             isDragging = true
             store.triggerControlHaptic(.alignment)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 isDragging = false
+                state?.handleDragOutCompleted(id: file.id)
             }
-            guard let path = file.filePath else { return NSItemProvider() }
-            return NSItemProvider(object: URL(fileURLWithPath: path) as NSURL)
+            guard let targetURL = file.resolvedURL else { return NSItemProvider() }
+            return NSItemProvider(object: targetURL as NSURL)
         } preview: {
             HStack(spacing: 6) {
                 Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
