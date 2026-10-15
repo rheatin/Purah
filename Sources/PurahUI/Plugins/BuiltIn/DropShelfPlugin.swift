@@ -56,16 +56,45 @@ public struct DropShelfPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 360.0 }
 
-    public var supportedDropTypes: [UTType] { [.fileURL] }
+    public var supportedDropTypes: [UTType] { [.fileURL, .url] }
 
     public func onDrop(providers: [NSItemProvider], context: PurahPluginContext) -> Bool {
+        let pasteboard = NSPasteboard(name: .drag)
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            for url in urls {
+                state.addFile(url: url)
+                context.performHaptic(.alignment)
+                context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+            }
+            return true
+        }
         for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url = url {
-                    Task { @MainActor in
-                        state.addFile(url: url)
-                        context.performHaptic(.alignment)
-                        context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    let url: URL?
+                    if let directURL = item as? URL {
+                        url = directURL
+                    } else if let data = item as? Data, let pathString = String(data: data, encoding: .utf8) {
+                        url = URL(fileURLWithPath: pathString)
+                    } else {
+                        url = nil
+                    }
+                    if let fileURL = url {
+                        Task { @MainActor in
+                            state.addFile(url: fileURL)
+                            context.performHaptic(.alignment)
+                            context.showToast("Stashed \(fileURL.lastPathComponent)", "tray.and.arrow.down.fill")
+                        }
+                    }
+                }
+            } else {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    if let url = url {
+                        Task { @MainActor in
+                            state.addFile(url: url)
+                            context.performHaptic(.alignment)
+                            context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+                        }
                     }
                 }
             }

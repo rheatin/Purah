@@ -161,6 +161,9 @@ public final class EdgeMouseMonitor {
                 guard monitor === sharedMonitor else {
                     return Unmanaged.passUnretained(event)
                 }
+                guard type == .mouseMoved || type == .leftMouseDragged else {
+                    return Unmanaged.passUnretained(event)
+                }
                 let dx = event.getDoubleValueField(.mouseEventDeltaX)
                 guard abs(dx) > 0.05 else { return Unmanaged.passUnretained(event) }
                 let pt = event.location

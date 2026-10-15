@@ -35,9 +35,20 @@ public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
 public final class LocalizationManager {
     public static let shared = LocalizationManager()
 
-    public var currentLanguage: AppLanguage = .system
+    public var currentLanguage: AppLanguage = .system {
+        didSet {
+            UserDefaults.standard.set(currentLanguage.rawValue, forKey: "purah.appLanguage")
+        }
+    }
 
-    public init() {}
+    public init() {
+        if let saved = UserDefaults.standard.string(forKey: "purah.appLanguage"),
+           let lang = AppLanguage(rawValue: saved) {
+            self.currentLanguage = lang
+        } else {
+            self.currentLanguage = .system
+        }
+    }
 
     public var resolvedLanguage: AppLanguage {
         if currentLanguage != .system {
@@ -91,9 +102,21 @@ public final class LocalizationManager {
 
             // Tabs
             "tab.layout": "Layout",
+            "tab.interaction": "Motion & General",
             "tab.plugins": "Plugins",
             "tab.permissions": "Permissions",
             "tab.diagnostics": "Diagnostics",
+
+            // Interaction & General
+            "interaction.title": "Motion, Sensory & General Settings",
+            "interaction.subtitle": "Configure language, edge trigger physics, dynamic alerts, sound chimes, and trackpad haptics",
+            "interaction.language.card": "Language & Regional",
+            "interaction.language.title": "Interface Language",
+            "interaction.language.subtitle": "Switch application UI language immediately",
+            "interaction.trigger.card": "Edge Trigger & Motion Physics",
+            "interaction.alerts.card": "Dynamic Attention Alerts",
+            "interaction.sensory.card": "Sensory Feedback (Sound & Trackpad Haptics)",
+            "interaction.hotkeys.card": "Global Hotkeys & Freeze Mode",
 
             // Marketplace Tabs
             "marketplace.tab.market": "Market",
@@ -240,9 +263,21 @@ public final class LocalizationManager {
 
             // Tabs
             "tab.layout": "布局",
+            "tab.interaction": "动效与通用",
             "tab.plugins": "插件",
             "tab.permissions": "权限",
             "tab.diagnostics": "诊断",
+
+            // 交互动效与通用设置
+            "interaction.title": "交互动效、感官反馈与通用设置",
+            "interaction.subtitle": "配置界面语言、边缘触发物理阻尼、动态视觉提醒、声音通知与触控板震感",
+            "interaction.language.card": "语言与区域 (Language)",
+            "interaction.language.title": "界面显示语言",
+            "interaction.language.subtitle": "即时切换应用界面与菜单显示语言",
+            "interaction.trigger.card": "边缘触发与物理动效",
+            "interaction.alerts.card": "动态视觉提醒动效",
+            "interaction.sensory.card": "感官反馈（声音通知与触控板震感）",
+            "interaction.hotkeys.card": "全局快捷键与冻结模式",
 
             // Marketplace Tabs
             "marketplace.tab.market": "市场",
@@ -379,6 +414,16 @@ public final class LocalizationManager {
             "sound.funk": "Funk (清脆节拍)"
         ],
         .traditionalChinese: [
+            "tab.interaction": "動效與通用",
+            "interaction.title": "互動動效、感官反饋與通用設定",
+            "interaction.subtitle": "配置介面語言、邊緣觸發物理阻尼、動態視覺提醒、聲音通知與觸控板震感",
+            "interaction.language.card": "語言與區域 (Language)",
+            "interaction.language.title": "介面顯示語言",
+            "interaction.language.subtitle": "即時切換應用介面與選單顯示語言",
+            "interaction.trigger.card": "邊緣觸發與物理動效",
+            "interaction.alerts.card": "動態視覺提醒動效",
+            "interaction.sensory.card": "感官反饋（聲音通知與觸控板震感）",
+            "interaction.hotkeys.card": "全域快捷鍵與凍結模式",
             "shelf.settings.autoRemoveOnDrag": "拖出後自動從檔案架移除",
             "shelf.settings.autoRemoveSubtitle": "檔案拖出使用後自動清空，點亮 ★ 星標的檔案將常駐保留",
             "notes.tips.table": "表格",
@@ -399,6 +444,16 @@ public final class LocalizationManager {
             "sound.funk": "Funk (清脆節拍)"
         ],
         .japanese: [
+            "tab.interaction": "モーションと一般",
+            "interaction.title": "モーション、感覚フィードバックおよび一般設定",
+            "interaction.subtitle": "言語、エッジトリガー物理挙動、動的アラート、通知音、トラックパッド触覚を設定",
+            "interaction.language.card": "言語と地域 (Language)",
+            "interaction.language.title": "インターフェース表示言語",
+            "interaction.language.subtitle": "アプリUIおよびメニュー表示言語を即座に切り替え",
+            "interaction.trigger.card": "エッジトリガーと物理モーション",
+            "interaction.alerts.card": "動的アテンションアラート",
+            "interaction.sensory.card": "感覚フィードバック（サウンド＆触覚）",
+            "interaction.hotkeys.card": "グローバルショートカットとフリーズモード",
             "shelf.settings.autoRemoveOnDrag": "ドラッグアウト後に自動削除",
             "shelf.settings.autoRemoveSubtitle": "ドラッグアウトしたアイテムを自動消去（★スター付きは保持）",
             "notes.tips.table": "テーブル",
@@ -419,6 +474,16 @@ public final class LocalizationManager {
             "sound.funk": "Funk (ポップ)"
         ],
         .korean: [
+            "tab.interaction": "모션 및 일반",
+            "interaction.title": "모션, 감각 피드백 및 일반 설정",
+            "interaction.subtitle": "인터페이스 언어, 에지 트리거 물리 감쇠, 동적 알림, 알림음 및 트랙패드 햅틱 설정",
+            "interaction.language.card": "언어 및 지역 (Language)",
+            "interaction.language.title": "인터페이스 언어",
+            "interaction.language.subtitle": "애플리케이션 UI 및 메뉴 표시 언어를 즉시 전환",
+            "interaction.trigger.card": "가장자리 트리거 및 물리 모션",
+            "interaction.alerts.card": "동적 시각적 주의 알림",
+            "interaction.sensory.card": "감각 피드백 (사운드 알림 및 트랙패드 햅틱)",
+            "interaction.hotkeys.card": "전역 단축키 및 고정 모드",
             "shelf.settings.autoRemoveOnDrag": "드래그 아웃 후 자동 제거",
             "shelf.settings.autoRemoveSubtitle": "드래그 아웃된 임시 항목 자동 정리 (★ 즐겨찾기 항목은 유지)",
             "notes.tips.table": "표",
@@ -439,6 +504,16 @@ public final class LocalizationManager {
             "sound.funk": "Funk (경쾌한 비트)"
         ],
         .french: [
+            "tab.interaction": "Mouvement et Général",
+            "interaction.title": "Mouvement, Sensations et Paramètres Généraux",
+            "interaction.subtitle": "Configurer la langue, la physique des bords, les alertes dynamiques, les sons et les retours haptiques",
+            "interaction.language.card": "Langue et région (Language)",
+            "interaction.language.title": "Langue de l'interface",
+            "interaction.language.subtitle": "Changer immédiatement la langue d'affichage de l'interface",
+            "interaction.trigger.card": "Déclenchement des bords et physique du mouvement",
+            "interaction.alerts.card": "Alertes d'attention dynamiques",
+            "interaction.sensory.card": "Retour sensoriel (Sons et haptique du trackpad)",
+            "interaction.hotkeys.card": "Raccourcis globaux et mode gel",
             "shelf.settings.autoRemoveOnDrag": "Supprimer automatiquement après glisser-déposer",
             "shelf.settings.autoRemoveSubtitle": "Efface automatiquement les éléments glissés (les éléments marqués ★ restent épinglés)",
             "notes.tips.table": "Tableau",
@@ -459,6 +534,16 @@ public final class LocalizationManager {
             "sound.funk": "Funk (Pop)"
         ],
         .german: [
+            "tab.interaction": "Bewegung & Allgemein",
+            "interaction.title": "Bewegung, Sensorik & Allgemeine Einstellungen",
+            "interaction.subtitle": "Sprache, Auslöser-Physik, dynamische Benachrichtigungen, Töne und Haptik konfigurieren",
+            "interaction.language.card": "Sprache & Region (Language)",
+            "interaction.language.title": "Oberflächensprache",
+            "interaction.language.subtitle": "Sprache der Benutzeroberfläche sofort umstellen",
+            "interaction.trigger.card": "Rand-Auslöser & Bewegungsphysik",
+            "interaction.alerts.card": "Dynamische Aufmerksamkeitshinweise",
+            "interaction.sensory.card": "Sensorisches Feedback (Töne & Trackpad-Haptik)",
+            "interaction.hotkeys.card": "Globale Tastenkombinationen & Einfriermodus",
             "shelf.settings.autoRemoveOnDrag": "Objekt nach dem Herausziehen automatisch entfernen",
             "shelf.settings.autoRemoveSubtitle": "Löscht temporäre Dateien nach dem Herausziehen (★ markierte Dateien bleiben erhalten)",
             "notes.tips.table": "Tabelle",
@@ -479,6 +564,16 @@ public final class LocalizationManager {
             "sound.funk": "Funk (Pop)"
         ],
         .spanish: [
+            "tab.interaction": "Movimiento y General",
+            "interaction.title": "Movimiento, Sensaciones y Ajustes Generales",
+            "interaction.subtitle": "Configura idioma, física de activación de bordes, alertas dinámicas, sonidos y háptica",
+            "interaction.language.card": "Idioma y región (Language)",
+            "interaction.language.title": "Idioma de la interfaz",
+            "interaction.language.subtitle": "Cambia el idioma de la interfaz y menús inmediatamente",
+            "interaction.trigger.card": "Activación de bordes y física de movimiento",
+            "interaction.alerts.card": "Alertas dinámicas de atención",
+            "interaction.sensory.card": "Retroalimentación sensorial (Sonido y háptica del trackpad)",
+            "interaction.hotkeys.card": "Atajos globales y modo de congelación",
             "shelf.settings.autoRemoveOnDrag": "Eliminar automáticamente tras arrastrar fuera",
             "shelf.settings.autoRemoveSubtitle": "Borra automáticamente los archivos temporales arrastrados (los elementos marcados con ★ se mantienen)",
             "notes.tips.table": "Tabla",

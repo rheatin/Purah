@@ -315,6 +315,86 @@ struct DrawerInteractionUITests {
         #expect(provider.canLoadObject(ofClass: URL.self))
     }
 
+    @Test("PreferencesTab includes interaction tab with valid icon and localized title")
+    @MainActor
+    func testPreferencesTabInteraction() {
+        #expect(PreferencesTab.allCases.contains(.interaction))
+        #expect(PreferencesTab.interaction.id == "interaction")
+        #expect(PreferencesTab.interaction.title == "Motion & General")
+        #expect(PreferencesTab.interaction.icon == "wand.and.stars")
+
+        let previous = LocalizationManager.shared.currentLanguage
+        defer { LocalizationManager.shared.currentLanguage = previous }
+
+        LocalizationManager.shared.currentLanguage = .english
+        #expect(PreferencesTab.interaction.localizedTitle == "Motion & General")
+        LocalizationManager.shared.currentLanguage = .french
+        #expect(PreferencesTab.interaction.localizedTitle == "Mouvement et Général")
+    }
+
+    @Test("DropShelf full-row drag URL resolution and drop delegates proposal")
+    @MainActor
+    func testDropShelfFullRowDragAndDropDelegates() {
+        let sampleFile = ShelfFileItem(
+            name: "SamplePlaceholder.pdf",
+            sizeDescription: "1.2 MB",
+            fileExtension: "pdf"
+        )
+        // Ensure placeholder without filePath generates valid disk file for dragging out
+        let url = DropShelfDrawerView.ensureDragURL(for: sampleFile)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        #expect(url.lastPathComponent == "SamplePlaceholder.pdf")
+
+        let provider = NSItemProvider(object: url as NSURL)
+        #expect(provider.canLoadObject(ofClass: URL.self))
+
+        let state = ShelfPluginState()
+        let store = PurahWorkspaceStore()
+        var isStashTargeted = false
+        var isAirDropTargeted = false
+
+        let stashDelegate = ShelfStashDropDelegate(
+            isTargeted: Binding(get: { isStashTargeted }, set: { isStashTargeted = $0 }),
+            state: state,
+            store: store
+        )
+        let airdropDelegate = ShelfAirDropDelegate(
+            isTargeted: Binding(get: { isAirDropTargeted }, set: { isAirDropTargeted = $0 }),
+            state: state,
+            store: store
+        )
+
+        // Drop proposal must be .copy so macOS displays green + badge
+        #expect(stashDelegate.preferredDropProposal.operation == .copy)
+        #expect(airdropDelegate.preferredDropProposal.operation == .copy)
+
+        // Drop targeting toggle
+        #expect(!isStashTargeted)
+        #expect(!isAirDropTargeted)
+
+        // Adding file to state
+        let initialCount = state.files.count
+        state.addFile(url: url)
+        #expect(state.files.count == initialCount + 1)
+        #expect(state.files.first?.name == "SamplePlaceholder.pdf")
+
+        // Instantiate ShelfFileRowView with double click action
+        var didOpen = false
+        let rowView = ShelfFileRowView(
+            file: sampleFile,
+            shelfColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            state: state,
+            onOpen: { didOpen = true },
+            onReveal: {},
+            onRemove: {}
+        )
+        #expect(rowView.file.name == "SamplePlaceholder.pdf")
+        rowView.onOpen()
+        #expect(didOpen)
+    }
+
     @Test("Music track calculates real-time progress accurately based on time elapsed")
     @MainActor
     func testMusicRealTimeProgressCalculation() {

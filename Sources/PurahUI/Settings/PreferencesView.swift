@@ -4,6 +4,7 @@ import PurahCore
 
 public enum PreferencesTab: String, CaseIterable, Identifiable {
     case layout
+    case interaction
     case plugins
     case permissions
     case diagnostics
@@ -13,6 +14,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
     public var title: String {
         switch self {
         case .layout: return "Layout"
+        case .interaction: return "Motion & General"
         case .plugins: return "Plugins"
         case .permissions: return "Permissions"
         case .diagnostics: return "Diagnostics"
@@ -23,6 +25,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
     public var localizedTitle: String {
         switch self {
         case .layout: return "tab.layout".localized
+        case .interaction: return "tab.interaction".localized
         case .plugins: return "tab.plugins".localized
         case .permissions: return "tab.permissions".localized
         case .diagnostics: return "tab.diagnostics".localized
@@ -32,6 +35,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
     public var icon: String {
         switch self {
         case .layout: return "slider.horizontal.2.square"
+        case .interaction: return "wand.and.stars"
         case .plugins: return "puzzlepiece.extension.fill"
         case .permissions: return "lock.shield"
         case .diagnostics: return "stethoscope"
@@ -59,6 +63,9 @@ public struct PreferencesView: View {
     }
 
     public var body: some View {
+        // Observe currentLanguage so changing interface language immediately re-renders the settings window
+        let _ = LocalizationManager.shared.currentLanguage
+
         VStack(spacing: 0) {
             // Segmented Top Tab Bar
             HStack(spacing: 8) {
@@ -111,6 +118,8 @@ public struct PreferencesView: View {
                 switch selectedTab {
                 case .layout:
                     VisualLayoutSimulatorView(store: store)
+                case .interaction:
+                    InteractionSettingsView(store: store)
                 case .plugins:
                     PluginMarketplaceView(store: store, initialPluginId: initialPluginId)
                 case .permissions:
@@ -119,6 +128,7 @@ public struct PreferencesView: View {
                     DiagnosticReportView(store: store)
                 }
             }
+            .id(LocalizationManager.shared.currentLanguage)
         }
         .background(palette.background)
     }
