@@ -175,14 +175,11 @@ public struct PurahPluginContext: Sendable {
         if let performHaptic {
             self.performHaptic = performHaptic
         } else {
-            self.performHaptic = { type in
-                switch type {
-                case .alignment:
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-                case .levelChange:
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
-                case .generic:
-                    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
+            self.performHaptic = { [weak storeRef] type in
+                if let storeRef {
+                    storeRef.triggerControlHaptic(type)
+                } else {
+                    SensoryFeedbackService.shared.performActionHaptic(type, enabled: true)
                 }
             }
         }

@@ -28,6 +28,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         setupMainMenu()
 
         PluginRegistry.shared.bindStore(store)
+        TransientHUDController.shared.store = store
 
         let coord = ScreenEdgeCoordinator(store: store)
         self.coordinator = coord

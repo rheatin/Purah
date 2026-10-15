@@ -592,6 +592,8 @@ public final class EdgeMouseMonitor {
         coordinator?.expandCanvas(for: edge)
         coordinator?.setInteractive(true, for: edge)
 
+        let wasDocked = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
+
         if let provider = store.capabilityProvider(for: candidate.id), provider.isDecomposed(store: store) {
             let rawCount = provider.subItemCount(store: store)
             let minChipH: CGFloat = 20.0
@@ -621,10 +623,12 @@ public final class EdgeMouseMonitor {
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 store.activateDrawer(podId: candidate.id, itemId: subItemId)
+                store.triggerEdgePopHaptic(isInitialOpen: wasDocked)
             }
         } else {
             if store.activeDrawerPodId != candidate.id {
                 store.activateDrawer(podId: candidate.id)
+                store.triggerEdgePopHaptic(isInitialOpen: wasDocked)
             }
         }
     }

@@ -1,5 +1,6 @@
 // Sources/PurahUI/Common/PurahPinButton.swift
 import SwiftUI
+import PurahCore
 
 public struct PurahPinButton: View {
     public let isPinned: Bool
@@ -18,6 +19,11 @@ public struct PurahPinButton: View {
 
     public var body: some View {
         Button {
+            SensoryFeedbackService.shared.performActionHaptic(
+                .alignment,
+                enabled: (UserDefaults.standard.object(forKey: "purah.isTrackpadHapticsEnabled") as? Bool ?? true) &&
+                         (UserDefaults.standard.object(forKey: "purah.isControlHapticEnabled") as? Bool ?? true)
+            )
             withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
                 action()
             }

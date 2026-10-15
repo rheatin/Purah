@@ -171,6 +171,48 @@ public final class PurahWorkspaceStore {
     public var acknowledgedAlertIds: Set<String> = []
     public var notifiedToastEventIds: Set<String> = []
 
+    // Sensory Feedback Settings
+    public var isToastSoundEnabled: Bool = true
+    public var toastNotificationSound: ToastNotificationSound = .glass
+    public var isTrackpadHapticsEnabled: Bool = true
+    public var isDrawerPopHapticEnabled: Bool = true
+    public var isControlHapticEnabled: Bool = true
+
+    @discardableResult
+    public func triggerEdgePopHaptic(isInitialOpen: Bool = true, now: Date = Date()) -> Bool {
+        SensoryFeedbackService.shared.performEdgePopHaptic(
+            triggerMode: edgeTriggerMode,
+            enabled: isTrackpadHapticsEnabled && isDrawerPopHapticEnabled,
+            isInitialOpen: isInitialOpen,
+            now: now
+        )
+    }
+
+    @discardableResult
+    public func triggerControlHaptic(_ type: PurahHapticType = .alignment) -> Bool {
+        SensoryFeedbackService.shared.performActionHaptic(
+            type,
+            enabled: isTrackpadHapticsEnabled && isControlHapticEnabled
+        )
+    }
+
+    @discardableResult
+    public func triggerToastSound() -> Bool {
+        SensoryFeedbackService.shared.playToastSound(
+            toastNotificationSound,
+            enabled: isToastSoundEnabled
+        )
+    }
+
+    @discardableResult
+    public func previewToastSound() -> Bool {
+        _ = triggerControlHaptic(.alignment)
+        return SensoryFeedbackService.shared.playToastSound(
+            toastNotificationSound,
+            enabled: true
+        )
+    }
+
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
     }
@@ -730,6 +772,23 @@ public final class PurahWorkspaceStore {
         } else {
             self.customPushResistanceBarrier = 40.0
         }
+
+        if defaults.object(forKey: "purah.isToastSoundEnabled") != nil {
+            self.isToastSoundEnabled = defaults.bool(forKey: "purah.isToastSoundEnabled")
+        }
+        if let soundStr = defaults.string(forKey: "purah.toastNotificationSound"),
+           let sound = ToastNotificationSound(rawValue: soundStr) {
+            self.toastNotificationSound = sound
+        }
+        if defaults.object(forKey: "purah.isTrackpadHapticsEnabled") != nil {
+            self.isTrackpadHapticsEnabled = defaults.bool(forKey: "purah.isTrackpadHapticsEnabled")
+        }
+        if defaults.object(forKey: "purah.isDrawerPopHapticEnabled") != nil {
+            self.isDrawerPopHapticEnabled = defaults.bool(forKey: "purah.isDrawerPopHapticEnabled")
+        }
+        if defaults.object(forKey: "purah.isControlHapticEnabled") != nil {
+            self.isControlHapticEnabled = defaults.bool(forKey: "purah.isControlHapticEnabled")
+        }
     }
 
     public func savePersistentState() {
@@ -752,6 +811,11 @@ public final class PurahWorkspaceStore {
         defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
         defaults.set(dismissAlertOnHover, forKey: "purah.dismissAlertOnHover")
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
+        defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
+        defaults.set(toastNotificationSound.rawValue, forKey: "purah.toastNotificationSound")
+        defaults.set(isTrackpadHapticsEnabled, forKey: "purah.isTrackpadHapticsEnabled")
+        defaults.set(isDrawerPopHapticEnabled, forKey: "purah.isDrawerPopHapticEnabled")
+        defaults.set(isControlHapticEnabled, forKey: "purah.isControlHapticEnabled")
         defaults.set(edgeTriggerSensitivity.rawValue, forKey: "purah.edgeTriggerSensitivity")
         defaults.set(customInitialDwellMs, forKey: "purah.customInitialDwellMs")
         defaults.set(customExitGraceMs, forKey: "purah.customExitGraceMs")

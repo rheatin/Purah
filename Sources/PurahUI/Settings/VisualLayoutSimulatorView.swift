@@ -407,6 +407,134 @@ public struct VisualLayoutSimulatorView: View {
                                 .font(.caption)
                             }
                         }
+
+                        Divider()
+                            .background(palette.borderColor.opacity(0.3))
+
+                        // Sensory Feedback (Toast Sound & Trackpad Haptics)
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Toast Sound Notification
+                            VStack(alignment: .leading, spacing: 8) {
+                                Toggle(isOn: Binding(
+                                    get: { store.isToastSoundEnabled },
+                                    set: {
+                                        store.isToastSoundEnabled = $0
+                                        store.savePersistentState()
+                                        if $0 {
+                                            _ = store.previewToastSound()
+                                        }
+                                    }
+                                )) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("sensory.toastSound.title".localized)
+                                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                        Text("sensory.toastSound.subtitle".localized)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+
+                                if store.isToastSoundEnabled {
+                                    HStack(spacing: 10) {
+                                        Text("sensory.soundPicker.title".localized)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+
+                                        PurahThemedMenuPicker(
+                                            options: ToastNotificationSound.allCases,
+                                            selection: Binding(
+                                                get: { store.toastNotificationSound },
+                                                set: {
+                                                    store.toastNotificationSound = $0
+                                                    store.savePersistentState()
+                                                    _ = store.previewToastSound()
+                                                }
+                                            ),
+                                            titleForOption: { $0.localizedName }
+                                        )
+                                        .frame(width: 180)
+
+                                        Button {
+                                            _ = store.previewToastSound()
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "speaker.wave.2.fill")
+                                                    .font(.system(size: 10.5))
+                                                Text("sensory.soundPreview".localized)
+                                                    .font(.system(size: 11, weight: .medium))
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(Color(nsColor: .controlBackgroundColor))
+                                            .cornerRadius(6)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+                                            )
+                                        }
+                                        .buttonStyle(.tactile)
+                                        .help("Preview selected sound")
+                                    }
+                                    .padding(.leading, 18)
+                                }
+                            }
+
+                            Divider()
+                                .background(palette.borderColor.opacity(0.2))
+
+                            // Trackpad Haptics
+                            VStack(alignment: .leading, spacing: 8) {
+                                Toggle(isOn: Binding(
+                                    get: { store.isTrackpadHapticsEnabled },
+                                    set: {
+                                        store.isTrackpadHapticsEnabled = $0
+                                        store.savePersistentState()
+                                        if $0 {
+                                            _ = store.triggerControlHaptic(.levelChange)
+                                        }
+                                    }
+                                )) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("sensory.haptics.title".localized)
+                                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                        Text("sensory.haptics.subtitle".localized)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+
+                                if store.isTrackpadHapticsEnabled {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Toggle("sensory.haptics.drawerPop".localized, isOn: Binding(
+                                            get: { store.isDrawerPopHapticEnabled },
+                                            set: {
+                                                store.isDrawerPopHapticEnabled = $0
+                                                store.savePersistentState()
+                                                if $0 {
+                                                    _ = store.triggerControlHaptic(.alignment)
+                                                }
+                                            }
+                                        ))
+                                        .font(.caption)
+
+                                        Toggle("sensory.haptics.controls".localized, isOn: Binding(
+                                            get: { store.isControlHapticEnabled },
+                                            set: {
+                                                store.isControlHapticEnabled = $0
+                                                store.savePersistentState()
+                                                if $0 {
+                                                    _ = store.triggerControlHaptic(.alignment)
+                                                }
+                                            }
+                                        ))
+                                        .font(.caption)
+                                    }
+                                    .padding(.leading, 18)
+                                }
+                            }
+                        }
                     }
                 }
 

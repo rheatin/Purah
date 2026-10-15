@@ -35,6 +35,7 @@ public struct TransientHUDCapsuleView: View {
 public final class TransientHUDController {
     public static let shared = TransientHUDController()
 
+    public weak var store: PurahWorkspaceStore?
     public private(set) var panel: NSPanel?
     public private(set) var isFrozen: Bool = false
     public private(set) var currentText: String = ""
@@ -43,6 +44,7 @@ public final class TransientHUDController {
     private init() {}
 
     public func showWarning(message: String, durationSeconds: Double = 2.8) {
+        store?.triggerToastSound()
         self.currentText = message
 
         fadeTask?.cancel()
@@ -89,6 +91,7 @@ public final class TransientHUDController {
     }
 
     public func show(isFrozen: Bool, shortcut: String) {
+        store?.triggerControlHaptic(.levelChange)
         self.isFrozen = isFrozen
         let message = isFrozen ? "❄️ Rails Frozen (\(shortcut) to restore)" : "✨ Rails Active"
         self.currentText = message
