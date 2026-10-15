@@ -422,10 +422,19 @@ struct QuickNotesTests {
         // 3. Markdown table rows (| Name | Value |\n| --- | --- |\n| CPU | 95% |)
         let tableMd = "| Name | Value |\n| --- | --- |\n| CPU | 95% |"
         let storage3 = NSTextStorage(string: tableMd)
+
+        // When inactive (selectedRange is nil): raw text is transparent with 11.5pt font reserving layout height
         QuickNotesMarkdownHelper.styleAttributedString(storage3, accentColor: accent, selectedRange: nil)
+        let headerTextLoc = (tableMd as NSString).range(of: "Name").location
+        let fontInactive = storage3.attribute(.font, at: headerTextLoc, effectiveRange: nil) as? NSFont
+        #expect(fontInactive?.pointSize == 11.5)
+        let colorInactive = storage3.attribute(.foregroundColor, at: headerTextLoc, effectiveRange: nil) as? NSColor
+        #expect(colorInactive == .clear)
+
+        // When active (selectedRange inside table): reveal raw Markdown in monospaced font
+        QuickNotesMarkdownHelper.styleAttributedString(storage3, accentColor: accent, selectedRange: NSRange(location: headerTextLoc, length: 0))
 
         // Header row above separator: bold monospaced accentColor
-        let headerTextLoc = (tableMd as NSString).range(of: "Name").location
         let fontHeader = storage3.attribute(.font, at: headerTextLoc, effectiveRange: nil) as? NSFont
         #expect(fontHeader?.pointSize == 11)
         #expect(fontHeader?.fontDescriptor.symbolicTraits.contains(.bold) == true)
@@ -448,5 +457,113 @@ struct QuickNotesTests {
         #expect(fontData?.pointSize == 11)
         let colorData = storage3.attribute(.foregroundColor, at: dataTextLoc, effectiveRange: nil) as? NSColor
         #expect(colorData == NSColor.labelColor)
+    }
+
+    @Test("QuickNotesMarkdownHelper parseBlocks identifies FencedCodeBlocks and enforces closing fence hiding rules")
+    @MainActor
+    func testFencedCodeBlockParsingAndClosingFenceHiding() {
+        let codeMd = """
+        ```lua
+        local a = 10
+        local b = 20
+        ```
+        """
+        let nsMd = codeMd as NSString
+        let accent = NSColor.systemTeal
+
+        // 1. Verify parseBlocks identification
+        let parsed = QuickNotesMarkdownHelper.parseBlocks(in: codeMd, selectedRange: nil)
+        #expect(parsed.codeBlocks.count == 1)
+        let block = parsed.codeBlocks[0]
+        #expect(block.language == "lua")
+        #expect(!block.isActive)
+        #expect(block.closingLineRange != nil)
+
+        // 2. Test closing fence hiding when cursor is at the end of the closing ``` line
+        let closeFenceLoc = nsMd.range(of: "```", options: .backwards).location
+        let cursorAtEndOfClose = NSRange(location: closeFenceLoc + 3, length: 0)
+
+        let storage = NSTextStorage(string: codeMd)
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: cursorAtEndOfClose)
+
+        // The closing ``` backticks must still be hidden (font 0.01, foregroundColor clear)
+        let fontClose = storage.attribute(.font, at: closeFenceLoc, effectiveRange: nil) as? NSFont
+        #expect(fontClose?.pointSize == 0.01)
+        let colorClose = storage.attribute(.foregroundColor, at: closeFenceLoc, effectiveRange: nil) as? NSColor
+        #expect(colorClose == .clear)
+
+        // 3. Opening fence: cursor is at the bottom, so opening fence backticks are hidden, and language tag has bold accentColor
+        let fontOpenBackticks = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(fontOpenBackticks?.pointSize == 0.01)
+
+        let langLoc = nsMd.range(of: "lua").location
+        let fontLang = storage.attribute(.font, at: langLoc, effectiveRange: nil) as? NSFont
+        #expect(fontLang?.pointSize == 9.5)
+        #expect(fontLang?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+
+        // 4. Inner code lines: headIndent = 10 and NO .backgroundColor
+        let codeLineLoc = nsMd.range(of: "local a = 10").location
+        let paraStyle = storage.attribute(.paragraphStyle, at: codeLineLoc, effectiveRange: nil) as? NSParagraphStyle
+        #expect(paraStyle?.headIndent == 10)
+        #expect(paraStyle?.firstLineHeadIndent == 10)
+        let bgColor = storage.attribute(.backgroundColor, at: codeLineLoc, effectiveRange: nil)
+        #expect(bgColor == nil)
+
+        // 5. When active multi-character selection intersects the closing fence, reveal it
+        let multiCharSelection = NSRange(location: closeFenceLoc, length: 3)
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: multiCharSelection)
+        let fontRevealedClose = storage.attribute(.font, at: closeFenceLoc, effectiveRange: nil) as? NSFont
+        #expect(fontRevealedClose?.pointSize == 10.5)
+        let colorRevealedClose = storage.attribute(.foregroundColor, at: closeFenceLoc, effectiveRange: nil) as? NSColor
+        #expect(colorRevealedClose == NSColor.secondaryLabelColor)
+    }
+
+    @Test("QuickNotesMarkdownHelper parseBlocks identifies TableBlocks, separator rows, column counts, and handles inactive transparency")
+    @MainActor
+    func testTableBlockParsingAndInactiveRendering() {
+        let tableMd = """
+        | Name | Role | Status |
+        | --- | --- | --- |
+        | Purah | Kernel | Active |
+        | Zelda | Core | Idle |
+        """
+        let nsMd = tableMd as NSString
+        let accent = NSColor.systemBlue
+
+        // 1. Verify parseBlocks identification
+        let parsed = QuickNotesMarkdownHelper.parseBlocks(in: tableMd, selectedRange: nil)
+        #expect(parsed.tables.count == 1)
+        let table = parsed.tables[0]
+        #expect(!table.isActive)
+        #expect(table.columnCount == 3)
+        #expect(table.rowRanges.count == 4)
+        #expect(table.separatorRowIndices == Set([1]))
+        #expect(table.rowsCells.count == 4)
+        #expect(table.rowsCells[0] == ["Name", "Role", "Status"])
+        #expect(table.rowsCells[2] == ["Purah", "Kernel", "Active"])
+
+        // 2. Inactive styling: whole table fullRange is transparent
+        let storage = NSTextStorage(string: tableMd)
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: nil)
+
+        let cellLoc = nsMd.range(of: "Purah").location
+        let fontCell = storage.attribute(.font, at: cellLoc, effectiveRange: nil) as? NSFont
+        #expect(fontCell?.pointSize == 11.5)
+        let colorCell = storage.attribute(.foregroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
+        #expect(colorCell == .clear)
+        let bgCell = storage.attribute(.backgroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
+        #expect(bgCell == .clear)
+
+        // 3. Active styling: when cursor is inside table, text becomes visible
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: cellLoc, length: 0))
+        let activeFontCell = storage.attribute(.font, at: cellLoc, effectiveRange: nil) as? NSFont
+        #expect(activeFontCell?.pointSize == 11)
+        let activeColorCell = storage.attribute(.foregroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
+        #expect(activeColorCell == NSColor.labelColor)
+
+        // Header row has bold accent
+        let headerLoc = nsMd.range(of: "Name").location
+        let activeHeaderColor = storage.attribute(.foregroundColor, at: headerLoc, effectiveRange: nil) as? NSColor
+        #expect(activeHeaderColor == accent)
     }
 }
