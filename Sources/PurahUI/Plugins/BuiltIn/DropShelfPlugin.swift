@@ -91,26 +91,48 @@ public struct ShelfPluginSettingsView: View {
     }
 
     public var body: some View {
-        let storage = PurahPluginFileStorage(pluginId: "shelf")
-        HStack {
-            Text("Stashed Files: \(state.files.count) item(s)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Spacer()
-            Button("Open in Finder") {
-                storage.openInFinder()
-            }
-            .buttonStyle(.bordered)
-            .font(.caption)
-
-            if !state.files.isEmpty {
-                Button("Clear Shelf", role: .destructive) {
-                    state.clear()
-                    store._shelfFiles.removeAll()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Stashed Files: \(state.files.count) item(s)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                let starredCount = state.files.filter { $0.isFavorite }.count
+                if starredCount > 0 {
+                    Text("\(starredCount) Starred")
+                        .font(.caption2)
+                        .foregroundColor(Color(hex: "#FF9F0A"))
                 }
-                .buttonStyle(.bordered)
-                .font(.caption)
             }
+
+            PurahStoragePolicySection(
+                retention: Binding(
+                    get: { state.retentionPeriod },
+                    set: {
+                        state.retentionPeriod = $0
+                        state.save()
+                    }
+                ),
+                quota: Binding(
+                    get: { state.diskQuota },
+                    set: {
+                        state.diskQuota = $0
+                        state.save()
+                    }
+                ),
+                autoPrune: Binding(
+                    get: { state.autoPrune },
+                    set: {
+                        state.autoPrune = $0
+                        state.save()
+                    }
+                ),
+                fileStorage: state.fileStorage,
+                onClearAll: {
+                    state.clear()
+                    store._shelfFiles = state.files
+                }
+            )
         }
     }
 }

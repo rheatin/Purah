@@ -139,43 +139,36 @@ public struct NotesPluginSettingsView: View {
             .background(Color.primary.opacity(0.04))
             .cornerRadius(8)
 
-            // 2. Physical Storage Card
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Physical Markdown Storage")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                Text("Notes are saved as physical Markdown (.md) files organized by folder in Application Support, natively readable by Obsidian, Typora, and VS Code.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-
-                HStack {
-                    Text("Disk Usage:")
-                        .font(.caption)
-                    Text(state.fileStorage.diskUsageFormatted)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(hex: "#FF9F0A"))
-                    Spacer()
-                    Button("Open in Finder") {
-                        state.fileStorage.openInFinder()
+            // 2. Storage Policy & Physical Markdown Card
+            PurahStoragePolicySection(
+                retention: Binding(
+                    get: { state.retentionPeriod },
+                    set: {
+                        state.retentionPeriod = $0
+                        state.saveToDisk()
                     }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
-
-                    Button("Clear Current Note", role: .destructive) {
-                        state.clear()
-                        store._quickNote.text = ""
-                        store._quickNote.lastModified = Date()
-                        store.savePersistentState()
+                ),
+                quota: Binding(
+                    get: { state.diskQuota },
+                    set: {
+                        state.diskQuota = $0
+                        state.saveToDisk()
                     }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
+                ),
+                autoPrune: Binding(
+                    get: { state.autoPrune },
+                    set: {
+                        state.autoPrune = $0
+                        state.saveToDisk()
+                    }
+                ),
+                fileStorage: state.fileStorage,
+                onClearAll: {
+                    state.clearNonFavoriteNotes()
+                    store._quickNote = state.noteContent
+                    store.savePersistentState()
                 }
-                .padding(.top, 4)
-            }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
+            )
         }
     }
 }

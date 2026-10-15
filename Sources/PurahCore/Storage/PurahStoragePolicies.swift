@@ -11,6 +11,9 @@ public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, S
     case thirtyDays = "30days"
     case ninetyDays = "90days"
 
+    public static var days7: PurahRetentionPeriod { .sevenDays }
+    public static var forever: PurahRetentionPeriod { .never }
+
     public var id: String { rawValue }
 
     public var displayName: String {

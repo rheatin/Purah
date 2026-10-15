@@ -11,6 +11,14 @@ public struct PurahPluginFileStorage: Sendable {
     public let dataDirectory: URL
     public let cacheDirectory: URL
 
+    public var baseDirectory: URL { rootDirectory }
+
+    public var assetsDirectory: URL {
+        let dir = rootDirectory.appendingPathComponent("assets", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     public static let baseApplicationSupportDirectory: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
@@ -40,6 +48,11 @@ public struct PurahPluginFileStorage: Sendable {
             }
         }
         return total
+    }
+
+    /// Current disk usage in bytes.
+    public var diskUsageBytes: Int64 {
+        computeDiskUsageBytes()
     }
 
     /// Human-readable formatted string of the current disk usage.

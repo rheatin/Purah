@@ -165,9 +165,16 @@ public final class CalendarPluginState: Sendable {
             targetStore?.isUsingRealCalendar = false
             isSyncing = false
             let sample = Self.defaultEvents(for: currentScope)
+            let previousIds = self.events.map(\.id)
+            let newIds = sample.map(\.id)
+            let hasChanged = previousIds != newIds
             self.events = sample
             targetStore?._calendarEvents = sample
             self.save()
+            if hasChanged {
+                targetStore?.invalidateLayoutCache()
+                targetStore?.onWindowsRebuildNeeded?()
+            }
             return
         }
 
@@ -186,6 +193,10 @@ public final class CalendarPluginState: Sendable {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                let previousIds = self.events.map(\.id)
+                let newIds = deduplicated.map(\.id)
+                let hasChanged = previousIds != newIds
+
                 self.events = deduplicated
                 self.isUsingRealCalendar = true
                 self.isSyncing = false
@@ -194,6 +205,10 @@ public final class CalendarPluginState: Sendable {
                     targetStore.calendarScope = currentScope
                     targetStore.isUsingRealCalendar = true
                     targetStore._calendarEvents = deduplicated
+                    if hasChanged {
+                        targetStore.invalidateLayoutCache()
+                        targetStore.onWindowsRebuildNeeded?()
+                    }
                 }
             }
         }

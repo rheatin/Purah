@@ -31,72 +31,79 @@ public struct DropShelfDrawerView: View {
         VStack(alignment: .leading, spacing: 8) {
             if state.files.isEmpty {
                 // Two dedicated spacious drop zones: Stash & Direct AirDrop
-                VStack(spacing: 10) {
-                    // Zone 1: Stash Holding Area
-                    VStack(spacing: 6) {
-                        Image(systemName: "tray.and.arrow.down.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(shelfColor.opacity(0.85))
+                GeometryReader { proxy in
+                    let isCompact = proxy.size.height <= 120
+                    VStack(spacing: isCompact ? 4 : 10) {
+                        // Zone 1: Stash Holding Area
+                        VStack(spacing: isCompact ? 3 : 6) {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                                .font(.system(size: isCompact ? 14 : 24))
+                                .foregroundColor(shelfColor.opacity(0.85))
 
-                        Text("Drop to Stash Files")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            Text("Drop to Stash Files")
+                                .font(.system(size: isCompact ? 11 : 12, weight: .bold, design: .rounded))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                        Text("Hold files for dragging out into other apps or chat")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
+                            if !isCompact {
+                                Text("Hold files for dragging out into other apps or chat")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(isStashTargeted ? shelfColor.opacity(0.15) : shelfColor.opacity(0.04))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    isStashTargeted ? shelfColor : shelfColor.opacity(0.35),
+                                    style: StrokeStyle(lineWidth: isStashTargeted ? 1.8 : 1.2, dash: [4, 4])
+                                )
+                        )
+                        .contentShape(Rectangle())
+                        .onDrop(of: [.fileURL], isTargeted: $isStashTargeted) { providers in
+                            handleStashDrop(providers: providers)
+                            return true
+                        }
+
+                        // Zone 2: Instant AirDrop Target
+                        VStack(spacing: isCompact ? 3 : 6) {
+                            Image(systemName: "airdrop")
+                                .font(.system(size: isCompact ? 14 : 24))
+                                .foregroundColor(Color.blue)
+
+                            Text("Drop to AirDrop Directly")
+                                .font(.system(size: isCompact ? 11 : 12, weight: .bold, design: .rounded))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                            if !isCompact {
+                                Text("Immediately beam to nearby iPhone, iPad, or Mac")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.05))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
+                                    style: StrokeStyle(lineWidth: isAirDropTargeted ? 1.8 : 1.2, dash: [4, 4])
+                                )
+                        )
+                        .contentShape(Rectangle())
+                        .onDrop(of: [.fileURL], isTargeted: $isAirDropTargeted) { providers in
+                            handleAirDropDrop(providers: providers)
+                            return true
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(isStashTargeted ? shelfColor.opacity(0.15) : shelfColor.opacity(0.04))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isStashTargeted ? shelfColor : shelfColor.opacity(0.35),
-                                style: StrokeStyle(lineWidth: isStashTargeted ? 1.8 : 1.2, dash: [4, 4])
-                            )
-                    )
-                    .contentShape(Rectangle())
-                    .onDrop(of: [.fileURL], isTargeted: $isStashTargeted) { providers in
-                        handleStashDrop(providers: providers)
-                        return true
-                    }
-
-                    // Zone 2: Instant AirDrop Target
-                    VStack(spacing: 6) {
-                        Image(systemName: "airdrop")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color.blue)
-
-                        Text("Drop to AirDrop Directly")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                        Text("Immediately beam to nearby iPhone, iPad, or Mac")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.05))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
-                                style: StrokeStyle(lineWidth: isAirDropTargeted ? 1.8 : 1.2, dash: [4, 4])
-                            )
-                    )
-                    .contentShape(Rectangle())
-                    .onDrop(of: [.fileURL], isTargeted: $isAirDropTargeted) { providers in
-                        handleAirDropDrop(providers: providers)
-                        return true
-                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 6) {
@@ -106,6 +113,7 @@ public struct DropShelfDrawerView: View {
                                 shelfColor: shelfColor,
                                 palette: palette,
                                 store: store,
+                                state: state,
                                 onOpen: {
                                     if let path = file.filePath {
                                         NSWorkspace.shared.open(URL(fileURLWithPath: path))
@@ -119,6 +127,10 @@ public struct DropShelfDrawerView: View {
                                 onRemove: {
                                     state.removeFile(id: file.id)
                                     store._shelfFiles.removeAll { $0.id == file.id }
+                                },
+                                onToggleFavorite: {
+                                    state.toggleFavorite(id: file.id)
+                                    store.triggerControlHaptic(.alignment)
                                 }
                             )
                         }
@@ -243,9 +255,11 @@ public struct ShelfFileRowView: View {
     public let shelfColor: Color
     public let palette: ThemePalette
     public let store: PurahWorkspaceStore
+    public let state: ShelfPluginState?
     public let onOpen: () -> Void
     public let onReveal: () -> Void
     public let onRemove: () -> Void
+    public let onToggleFavorite: (() -> Void)?
 
     @State private var isHovered: Bool = false
     @State private var isDragging: Bool = false
@@ -255,17 +269,21 @@ public struct ShelfFileRowView: View {
         shelfColor: Color,
         palette: ThemePalette,
         store: PurahWorkspaceStore = PurahWorkspaceStore(),
+        state: ShelfPluginState? = nil,
         onOpen: @escaping () -> Void,
         onReveal: @escaping () -> Void,
-        onRemove: @escaping () -> Void
+        onRemove: @escaping () -> Void,
+        onToggleFavorite: (() -> Void)? = nil
     ) {
         self.file = file
         self.shelfColor = shelfColor
         self.palette = palette
         self.store = store
+        self.state = state
         self.onOpen = onOpen
         self.onReveal = onReveal
         self.onRemove = onRemove
+        self.onToggleFavorite = onToggleFavorite
     }
 
     public var body: some View {
@@ -297,6 +315,21 @@ public struct ShelfFileRowView: View {
             .help("Click to open · Drag out to Finder/Desktop")
 
             Spacer()
+
+            Button {
+                if let onToggleFavorite {
+                    onToggleFavorite()
+                } else if let state {
+                    state.toggleFavorite(id: file.id)
+                    store.triggerControlHaptic(.alignment)
+                }
+            } label: {
+                Image(systemName: file.isFavorite ? "star.fill" : "star")
+                    .font(.system(size: 10))
+                    .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
+            }
+            .buttonStyle(.plain)
+            .help(file.isFavorite ? "Unstar file" : "Star file (protected from auto-pruning)")
 
             if let path = file.filePath {
                 Button {

@@ -14,6 +14,9 @@ public final class NotesPluginState: Sendable {
     public var selectedFolder: String
     public var selectedNoteId: String?
     public var isPreviewMode: Bool
+    public var retentionPeriod: PurahRetentionPeriod
+    public var diskQuota: PurahDiskQuota
+    public var autoPrune: Bool
     public let storage: any PurahPluginStorage
     public let fileStorage: PurahPluginFileStorage
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -60,6 +63,9 @@ public final class NotesPluginState: Sendable {
         self.availableFolders = loadedFolders
         self.selectedFolder = storage.string(forKey: "selectedFolder") ?? "General"
         self.isPreviewMode = storage.string(forKey: "isPreviewMode") != nil ? storage.bool(forKey: "isPreviewMode") : true
+        self.retentionPeriod = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) ?? .forever
+        self.diskQuota = storage.codable(forKey: "diskQuota", as: PurahDiskQuota.self) ?? .mb100
+        self.autoPrune = storage.string(forKey: "autoPrune") != nil ? storage.bool(forKey: "autoPrune") : true
 
         // Load legacy single-note content if present
         let legacyContent: NoteContent = {
@@ -107,6 +113,15 @@ public final class NotesPluginState: Sendable {
            let decoded = try? JSONDecoder().decode([NoteDocument].self, from: data) {
             self.documents = decoded
         }
+        if let savedRetention = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) {
+            self.retentionPeriod = savedRetention
+        }
+        if let savedQuota = storage.codable(forKey: "diskQuota", as: PurahDiskQuota.self) {
+            self.diskQuota = savedQuota
+        }
+        if storage.string(forKey: "autoPrune") != nil {
+            self.autoPrune = storage.bool(forKey: "autoPrune")
+        }
     }
 
     public func save() {
@@ -118,6 +133,9 @@ public final class NotesPluginState: Sendable {
         storage.setCodable(availableFolders, forKey: "availableFolders")
         storage.set(selectedFolder, forKey: "selectedFolder")
         storage.set(isPreviewMode, forKey: "isPreviewMode")
+        storage.setCodable(retentionPeriod, forKey: "retentionPeriod")
+        storage.setCodable(diskQuota, forKey: "diskQuota")
+        storage.set(autoPrune, forKey: "autoPrune")
 
         // 1. Atomic index.json
         let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
@@ -270,6 +288,43 @@ public final class NotesPluginState: Sendable {
             if let boundStore {
                 boundStore._quickNote = noteContent
             }
+        }
+    }
+
+    /// Removes non-favorite notes, deletes their .md files from fileStorage.dataDirectory,
+    /// and ensures at least one note remains under the Star Protection Immunity Rule.
+    public func clearNonFavoriteNotes() {
+        let nonFavorites = documents.filter { !$0.isFavorite }
+        for doc in nonFavorites {
+            let safeTitle = doc.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            let fileURL = fileStorage.dataDirectory.appendingPathComponent(doc.folder).appendingPathComponent("\(safeTitle).md")
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        documents.removeAll { !$0.isFavorite }
+        if documents.isEmpty {
+            let scratchpad = NoteDocument(
+                id: "initial-scratchpad",
+                title: "Quick Scratchpad",
+                folder: "General",
+                content: "",
+                timestamp: Date(),
+                isFavorite: false
+            )
+            documents = [scratchpad]
+        }
+        if let id = selectedNoteId, !documents.contains(where: { $0.id == id }) {
+            selectedNoteId = documents.first?.id
+        }
+        if let current = currentDocument {
+            noteContent.text = current.content
+            noteContent.lastModified = current.timestamp
+        } else {
+            noteContent.text = ""
+            noteContent.lastModified = Date()
+        }
+        saveToDisk()
+        if let boundStore {
+            boundStore._quickNote = noteContent
         }
     }
 

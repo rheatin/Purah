@@ -91,6 +91,8 @@ public final class TodoPluginState: Sendable {
                let selfIdx = todos.firstIndex(where: { $0.id == id }) {
                 todos[selfIdx].isCompleted = targetStore._todos[idx].isCompleted
             }
+            targetStore.invalidateLayoutCache()
+            targetStore.onWindowsRebuildNeeded?()
         }
     }
 
@@ -104,16 +106,36 @@ public final class TodoPluginState: Sendable {
         }
     }
 
-    public func add(todo: TodoItem) {
+    public func addTodo(title: String, store: PurahWorkspaceStore? = nil) {
+        let item = TodoItem(title: title, isCompleted: false)
+        todos.append(item)
+        save()
+        let targetStore = store ?? boundStore
+        targetStore?._todos.append(item)
+        targetStore?.invalidateLayoutCache()
+        targetStore?.onWindowsRebuildNeeded?()
+    }
+
+    public func removeTodo(id: String, store: PurahWorkspaceStore? = nil) {
+        todos.removeAll { $0.id == id }
+        save()
+        let targetStore = store ?? boundStore
+        targetStore?._todos.removeAll { $0.id == id }
+        targetStore?.invalidateLayoutCache()
+        targetStore?.onWindowsRebuildNeeded?()
+    }
+
+    public func add(todo: TodoItem, store: PurahWorkspaceStore? = nil) {
         todos.append(todo)
         save()
-        boundStore?._todos.append(todo)
+        let targetStore = store ?? boundStore
+        targetStore?._todos.append(todo)
+        targetStore?.invalidateLayoutCache()
+        targetStore?.onWindowsRebuildNeeded?()
     }
 
     public func remove(id: String) {
-        todos.removeAll { $0.id == id }
-        save()
-        boundStore?._todos.removeAll { $0.id == id }
+        removeTodo(id: id, store: boundStore)
     }
 
     public func mount(store: PurahWorkspaceStore) {
