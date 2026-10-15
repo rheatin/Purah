@@ -320,14 +320,20 @@ public struct QuickNotesMarkdownHelper: Sendable {
         }
     }
 
-    /// Container for all parsed code and table blocks in a Markdown document.
+    /// Container for all parsed code, table, and horizontal rule blocks in a Markdown document.
     public struct ParsedMarkdownBlocks: Sendable, Equatable {
         public let codeBlocks: [FencedCodeBlock]
         public let tables: [TableBlock]
+        public let horizontalRules: [NSRange]
 
-        public init(codeBlocks: [FencedCodeBlock], tables: [TableBlock]) {
+        public init(
+            codeBlocks: [FencedCodeBlock],
+            tables: [TableBlock],
+            horizontalRules: [NSRange] = []
+        ) {
             self.codeBlocks = codeBlocks
             self.tables = tables
+            self.horizontalRules = horizontalRules
         }
     }
 
@@ -335,6 +341,128 @@ public struct QuickNotesMarkdownHelper: Sendable {
     private static let italicRegex = try? NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)"#)
     private static let inlineCodeBlockRegex = try? NSRegularExpression(pattern: #"```([^`\n]+?)```"#)
     private static let codeRegex = try? NSRegularExpression(pattern: #"(?<!`)`(?!`)([^`\n]+?)(?<!`)`(?!`)"#)
+
+    /// Generates an attributed string for a rendered Markdown table cell, parsing and styling inline bold, italic, and code.
+    @MainActor
+    public static func attributedTableCell(
+        _ rawCell: String,
+        isHeader: Bool,
+        alignment: TableColumnAlignment,
+        accentColor: NSColor
+    ) -> NSAttributedString {
+        guard !rawCell.isEmpty else {
+            return NSAttributedString(string: "")
+        }
+
+        let attrString = NSMutableAttributedString(string: rawCell)
+        let fullRange = NSRange(location: 0, length: (rawCell as NSString).length)
+
+        let pStyle = NSMutableParagraphStyle()
+        switch alignment {
+        case .left:
+            pStyle.alignment = .left
+        case .center:
+            pStyle.alignment = .center
+        case .right:
+            pStyle.alignment = .right
+        }
+
+        let baseFont = NSFont.systemFont(ofSize: 11, weight: isHeader ? .bold : .regular)
+        let baseColor = isHeader ? accentColor : NSColor.labelColor
+        attrString.setAttributes([
+            .font: baseFont,
+            .foregroundColor: baseColor,
+            .paragraphStyle: pStyle
+        ], range: fullRange)
+
+        // 1. Inline Code (`code`)
+        if let codeRegex {
+            let matches = codeRegex.matches(in: attrString.string, range: NSRange(location: 0, length: (attrString.string as NSString).length))
+            for match in matches.reversed() {
+                guard match.range.length >= 2 else { continue }
+                let openRange = NSRange(location: match.range.location, length: 1)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+                let contentRange = NSRange(location: match.range.location + 1, length: match.range.length - 2)
+
+                if contentRange.length > 0 {
+                    attrString.addAttributes([
+                        .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium),
+                        .foregroundColor: accentColor,
+                        .backgroundColor: accentColor.withAlphaComponent(0.14)
+                    ], range: contentRange)
+                }
+
+                attrString.deleteCharacters(in: closeRange)
+                attrString.deleteCharacters(in: openRange)
+            }
+        }
+
+        // 2. Bold (**bold**)
+        if let boldRegex {
+            let matches = boldRegex.matches(in: attrString.string, range: NSRange(location: 0, length: (attrString.string as NSString).length))
+            for match in matches.reversed() {
+                guard match.range.length >= 4 else { continue }
+                if attrString.attribute(.backgroundColor, at: match.range.location, effectiveRange: nil) != nil {
+                    continue
+                }
+
+                let openRange = NSRange(location: match.range.location, length: 2)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 2, length: 2)
+                let contentRange = NSRange(location: match.range.location + 2, length: match.range.length - 4)
+
+                if contentRange.length > 0 {
+                    attrString.enumerateAttribute(.font, in: contentRange, options: []) { value, subRange, _ in
+                        if attrString.attribute(.backgroundColor, at: subRange.location, effectiveRange: nil) != nil {
+                            return
+                        }
+                        let existingFont = value as? NSFont ?? baseFont
+                        let hasItalic = existingFont.fontDescriptor.symbolicTraits.contains(.italic)
+                        let traits: NSFontDescriptor.SymbolicTraits = hasItalic ? [.bold, .italic] : [.bold]
+                        let desc = existingFont.fontDescriptor.withSymbolicTraits(traits)
+                        let newFont = NSFont(descriptor: desc, size: 11) ?? NSFontManager.shared.convert(existingFont, toHaveTrait: .boldFontMask)
+                        attrString.addAttribute(.font, value: newFont, range: subRange)
+                    }
+                }
+
+                attrString.deleteCharacters(in: closeRange)
+                attrString.deleteCharacters(in: openRange)
+            }
+        }
+
+        // 3. Italic (*italic*)
+        if let italicRegex {
+            let matches = italicRegex.matches(in: attrString.string, range: NSRange(location: 0, length: (attrString.string as NSString).length))
+            for match in matches.reversed() {
+                guard match.range.length >= 2 else { continue }
+                if attrString.attribute(.backgroundColor, at: match.range.location, effectiveRange: nil) != nil {
+                    continue
+                }
+
+                let openRange = NSRange(location: match.range.location, length: 1)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+                let contentRange = NSRange(location: match.range.location + 1, length: match.range.length - 2)
+
+                if contentRange.length > 0 {
+                    attrString.enumerateAttribute(.font, in: contentRange, options: []) { value, subRange, _ in
+                        if attrString.attribute(.backgroundColor, at: subRange.location, effectiveRange: nil) != nil {
+                            return
+                        }
+                        let existingFont = value as? NSFont ?? baseFont
+                        let hasBold = existingFont.fontDescriptor.symbolicTraits.contains(.bold) || isHeader
+                        let traits: NSFontDescriptor.SymbolicTraits = hasBold ? [.bold, .italic] : [.italic]
+                        let desc = existingFont.fontDescriptor.withSymbolicTraits(traits)
+                        let newFont = NSFont(descriptor: desc, size: 11) ?? NSFontManager.shared.convert(existingFont, toHaveTrait: .italicFontMask)
+                        attrString.addAttribute(.font, value: newFont, range: subRange)
+                    }
+                }
+
+                attrString.deleteCharacters(in: closeRange)
+                attrString.deleteCharacters(in: openRange)
+            }
+        }
+
+        return attrString
+    }
 
     // Code syntax highlighting regexes
     private static let codeNumberRegex = try? NSRegularExpression(pattern: #"\b\d+(?:\.\d+)?\b"#)
@@ -419,15 +547,16 @@ public struct QuickNotesMarkdownHelper: Sendable {
         }
     }
 
-    /// Parses structural fenced code blocks and contiguous table blocks across the Markdown document.
+    /// Parses structural fenced code blocks, contiguous table blocks, and horizontal rules across the Markdown document.
     public static func parseBlocks(in string: String, selectedRange: NSRange?) -> ParsedMarkdownBlocks {
         let nsString = string as NSString
         let totalLength = nsString.length
         guard totalLength > 0 else {
-            return ParsedMarkdownBlocks(codeBlocks: [], tables: [])
+            return ParsedMarkdownBlocks(codeBlocks: [], tables: [], horizontalRules: [])
         }
 
         struct ParsedLineInfo {
+            let lineIndex: Int
             let lineString: String
             let fullRange: NSRange
             let trimmedRange: NSRange
@@ -456,6 +585,7 @@ public struct QuickNotesMarkdownHelper: Sendable {
             let trimmedText = textWithoutNewline.trimmingCharacters(in: .whitespaces)
 
             lines.append(ParsedLineInfo(
+                lineIndex: lines.count,
                 lineString: textWithoutNewline,
                 fullRange: lineRange,
                 trimmedRange: trimmedRange,
@@ -556,10 +686,15 @@ public struct QuickNotesMarkdownHelper: Sendable {
         // 2. Identify contiguous table blocks
         var tables: [TableBlock] = []
         var currentTableLines: [ParsedLineInfo] = []
+        var tableLineIndices = Set<Int>()
 
         func flushCurrentTable() {
             guard !currentTableLines.isEmpty else { return }
             defer { currentTableLines.removeAll() }
+
+            for line in currentTableLines {
+                tableLineIndices.insert(line.lineIndex)
+            }
 
             let firstLine = currentTableLines[0]
             let lastLine = currentTableLines[currentTableLines.count - 1]
@@ -660,7 +795,26 @@ public struct QuickNotesMarkdownHelper: Sendable {
         }
         flushCurrentTable()
 
-        return ParsedMarkdownBlocks(codeBlocks: codeBlocks, tables: tables)
+        // 3. Identify standalone horizontal rule lines (---, ***, ___)
+        func isHorizontalRuleLine(_ trimmed: String) -> Bool {
+            guard trimmed.count >= 3 else { return false }
+            if trimmed == "---" || trimmed == "***" || trimmed == "___" { return true }
+            let firstChar = trimmed.first!
+            guard firstChar == "-" || firstChar == "*" || firstChar == "_" else { return false }
+            return trimmed.allSatisfy { $0 == firstChar }
+        }
+
+        var horizontalRules: [NSRange] = []
+        for (idx, line) in lines.enumerated() {
+            if lineIndicesInCodeBlocks.contains(idx) || tableLineIndices.contains(idx) {
+                continue
+            }
+            if isHorizontalRuleLine(line.trimmedText) {
+                horizontalRules.append(line.trimmedRange)
+            }
+        }
+
+        return ParsedMarkdownBlocks(codeBlocks: codeBlocks, tables: tables, horizontalRules: horizontalRules)
     }
 
     /// Handles smart line return and list/checklist continuation in Typora block-level live preview.
@@ -888,6 +1042,39 @@ public struct QuickNotesMarkdownHelper: Sendable {
                             .foregroundColor: isHeader ? accentColor : NSColor.labelColor,
                             .backgroundColor: NSColor.clear
                         ], range: rowRange)
+
+                        // Support inline bold, italic, and code inside active table rows
+                        if let codeRegex {
+                            let matches = codeRegex.matches(in: string, range: rowRange)
+                            for match in matches {
+                                textStorage.addAttributes([
+                                    .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium),
+                                    .foregroundColor: accentColor,
+                                    .backgroundColor: accentColor.withAlphaComponent(0.14)
+                                ], range: match.range)
+                            }
+                        }
+
+                        if let boldRegex {
+                            let matches = boldRegex.matches(in: string, range: rowRange)
+                            for match in matches {
+                                textStorage.addAttributes([
+                                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .bold),
+                                    .foregroundColor: isHeader ? accentColor : NSColor.labelColor
+                                ], range: match.range)
+                            }
+                        }
+
+                        if let italicRegex {
+                            let matches = italicRegex.matches(in: string, range: rowRange)
+                            for match in matches {
+                                let baseFont = NSFont.monospacedSystemFont(ofSize: 11, weight: isHeader ? .bold : .regular)
+                                let italicDesc = baseFont.fontDescriptor.withSymbolicTraits([.italic, .monoSpace])
+                                let mItalicFont = NSFont(descriptor: italicDesc, size: 11)
+                                    ?? NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+                                textStorage.addAttribute(.font, value: mItalicFont, range: match.range)
+                            }
+                        }
                     }
 
                     // Highlight pipe '|' characters and separators in row
@@ -905,19 +1092,49 @@ public struct QuickNotesMarkdownHelper: Sendable {
                         }
                     }
                 } else {
-                    // Inactive row: set foregroundColor: .clear and backgroundColor: .clear on rowRange, keeping font: systemFont(ofSize: 11.5, weight: .regular)
-                    textStorage.addAttributes([
-                        .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
-                        .foregroundColor: NSColor.clear,
-                        .backgroundColor: NSColor.clear
-                    ], range: rowRange)
+                    let isSep = table.separatorRowIndices.contains(rIdx)
+                    if isSep {
+                        // Collapse inactive table separator row height
+                        let collapsedSepStyle = NSMutableParagraphStyle()
+                        collapsedSepStyle.minimumLineHeight = 2.0
+                        collapsedSepStyle.maximumLineHeight = 2.0
+                        collapsedSepStyle.lineSpacing = 0.0
+
+                        let fullRowLineRange = nsString.lineRange(for: rowRange)
+                        textStorage.addAttributes([
+                            .font: NSFont.systemFont(ofSize: 1.0),
+                            .foregroundColor: NSColor.clear,
+                            .backgroundColor: NSColor.clear,
+                            .paragraphStyle: collapsedSepStyle
+                        ], range: fullRowLineRange)
+                    } else {
+                        // Inactive data or header row: set foregroundColor: .clear and backgroundColor: .clear on rowRange, keeping font: systemFont(ofSize: 11.5, weight: .regular)
+                        textStorage.addAttributes([
+                            .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+                            .foregroundColor: NSColor.clear,
+                            .backgroundColor: NSColor.clear
+                        ], range: rowRange)
+                    }
                 }
             }
         }
 
-        let structuralRanges = fencedBlockRanges + tableBlockRanges
+        // 4. Style Horizontal Rules
+        for hrRange in parsedBlocks.horizontalRules {
+            if isLineActive(hrRange) {
+                textStorage.addAttributes([
+                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .bold),
+                    .foregroundColor: accentColor.withAlphaComponent(0.75),
+                    .backgroundColor: NSColor.clear
+                ], range: hrRange)
+            } else {
+                textStorage.addAttributes(hiddenSyntaxAttributes, range: hrRange)
+            }
+        }
 
-        // 4. Style line-level Markdown (Headings, Checklists, Quotes, Bullets)
+        let structuralRanges = fencedBlockRanges + tableBlockRanges + parsedBlocks.horizontalRules
+
+        // 5. Style line-level Markdown (Headings, Checklists, Quotes, Bullets)
         struct ParsedLine {
             let lineString: String
             let range: NSRange
@@ -1403,6 +1620,35 @@ public final class PurahNotesNSTextView: NSTextView {
         let effectiveSelectedRange = isFocused ? selectedRange() : nil
         let parsedBlocks = QuickNotesMarkdownHelper.parseBlocks(in: self.string, selectedRange: effectiveSelectedRange)
 
+        let isHrActive: (NSRange) -> Bool = { hrRange in
+            guard let sel = effectiveSelectedRange, sel.location != NSNotFound else { return false }
+            if sel.length == 0 {
+                return sel.location >= hrRange.location && sel.location <= hrRange.location + hrRange.length
+            } else {
+                return NSIntersectionRange(hrRange, sel).length > 0
+            }
+        }
+
+        // Draw horizontal rules (clean 1.0pt divider in accentColor)
+        for hrRange in parsedBlocks.horizontalRules {
+            if !isHrActive(hrRange) {
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: hrRange, actualCharacterRange: nil)
+                guard glyphRange.length > 0 else { continue }
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+                let rowY = lineFrag.minY + textContainerOrigin.y
+                let midY = rowY + (lineFrag.height / 2.0)
+                let leftX = textContainerOrigin.x + 4
+                let rightX = max(leftX + 20, bounds.width - textContainerOrigin.x - 4)
+
+                let hrPath = NSBezierPath()
+                hrPath.move(to: NSPoint(x: leftX, y: midY))
+                hrPath.line(to: NSPoint(x: rightX, y: midY))
+                hrPath.lineWidth = 1.0
+                accentColor.withAlphaComponent(0.35).setStroke()
+                hrPath.stroke()
+            }
+        }
+
         for table in parsedBlocks.tables {
             guard !table.rowRanges.isEmpty else { continue }
             let firstRowRange = table.rowRanges[0]
@@ -1496,25 +1742,14 @@ public final class PurahNotesNSTextView: NSTextView {
                             let cellText = cIdx < cells.count ? cells[cIdx] : ""
                             guard !cellText.isEmpty else { continue }
                             let alignment = cIdx < table.columnAlignments.count ? table.columnAlignments[cIdx] : .left
-                            let pStyle = NSMutableParagraphStyle()
-                            switch alignment {
-                            case .left:
-                                pStyle.alignment = .left
-                            case .center:
-                                pStyle.alignment = .center
-                            case .right:
-                                pStyle.alignment = .right
-                            }
+                            let attrCell = QuickNotesMarkdownHelper.attributedTableCell(
+                                cellText,
+                                isHeader: isHeader,
+                                alignment: alignment,
+                                accentColor: accentColor
+                            )
 
-                            let font = NSFont.systemFont(ofSize: 11, weight: isHeader ? .bold : .regular)
-                            let textColor = isHeader ? accentColor : NSColor.labelColor
-                            let attributes: [NSAttributedString.Key: Any] = [
-                                .font: font,
-                                .foregroundColor: textColor,
-                                .paragraphStyle: pStyle
-                            ]
-
-                            let textSize = (cellText as NSString).size(withAttributes: attributes)
+                            let textSize = attrCell.size()
                             let textY = rowY + max(0, (rowH - textSize.height) / 2.0)
                             let cellRect = NSRect(
                                 x: tableRect.minX + CGFloat(cIdx) * colWidth + 6,
@@ -1522,7 +1757,7 @@ public final class PurahNotesNSTextView: NSTextView {
                                 width: max(0, colWidth - 12),
                                 height: textSize.height
                             )
-                            (cellText as NSString).draw(with: cellRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin], attributes: attributes)
+                            attrCell.draw(with: cellRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
                         }
                     }
                 }

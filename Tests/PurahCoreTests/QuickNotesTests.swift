@@ -659,4 +659,107 @@ struct QuickNotesTests {
         let colorCellWhileRow0Active = storage.attribute(.foregroundColor, at: cellLoc, effectiveRange: nil) as? NSColor
         #expect(colorCellWhileRow0Active == .clear)
     }
+
+    @Test("QuickNotesMarkdownHelper attributedTableCell strips delimiters and styles bold, italic, and inline code")
+    @MainActor
+    func testAttributedTableCell() {
+        let raw = "**Bold** and *Italic* and `code`"
+        let accent = NSColor.systemIndigo
+        let attr = QuickNotesMarkdownHelper.attributedTableCell(raw, isHeader: false, alignment: .left, accentColor: accent)
+
+        #expect(attr.string == "Bold and Italic and code")
+
+        let nsString = attr.string as NSString
+        let boldLoc = nsString.range(of: "Bold").location
+        let boldFont = attr.attribute(.font, at: boldLoc, effectiveRange: nil) as? NSFont
+        #expect(boldFont?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+        #expect(boldFont?.pointSize == 11)
+
+        let italicLoc = nsString.range(of: "Italic").location
+        let italicFont = attr.attribute(.font, at: italicLoc, effectiveRange: nil) as? NSFont
+        #expect(italicFont?.fontDescriptor.symbolicTraits.contains(.italic) == true)
+        #expect(italicFont?.pointSize == 11)
+
+        let codeLoc = nsString.range(of: "code").location
+        let codeFont = attr.attribute(.font, at: codeLoc, effectiveRange: nil) as? NSFont
+        #expect(codeFont?.fontDescriptor.symbolicTraits.contains(.monoSpace) == true)
+        #expect(codeFont?.pointSize == 10.5)
+        let codeBg = attr.attribute(.backgroundColor, at: codeLoc, effectiveRange: nil) as? NSColor
+        #expect(codeBg == accent.withAlphaComponent(0.14))
+        let codeFg = attr.attribute(.foregroundColor, at: codeLoc, effectiveRange: nil) as? NSColor
+        #expect(codeFg == accent)
+    }
+
+    @Test("QuickNotesMarkdownHelper collapses inactive table separator row height to 2.0")
+    @MainActor
+    func testTableSeparatorRowCollapse() {
+        let tableMd = """
+        | Header A | Header B |
+        | --- | --- |
+        | Value 1 | Value 2 |
+        """
+        let nsMd = tableMd as NSString
+        let accent = NSColor.systemBlue
+        let storage = NSTextStorage(string: tableMd)
+
+        // When inactive (selectedRange: nil)
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: nil)
+
+        let sepLoc = nsMd.range(of: "---").location
+        let sepStyle = storage.attribute(.paragraphStyle, at: sepLoc, effectiveRange: nil) as? NSParagraphStyle
+        #expect(sepStyle?.maximumLineHeight == 2.0)
+        #expect(sepStyle?.minimumLineHeight == 2.0)
+        #expect(sepStyle?.lineSpacing == 0.0)
+
+        let sepFont = storage.attribute(.font, at: sepLoc, effectiveRange: nil) as? NSFont
+        #expect(sepFont?.pointSize == 1.0)
+        let sepColor = storage.attribute(.foregroundColor, at: sepLoc, effectiveRange: nil) as? NSColor
+        #expect(sepColor == .clear)
+    }
+
+    @Test("QuickNotesMarkdownHelper parses horizontal rules and hides delimiters on inactive lines")
+    @MainActor
+    func testHorizontalRuleDetectionAndHiding() {
+        let md = """
+        # Section 1
+        ---
+        Some text
+        ***
+        ___
+        """
+        let nsMd = md as NSString
+        let accent = NSColor.systemTeal
+
+        let parsed = QuickNotesMarkdownHelper.parseBlocks(in: md, selectedRange: nil)
+        #expect(parsed.horizontalRules.count == 3)
+
+        let hr1Loc = nsMd.range(of: "---").location
+        let hr2Loc = nsMd.range(of: "***").location
+        let hr3Loc = nsMd.range(of: "___").location
+
+        #expect(parsed.horizontalRules.contains(where: { $0.location == hr1Loc }))
+        #expect(parsed.horizontalRules.contains(where: { $0.location == hr2Loc }))
+        #expect(parsed.horizontalRules.contains(where: { $0.location == hr3Loc }))
+
+        // When inactive, syntax is hidden
+        let storage = NSTextStorage(string: md)
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: nil)
+
+        let font1 = storage.attribute(.font, at: hr1Loc, effectiveRange: nil) as? NSFont
+        #expect(font1?.pointSize == 0.01)
+        let color1 = storage.attribute(.foregroundColor, at: hr1Loc, effectiveRange: nil) as? NSColor
+        #expect(color1 == .clear)
+
+        // When cursor is on first HR line, reveal in bold monospaced with accentColor
+        QuickNotesMarkdownHelper.styleAttributedString(storage, accentColor: accent, selectedRange: NSRange(location: hr1Loc, length: 0))
+        let activeFont1 = storage.attribute(.font, at: hr1Loc, effectiveRange: nil) as? NSFont
+        #expect(activeFont1?.pointSize == 11)
+        #expect(activeFont1?.fontDescriptor.symbolicTraits.contains([.bold, .monoSpace]) == true)
+        let activeColor1 = storage.attribute(.foregroundColor, at: hr1Loc, effectiveRange: nil) as? NSColor
+        #expect(activeColor1 == accent.withAlphaComponent(0.75))
+
+        // Second HR remains hidden while first is active
+        let font2 = storage.attribute(.font, at: hr2Loc, effectiveRange: nil) as? NSFont
+        #expect(font2?.pointSize == 0.01)
+    }
 }
