@@ -349,7 +349,7 @@ public struct ClipboardItemDrawerView: View {
             if let item = item {
                 Button {
                     pluginState.copyItem(item)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
                         store.activeDrawerItemId = nil
                     }
@@ -382,7 +382,7 @@ public struct ClipboardItemDrawerView: View {
         .onTapGesture {
             if let item = item {
                 pluginState.copyItem(item)
-                NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
                     store.activeDrawerItemId = nil
                 }

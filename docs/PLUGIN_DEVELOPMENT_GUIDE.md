@@ -121,8 +121,16 @@ public struct PurahPluginContext: Sendable {
 
     // 3. 命名空间独立持久化存储
     public let storage: any PurahPluginStorage
+    public let fileStorage: PurahPluginFileStorage
 
-    // 4. 受控动作与子项精准控制 (严禁直接修改宿主 Store)
+    // 4. 感知反馈与音频状态（只读）
+    public let isSoundEnabled: Bool                                 // 提示音全局开关
+    public let isHapticsEnabled: Bool                               // 触控板触觉反馈全局开关
+    public let isDrawerPopHapticEnabled: Bool                       // 抽屉弹出震动开关
+    public let isControlHapticEnabled: Bool                         // 交互控件操作震动开关
+    public let notificationSound: ToastNotificationSound            // 当前生效的提示音选择
+
+    // 5. 受控动作与子项精准控制 (严禁直接修改宿主 Store)
     public func isItemPinned(_ itemId: String? = nil) -> Bool       // 查询 Pod 自身或具体子项的固定状态
     public func togglePin(_ itemId: String? = nil)                  // 切换 Pod 自身或具体子项常驻
     public func requestExpand(_ subItemId: String? = nil)           // 展开指定子项抽屉 (nil 则展开整个 Pod)
@@ -134,6 +142,8 @@ public struct PurahPluginContext: Sendable {
     public let showToast: @MainActor (String, String?) -> Void      // 弹出轻量灵动 Toast
     public let showWarning: @MainActor (String) -> Void             // 触发容量/警告横幅
     public let performHaptic: @MainActor (PurahHapticType) -> Void  // 触发精密触觉震动
+    public let playSound: @MainActor (ToastNotificationSound?) -> Void // 播放提示音 (可传自定义音效或传 nil 采用系统默认)
+    public func playSound()                                         // 播放系统默认提示音的便捷方法
 }
 ```
 

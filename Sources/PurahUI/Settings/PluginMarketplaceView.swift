@@ -568,7 +568,7 @@ public struct PluginMarketplaceView: View {
                     }
                     isCompiling = false
                     feedbackBanner = "✨ Loaded '\(plugin.manifest.displayName)' dynamically!"
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    store.triggerControlHaptic(.alignment)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                         feedbackBanner = nil
                     }

@@ -2,7 +2,9 @@
 import Testing
 import AppKit
 import Foundation
+import SwiftUI
 @testable import PurahCore
+@testable import PurahUI
 @testable import PurahApp
 
 @Suite("Sensory Feedback & Haptics Tests", .serialized)
@@ -272,5 +274,226 @@ struct SensoryFeedbackTests {
         #expect(service.lastHapticType == .levelChange)
 
         hud.dismissImmediate()
+    }
+
+    @Test("PurahPluginContext accurately reflects store sensory state properties")
+    @MainActor
+    func testPurahPluginContextSensoryStateReflection() {
+        let store = PurahWorkspaceStore()
+        guard let pod = store.pods.first else {
+            Issue.record("No default pod in store")
+            return
+        }
+
+        // 1. Initial defaults reflection
+        store.isToastSoundEnabled = true
+        store.isTrackpadHapticsEnabled = true
+        store.isControlHapticEnabled = true
+        store.isDrawerPopHapticEnabled = true
+        store.toastNotificationSound = .glass
+
+        let context1 = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 320.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        #expect(context1.isSoundEnabled == true)
+        #expect(context1.isHapticsEnabled == true)
+        #expect(context1.isControlHapticEnabled == true)
+        #expect(context1.isDrawerPopHapticEnabled == true)
+        #expect(context1.notificationSound == ToastNotificationSound.glass)
+
+        // 2. Custom sensory configuration reflection
+        store.isToastSoundEnabled = false
+        store.isTrackpadHapticsEnabled = true
+        store.isControlHapticEnabled = false
+        store.isDrawerPopHapticEnabled = false
+        store.toastNotificationSound = .submarine
+
+        let context2 = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 320.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        #expect(context2.isSoundEnabled == false)
+        #expect(context2.isHapticsEnabled == false)
+        #expect(context2.isControlHapticEnabled == false)
+        #expect(context2.isDrawerPopHapticEnabled == false)
+        #expect(context2.notificationSound == ToastNotificationSound.submarine)
+
+        // 3. Master trackpad haptics disables all derived haptic states
+        store.isTrackpadHapticsEnabled = false
+        store.isControlHapticEnabled = true
+        store.isDrawerPopHapticEnabled = true
+
+        let context3 = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 320.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        #expect(context3.isHapticsEnabled == false)
+        #expect(context3.isControlHapticEnabled == false)
+        #expect(context3.isDrawerPopHapticEnabled == false)
+    }
+
+    @Test("PurahPluginContext playSound triggers configured sound and respects gating")
+    @MainActor
+    func testPurahPluginContextPlaySound() {
+        let store = PurahWorkspaceStore()
+        let service = SensoryFeedbackService.shared
+        service.resetForTesting()
+
+        guard let pod = store.pods.first else {
+            Issue.record("No default pod in store")
+            return
+        }
+
+        store.isToastSoundEnabled = true
+        store.toastNotificationSound = .hero
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 320.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        // Calling playSound() without arguments plays the store default sound (.hero)
+        context.playSound()
+        #expect(service.lastPlayedSoundName == "Hero")
+
+        // Calling playSound(.submarine) overrides with the specified sound
+        context.playSound(.submarine)
+        #expect(service.lastPlayedSoundName == "Submarine")
+
+        // Disabling toast sound suppresses playback
+        service.resetForTesting()
+        store.isToastSoundEnabled = false
+
+        context.playSound()
+        #expect(service.lastPlayedSoundName == nil)
+
+        context.playSound(.tink)
+        #expect(service.lastPlayedSoundName == nil)
+    }
+
+    @Test("PurahPluginContext and SensoryFeedbackService control haptic gating")
+    @MainActor
+    func testControlHapticGating() {
+        let store = PurahWorkspaceStore()
+        let service = SensoryFeedbackService.shared
+        service.resetForTesting()
+
+        guard let pod = store.pods.first else {
+            Issue.record("No default pod in store")
+            return
+        }
+
+        // 1. When haptics are enabled on store
+        store.isTrackpadHapticsEnabled = true
+        store.isControlHapticEnabled = true
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 320.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        context.performHaptic(.alignment)
+        #expect(service.hapticTriggerCount == 1)
+        #expect(service.lastHapticType == .alignment)
+
+        // 2. When control haptics are disabled on store
+        store.isControlHapticEnabled = false
+        context.performHaptic(.levelChange)
+        #expect(service.hapticTriggerCount == 1) // unchanged
+
+        // 3. Test SensoryFeedbackService.shared.performControlHapticIfEnabled with custom UserDefaults
+        let testSuiteName = "com.purah.test.sensory.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: testSuiteName)!
+        defer {
+            testDefaults.removePersistentDomain(forName: testSuiteName)
+        }
+
+        service.resetForTesting()
+
+        // By default (nil in userDefaults), defaults are true
+        let defaultResult = service.performControlHapticIfEnabled(.alignment, defaults: testDefaults)
+        #expect(defaultResult == true)
+        #expect(service.hapticTriggerCount == 1)
+        #expect(service.lastHapticType == .alignment)
+
+        // Explicitly set control haptics to false
+        testDefaults.set(false, forKey: "purah.isControlHapticEnabled")
+        let disabledControlResult = service.performControlHapticIfEnabled(.levelChange, defaults: testDefaults)
+        #expect(disabledControlResult == false)
+        #expect(service.hapticTriggerCount == 1)
+
+        // Explicitly set master haptics to false, control to true
+        testDefaults.set(true, forKey: "purah.isControlHapticEnabled")
+        testDefaults.set(false, forKey: "purah.isTrackpadHapticsEnabled")
+        let disabledMasterResult = service.performControlHapticIfEnabled(.levelChange, defaults: testDefaults)
+        #expect(disabledMasterResult == false)
+        #expect(service.hapticTriggerCount == 1)
+
+        // Both true
+        testDefaults.set(true, forKey: "purah.isTrackpadHapticsEnabled")
+        testDefaults.set(true, forKey: "purah.isControlHapticEnabled")
+        let bothEnabledResult = service.performControlHapticIfEnabled(.levelChange, defaults: testDefaults)
+        #expect(bothEnabledResult == true)
+        #expect(service.hapticTriggerCount == 2)
+        #expect(service.lastHapticType == .levelChange)
     }
 }

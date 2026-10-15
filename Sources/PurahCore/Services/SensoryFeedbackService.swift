@@ -110,4 +110,12 @@ public final class SensoryFeedbackService {
         }
         return true
     }
+
+    /// Performs a control haptic respecting the persisted UserDefaults toggles when a store instance is not directly in scope.
+    @discardableResult
+    public func performControlHapticIfEnabled(_ type: PurahHapticType = .alignment, defaults: UserDefaults = .standard) -> Bool {
+        let masterEnabled = (defaults.object(forKey: "purah.isTrackpadHapticsEnabled") as? Bool) ?? true
+        let controlEnabled = (defaults.object(forKey: "purah.isControlHapticEnabled") as? Bool) ?? true
+        return performActionHaptic(type, enabled: masterEnabled && controlEnabled)
+    }
 }

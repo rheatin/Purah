@@ -162,7 +162,7 @@ public struct InteractiveMarkdownPreviewView: View {
             HStack(alignment: .top, spacing: 6) {
                 Button {
                     onToggleChecklist(index)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
                 } label: {
                     Image(systemName: "square")
                         .font(.system(size: 11))
@@ -184,7 +184,7 @@ public struct InteractiveMarkdownPreviewView: View {
             HStack(alignment: .top, spacing: 6) {
                 Button {
                     onToggleChecklist(index)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
                 } label: {
                     Image(systemName: "checkmark.square.fill")
                         .font(.system(size: 11))
@@ -1463,7 +1463,7 @@ public final class PurahNotesNSTextView: NSTextView {
                         if shouldChangeText(in: replacementRange, replacementString: toggledPrefix) {
                             replaceCharacters(in: replacementRange, with: toggledPrefix)
                             didChangeText()
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
                             return
                         }
                     }
@@ -1782,7 +1782,7 @@ public final class PurahNotesNSTextView: NSTextView {
                 let newSelection = NSRange(location: range.location + prefix.count, length: 0)
                 setSelectedRange(newSelection)
             }
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
         }
     }
 
@@ -2115,7 +2115,7 @@ public struct QuickNoteDrawerView: View {
             let updated = text.isEmpty ? snippet : "\(text)\n\(snippet)"
             updateNoteText(updated)
             state.save()
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+            store.triggerControlHaptic(.alignment)
         }
     }
 
@@ -2180,7 +2180,7 @@ public struct QuickNoteDrawerView: View {
                     _ = state.createNote(folder: state.selectedFolder)
                     activeTextView?.setSelectedRange(NSRange(location: 0, length: 0))
                     activeTextView?.window?.makeFirstResponder(activeTextView)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    store.triggerControlHaptic(.alignment)
                 } label: {
                     Label("New Note in \(state.selectedFolder)", systemImage: "plus")
                 }
@@ -2209,7 +2209,7 @@ public struct QuickNoteDrawerView: View {
                 _ = state.createNote(folder: state.selectedFolder)
                 activeTextView?.setSelectedRange(NSRange(location: 0, length: 0))
                 activeTextView?.window?.makeFirstResponder(activeTextView)
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                store.triggerControlHaptic(.alignment)
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 8.5, weight: .bold))
@@ -2243,7 +2243,7 @@ public struct QuickNoteDrawerView: View {
             if let doc = state.currentDocument {
                 Button {
                     state.toggleFavorite(id: doc.id)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    store.triggerControlHaptic(.alignment)
                 } label: {
                     Image(systemName: doc.isFavorite ? "star.fill" : "star")
                         .font(.system(size: 10))
@@ -2284,7 +2284,7 @@ public struct QuickNoteDrawerView: View {
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(currentText, forType: .string)
-                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                store.triggerControlHaptic(.alignment)
                 withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                     isCopied = true
                 }

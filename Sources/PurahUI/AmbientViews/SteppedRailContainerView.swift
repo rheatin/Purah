@@ -156,7 +156,13 @@ public struct SteppedRailContainerView: View {
             },
             showToast: context.showToast,
             showWarning: context.showWarning,
-            performHaptic: context.performHaptic
+            performHaptic: context.performHaptic,
+            isSoundEnabled: context.isSoundEnabled,
+            isHapticsEnabled: context.isHapticsEnabled,
+            isDrawerPopHapticEnabled: context.isDrawerPopHapticEnabled,
+            isControlHapticEnabled: context.isControlHapticEnabled,
+            notificationSound: context.notificationSound,
+            playSound: context.playSound
         )
     }
 

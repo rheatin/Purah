@@ -44,6 +44,18 @@ public struct PurahPluginContext: Sendable {
     public let showWarning: @MainActor (String) -> Void
     public let performHaptic: @MainActor (PurahHapticType) -> Void
 
+    public let isSoundEnabled: Bool
+    public let isHapticsEnabled: Bool
+    public let isDrawerPopHapticEnabled: Bool
+    public let isControlHapticEnabled: Bool
+    public let notificationSound: ToastNotificationSound
+
+    public let playSound: @MainActor (ToastNotificationSound?) -> Void
+
+    public func playSound(_ sound: ToastNotificationSound? = nil) {
+        (self.playSound)(sound)
+    }
+
     public func isItemPinned(_ itemId: String? = nil) -> Bool {
         guard let itemId else { return isPinned }
         return _store?.isItemPinned(id: itemId) ?? false
@@ -100,7 +112,13 @@ public struct PurahPluginContext: Sendable {
         openSettings: (@MainActor () -> Void)? = nil,
         showToast: (@MainActor (String, String?) -> Void)? = nil,
         showWarning: (@MainActor (String) -> Void)? = nil,
-        performHaptic: (@MainActor (PurahHapticType) -> Void)? = nil
+        performHaptic: (@MainActor (PurahHapticType) -> Void)? = nil,
+        isSoundEnabled: Bool? = nil,
+        isHapticsEnabled: Bool? = nil,
+        isDrawerPopHapticEnabled: Bool? = nil,
+        isControlHapticEnabled: Bool? = nil,
+        notificationSound: ToastNotificationSound? = nil,
+        playSound: (@MainActor (ToastNotificationSound?) -> Void)? = nil
     ) {
         self.pod = pod
         self.edge = edge
@@ -180,6 +198,28 @@ public struct PurahPluginContext: Sendable {
                     storeRef.triggerControlHaptic(type)
                 } else {
                     SensoryFeedbackService.shared.performActionHaptic(type, enabled: true)
+                }
+            }
+        }
+
+        self.isSoundEnabled = isSoundEnabled ?? (storeRef?.isToastSoundEnabled ?? true)
+        let masterHaptics = storeRef?.isTrackpadHapticsEnabled ?? true
+        let controlHaptics = storeRef?.isControlHapticEnabled ?? true
+        let popHaptics = storeRef?.isDrawerPopHapticEnabled ?? true
+        self.isHapticsEnabled = isHapticsEnabled ?? (masterHaptics && controlHaptics)
+        self.isDrawerPopHapticEnabled = isDrawerPopHapticEnabled ?? (masterHaptics && popHaptics)
+        self.isControlHapticEnabled = isControlHapticEnabled ?? (masterHaptics && controlHaptics)
+        self.notificationSound = notificationSound ?? (storeRef?.toastNotificationSound ?? .glass)
+
+        if let playSound {
+            self.playSound = playSound
+        } else {
+            self.playSound = { [weak storeRef] customSound in
+                if let storeRef {
+                    let targetSound = customSound ?? storeRef.toastNotificationSound
+                    _ = SensoryFeedbackService.shared.playToastSound(targetSound, enabled: storeRef.isToastSoundEnabled)
+                } else {
+                    _ = SensoryFeedbackService.shared.playToastSound(customSound ?? .glass, enabled: true)
                 }
             }
         }

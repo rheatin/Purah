@@ -120,7 +120,14 @@ public struct PurahPluginContext: Sendable {
     public let storage: any PurahPluginStorage          // Scoped UserDefaults storage
     public let fileStorage: PurahPluginFileStorage      // Sandboxed Application Support disk storage
 
-    // 4. Fine-Grained Sub-Item Actions & Controls
+    // 4. Sensory Feedback & Audio State (Read-Only)
+    public let isSoundEnabled: Bool                                 // System toast notification sound toggle
+    public let isHapticsEnabled: Bool                               // Effective trackpad haptic feedback toggle
+    public let isDrawerPopHapticEnabled: Bool                       // Edge pop haptic toggle
+    public let isControlHapticEnabled: Bool                         // In-app control haptic toggle
+    public let notificationSound: ToastNotificationSound            // Active toast notification sound selection
+
+    // 5. Fine-Grained Sub-Item Actions & Controls
     public func isItemPinned(_ itemId: String? = nil) -> Bool       // Query pod or sub-item pin state
     public func togglePin(_ itemId: String? = nil)                  // Toggle pod or sub-item pin
     public func requestExpand(_ subItemId: String? = nil)           // Expand drawer for specific sub-item
@@ -132,6 +139,8 @@ public struct PurahPluginContext: Sendable {
     public let showToast: @MainActor (String, String?) -> Void      // Pop transient tactile HUD toast
     public let showWarning: @MainActor (String) -> Void             // Show warning banner
     public let performHaptic: @MainActor (PurahHapticType) -> Void  // Trigger precision haptics
+    public let playSound: @MainActor (ToastNotificationSound?) -> Void // Play notification sound (or system default)
+    public func playSound()                                         // Convenience to play configured system sound
 }
 ```
 

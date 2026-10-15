@@ -105,6 +105,7 @@ public struct DropShelfDrawerView: View {
                                 file: file,
                                 shelfColor: shelfColor,
                                 palette: palette,
+                                store: store,
                                 onOpen: {
                                     if let path = file.filePath {
                                         NSWorkspace.shared.open(URL(fileURLWithPath: path))
@@ -241,6 +242,7 @@ public struct ShelfFileRowView: View {
     public let file: ShelfFileItem
     public let shelfColor: Color
     public let palette: ThemePalette
+    public let store: PurahWorkspaceStore
     public let onOpen: () -> Void
     public let onReveal: () -> Void
     public let onRemove: () -> Void
@@ -252,6 +254,7 @@ public struct ShelfFileRowView: View {
         file: ShelfFileItem,
         shelfColor: Color,
         palette: ThemePalette,
+        store: PurahWorkspaceStore = PurahWorkspaceStore(),
         onOpen: @escaping () -> Void,
         onReveal: @escaping () -> Void,
         onRemove: @escaping () -> Void
@@ -259,6 +262,7 @@ public struct ShelfFileRowView: View {
         self.file = file
         self.shelfColor = shelfColor
         self.palette = palette
+        self.store = store
         self.onOpen = onOpen
         self.onReveal = onReveal
         self.onRemove = onRemove
@@ -335,7 +339,7 @@ public struct ShelfFileRowView: View {
         // Native drag out to Finder, Desktop, Mail, etc.
         .onDrag {
             isDragging = true
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+            store.triggerControlHaptic(.alignment)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isDragging = false
             }

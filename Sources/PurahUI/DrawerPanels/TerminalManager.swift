@@ -146,7 +146,7 @@ open class PurahTerminalView: LocalProcessTerminalView {
             case "c":
                 if selectionActive || (getSelection()?.isEmpty == false) {
                     copy(self)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .default)
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
                     return true
                 }
             case "v":
