@@ -96,7 +96,39 @@ struct CalendarOverflowStrategyTests {
         #expect(items.last?.id == "calendar_more_events")
         #expect(items.last?.badge == "4")
         #expect(plugin.ownsSubItemId("calendar_more_events", store: store) == true)
+        #expect(plugin.ownsSubItemId("calendar_more_items", store: store) == true)
         #expect(plugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: context) != nil)
+        #expect(plugin.makeSteppedDrawerView(subItemId: "calendar_more_items", context: context) != nil)
+    }
+
+    @Test("TodoPlugin smart fold more_items support")
+    @MainActor
+    func testTodoPluginSmartFoldMoreItemsSupport() {
+        let store = PurahWorkspaceStore()
+        let plugin = TodoPlugin()
+        #expect(plugin.ownsSubItemId("todo_more_items", store: store) == true)
+
+        let pod = store.pods.first(where: { $0.id == "todo" })!
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 180.0,
+            drawerWidth: 280.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        #expect(plugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: context) != nil)
+
+        store.togglePinItem(id: "todo_more_items")
+        #expect(plugin.hasPinnedChild(store: store) == true)
+        store.togglePinItem(id: "todo_more_items")
     }
 
     @Test("CalendarPluginSettingsView instantiates and reflects state changes")

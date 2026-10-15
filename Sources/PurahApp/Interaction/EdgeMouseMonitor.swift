@@ -269,14 +269,16 @@ public final class EdgeMouseMonitor {
 
     public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
         if store.isPodDecomposed(item.pod.id), let provider = store.capabilityProvider(for: item.pod.id) {
+            let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
-            let minChipH: CGFloat = 20.0
-            let spacing: CGFloat = 2.5
-            let maxAllowed = max(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), 1)
+            let minChipH = policy.minChipHeight
+            let maxChipH = policy.maxChipHeight
+            let spacing = policy.spacing
+            let maxAllowed = max(min(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
             let count = min(rawCount, maxAllowed)
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
-            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), 185.0)
+            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), maxChipH)
             return CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
         }
         return CGFloat(item.spanH)
@@ -595,14 +597,16 @@ public final class EdgeMouseMonitor {
         let wasDocked = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
 
         if let provider = store.capabilityProvider(for: candidate.id), provider.isDecomposed(store: store) {
+            let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
-            let minChipH: CGFloat = 20.0
-            let spacing: CGFloat = 2.5
-            let maxAllowed = max(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), 1)
+            let minChipH = policy.minChipHeight
+            let maxChipH = policy.maxChipHeight
+            let spacing = policy.spacing
+            let maxAllowed = max(min(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
             let count = min(rawCount, maxAllowed)
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
-            let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), 185.0)
+            let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), minChipH), maxChipH)
             let actualSpan = CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
 
             let podY = currentWindowY - CGFloat(matched.startY)
@@ -619,7 +623,8 @@ public final class EdgeMouseMonitor {
             let itemPitch = itemH + spacing
             let rawIdx = Int(max(podY, 0.0) / itemPitch)
             guard rawIdx >= 0 && rawIdx < count else { return }
-            let subItemId = provider.subItemId(at: rawIdx, store: store) ?? candidate.id
+            let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && rawIdx == count - 1)
+            let subItemId = isSmartFoldSlot ? "\(candidate.id)_more_items" : (provider.subItemId(at: rawIdx, store: store) ?? candidate.id)
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 store.activateDrawer(podId: candidate.id, itemId: subItemId)

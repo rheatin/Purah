@@ -29,10 +29,12 @@ public struct ClipboardPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
+        SystemClipboardSyncService.shared.startListening()
     }
 
     public func onUnmount(store: PurahWorkspaceStore) {
         state.unmount(store: store)
+        SystemClipboardSyncService.shared.stopListening()
     }
 
     public func dynamicBarColor(context: PurahPluginContext) -> Color? {
@@ -100,7 +102,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
         if isDecomposed(store: store) {
             return decomposedPolicy.calculateMinimumHeight(activeCount: state.items.count)
         } else {
-            return 160.0
+            return 150.0
         }
     }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 380.0 }

@@ -469,9 +469,11 @@ public final class PurahWorkspaceStore {
 
                 var matchedSubItem = false
                 for idx in 0..<count {
-                    guard let subId = provider.subItemId(at: idx, store: self) else { continue }
-                    let itemActive = (activeDrawerItemId == subId)
-                    let itemPinned = isItemPinned(id: subId)
+                    let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
+                    let subId = isSmartFoldSlot ? "\(pod.id)_more_items" : provider.subItemId(at: idx, store: self)
+                    guard let subId = subId else { continue }
+                    let itemActive = (activeDrawerItemId == subId) || (isSmartFoldSlot && pod.id == "calendar" && activeDrawerItemId == "calendar_more_events")
+                    let itemPinned = isItemPinned(id: subId) || (isSmartFoldSlot && pod.id == "calendar" && isItemPinned(id: "calendar_more_events"))
 
                     if itemActive || itemPinned {
                         matchedSubItem = true
@@ -486,7 +488,7 @@ public final class PurahWorkspaceStore {
                         let minY = max(appKitBottom - 10.0, 0.0)
                         let maxY = min(appKitTop + 10.0, totalHeight)
 
-                        let subTitle = provider.subItemTitle(at: idx, store: self) ?? ""
+                        let subTitle = isSmartFoldSlot ? "More" : (provider.subItemTitle(at: idx, store: self) ?? "")
                         let drawerW = min(effectiveDrawerWidth(for: subTitle, baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
                         let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                         frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
@@ -664,8 +666,8 @@ public final class PurahWorkspaceStore {
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0, adaptiveWidth: 360.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 60.0, adaptiveWidth: 520.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "clipboard", minHeight: 120.0, adaptiveWidth: 380.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 120.0, adaptiveWidth: 520.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "clipboard", minHeight: 150.0, adaptiveWidth: 380.0))
     }
 
     // MARK: - Local Persistence
@@ -863,24 +865,9 @@ public final class PurahWorkspaceStore {
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
             let minPt = Double(minimumDrawerHeight(for: pod.id))
             pods[index].minLength = max(minPt / screenH, 0.05)
-            if id == "clipboard" {
-                SystemClipboardSyncService.shared.startListening()
-            } else if id == "vitals" {
-                HardwareVitalsService.shared.startMonitoring()
-            } else if id == "music" {
-                SystemMusicSyncService.shared.startListening(into: self)
-            }
             onPodEnabledChanged?(id, true)
         } else {
             pods[index].isEnabled = false
-            if id == "clipboard" {
-                SystemClipboardSyncService.shared.stopListening()
-            } else if id == "vitals" {
-                HardwareVitalsService.shared.stopMonitoring()
-            } else if id == "music" {
-                SystemMusicSyncService.shared.stopListening()
-                SystemMusicSyncService.shared.clearArtworkCache()
-            }
             onPodEnabledChanged?(id, false)
         }
         _marketManager?.enabledPluginIds = Set(pods.filter(\.isEnabled).map(\.id))

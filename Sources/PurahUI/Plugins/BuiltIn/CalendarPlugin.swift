@@ -105,12 +105,12 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        if store.isItemPinned(id: "calendar_more_events") { return true }
+        if store.isItemPinned(id: "calendar_more_events") || store.isItemPinned(id: "calendar_more_items") { return true }
         return effectiveEvents(store: store).contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        if itemId == "calendar_more_events" { return true }
+        if itemId == "calendar_more_events" || itemId == "calendar_more_items" { return true }
         return effectiveEvents(store: store).contains { $0.id == itemId }
     }
 
@@ -277,7 +277,7 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        if subItemId == "calendar_more_events" {
+        if subItemId == "calendar_more_events" || subItemId == "calendar_more_items" {
             let isPinned = context.isItemPinned(subItemId)
             let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
             return AnyView(

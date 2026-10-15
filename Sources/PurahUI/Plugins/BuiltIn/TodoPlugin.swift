@@ -82,11 +82,13 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        effectiveTodos(store: store).contains { store.isItemPinned(id: $0.id) }
+        if store.isItemPinned(id: "todo_more_items") { return true }
+        return effectiveTodos(store: store).contains { store.isItemPinned(id: $0.id) }
     }
 
     public func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
-        effectiveTodos(store: store).contains { $0.id == itemId }
+        if itemId == "todo_more_items" { return true }
+        return effectiveTodos(store: store).contains { $0.id == itemId }
     }
 
     public var isDecomposed: Bool {
@@ -155,6 +157,9 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        if subItemId == "todo_more_items" {
+            return AnyView(TodoDrawerView(state: state, store: context.store))
+        }
         let todos = effectiveTodos(store: context.store)
         guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.isItemPinned(subItemId)
