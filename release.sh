@@ -18,20 +18,24 @@ cd "$REPO_ROOT"
 
 VERSION=""
 SKIP_TESTS=false
+SKIP_TAG=false
 PUBLISH=false
+BUMP_TYPE="patch"
 CUSTOM_NOTES=""
 CUSTOM_NOTES_FILE=""
 
 print_usage() {
-    cat <<EOF
-${BOLD}Usage:${RESET} ./release.sh [version] [options]
+    echo -e "${BOLD}Usage:${RESET} ./release.sh [version] [options]
 
 ${BOLD}Arguments:${RESET}
-  [version]                       Release version (e.g. 0.1.0 or 0.2.0).
-                                  If omitted, reads current version from PurahCore.swift.
+  [version]                       Release version (e.g. 0.2.0).
+                                  If omitted with --publish, automatically bumps patch version.
+                                  If omitted without --publish, uses current version.
 
 ${BOLD}Options:${RESET}
-  -v, --version <version>         Specify release version
+  -v, --version <version>         Specify explicit release version
+      --bump <patch|minor|major>  Version increment level (default: patch)
+      --skip-tag, --no-tag        Do not auto-bump version or create/push git tags
       --skip-tests                Skip test execution before packaging
       --publish                   Publish to GitHub Releases via gh CLI
       --notes <text>              Specify release notes string
@@ -40,9 +44,11 @@ ${BOLD}Options:${RESET}
 
 ${BOLD}Examples:${RESET}
   ./release.sh                    # Package current version into dist/
-  ./release.sh 2.1.0              # Bump to 2.1.0 and package into dist/
-  ./release.sh --publish          # Package and publish GitHub release via gh CLI
-EOF
+  ./release.sh 0.2.0              # Explicitly set 0.2.0 and package into dist/
+  ./release.sh --publish          # Auto-bump patch version (e.g. 0.1.8 -> 0.1.9), tag & publish
+  ./release.sh --publish --bump minor # Auto-bump minor version (e.g. 0.1.8 -> 0.2.0), tag & publish
+  ./release.sh --publish --skip-tag   # Publish current version without bumping or creating git tags
+"
 }
 
 # Parse positional argument or options
@@ -51,6 +57,14 @@ while [[ $# -gt 0 ]]; do
         -v|--version)
             VERSION="$2"
             shift 2
+            ;;
+        --bump)
+            BUMP_TYPE="$2"
+            shift 2
+            ;;
+        --skip-tag|--no-tag)
+            SKIP_TAG=true
+            shift
             ;;
         --skip-tests)
             SKIP_TESTS=true
@@ -85,23 +99,77 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Helper function to bump semantic version
+bump_semver() {
+    local v="$1"
+    local level="${2:-patch}"
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$v"
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
+    
+    case "$level" in
+        major)
+            major=$((major + 1))
+            minor=0
+            patch=0
+            ;;
+        minor)
+            minor=$((minor + 1))
+            patch=0
+            ;;
+        patch|*)
+            patch=$((patch + 1))
+            ;;
+    esac
+    echo "${major}.${minor}.${patch}"
+}
+
 # 1. Resolve version
 PURAH_CORE_FILE="Sources/PurahCore/PurahCore.swift"
 INFO_PLIST_FILE="Sources/PurahApp/Resources/Info.plist"
 
 CURRENT_VERSION=$(grep -oE 'public static let version = "[^"]+"' "$PURAH_CORE_FILE" | cut -d'"' -f2)
 
+# Check highest git tag
+HIGHEST_GIT_TAG=$(git tag -l "v*" 2>/dev/null | grep -E '^v[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1 | sed 's/^v//' || echo "")
+
 if [ -z "$VERSION" ]; then
-    VERSION="$CURRENT_VERSION"
-    echo -e "${CYAN}📌 Using current version: ${BOLD}v${VERSION}${RESET}"
-else
-    if [ "$VERSION" != "$CURRENT_VERSION" ]; then
-        echo -e "${YELLOW}📝 Updating version from ${CURRENT_VERSION} to ${VERSION}...${RESET}"
-        sed -i '' "s/public static let version = \"[^\"]*\"/public static let version = \"${VERSION}\"/" "$PURAH_CORE_FILE"
-        if command -v plutil >/dev/null 2>&1; then
-            plutil -replace CFBundleShortVersionString -string "${VERSION}" "$INFO_PLIST_FILE"
+    if [ "$PUBLISH" = true ] && [ "$SKIP_TAG" = false ]; then
+        # Determine base version: max between CURRENT_VERSION and HIGHEST_GIT_TAG
+        BASE_VERSION="$CURRENT_VERSION"
+        if [ -n "$HIGHEST_GIT_TAG" ]; then
+            BASE_VERSION=$(python3 -c "
+import sys
+v1 = [int(x) for x in sys.argv[1].split('.')]
+v2 = [int(x) for x in sys.argv[2].split('.')]
+print(sys.argv[1] if v1 >= v2 else sys.argv[2])
+" "$CURRENT_VERSION" "$HIGHEST_GIT_TAG")
         fi
-        echo -e "${GREEN}✓ Updated ${PURAH_CORE_FILE} and ${INFO_PLIST_FILE}${RESET}"
+
+        VERSION=$(bump_semver "$BASE_VERSION" "$BUMP_TYPE")
+        echo -e "${GREEN}✨ Auto-bumping version (${BUMP_TYPE}): ${BOLD}v${BASE_VERSION} -> v${VERSION}${RESET}"
+    else
+        VERSION="$CURRENT_VERSION"
+        echo -e "${CYAN}📌 Using current version: ${BOLD}v${VERSION}${RESET}"
+    fi
+fi
+
+# Apply version updates if needed
+if [ "$VERSION" != "$CURRENT_VERSION" ]; then
+    echo -e "${YELLOW}📝 Updating version from ${CURRENT_VERSION} to ${VERSION}...${RESET}"
+    sed -i '' "s/public static let version = \"[^\"]*\"/public static let version = \"${VERSION}\"/" "$PURAH_CORE_FILE"
+    if command -v plutil >/dev/null 2>&1; then
+        plutil -replace CFBundleShortVersionString -string "${VERSION}" "$INFO_PLIST_FILE"
+    fi
+    echo -e "${GREEN}✓ Updated ${PURAH_CORE_FILE} and ${INFO_PLIST_FILE}${RESET}"
+
+    # Commit version bump if git is in a repository and publish is requested
+    if [ "$PUBLISH" = true ] && [ "$SKIP_TAG" = false ]; then
+        git add "$PURAH_CORE_FILE" "$INFO_PLIST_FILE"
+        git commit -m "📦Build:[Release] Bump version to v${VERSION}"
+        echo -e "${GREEN}✓ Committed version bump: v${VERSION}${RESET}"
     fi
 fi
 
@@ -234,26 +302,39 @@ if [ "$PUBLISH" = true ]; then
         exit 1
     fi
 
-    # Check if tag exists locally
-    if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-        echo -e "   └── Tagging git commit with ${TAG_NAME}..."
-        git tag -a "$TAG_NAME" -m "Release ${TAG_NAME}"
+    if [ "$SKIP_TAG" = false ]; then
+        # Check if tag exists locally
+        if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo -e "   └── Tagging git commit with ${TAG_NAME}..."
+            git tag -a "$TAG_NAME" -m "Release ${TAG_NAME}"
+        fi
+
+        # Push tag to origin
+        echo -e "   └── Pushing tag ${TAG_NAME} to remote..."
+        git push origin "$TAG_NAME" || true
+    else
+        echo -e "   └── ${YELLOW}Skipping git tagging and tag push (--skip-tag specified)${RESET}"
     fi
 
-    # Push tag to origin
-    echo -e "   └── Pushing tag ${TAG_NAME} to remote..."
-    git push origin "$TAG_NAME" || true
-
-    # Create release
-    echo -e "   └── Creating GitHub release..."
-    gh release create "$TAG_NAME" \
+    # Create release (or update if already exists)
+    echo -e "   └── Publishing to GitHub release ${TAG_NAME}..."
+    if ! gh release create "$TAG_NAME" \
         "$DMG_PATH" \
         "$ZIP_PATH" \
         "${DMG_PATH}.sha256" \
         "${ZIP_PATH}.sha256" \
         "$RELEASE_INFO_PATH" \
         --title "Purah ${TAG_NAME}" \
-        --notes-file "$NOTES_PATH"
+        --notes-file "$NOTES_PATH" 2>/dev/null; then
+        echo -e "   └── Release ${TAG_NAME} already exists, updating assets..."
+        gh release upload "$TAG_NAME" \
+            "$DMG_PATH" \
+            "$ZIP_PATH" \
+            "${DMG_PATH}.sha256" \
+            "${ZIP_PATH}.sha256" \
+            "$RELEASE_INFO_PATH" \
+            --clobber
+    fi
 
     echo -e "\n${BOLD}${GREEN}🚀 Release ${TAG_NAME} published successfully on GitHub!${RESET}"
 else
