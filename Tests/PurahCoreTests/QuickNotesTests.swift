@@ -372,4 +372,81 @@ struct QuickNotesTests {
         textView.didChangeText()
         #expect(textView.string == "Line 3")
     }
+
+    @Test("QuickNotesMarkdownHelper styles code blocks and tables live in NSTextStorage")
+    @MainActor
+    func testCodeBlockAndTableLiveStyling() {
+        let accent = NSColor.systemTeal
+
+        // 1. Single-line ```let x = 1``` hides the ``` delimiters on inactive lines (0.01pt font) and applies monospaced code styling
+        let inlineBlockMd = "Prefix ```let x = 1``` Suffix"
+        let storage1 = NSTextStorage(string: inlineBlockMd)
+        QuickNotesMarkdownHelper.styleAttributedString(storage1, accentColor: accent, selectedRange: nil)
+
+        let openFenceLoc = (inlineBlockMd as NSString).range(of: "```let").location
+        let fontOpenFence = storage1.attribute(.font, at: openFenceLoc, effectiveRange: nil) as? NSFont
+        #expect(fontOpenFence?.pointSize == 0.01)
+        let colorOpenFence = storage1.attribute(.foregroundColor, at: openFenceLoc, effectiveRange: nil) as? NSColor
+        #expect(colorOpenFence == .clear)
+
+        let codeTextLoc = (inlineBlockMd as NSString).range(of: "let x = 1").location
+        let fontCodeText = storage1.attribute(.font, at: codeTextLoc, effectiveRange: nil) as? NSFont
+        #expect(fontCodeText?.pointSize == 11)
+        let colorCodeText = storage1.attribute(.foregroundColor, at: codeTextLoc, effectiveRange: nil) as? NSColor
+        #expect(colorCodeText == accent)
+
+        let closeFenceLoc = (inlineBlockMd as NSString).range(of: "``` Suffix").location
+        let fontCloseFence = storage1.attribute(.font, at: closeFenceLoc, effectiveRange: nil) as? NSFont
+        #expect(fontCloseFence?.pointSize == 0.01)
+
+        // 2. Multi-line fenced code blocks (```swift\n# not a heading\n```)
+        let fencedMd = "```swift\n# not a heading\n```"
+        let storage2 = NSTextStorage(string: fencedMd)
+        QuickNotesMarkdownHelper.styleAttributedString(storage2, accentColor: accent, selectedRange: nil)
+
+        // Opening fence is inactive: delimiter collapsed
+        let fontFence1 = storage2.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(fontFence1?.pointSize == 0.01)
+
+        // Inner line "# not a heading" is monospaced code (NOT 14.5pt bold heading!)
+        let hashLoc = (fencedMd as NSString).range(of: "# not a heading").location
+        let fontInnerCode = storage2.attribute(.font, at: hashLoc, effectiveRange: nil) as? NSFont
+        #expect(fontInnerCode?.pointSize == 11)
+        #expect(fontInnerCode?.fontDescriptor.symbolicTraits.contains(.monoSpace) == true)
+
+        // Closing fence is inactive: collapsed
+        let fence2Loc = (fencedMd as NSString).range(of: "```", options: .backwards).location
+        let fontFence2 = storage2.attribute(.font, at: fence2Loc, effectiveRange: nil) as? NSFont
+        #expect(fontFence2?.pointSize == 0.01)
+
+        // 3. Markdown table rows (| Name | Value |\n| --- | --- |\n| CPU | 95% |)
+        let tableMd = "| Name | Value |\n| --- | --- |\n| CPU | 95% |"
+        let storage3 = NSTextStorage(string: tableMd)
+        QuickNotesMarkdownHelper.styleAttributedString(storage3, accentColor: accent, selectedRange: nil)
+
+        // Header row above separator: bold monospaced accentColor
+        let headerTextLoc = (tableMd as NSString).range(of: "Name").location
+        let fontHeader = storage3.attribute(.font, at: headerTextLoc, effectiveRange: nil) as? NSFont
+        #expect(fontHeader?.pointSize == 11)
+        #expect(fontHeader?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+        let colorHeader = storage3.attribute(.foregroundColor, at: headerTextLoc, effectiveRange: nil) as? NSColor
+        #expect(colorHeader == accent)
+
+        // Table border | in header row: accentColor.withAlphaComponent(0.75) and bold
+        let pipeLoc = 0
+        let fontPipe = storage3.attribute(.font, at: pipeLoc, effectiveRange: nil) as? NSFont
+        #expect(fontPipe?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+
+        // Separator row: 10.5pt font
+        let sepLoc = (tableMd as NSString).range(of: "---").location
+        let fontSep = storage3.attribute(.font, at: sepLoc, effectiveRange: nil) as? NSFont
+        #expect(fontSep?.pointSize == 10.5)
+
+        // Data row: monospaced table cells, regular weight, labelColor
+        let dataTextLoc = (tableMd as NSString).range(of: "CPU").location
+        let fontData = storage3.attribute(.font, at: dataTextLoc, effectiveRange: nil) as? NSFont
+        #expect(fontData?.pointSize == 11)
+        let colorData = storage3.attribute(.foregroundColor, at: dataTextLoc, effectiveRange: nil) as? NSColor
+        #expect(colorData == NSColor.labelColor)
+    }
 }

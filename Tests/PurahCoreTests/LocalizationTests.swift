@@ -22,4 +22,34 @@ struct LocalizationTests {
         let loc = LocalizationManager()
         #expect(loc.localized("unknown.key") == "unknown.key")
     }
+
+    @Test("Translates notes.tips.table across all supported languages")
+    @MainActor
+    func testTableTipsLocalization() {
+        let loc = LocalizationManager()
+
+        loc.currentLanguage = .english
+        #expect(loc.localized("notes.tips.table") == "Table")
+
+        loc.currentLanguage = .chinese
+        #expect(loc.localized("notes.tips.table") == "表格")
+
+        loc.currentLanguage = .traditionalChinese
+        #expect(loc.localized("notes.tips.table") == "表格")
+
+        loc.currentLanguage = .japanese
+        #expect(loc.localized("notes.tips.table") == "テーブル")
+
+        loc.currentLanguage = .korean
+        #expect(loc.localized("notes.tips.table") == "표")
+
+        loc.currentLanguage = .french
+        #expect(loc.localized("notes.tips.table") == "Tableau")
+
+        loc.currentLanguage = .german
+        #expect(loc.localized("notes.tips.table") == "Tabelle")
+
+        loc.currentLanguage = .spanish
+        #expect(loc.localized("notes.tips.table") == "Tabla")
+    }
 }

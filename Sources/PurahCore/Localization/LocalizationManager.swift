@@ -6,6 +6,12 @@ public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
     case system
     case english = "en"
     case chinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+    case japanese = "ja"
+    case korean = "ko"
+    case french = "fr"
+    case german = "de"
+    case spanish = "es"
 
     public var id: String { rawValue }
 
@@ -14,6 +20,12 @@ public enum AppLanguage: String, Codable, Sendable, CaseIterable, Identifiable {
         case .system: return "System Default"
         case .english: return "English"
         case .chinese: return "简体中文"
+        case .traditionalChinese: return "繁體中文"
+        case .japanese: return "日本語"
+        case .korean: return "한국어"
+        case .french: return "Français"
+        case .german: return "Deutsch"
+        case .spanish: return "Español"
         }
     }
 }
@@ -32,8 +44,26 @@ public final class LocalizationManager {
             return currentLanguage
         }
         let preferred = Locale.preferredLanguages.first?.lowercased() ?? ""
+        if preferred.hasPrefix("zh-hant") || preferred.hasPrefix("zh-tw") || preferred.hasPrefix("zh-hk") {
+            return .traditionalChinese
+        }
         if preferred.hasPrefix("zh") {
             return .chinese
+        }
+        if preferred.hasPrefix("ja") {
+            return .japanese
+        }
+        if preferred.hasPrefix("ko") {
+            return .korean
+        }
+        if preferred.hasPrefix("fr") {
+            return .french
+        }
+        if preferred.hasPrefix("de") {
+            return .german
+        }
+        if preferred.hasPrefix("es") {
+            return .spanish
         }
         return .english
     }
@@ -159,6 +189,7 @@ public final class LocalizationManager {
             "notes.tips.italic": "Italic (⌘I)",
             "notes.tips.code": "Inline Code (⌘K)",
             "notes.tips.codeBlock": "Code Block",
+            "notes.tips.table": "Table",
             "notes.tips.checklist": "Interactive Checklist",
             "notes.tips.list": "Bullet List",
             "notes.tips.quote": "Quote Block",
@@ -286,6 +317,7 @@ public final class LocalizationManager {
             "notes.tips.italic": "斜体 (⌘I)",
             "notes.tips.code": "行内代码 (⌘K)",
             "notes.tips.codeBlock": "多行代码块",
+            "notes.tips.table": "表格",
             "notes.tips.checklist": "交互待办复选框",
             "notes.tips.list": "无序列表",
             "notes.tips.quote": "引用文本块",
@@ -303,6 +335,24 @@ public final class LocalizationManager {
             "updater.button.update": "立即更新",
             "updater.button.later": "稍后",
             "updater.button.check": "检查更新"
+        ],
+        .traditionalChinese: [
+            "notes.tips.table": "表格"
+        ],
+        .japanese: [
+            "notes.tips.table": "テーブル"
+        ],
+        .korean: [
+            "notes.tips.table": "표"
+        ],
+        .french: [
+            "notes.tips.table": "Tableau"
+        ],
+        .german: [
+            "notes.tips.table": "Tabelle"
+        ],
+        .spanish: [
+            "notes.tips.table": "Tabla"
         ]
     ]
 }

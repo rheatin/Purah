@@ -26,6 +26,7 @@ public struct MarkdownTipsPopoverView: View {
                 shortcutRow(syntax: "*italic*", meaning: "notes.tips.italic".localized)
                 shortcutRow(syntax: "`code`", meaning: "notes.tips.code".localized)
                 shortcutRow(syntax: "```code```", meaning: "notes.tips.codeBlock".localized)
+                shortcutRow(syntax: "| a | b |", meaning: "notes.tips.table".localized)
                 shortcutRow(syntax: "- [ ] task", meaning: "notes.tips.checklist".localized)
                 shortcutRow(syntax: "- item", meaning: "notes.tips.list".localized)
                 shortcutRow(syntax: "> quote", meaning: "notes.tips.quote".localized)
@@ -85,7 +86,7 @@ public struct InteractiveMarkdownPreviewView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        renderLine(line, index: index)
+                        renderLine(line, index: index, allLines: lines)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -100,10 +101,63 @@ public struct InteractiveMarkdownPreviewView: View {
     }
 
     @ViewBuilder
-    private func renderLine(_ line: String, index: Int) -> some View {
+    private func renderLine(_ line: String, index: Int, allLines: [String]) -> some View {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-        if trimmed.hasPrefix("- [ ] ") {
+        // Fenced code block detection
+        let isFenceDelimiter = trimmed.hasPrefix("```") && !trimmed.dropFirst(3).contains("```")
+        let precedingFencesCount = allLines[0..<index].filter {
+            let t = $0.trimmingCharacters(in: .whitespaces)
+            return t.hasPrefix("```") && !t.dropFirst(3).contains("```")
+        }.count
+        let isInsideFencedBlock = precedingFencesCount % 2 == 1
+
+        if isFenceDelimiter {
+            let lang = String(trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces))
+            HStack(spacing: 4) {
+                Image(systemName: "curlybraces")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundColor(accentColor.opacity(0.85))
+                Text(lang.isEmpty ? "code" : lang)
+                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(accentColor.opacity(0.85))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(accentColor.opacity(0.12))
+            .cornerRadius(4)
+        } else if isInsideFencedBlock {
+            Text(line)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(accentColor.opacity(0.08))
+                .cornerRadius(2)
+        } else if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.count >= 3 {
+            let inner = trimmed.dropFirst().dropLast()
+            let isSeparator = inner.contains("-") && inner.allSatisfy { $0 == "-" || $0 == ":" || $0 == "|" || $0.isWhitespace }
+            if isSeparator {
+                Text(trimmed)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(accentColor.opacity(0.55))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                let nextLineTrimmed = (index + 1 < allLines.count) ? allLines[index + 1].trimmingCharacters(in: .whitespaces) : ""
+                let nextInner = nextLineTrimmed.dropFirst().dropLast()
+                let isHeader = nextLineTrimmed.hasPrefix("|") && nextLineTrimmed.hasSuffix("|") && nextLineTrimmed.count >= 3 && nextInner.contains("-") && nextInner.allSatisfy { $0 == "-" || $0 == ":" || $0 == "|" || $0.isWhitespace }
+
+                Text(trimmed)
+                    .font(.system(size: 10.5, weight: isHeader ? .bold : .regular, design: .monospaced))
+                    .foregroundColor(isHeader ? accentColor : .primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(accentColor.opacity(isHeader ? 0.12 : 0.05))
+                    .cornerRadius(3)
+            }
+        } else if trimmed.hasPrefix("- [ ] ") {
             let itemText = String(trimmed.dropFirst(6))
             HStack(alignment: .top, spacing: 6) {
                 Button {
@@ -201,7 +255,8 @@ public struct InteractiveMarkdownPreviewView: View {
 public struct QuickNotesMarkdownHelper: Sendable {
     private static let boldRegex = try? NSRegularExpression(pattern: #"\*\*(.+?)\*\*"#)
     private static let italicRegex = try? NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)"#)
-    private static let codeRegex = try? NSRegularExpression(pattern: #"`([^`\n]+?)`"#)
+    private static let inlineCodeBlockRegex = try? NSRegularExpression(pattern: #"```([^`\n]+?)```"#)
+    private static let codeRegex = try? NSRegularExpression(pattern: #"(?<!`)`(?!`)([^`\n]+?)(?<!`)`(?!`)"#)
 
     /// Handles smart line return and list/checklist continuation in Typora block-level live preview.
     public static func applyLineReturn(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int) {
@@ -325,14 +380,127 @@ public struct QuickNotesMarkdownHelper: Sendable {
             return lineRange
         }
 
+        struct ParsedLine {
+            let lineString: String
+            let range: NSRange
+            let trimmed: String
+            let leadingSpaces: Int
+        }
+
+        var lines: [ParsedLine] = []
         nsString.enumerateSubstrings(in: fullRange, options: .byLines) { substring, substringRange, _, _ in
             guard let line = substring else { return }
             let trimmedLeading = line.drop(while: { $0.isWhitespace })
             let leadingWhitespaceCount = line.count - trimmedLeading.count
             let trimmedString = String(trimmedLeading)
+            lines.append(ParsedLine(lineString: line, range: substringRange, trimmed: trimmedString, leadingSpaces: leadingWhitespaceCount))
+        }
+
+        func isFenceDelimiter(_ trimmed: String) -> Bool {
+            trimmed.hasPrefix("```") && !trimmed.dropFirst(3).contains("```")
+        }
+
+        func isTableLine(_ trimmed: String) -> Bool {
+            trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.count >= 3
+        }
+
+        func isTableSeparatorLine(_ trimmed: String) -> Bool {
+            guard isTableLine(trimmed) else { return false }
+            let inner = trimmed.dropFirst().dropLast()
+            return inner.contains("-") && inner.allSatisfy { $0 == "-" || $0 == ":" || $0 == "|" || $0.isWhitespace }
+        }
+
+        var inFencedCodeBlock = false
+        var fencedBlockRanges: [NSRange] = []
+
+        for (index, line) in lines.enumerated() {
+            let substringRange = line.range
+            let trimmedString = line.trimmed
+            let leadingWhitespaceCount = line.leadingSpaces
             let lineActive = isLineActive(substringRange)
 
-            if trimmedString.hasPrefix("### ") || (trimmedString.hasPrefix("###") && !trimmedString.hasPrefix("####") && trimmedString.count > 3) {
+            if isFenceDelimiter(trimmedString) {
+                inFencedCodeBlock.toggle()
+                fencedBlockRanges.append(substringRange)
+
+                if lineActive {
+                    textStorage.addAttributes([
+                        .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
+                        .foregroundColor: NSColor.secondaryLabelColor
+                    ], range: substringRange)
+                } else {
+                    let langAfterFence = trimmedString.dropFirst(3).trimmingCharacters(in: .whitespaces)
+                    if langAfterFence.isEmpty {
+                        let fenceRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: trimmedString.count)
+                        textStorage.addAttributes(hiddenSyntaxAttributes, range: fenceRange)
+                    } else {
+                        let lineNSString = line.lineString as NSString
+                        let langRangeInLine = lineNSString.range(of: langAfterFence)
+                        if langRangeInLine.location != NSNotFound {
+                            let prefixRange = NSRange(location: substringRange.location, length: langRangeInLine.location)
+                            textStorage.addAttributes(hiddenSyntaxAttributes, range: prefixRange)
+
+                            let langRange = NSRange(location: substringRange.location + langRangeInLine.location, length: langRangeInLine.length)
+                            textStorage.addAttributes([
+                                .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .bold),
+                                .foregroundColor: accentColor.withAlphaComponent(0.75)
+                            ], range: langRange)
+                        } else {
+                            let fenceRange = NSRange(location: substringRange.location + leadingWhitespaceCount, length: 3)
+                            textStorage.addAttributes(hiddenSyntaxAttributes, range: fenceRange)
+                        }
+                    }
+                }
+            } else if inFencedCodeBlock {
+                fencedBlockRanges.append(substringRange)
+                textStorage.addAttributes([
+                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
+                    .foregroundColor: NSColor.labelColor,
+                    .backgroundColor: accentColor.withAlphaComponent(0.10)
+                ], range: substringRange)
+            } else if isTableLine(trimmedString) {
+                if isTableSeparatorLine(trimmedString) {
+                    textStorage.addAttributes([
+                        .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular),
+                        .foregroundColor: accentColor.withAlphaComponent(0.55)
+                    ], range: substringRange)
+
+                    if !lineActive {
+                        let lineNSString = line.lineString as NSString
+                        for cIndex in 0..<line.lineString.count {
+                            let char = lineNSString.character(at: cIndex)
+                            let charRange = NSRange(location: substringRange.location + cIndex, length: 1)
+                            if char == 0x7C { // '|'
+                                textStorage.addAttributes([
+                                    .foregroundColor: accentColor.withAlphaComponent(0.75),
+                                    .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .bold)
+                                ], range: charRange)
+                            } else if char == 0x2D || char == 0x3A { // '-' or ':'
+                                textStorage.addAttribute(.foregroundColor, value: accentColor.withAlphaComponent(0.45), range: charRange)
+                            }
+                        }
+                    }
+                } else {
+                    let isTableHeaderRow = index + 1 < lines.count && isTableSeparatorLine(lines[index + 1].trimmed)
+                    textStorage.addAttributes([
+                        .font: NSFont.monospacedSystemFont(ofSize: 11, weight: isTableHeaderRow ? .bold : .regular),
+                        .foregroundColor: isTableHeaderRow ? accentColor : NSColor.labelColor,
+                        .backgroundColor: accentColor.withAlphaComponent(isTableHeaderRow ? 0.12 : 0.05)
+                    ], range: substringRange)
+
+                    let lineNSString = line.lineString as NSString
+                    for cIndex in 0..<line.lineString.count {
+                        let char = lineNSString.character(at: cIndex)
+                        if char == 0x7C { // '|'
+                            let charRange = NSRange(location: substringRange.location + cIndex, length: 1)
+                            textStorage.addAttributes([
+                                .foregroundColor: accentColor.withAlphaComponent(0.75),
+                                .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+                            ], range: charRange)
+                        }
+                    }
+                }
+            } else if trimmedString.hasPrefix("### ") || (trimmedString.hasPrefix("###") && !trimmedString.hasPrefix("####") && trimmedString.count > 3) {
                 textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .bold), range: substringRange)
                 let spacesCount = trimmedString.dropFirst(3).prefix(while: { $0 == " " }).count
                 let delimiterLength = 3 + spacesCount
@@ -419,12 +587,77 @@ public struct QuickNotesMarkdownHelper: Sendable {
             }
         }
 
+        var codeBlockRanges: [NSRange] = []
+
+        if let inlineCodeBlockRegex {
+            let matches = inlineCodeBlockRegex.matches(in: string, range: fullRange)
+            for match in matches {
+                if fencedBlockRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+                    continue
+                }
+                codeBlockRanges.append(match.range)
+                textStorage.addAttributes([
+                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+                    .foregroundColor: accentColor,
+                    .backgroundColor: accentColor.withAlphaComponent(0.14)
+                ], range: match.range)
+
+                guard match.range.length >= 6 else { continue }
+                let lineRange = trimmedLineRange(for: match.range)
+                let openRange = NSRange(location: match.range.location, length: 3)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 3, length: 3)
+                if isLineActive(lineRange) {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: openRange)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: closeRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: openRange)
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: closeRange)
+                }
+            }
+        }
+
+        if let codeRegex {
+            let matches = codeRegex.matches(in: string, range: fullRange)
+            for match in matches {
+                if fencedBlockRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+                    continue
+                }
+                if codeBlockRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+                    continue
+                }
+                codeBlockRanges.append(match.range)
+                textStorage.addAttributes([
+                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+                    .foregroundColor: accentColor,
+                    .backgroundColor: accentColor.withAlphaComponent(0.12)
+                ], range: match.range)
+                guard match.range.length >= 2 else { continue }
+                let lineRange = trimmedLineRange(for: match.range)
+                let openRange = NSRange(location: match.range.location, length: 1)
+                let closeRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+                if isLineActive(lineRange) {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: openRange)
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: closeRange)
+                } else {
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: openRange)
+                    textStorage.addAttributes(hiddenSyntaxAttributes, range: closeRange)
+                }
+            }
+        }
+
+        let allCodeRanges = fencedBlockRanges + codeBlockRanges
+
         if let boldRegex {
             let matches = boldRegex.matches(in: string, range: fullRange)
             for match in matches {
-                textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 11.5, weight: .bold), range: match.range)
-                guard match.range.length >= 4 else { continue }
+                if allCodeRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+                    continue
+                }
                 let lineRange = trimmedLineRange(for: match.range)
+                let lineForMatch = nsString.substring(with: lineRange).trimmingCharacters(in: .whitespaces)
+                let fontForBold = isTableLine(lineForMatch) ? NSFont.monospacedSystemFont(ofSize: 11, weight: .bold) : NSFont.systemFont(ofSize: 11.5, weight: .bold)
+                textStorage.addAttribute(.font, value: fontForBold, range: match.range)
+                guard match.range.length >= 4 else { continue }
                 let openRange = NSRange(location: match.range.location, length: 2)
                 let closeRange = NSRange(location: match.range.location + match.range.length - 2, length: 2)
                 if isLineActive(lineRange) {
@@ -440,29 +673,10 @@ public struct QuickNotesMarkdownHelper: Sendable {
         if let italicRegex {
             let matches = italicRegex.matches(in: string, range: fullRange)
             for match in matches {
-                textStorage.addAttribute(.font, value: italicFont, range: match.range)
-                guard match.range.length >= 2 else { continue }
-                let lineRange = trimmedLineRange(for: match.range)
-                let openRange = NSRange(location: match.range.location, length: 1)
-                let closeRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
-                if isLineActive(lineRange) {
-                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: openRange)
-                    textStorage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: closeRange)
-                } else {
-                    textStorage.addAttributes(hiddenSyntaxAttributes, range: openRange)
-                    textStorage.addAttributes(hiddenSyntaxAttributes, range: closeRange)
+                if allCodeRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+                    continue
                 }
-            }
-        }
-
-        if let codeRegex {
-            let matches = codeRegex.matches(in: string, range: fullRange)
-            for match in matches {
-                textStorage.addAttributes([
-                    .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
-                    .foregroundColor: accentColor,
-                    .backgroundColor: accentColor.withAlphaComponent(0.12)
-                ], range: match.range)
+                textStorage.addAttribute(.font, value: italicFont, range: match.range)
                 guard match.range.length >= 2 else { continue }
                 let lineRange = trimmedLineRange(for: match.range)
                 let openRange = NSRange(location: match.range.location, length: 1)
