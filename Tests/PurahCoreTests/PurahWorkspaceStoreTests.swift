@@ -419,4 +419,83 @@ struct PurahWorkspaceStoreTests {
         #expect(enabledPods.count == 4)
         #expect(Set(enabledPods.map(\.id)) == keepIds)
     }
+
+    @Test("Plugin-scoped storage bridges and legacy migration ensure store purity")
+    func testPluginScopedStorageBridgesAndMigration() {
+        let suiteName = "test_scoped_bridges_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+
+        // 1. Simulate legacy keys placed directly in root UserDefaults
+        isolated.set(5, forKey: "purah.calendarMaxRailEvents")
+        isolated.set(8, forKey: "purah.todoMaxRailTasks")
+        isolated.set(6, forKey: "purah.clipboardMaxRailItems")
+        isolated.set(false, forKey: "purah.vitals.isDecomposed")
+        isolated.set(["cpu", "disk"], forKey: "purah.vitals.enabledMetrics")
+        isolated.set(false, forKey: "purah.scripts.isDecomposed")
+        isolated.set(["action1", "action2"], forKey: "purah.scripts.enabledActionIds")
+
+        // 2. Initialize store: must migrate legacy keys into ScopedPluginStorage
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.loadPersistentState()
+
+        #expect(store.calendarMaxRailEvents == 5)
+        #expect(store.todoMaxRailTasks == 8)
+        #expect(store.clipboardMaxRailItems == 6)
+        #expect(store._isVitalsDecomposed == false)
+        #expect(store._vitalsEnabledMetrics == [.cpu, .disk])
+        #expect(store._isScriptsDecomposed == false)
+        #expect(store._scriptsEnabledActionIds == ["action1", "action2"])
+
+        // Root keys must be cleaned up
+        #expect(isolated.object(forKey: "purah.calendarMaxRailEvents") == nil)
+        #expect(isolated.object(forKey: "purah.todoMaxRailTasks") == nil)
+        #expect(isolated.object(forKey: "purah.clipboardMaxRailItems") == nil)
+        #expect(isolated.object(forKey: "purah.vitals.isDecomposed") == nil)
+        #expect(isolated.object(forKey: "purah.vitals.enabledMetrics") == nil)
+        #expect(isolated.object(forKey: "purah.scripts.isDecomposed") == nil)
+        #expect(isolated.object(forKey: "purah.scripts.enabledActionIds") == nil)
+
+        // Partitioned plugin storage must hold the migrated values
+        let calStorage = ScopedPluginStorage(pluginId: "calendar", defaults: isolated)
+        let todoStorage = ScopedPluginStorage(pluginId: "todo", defaults: isolated)
+        let clipStorage = ScopedPluginStorage(pluginId: "clipboard", defaults: isolated)
+        let vitalsStorage = ScopedPluginStorage(pluginId: "vitals", defaults: isolated)
+        let scriptsStorage = ScopedPluginStorage(pluginId: "scripts", defaults: isolated)
+        let musicStorage = ScopedPluginStorage(pluginId: "music", defaults: isolated)
+
+        #expect(calStorage.int(forKey: "maxRailEvents") == 5)
+        #expect(todoStorage.int(forKey: "maxRailTodos") == 8)
+        #expect(clipStorage.int(forKey: "maxRailItems") == 6)
+        #expect(vitalsStorage.bool(forKey: "isDecomposed") == false)
+        #expect(vitalsStorage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) == [.cpu, .disk])
+        #expect(scriptsStorage.bool(forKey: "isDecomposed") == false)
+        #expect(scriptsStorage.codable(forKey: "enabledActionIds", as: [String].self) == ["action1", "action2"])
+
+        // 3. Mutating scoped storage directly updates store computed properties seamlessly
+        calStorage.set(3, forKey: "maxRailEvents")
+        #expect(store.calendarMaxRailEvents == 3)
+
+        // 4. Mutating via store updates scoped storage seamlessly without contaminating root
+        store.todoMaxRailTasks = 9
+        #expect(todoStorage.int(forKey: "maxRailTodos") == 9)
+        #expect(isolated.object(forKey: "purah.todoMaxRailTasks") == nil)
+
+        store._isVitalsDecomposed = true
+        #expect(vitalsStorage.bool(forKey: "isDecomposed") == true)
+        #expect(isolated.object(forKey: "purah.vitals.isDecomposed") == nil)
+
+        // 5. Test music waveform animation boolean compatibility (Codable JSON Data vs plist bool)
+        store.isMusicWaveformAnimationEnabled = false
+        #expect(store.isMusicWaveformAnimationEnabled == false)
+        #expect(musicStorage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) == false)
+
+        // 6. Saving persistent state does not re-contaminate root defaults with plugin keys
+        store.savePersistentState()
+        #expect(isolated.object(forKey: "purah.calendarMaxRailEvents") == nil)
+        #expect(isolated.object(forKey: "purah.todoMaxRailTasks") == nil)
+        #expect(isolated.object(forKey: "purah.clipboardMaxRailItems") == nil)
+        #expect(isolated.object(forKey: "purah.vitals.isDecomposed") == nil)
+        #expect(isolated.object(forKey: "purah.scripts.isDecomposed") == nil)
+    }
 }

@@ -284,16 +284,112 @@ public final class PurahWorkspaceStore {
         savePersistentState()
     }
 
+    // Internal revision tracker for observation propagation of decoupled plugin storage
+    private var _pluginStorageRevision: Int = 0
+
     // Real-time synchronization flags and scopes
     public var isUsingRealCalendar: Bool = false
     public var isUsingRealReminders: Bool = false
-    public var calendarScope: CalendarTimeScope = .today
-    public var remindersScope: RemindersScope = .allIncomplete
-    public var calendarMaxRailEvents: Int = 4
-    public var todoMaxRailTasks: Int = 6
-    public var clipboardMaxRailItems: Int = 4
-    public var isMusicWaveformAnimationEnabled: Bool = true
-    public var isEventGlowAlertEnabled: Bool = true
+
+    public var calendarScope: CalendarTimeScope {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            return storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "scope")
+        }
+    }
+
+    public var remindersScope: RemindersScope {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "todo", defaults: userDefaults)
+            return storage.codable(forKey: "scope", as: RemindersScope.self) ?? .allIncomplete
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "todo", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "scope")
+        }
+    }
+
+    public var calendarMaxRailEvents: Int {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            let val = storage.int(forKey: "maxRailEvents")
+            return val > 0 ? val : 4
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            storage.set(max(newValue, 1), forKey: "maxRailEvents")
+        }
+    }
+
+    public var todoMaxRailTasks: Int {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "todo", defaults: userDefaults)
+            let val = storage.int(forKey: "maxRailTodos")
+            return val > 0 ? val : 6
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "todo", defaults: userDefaults)
+            storage.set(max(newValue, 1), forKey: "maxRailTodos")
+        }
+    }
+
+    public var clipboardMaxRailItems: Int {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: userDefaults)
+            let val = storage.int(forKey: "maxRailItems")
+            return val > 0 ? val : 4
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: userDefaults)
+            storage.set(max(newValue, 1), forKey: "maxRailItems")
+        }
+    }
+
+    public var isMusicWaveformAnimationEnabled: Bool {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "music", defaults: userDefaults)
+            if let codableVal = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) {
+                return codableVal
+            }
+            if storage.string(forKey: "isWaveformAnimationEnabled") != nil {
+                return storage.bool(forKey: "isWaveformAnimationEnabled")
+            }
+            return true
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "music", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "isWaveformAnimationEnabled")
+        }
+    }
+
+    public var isEventGlowAlertEnabled: Bool {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            return storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "isEventGlowAlertEnabled")
+        }
+    }
 
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
@@ -359,7 +455,7 @@ public final class PurahWorkspaceStore {
     public func availableScreenHeight(for edge: MountEdge) -> CGFloat {
         let screens = NSScreen.screens
         let mainScreen = NSScreen.main ?? screens.first
-        guard let screen = mainScreen else { return 850.0 }
+        guard let screen = mainScreen else { return 980.0 }
         return max(screen.visibleFrame.height - 30.0, 400.0)
     }
 
@@ -552,58 +648,118 @@ public final class PurahWorkspaceStore {
     package var _quickNote: NoteContent = .init()
     package var _isVitalsDecomposed: Bool {
         get {
-            if UserDefaults.standard.object(forKey: "purah.vitals.isDecomposed") == nil {
-                return true
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "vitals", defaults: userDefaults)
+            if storage.string(forKey: "isDecomposed") != nil {
+                return storage.bool(forKey: "isDecomposed")
             }
-            return UserDefaults.standard.bool(forKey: "purah.vitals.isDecomposed")
+            if userDefaults.object(forKey: "purah.vitals.isDecomposed") != nil {
+                return userDefaults.bool(forKey: "purah.vitals.isDecomposed")
+            }
+            return true
         }
-        set { UserDefaults.standard.set(newValue, forKey: "purah.vitals.isDecomposed") }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "vitals", defaults: userDefaults)
+            storage.set(newValue, forKey: "isDecomposed")
+        }
     }
     package var _vitalsEnabledMetrics: [VitalsMetricType] {
         get {
-            guard let arr = UserDefaults.standard.stringArray(forKey: "purah.vitals.enabledMetrics") else {
-                return [.cpu, .ram, .power, .disk]
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "vitals", defaults: userDefaults)
+            if let metrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) {
+                return metrics
             }
-            let parsed = arr.compactMap { VitalsMetricType(rawValue: $0) }
-            return parsed.isEmpty ? [.cpu, .ram, .power, .disk] : parsed
+            if let arr = userDefaults.stringArray(forKey: "purah.vitals.enabledMetrics") {
+                let parsed = arr.compactMap { VitalsMetricType(rawValue: $0) }
+                if !parsed.isEmpty { return parsed }
+            }
+            return [.cpu, .ram, .power, .disk]
         }
         set {
-            UserDefaults.standard.set(newValue.map(\.rawValue), forKey: "purah.vitals.enabledMetrics")
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "vitals", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "enabledMetrics")
         }
     }
     package var _vitalsThresholds: VitalsColorThresholds {
         get {
-            guard let data = UserDefaults.standard.data(forKey: "purah.vitals.thresholds"),
-                  let decoded = try? JSONDecoder().decode(VitalsColorThresholds.self, from: data) else {
-                return VitalsColorThresholds()
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "vitals", defaults: userDefaults)
+            if let thresh = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) {
+                return thresh
             }
-            return decoded
+            if let data = userDefaults.data(forKey: "purah.vitals.thresholds"),
+               let decoded = try? JSONDecoder().decode(VitalsColorThresholds.self, from: data) {
+                return decoded
+            }
+            return VitalsColorThresholds()
         }
         set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                UserDefaults.standard.set(data, forKey: "purah.vitals.thresholds")
-            }
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "vitals", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "thresholds")
         }
     }
     package var _isScriptsDecomposed: Bool {
         get {
-            if UserDefaults.standard.object(forKey: "purah.scripts.isDecomposed") == nil {
-                return true
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "scripts", defaults: userDefaults)
+            if storage.string(forKey: "isDecomposed") != nil {
+                return storage.bool(forKey: "isDecomposed")
             }
-            return UserDefaults.standard.bool(forKey: "purah.scripts.isDecomposed")
+            if userDefaults.object(forKey: "purah.scripts.isDecomposed") != nil {
+                return userDefaults.bool(forKey: "purah.scripts.isDecomposed")
+            }
+            return true
         }
-        set { UserDefaults.standard.set(newValue, forKey: "purah.scripts.isDecomposed") }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "scripts", defaults: userDefaults)
+            storage.set(newValue, forKey: "isDecomposed")
+        }
     }
     package var _scriptsEnabledActionIds: [String] {
         get {
-            UserDefaults.standard.stringArray(forKey: "purah.scripts.enabledActionIds") ?? []
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "scripts", defaults: userDefaults)
+            if let ids = storage.codable(forKey: "enabledActionIds", as: [String].self) {
+                return ids
+            }
+            return userDefaults.stringArray(forKey: "purah.scripts.enabledActionIds") ?? []
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: "purah.scripts.enabledActionIds")
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "scripts", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "enabledActionIds")
         }
     }
-    package var _terminalFontFamily: String = "Auto (Nerd Font)"
-    package var _terminalFontSize: Double = 11.5
+    package var _terminalFontFamily: String {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "terminal", defaults: userDefaults)
+            return storage.string(forKey: "fontFamily") ?? "Auto (Nerd Font)"
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "terminal", defaults: userDefaults)
+            storage.set(newValue, forKey: "fontFamily")
+        }
+    }
+    package var _terminalFontSize: Double {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "terminal", defaults: userDefaults)
+            let size = storage.double(forKey: "fontSize")
+            return size > 0 ? size : 11.5
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "terminal", defaults: userDefaults)
+            storage.set(newValue, forKey: "fontSize")
+        }
+    }
 
     public var scriptsEnabledActions: [ScriptActionItem] {
         let all = ScriptRunwayService.shared.actions
@@ -719,19 +875,48 @@ public final class PurahWorkspaceStore {
             self.railBarWidth = savedRailW
         }
 
-        let savedMaxCal = defaults.integer(forKey: "purah.calendarMaxRailEvents")
-        if savedMaxCal > 0 {
-            self.calendarMaxRailEvents = savedMaxCal
+        // Migrate legacy root keys into ScopedPluginStorage partition
+        if defaults.object(forKey: "purah.calendarMaxRailEvents") != nil {
+            let legacy = defaults.integer(forKey: "purah.calendarMaxRailEvents")
+            if legacy > 0 { self.calendarMaxRailEvents = legacy }
+            defaults.removeObject(forKey: "purah.calendarMaxRailEvents")
         }
-
-        let savedMaxTodo = defaults.integer(forKey: "purah.todoMaxRailTasks")
-        if savedMaxTodo > 0 {
-            self.todoMaxRailTasks = savedMaxTodo
+        if defaults.object(forKey: "purah.todoMaxRailTasks") != nil {
+            let legacy = defaults.integer(forKey: "purah.todoMaxRailTasks")
+            if legacy > 0 { self.todoMaxRailTasks = legacy }
+            defaults.removeObject(forKey: "purah.todoMaxRailTasks")
         }
-
-        let savedMaxClip = defaults.integer(forKey: "purah.clipboardMaxRailItems")
-        if savedMaxClip > 0 {
-            self.clipboardMaxRailItems = savedMaxClip
+        if defaults.object(forKey: "purah.clipboardMaxRailItems") != nil {
+            let legacy = defaults.integer(forKey: "purah.clipboardMaxRailItems")
+            if legacy > 0 { self.clipboardMaxRailItems = legacy }
+            defaults.removeObject(forKey: "purah.clipboardMaxRailItems")
+        }
+        if defaults.object(forKey: "purah.vitals.isDecomposed") != nil {
+            let legacy = defaults.bool(forKey: "purah.vitals.isDecomposed")
+            ScopedPluginStorage(pluginId: "vitals", defaults: defaults).set(legacy, forKey: "isDecomposed")
+            defaults.removeObject(forKey: "purah.vitals.isDecomposed")
+        }
+        if let legacyArr = defaults.stringArray(forKey: "purah.vitals.enabledMetrics") {
+            let parsed = legacyArr.compactMap { VitalsMetricType(rawValue: $0) }
+            if !parsed.isEmpty {
+                ScopedPluginStorage(pluginId: "vitals", defaults: defaults).setCodable(parsed, forKey: "enabledMetrics")
+            }
+            defaults.removeObject(forKey: "purah.vitals.enabledMetrics")
+        }
+        if let legacyData = defaults.data(forKey: "purah.vitals.thresholds") {
+            if let decoded = try? JSONDecoder().decode(VitalsColorThresholds.self, from: legacyData) {
+                ScopedPluginStorage(pluginId: "vitals", defaults: defaults).setCodable(decoded, forKey: "thresholds")
+            }
+            defaults.removeObject(forKey: "purah.vitals.thresholds")
+        }
+        if defaults.object(forKey: "purah.scripts.isDecomposed") != nil {
+            let legacy = defaults.bool(forKey: "purah.scripts.isDecomposed")
+            ScopedPluginStorage(pluginId: "scripts", defaults: defaults).set(legacy, forKey: "isDecomposed")
+            defaults.removeObject(forKey: "purah.scripts.isDecomposed")
+        }
+        if let legacyActionIds = defaults.stringArray(forKey: "purah.scripts.enabledActionIds") {
+            ScopedPluginStorage(pluginId: "scripts", defaults: defaults).setCodable(legacyActionIds, forKey: "enabledActionIds")
+            defaults.removeObject(forKey: "purah.scripts.enabledActionIds")
         }
 
         if let presetStr = defaults.string(forKey: "purah.currentPreset"),
@@ -812,9 +997,6 @@ public final class PurahWorkspaceStore {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
-        defaults.set(calendarMaxRailEvents, forKey: "purah.calendarMaxRailEvents")
-        defaults.set(todoMaxRailTasks, forKey: "purah.todoMaxRailTasks")
-        defaults.set(clipboardMaxRailItems, forKey: "purah.clipboardMaxRailItems")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
