@@ -158,6 +158,39 @@ struct PluginArchitectureTests {
 
         context.togglePin()
         #expect(togglePinCalled == true)
+
+        // Capability guard on undeclared/unregistered pod: Fail-Closed
+        #expect(context.hasCapability(.shellExecution) == false)
+        #expect(throws: PurahCapabilityError.self) {
+            try context.enforceCapability(.shellExecution)
+        }
+
+        // Capability guard on registered pod with declared permissions
+        if let vitalsPod = store.pods.first(where: { $0.id == "vitals" }) {
+            let vitalsContext = PurahPluginContext(
+                pod: vitalsPod,
+                edge: .left,
+                railWidth: 8.0,
+                slotHeight: 180.0,
+                drawerWidth: 260.0,
+                isExpanded: false,
+                isPinned: false,
+                accentColor: .green,
+                palette: ThemeManager.shared.palette,
+                store: store,
+                requestExpand: {},
+                requestDismiss: {},
+                togglePin: {}
+            )
+            #expect(vitalsContext.hasCapability(.machTelemetry) == true)
+            #expect(vitalsContext.hasCapability(.shellExecution) == false)
+            #expect(throws: Never.self) {
+                try vitalsContext.enforceCapability(.machTelemetry)
+            }
+            #expect(throws: PurahCapabilityError.self) {
+                try vitalsContext.enforceCapability(.shellExecution)
+            }
+        }
     }
 
     @Test("PurahDecomposedPolicy calculates minimum heights accurately across overflowing counts")

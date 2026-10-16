@@ -29,4 +29,20 @@ struct PermissionTests {
         #expect(manager.musicStatus == .standardCapability)
         #expect(manager.musicStatus.isGranted == true)
     }
+
+    @Test("Capability enforcement guards undeclared capabilities with strict error")
+    func testCapabilityEnforcement() {
+        let manager = PermissionManager()
+        let declared: [PluginPermission] = [.machTelemetry, .fileSystem]
+
+        // Undeclared permission throws .permissionNotDeclared
+        #expect(throws: PurahCapabilityError.self) {
+            try manager.enforceCapability(pluginId: "vitals", permission: .shellExecution, declaredIn: declared)
+        }
+
+        // Declared standard capability succeeds without error
+        #expect(throws: Never.self) {
+            try manager.enforceCapability(pluginId: "vitals", permission: .machTelemetry, declaredIn: declared)
+        }
+    }
 }

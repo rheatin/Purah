@@ -125,4 +125,29 @@ public final class PermissionManager {
         let rem = await requestRemindersAccess()
         return (cal, rem)
     }
+
+    // MARK: - Runtime Capability Enforcement & Sandboxing
+    public func enforceCapability(pluginId: String, permission: PluginPermission, declaredIn permissions: [PluginPermission]) throws {
+        guard permissions.contains(permission) else {
+            throw PurahCapabilityError.permissionNotDeclared(pluginId: pluginId, permission: permission)
+        }
+        let stat = status(for: permission)
+        guard stat.isGranted else {
+            throw PurahCapabilityError.permissionNotAuthorized(pluginId: pluginId, permission: permission)
+        }
+    }
+}
+
+public enum PurahCapabilityError: Error, LocalizedError, Sendable, Equatable {
+    case permissionNotDeclared(pluginId: String, permission: PluginPermission)
+    case permissionNotAuthorized(pluginId: String, permission: PluginPermission)
+
+    public var errorDescription: String? {
+        switch self {
+        case .permissionNotDeclared(let id, let perm):
+            return "Plugin '\(id)' attempted to access capability '\(perm.rawValue)' without declaring it in manifest.permissions."
+        case .permissionNotAuthorized(let id, let perm):
+            return "Plugin '\(id)' requested capability '\(perm.rawValue)' which is not authorized by system policy."
+        }
+    }
 }

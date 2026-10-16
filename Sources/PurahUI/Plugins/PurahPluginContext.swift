@@ -85,6 +85,16 @@ public struct PurahPluginContext: Sendable {
         }
     }
 
+    // MARK: - Capability Sandbox Guard
+    public func enforceCapability(_ permission: PluginPermission) throws {
+        let declared = PluginRegistry.shared.manifest(for: pod.id)?.permissions ?? []
+        try PermissionManager.shared.enforceCapability(pluginId: pod.id, permission: permission, declaredIn: declared)
+    }
+
+    public func hasCapability(_ permission: PluginPermission) -> Bool {
+        (try? enforceCapability(permission)) != nil
+    }
+
     public init(
         pod: SlotPod,
         edge: MountEdge,
