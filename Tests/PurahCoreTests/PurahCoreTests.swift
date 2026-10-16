@@ -63,9 +63,12 @@ struct MemoryFootprintTests {
 
             if let tiff = img.tiffRepresentation {
                 let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.setData(tiff, forType: .tiff)
-                service.checkPasteboard()
+                let canWritePB = pb.clearContents() > 0 && pb.setData(tiff, forType: .tiff)
+                if canWritePB {
+                    service.checkPasteboard()
+                } else if let item = service.processImageData(tiff) {
+                    service.addItem(item)
+                }
             }
         }
 

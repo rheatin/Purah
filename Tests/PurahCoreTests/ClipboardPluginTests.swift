@@ -73,10 +73,12 @@ struct ClipboardPluginTests {
 
         // Set to pasteboard and process
         let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setData(tiff, forType: .tiff)
-
-        service.checkPasteboard()
+        let canWritePB = pb.clearContents() > 0 && pb.setData(tiff, forType: .tiff)
+        if canWritePB {
+            service.checkPasteboard()
+        } else if let item = service.processImageData(tiff) {
+            service.addItem(item)
+        }
 
         guard let latest = service.history.first, case .image(let path, let thumbPath, let w, let h, _) = latest.type else {
             #expect(Bool(false), "Expected image item in clipboard history")

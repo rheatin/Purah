@@ -339,7 +339,7 @@ public final class SystemClipboardSyncService {
     }
 
     // MARK: - Internal Processors
-    private func addItem(_ item: ClipboardItem) {
+    public func addItem(_ item: ClipboardItem) {
         if let latest = history.first {
             if latest.plainTextToCopy == item.plainTextToCopy {
                 return
@@ -371,11 +371,14 @@ public final class SystemClipboardSyncService {
     }
 
     private func processImage(pasteboard: NSPasteboard) -> ClipboardItem? {
-        autoreleasepool {
-            guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) else {
-                return nil
-            }
+        guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) else {
+            return nil
+        }
+        return processImageData(data, isPNG: pasteboard.data(forType: .png) != nil)
+    }
 
+    public func processImageData(_ data: Data, isPNG: Bool = false) -> ClipboardItem? {
+        autoreleasepool {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
                 return nil
             }
@@ -394,7 +397,7 @@ public final class SystemClipboardSyncService {
             let thumbFileURL = thumbnailsDirectory.appendingPathComponent(thumbFilename)
 
             do {
-                if pasteboard.data(forType: .png) != nil {
+                if isPNG {
                     try data.write(to: fullFileURL)
                 } else {
                     guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil),
