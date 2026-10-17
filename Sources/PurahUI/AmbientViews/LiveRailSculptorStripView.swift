@@ -456,7 +456,7 @@ public struct LiveSculptMajorClusterBoxView: View {
             VStack(alignment: .leading, spacing: 2) {
                 // Top Header Bar: Shared Stack summary + [Unstack All]
                 HStack(spacing: 4) {
-                    Text("📦 Shared Stack (\(cluster.pods.count)) · \(Int(cluster.drawerSpanH))pt")
+                    Text("📦 Stack (\(cluster.pods.count)) · \(Int(cluster.drawerSpanH))pt")
                         .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundColor(.orange)
                         .lineLimit(1)
@@ -493,84 +493,134 @@ public struct LiveSculptMajorClusterBoxView: View {
                         let sliceH = max(netSliceBudget * sliceRatio, 20.0)
                         let isDraggingSub = (activeDraggingSubId == pod.id)
 
-                        HStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(podColor)
-                                .frame(width: 3, height: max(sliceH - 8, 10))
+                        VStack(alignment: .leading, spacing: 4) {
+                            // Row 1: Header Row — Full Width for Plugin Name
+                            HStack(spacing: 5) {
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(podColor)
+                                    .frame(width: 3, height: 12)
 
-                            Image(systemName: pod.systemIcon)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(podColor)
+                                Image(systemName: pod.systemIcon)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(podColor)
 
-                            Text(pod.name)
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-
-                            Spacer(minLength: 2)
-
-                            Text("\(Int(subItem.spanH))pt")
-                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                .foregroundColor(podColor)
-                                .padding(.horizontal, 3.5)
-                                .padding(.vertical, 1)
-                                .background(Capsule().fill(podColor.opacity(0.18)))
-
-                            // Reorder Up within stack
-                            Button {
-                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                    store.movePodInOrder(id: pod.id, direction: .up)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            } label: {
-                                Text("↑")
-                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                Text(pod.name)
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundColor(.white)
-                                    .frame(width: 15, height: 15)
-                                    .background(Color.white.opacity(0.14))
-                                    .cornerRadius(3.5)
-                            }
-                            .buttonStyle(.tactile)
-                            .disabled(!store.canMovePod(id: pod.id, direction: .up))
-                            .help("Move up in stack")
+                                    .lineLimit(1)
 
-                            // Reorder Down within stack
-                            Button {
-                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                    store.movePodInOrder(id: pod.id, direction: .down)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            } label: {
-                                Text("↓")
-                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .frame(width: 15, height: 15)
-                                    .background(Color.white.opacity(0.14))
-                                    .cornerRadius(3.5)
-                            }
-                            .buttonStyle(.tactile)
-                            .disabled(!store.canMovePod(id: pod.id, direction: .down))
-                            .help("Move down in stack")
+                                Spacer(minLength: 2)
 
-                            // 1-Click Pop Out of Stack
-                            Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                    store.splitPodFromMajorGroup(id: pod.id)
-                                    store.triggerControlHaptic(.alignment)
+                                Text("\(Int(subItem.spanH))pt")
+                                    .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(podColor)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1.5)
+                                    .background(Capsule().fill(podColor.opacity(0.18)))
+
+                                // Unmount button [✕]
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.splitPodFromMajorGroup(id: pod.id)
+                                        store.togglePodEnabled(id: pod.id)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.red.opacity(0.9))
                                 }
-                            } label: {
-                                Text("✂️")
-                                    .font(.system(size: 8.5))
-                                    .frame(width: 17, height: 15)
-                                    .background(Color.orange.opacity(0.22))
-                                    .cornerRadius(3.5)
+                                .buttonStyle(.tactile)
+                                .help("Unmount \(pod.name) from rail")
                             }
-                            .buttonStyle(.tactile)
-                            .help("Pop \(pod.name) out of this Shared Stack")
+
+                            // Row 2: Action Toolbar Row — shown when sliceH >= 42
+                            if sliceH >= 42 {
+                                HStack(spacing: 4) {
+                                    // Move Up [↑]
+                                    Button {
+                                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                            store.movePodInOrder(id: pod.id, direction: .up)
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                    } label: {
+                                        Text("↑")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white)
+                                            .frame(width: 18, height: 17)
+                                            .background(Color.white.opacity(0.14))
+                                            .cornerRadius(4)
+                                    }
+                                    .buttonStyle(.tactile)
+                                    .disabled(!store.canMovePod(id: pod.id, direction: .up))
+                                    .help("Move up in stack")
+
+                                    // Move Down [↓]
+                                    Button {
+                                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                            store.movePodInOrder(id: pod.id, direction: .down)
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                    } label: {
+                                        Text("↓")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white)
+                                            .frame(width: 18, height: 17)
+                                            .background(Color.white.opacity(0.14))
+                                            .cornerRadius(4)
+                                    }
+                                    .buttonStyle(.tactile)
+                                    .disabled(!store.canMovePod(id: pod.id, direction: .down))
+                                    .help("Move down in stack")
+
+                                    // Pop Out / Split from Stack [✂️ Split]
+                                    Button {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            store.splitPodFromMajorGroup(id: pod.id)
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 2) {
+                                            Image(systemName: "scissors")
+                                                .font(.system(size: 8, weight: .bold))
+                                            Text("Split")
+                                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        }
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 5)
+                                        .frame(height: 17)
+                                        .background(Color.orange.opacity(0.22))
+                                        .cornerRadius(4)
+                                    }
+                                    .buttonStyle(.tactile)
+                                    .help("Pop \(pod.name) out of this Shared Stack")
+
+                                    Spacer(minLength: 0)
+
+                                    // Throw to Opposite Rail [⇄]
+                                    Button {
+                                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                            store.splitPodFromMajorGroup(id: pod.id)
+                                            store.movePod(id: pod.id, to: edge == .left ? .right : .left)
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                    } label: {
+                                        Text("⇄")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(palette.warningAccent)
+                                            .frame(width: 19, height: 17)
+                                            .background(palette.warningAccent.opacity(0.18))
+                                            .cornerRadius(4)
+                                    }
+                                    .buttonStyle(.tactile)
+                                    .help(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
+                                }
+                            }
                         }
-                        .padding(.horizontal, 6)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: sliceH)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, sliceH >= 48 ? 6 : 3)
+                        .frame(height: sliceH, alignment: .topLeading)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(podColor.opacity(0.18))

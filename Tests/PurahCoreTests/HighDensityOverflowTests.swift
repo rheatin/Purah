@@ -128,7 +128,7 @@ struct HighDensityOverflowTests {
         let layout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
         #expect(layout.count == 9)
 
-        let groupedByMajor = Dictionary(grouping: layout, by: { $0.majorGroupId ?? "" })
+        let groupedByMajor = Dictionary(grouping: layout.filter { $0.majorGroupId != nil }, by: { $0.majorGroupId! })
         let multiPodGroups = groupedByMajor.values.filter { $0.count >= 2 }
         #expect(!multiPodGroups.isEmpty, "9 pods on a single rail must form multi-pod Major Groups")
 
@@ -656,5 +656,63 @@ struct HighDensityOverflowTests {
         // Unstack all pods in groupId
         store.unstackMajorGroup(groupId: groupId, on: .right)
         #expect(store.pods.filter { $0.edge == .right }.allSatisfy { $0.majorGroupId == nil })
+        let unstackedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        #expect(unstackedLayout.allSatisfy { $0.majorGroupId == nil }, "Unstacked pods must not be auto-regrouped by solveDecomposedMajorPodLayout")
+    }
+
+    @Test("Unstack All & Progressive Split in Decomposed Major Pod Mode: unstackMajorGroup and splitPodFromMajorGroup never auto-restack")
+    func testUnstackAllAndProgressiveSplitNeverAutoRestack() throws {
+        let suiteName = "test_unstack_progressive_split_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+        store.resetMajorGroups(for: .right)
+
+        // Stack 3 pods ("calendar", "todo", "music") on the right rail into one shared Major Group
+        store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
+        store.addPodToMajorGroup(podId: "music", targetPodId: "calendar")
+
+        let calBefore = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        let groupId = try #require(calBefore.majorGroupId)
+        let totalHeight = 900.0
+
+        let stackedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let stackedItems = stackedLayout.filter { ["calendar", "todo", "music"].contains($0.pod.id) }
+        #expect(stackedItems.count == 3)
+        #expect(stackedItems.allSatisfy { $0.majorGroupId == groupId })
+
+        // 1. Verify unstackMajorGroup clears majorGroupId on all pods AND resolvedPhysicalLayout keeps majorGroupId == nil for all pods
+        store.unstackMajorGroup(groupId: groupId, on: .right)
+        #expect(store.pods.filter { $0.edge == .right }.allSatisfy { $0.majorGroupId == nil })
+        let layoutAfterUnstackAll = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        #expect(layoutAfterUnstackAll.allSatisfy { $0.majorGroupId == nil }, "After unstackMajorGroup, resolvedPhysicalLayout must return majorGroupId == nil for all pods without auto-restacking")
+
+        // 2. Re-stack 3 pods, then split 1 pod out -> 1 pod becomes standalone (nil) while the other 2 remain stacked
+        store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
+        store.addPodToMajorGroup(podId: "music", targetPodId: "calendar")
+        let restackedGroupId = try #require(store.pods.first(where: { $0.id == "calendar" })?.majorGroupId)
+
+        store.splitPodFromMajorGroup(id: "music")
+        let musicAfterFirstSplit = try #require(store.pods.first(where: { $0.id == "music" }))
+        let calAfterFirstSplit = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        let todoAfterFirstSplit = try #require(store.pods.first(where: { $0.id == "todo" }))
+        #expect(musicAfterFirstSplit.majorGroupId == nil)
+        #expect(calAfterFirstSplit.majorGroupId == restackedGroupId)
+        #expect(todoAfterFirstSplit.majorGroupId == restackedGroupId)
+
+        let layoutAfterFirstSplit = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let musicItem1 = try #require(layoutAfterFirstSplit.first(where: { $0.pod.id == "music" }))
+        let calItem1 = try #require(layoutAfterFirstSplit.first(where: { $0.pod.id == "calendar" }))
+        let todoItem1 = try #require(layoutAfterFirstSplit.first(where: { $0.pod.id == "todo" }))
+        #expect(musicItem1.majorGroupId == nil)
+        #expect(calItem1.majorGroupId == restackedGroupId)
+        #expect(todoItem1.majorGroupId == restackedGroupId)
+
+        // 3. Split 1 of the remaining 2 stacked pods -> dissolves the stack completely so all 3 have majorGroupId == nil
+        store.splitPodFromMajorGroup(id: "todo")
+        #expect(store.pods.filter { $0.edge == .right }.allSatisfy { $0.majorGroupId == nil })
+
+        let layoutAfterSecondSplit = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        #expect(layoutAfterSecondSplit.allSatisfy { $0.majorGroupId == nil }, "Splitting the second-to-last pod must dissolve the stack completely with zero auto-regrouping")
     }
 }

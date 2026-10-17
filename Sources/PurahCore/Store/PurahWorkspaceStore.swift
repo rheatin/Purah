@@ -95,6 +95,15 @@ public final class PurahWorkspaceStore {
             savePersistentState()
             onWindowsRebuildNeeded?()
         }
+        if overflowStrategy(for: edge) == .decomposedMajorPod {
+            let enabledOnEdge = pods.filter { $0.edge == edge && $0.isEnabled }
+            if enabledOnEdge.allSatisfy({ $0.majorGroupId == nil }),
+               !userDefaults.bool(forKey: "purah.didSeedMajorGroups.\(edge.rawValue)") {
+                seedDefaultMajorGroupsIfNeeded(for: edge)
+                invalidateLayoutCache()
+                savePersistentState()
+            }
+        }
     }
 
     public func isPagePortalRevealed(for edge: MountEdge, isTop: Bool) -> Bool {
@@ -286,6 +295,7 @@ public final class PurahWorkspaceStore {
                 }
             }
         }
+        userDefaults.set(true, forKey: "purah.didSeedMajorGroups.\(edge.rawValue)")
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -359,8 +369,21 @@ public final class PurahWorkspaceStore {
     }
 
     public func unstackMajorGroup(groupId: String, on edge: MountEdge? = nil) {
+        var matchedAny = false
         for i in pods.indices where pods[i].majorGroupId == groupId && (edge == nil || pods[i].edge == edge) {
             pods[i].majorGroupId = nil
+            matchedAny = true
+        }
+        if !matchedAny, let edge = edge {
+            for i in pods.indices where pods[i].edge == edge {
+                pods[i].majorGroupId = nil
+            }
+        }
+        if let edge = edge {
+            userDefaults.set(true, forKey: "purah.didSeedMajorGroups.\(edge.rawValue)")
+        } else {
+            userDefaults.set(true, forKey: "purah.didSeedMajorGroups.left")
+            userDefaults.set(true, forKey: "purah.didSeedMajorGroups.right")
         }
         invalidateLayoutCache()
         savePersistentState()
@@ -443,6 +466,7 @@ public final class PurahWorkspaceStore {
         for i in pods.indices where pods[i].edge == edge {
             pods[i].majorGroupId = nil
         }
+        userDefaults.set(true, forKey: "purah.didSeedMajorGroups.\(edge.rawValue)")
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -453,12 +477,15 @@ public final class PurahWorkspaceStore {
         for i in pods.indices where pods[i].edge == edge {
             pods[i].majorGroupId = pods[i].isEnabled ? groupId : nil
         }
+        userDefaults.set(true, forKey: "purah.didSeedMajorGroups.\(edge.rawValue)")
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
     }
 
     public func seedDefaultMajorGroupsIfNeeded(for edge: MountEdge) {
+        let seedKey = "purah.didSeedMajorGroups.\(edge.rawValue)"
+        guard !userDefaults.bool(forKey: seedKey) else { return }
         let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
             .sorted { pods[$0].range.start < pods[$1].range.start }
         guard enabledIndices.count >= 2 else { return }
@@ -500,10 +527,6 @@ public final class PurahWorkspaceStore {
         if let gid = pod.majorGroupId {
             let peers = pods.filter { $0.edge == pod.edge && $0.isEnabled && $0.majorGroupId == gid }
             if peers.count >= 2 { return true }
-        }
-        let edgePods = pods.filter { $0.edge == pod.edge && $0.isEnabled }
-        if edgePods.allSatisfy({ $0.majorGroupId == nil }) && edgePods.count >= 2 {
-            return true
         }
         return false
     }
@@ -1531,46 +1554,16 @@ public final class PurahWorkspaceStore {
         let safeBottom = totalHeight - 16.0
         let availableH = max(safeBottom - safeTop, 180.0)
 
-        let hasExplicitMajorGroups = edgePods.contains { $0.majorGroupId != nil }
         var clusters: [[SlotPod]] = []
-
-        if hasExplicitMajorGroups {
-            for pod in edgePods {
-                if let gid = pod.majorGroupId {
-                    if let lastCluster = clusters.last, lastCluster.first?.majorGroupId == gid {
-                        clusters[clusters.count - 1].append(pod)
-                    } else {
-                        clusters.append([pod])
-                    }
+        for pod in edgePods {
+            if let gid = pod.majorGroupId {
+                if let lastCluster = clusters.last, lastCluster.first?.majorGroupId == gid {
+                    clusters[clusters.count - 1].append(pod)
                 } else {
                     clusters.append([pod])
                 }
-            }
-        } else {
-            let maxMajorGroups = max(2, min(Int(availableH / 220.0), 4))
-            let totalNeeded = edgePods.reduce(0.0) { $0 + Double(minimumDrawerHeight(for: $1.id)) + 8.0 }
-
-            let targetGroupCount: Int = {
-                if edgePods.count <= 1 { return 1 }
-                if edgePods.count > maxMajorGroups {
-                    return maxMajorGroups
-                }
-                if totalNeeded > availableH {
-                    return max(1, min(edgePods.count - 1, maxMajorGroups))
-                }
-                return max(1, edgePods.count / 2)
-            }()
-
-            let n = edgePods.count
-            let g = min(max(targetGroupCount, 1), n)
-            var startIndex = 0
-            for i in 0..<g {
-                let remainingPods = n - startIndex
-                let remainingGroups = g - i
-                let groupSize = Int(ceil(Double(remainingPods) / Double(remainingGroups)))
-                let endIndex = min(startIndex + groupSize, n)
-                clusters.append(Array(edgePods[startIndex..<endIndex]))
-                startIndex = endIndex
+            } else {
+                clusters.append([pod])
             }
         }
 
@@ -2323,6 +2316,9 @@ public final class PurahWorkspaceStore {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[index].minLength = max(minPt / screenH, 0.07)
             }
+            if overflowStrategy(for: pod.edge) == .decomposedMajorPod {
+                seedDefaultMajorGroupsIfNeeded(for: pod.edge)
+            }
             onPodEnabledChanged?(id, true)
         } else {
             let oldGroupId = pods[index].majorGroupId
@@ -2488,22 +2484,12 @@ public final class PurahWorkspaceStore {
     }
 
     public func movePod(id: String, to edge: MountEdge) {
+        guard pods.contains(where: { $0.id == id }) else { return }
+        splitPodFromMajorGroup(id: id)
         guard let index = pods.firstIndex(where: { $0.id == id }) else { return }
-        let oldEdge = pods[index].edge
-        let oldGroupId = pods[index].majorGroupId
         pods[index].edge = edge
         pods[index].majorGroupId = nil
         pods[index].pageIndex = 0
-        if let oldGroupId = oldGroupId {
-            let remainingIndices = pods.indices.filter {
-                pods[$0].edge == oldEdge && pods[$0].isEnabled && pods[$0].majorGroupId == oldGroupId
-            }
-            if remainingIndices.count < 2 {
-                for remIdx in remainingIndices {
-                    pods[remIdx].majorGroupId = nil
-                }
-            }
-        }
         autoLayoutAll()
         onWindowsRebuildNeeded?()
     }
