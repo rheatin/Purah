@@ -465,4 +465,59 @@ struct HighDensityOverflowTests {
         let leftEnabled = store.pods.filter { $0.edge == .left && $0.isEnabled }
         #expect(leftEnabled.allSatisfy { $0.majorGroupId != nil }, "autoStackMajorPods must group all 9 pods into shared Major Pods of 2~3")
     }
+
+    @Test("Unlimited Shared Major Pod Stacking: all 9 built-in pods on right rail can stack into a single Shared Major Pod with 9 non-overlapping sub-bars")
+    func testNinePodsSingleSharedMajorPodOnRightRail() throws {
+        let suiteName = "test_nine_pods_single_major_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+
+        for idx in store.pods.indices {
+            store.pods[idx].edge = .right
+            store.pods[idx].range.start = Double(idx) * 0.10 + 0.02
+            store.pods[idx].isEnabled = true
+            store.pods[idx].majorGroupId = nil
+        }
+        store.invalidateLayoutCache()
+
+        // Stack all 9 pods one by one via addPodToMajorGroup into the first pod's group
+        let sortedIds = store.pods.filter { $0.edge == .right && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+            .map(\.id)
+        #expect(sortedIds.count == 9)
+
+        let anchorId = sortedIds[0]
+        for candidateId in sortedIds.dropFirst() {
+            store.addPodToMajorGroup(podId: candidateId, targetPodId: anchorId)
+        }
+
+        let clustersAfterAdd = store.majorPodClusters(for: .right)
+        #expect(clustersAfterAdd.count == 1, "All 9 pods must stack into 1 single Shared Major Pod without a 4-pod limit")
+        #expect(clustersAfterAdd[0].count == 9)
+
+        // Also verify stackAllPodsIntoSingleMajorGroup convenience helper
+        store.resetMajorGroups(for: .right)
+        store.stackAllPodsIntoSingleMajorGroup(for: .right)
+        let clustersAfterStackAll = store.majorPodClusters(for: .right)
+        #expect(clustersAfterStackAll.count == 1)
+        #expect(clustersAfterStackAll[0].count == 9)
+        #expect(clustersAfterStackAll[0].allSatisfy { $0.majorGroupId == "major_right_all" })
+
+        let totalHeight = 900.0
+        let layout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        #expect(layout.count == 9)
+
+        for i in 0..<layout.count {
+            let item = layout[i]
+            #expect(item.majorGroupId == "major_right_all")
+            #expect(item.spanH >= 18.0)
+            #expect(item.drawerSpanH >= 320.0 && item.drawerSpanH <= totalHeight)
+            #expect(item.drawerStartY >= 16.0 && (item.drawerStartY + item.drawerSpanH) <= totalHeight - 15.5)
+            if i > 0 {
+                let prev = layout[i - 1]
+                #expect(item.startY >= (prev.startY + prev.spanH - 0.01), "All 9 sub-bars in the single Shared Major Pod must not overlap")
+            }
+        }
+    }
 }

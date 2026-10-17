@@ -198,7 +198,7 @@ public final class PurahWorkspaceStore {
             guard let g2 = nextPod.majorGroupId else { return 1 }
             return edgePods.filter { $0.majorGroupId == g2 }.count
         }()
-        return (currentGroupCount + nextGroupCount) <= 4
+        return (currentGroupCount + nextGroupCount) <= 32
     }
 
     public func mergePodWithNext(id: String) {
@@ -262,11 +262,6 @@ public final class PurahWorkspaceStore {
 
         let oldSrcGroup = pods[srcIdx].majorGroupId
         let targetGroupId = pods[dstIdx].majorGroupId ?? "major_\(edge.rawValue)_\(UUID().uuidString.prefix(4))"
-
-        let currentTargetGroupCount = pods.filter {
-            $0.edge == edge && $0.isEnabled && $0.majorGroupId == targetGroupId
-        }.count
-        guard currentTargetGroupCount < 4 else { return }
 
         pods[dstIdx].majorGroupId = targetGroupId
         pods[srcIdx].majorGroupId = targetGroupId
@@ -357,6 +352,16 @@ public final class PurahWorkspaceStore {
     public func resetMajorGroups(for edge: MountEdge) {
         for i in pods.indices where pods[i].edge == edge {
             pods[i].majorGroupId = nil
+        }
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func stackAllPodsIntoSingleMajorGroup(for edge: MountEdge) {
+        let groupId = "major_\(edge.rawValue)_all"
+        for i in pods.indices where pods[i].edge == edge {
+            pods[i].majorGroupId = pods[i].isEnabled ? groupId : nil
         }
         invalidateLayoutCache()
         savePersistentState()
@@ -1521,17 +1526,28 @@ public final class PurahWorkspaceStore {
                 let m = cluster.count
                 let subGap = 3.0
                 let totalSubGaps = Double(max(m - 1, 0)) * subGap
-                let subSpanH = max((majorSpanH - totalSubGaps) / Double(max(m, 1)), 22.0)
+                let subSpanH = max((majorSpanH - totalSubGaps) / Double(max(m, 1)), 18.0)
 
                 for (subIdx, pod) in cluster.enumerated() {
                     let subStartY = currentMajorY + Double(subIdx) * (subSpanH + subGap)
+                    let drawerStartY: Double
+                    let drawerSpanH: Double
+                    if majorSpanH <= 420.0 {
+                        drawerStartY = currentMajorY
+                        drawerSpanH = majorSpanH
+                    } else {
+                        let targetDrawerH = min(majorSpanH, max(Double(preferredDrawerHeight(for: pod.id)), 320.0))
+                        let centeredStartY = subStartY + (subSpanH * 0.5) - (targetDrawerH * 0.5)
+                        drawerStartY = min(max(centeredStartY, currentMajorY), currentMajorY + majorSpanH - targetDrawerH)
+                        drawerSpanH = targetDrawerH
+                    }
                     result.append(
                         ResolvedPodLayoutItem(
                             pod: pod,
                             startY: subStartY,
                             spanH: subSpanH,
-                            drawerStartY: currentMajorY,
-                            drawerSpanH: majorSpanH,
+                            drawerStartY: drawerStartY,
+                            drawerSpanH: drawerSpanH,
                             majorGroupId: gid
                         )
                     )

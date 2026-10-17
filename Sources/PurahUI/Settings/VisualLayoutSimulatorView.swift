@@ -683,7 +683,7 @@ public struct VisualLayoutSimulatorView: View {
                                 )
                             }
 
-                            if cluster.count < 4 && !availableToStack.isEmpty {
+                            if !availableToStack.isEmpty {
                                 Menu("overflow.majorPod.addPlugin".localized) {
                                     ForEach(availableToStack) { candidate in
                                         Button("Stack \(candidate.name) here") {
