@@ -35,8 +35,41 @@ public final class PurahWorkspaceStore {
     public var pinnedDrawerItemIds: Set<String> = []
     public var isDraggingFromDrawer: Bool = false
     public var currentPreset: PodPreset = .balanced
+    public var railOverflowStrategy: RailOverflowStrategy = .dynamicAccordion
+    public var leftRailPage: Int = 0
+    public var rightRailPage: Int = 0
     public var isRailsFrozen: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
+
+    @ObservationIgnored
+    private var lastKnownTotalHeight: [MountEdge: Double] = [:]
+
+    public func currentRailPage(for edge: MountEdge) -> Int {
+        edge == .left ? leftRailPage : rightRailPage
+    }
+
+    public func setRailPage(_ page: Int, for edge: MountEdge) {
+        let clamped = max(page, 0)
+        if edge == .left {
+            leftRailPage = clamped
+        } else {
+            rightRailPage = clamped
+        }
+        invalidateLayoutCache()
+    }
+
+    public func cycleRailPage(for edge: MountEdge, delta: Int = 1) {
+        let refH = lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
+        let pages = paginatedPods(for: edge, totalHeight: refH)
+        let count = max(pages.count, 1)
+        guard count > 1 else {
+            setRailPage(0, for: edge)
+            return
+        }
+        let cur = currentRailPage(for: edge)
+        let next = ((cur + delta) % count + count) % count
+        setRailPage(next, for: edge)
+    }
 
     @ObservationIgnored
     public var onRequestOpenPluginSettings: (@MainActor (String) -> Void)?
@@ -86,6 +119,7 @@ public final class PurahWorkspaceStore {
         } else {
             pinnedDrawerItemIds.insert(id)
         }
+        invalidateLayoutCache()
     }
 
     public static var isTestingEnvironment: Bool {
@@ -111,6 +145,7 @@ public final class PurahWorkspaceStore {
                 activeDrawerPodId = podId
                 activeDrawerItemId = targetItemId
                 hoveredPodId = podId
+                invalidateLayoutCache()
             }
         } else {
             // Frame-pacing ready queue: expand canvas on frame 0, animate card on frame 1 (~16ms)
@@ -122,6 +157,7 @@ public final class PurahWorkspaceStore {
                     withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                         self.activeDrawerPodId = podId
                         self.activeDrawerItemId = targetItemId
+                        self.invalidateLayoutCache()
                     }
                 }
             }
@@ -132,6 +168,7 @@ public final class PurahWorkspaceStore {
         activeDrawerPodId = nil
         activeDrawerItemId = nil
         hoveredPodId = nil
+        invalidateLayoutCache()
     }
 
     public func hasPinnedItem(on edge: MountEdge) -> Bool {
@@ -467,7 +504,8 @@ public final class PurahWorkspaceStore {
     }
 
     public func isRailOverloaded(edge: MountEdge) -> Bool {
-        capacityRatio(for: edge) > 1.0
+        guard railOverflowStrategy == .strictCeiling else { return false }
+        return capacityRatio(for: edge) > 1.0
     }
 
     public var onCapacityWarningToast: ((String) -> Void)?
@@ -512,36 +550,404 @@ public final class PurahWorkspaceStore {
         return max(podHeight, minReserved)
     }
 
+    public func isPodExpanded(_ pod: SlotPod) -> Bool {
+        if activeDrawerPodId == pod.id || activeDrawerItemId == pod.id || isItemPinned(id: pod.id) {
+            return true
+        }
+        if let itemId = activeDrawerItemId, self.pod(forItemId: itemId)?.id == pod.id {
+            return true
+        }
+        if let provider = capabilityProvider(for: pod.id), provider.hasPinnedChild(store: self) {
+            return true
+        }
+        return false
+    }
+
+    public func shouldRenderDrawer(for item: ResolvedPodLayoutItem, in allItems: [ResolvedPodLayoutItem]) -> Bool {
+        let podId = item.pod.id
+        let isHoveredActive = (activeDrawerPodId == podId || activeDrawerItemId == podId || activePod?.id == podId)
+        let isPinned = isItemPinned(id: podId) || (capabilityProvider(for: podId)?.hasPinnedChild(store: self) ?? false)
+
+        guard isHoveredActive || isPinned else { return false }
+
+        if railOverflowStrategy == .decomposedMajorPod, let groupId = item.majorGroupId {
+            let groupPeers = allItems.filter { $0.majorGroupId == groupId }
+            if groupPeers.count > 1 {
+                if let hoveredPeer = groupPeers.first(where: { peer in
+                    let pid = peer.pod.id
+                    return activeDrawerPodId == pid || activeDrawerItemId == pid || activePod?.id == pid
+                }) {
+                    return hoveredPeer.pod.id == podId
+                }
+                if let pinnedPeer = groupPeers.first(where: { peer in
+                    let pid = peer.pod.id
+                    return isItemPinned(id: pid) || (capabilityProvider(for: pid)?.hasPinnedChild(store: self) ?? false)
+                }) {
+                    return pinnedPeer.pod.id == podId
+                }
+            }
+        }
+
+        return isHoveredActive || isPinned
+    }
+
+    public func paginatedPods(for edge: MountEdge, totalHeight: Double) -> [[SlotPod]] {
+        lastKnownTotalHeight[edge] = totalHeight
+        let allEdgePods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        guard !allEdgePods.isEmpty else { return [] }
+
+        let pageBudget = max(totalHeight - 56.0, 260.0)
+        var pages: [[SlotPod]] = []
+        var currentPage: [SlotPod] = []
+        var currentHeight: Double = 0.0
+
+        for pod in allEdgePods {
+            let minH = Double(minimumDrawerHeight(for: pod.id))
+            let podNeeded = minH + 12.0
+            if !currentPage.isEmpty && (currentHeight + podNeeded) > pageBudget {
+                pages.append(currentPage)
+                currentPage = [pod]
+                currentHeight = podNeeded
+            } else {
+                currentPage.append(pod)
+                currentHeight += podNeeded
+            }
+        }
+        if !currentPage.isEmpty {
+            pages.append(currentPage)
+        }
+        return pages
+    }
+
+    private struct LayoutCacheEntry {
+        let height: Double
+        let podsCount: Int
+        let enabledSignature: String
+        let strategy: RailOverflowStrategy
+        let activePodId: String?
+        let activeItemId: String?
+        let pinnedIds: Set<String>
+        let page: Int
+        let items: [ResolvedPodLayoutItem]
+        let timestamp: Double
+    }
+
     @ObservationIgnored
-    private var cachedResolvedLayouts: [MountEdge: (height: Double, podsCount: Int, items: [ResolvedPodLayoutItem], timestamp: Double)] = [:]
+    private var cachedResolvedLayouts: [MountEdge: LayoutCacheEntry] = [:]
 
     public func invalidateLayoutCache() {
         cachedResolvedLayouts.removeAll()
     }
 
     public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
+        lastKnownTotalHeight[edge] = totalHeight
         let now = Date().timeIntervalSinceReferenceDate
+        let allEdgePods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        guard !allEdgePods.isEmpty else { return [] }
+
+        let signature = allEdgePods.map { "\($0.id):\($0.range.start):\($0.range.length)" }.joined(separator: "|")
+        let curPage = currentRailPage(for: edge)
+
         if let cached = cachedResolvedLayouts[edge],
            abs(cached.height - totalHeight) < 0.5,
-           cached.podsCount == pods.count,
+           cached.podsCount == allEdgePods.count,
+           cached.enabledSignature == signature,
+           cached.strategy == railOverflowStrategy,
+           cached.activePodId == activeDrawerPodId,
+           cached.activeItemId == activeDrawerItemId,
+           cached.pinnedIds == pinnedDrawerItemIds,
+           cached.page == curPage,
            (now - cached.timestamp) < 0.05 {
             return cached.items
         }
 
-        let items = ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
-            pods: pods,
-            on: edge,
-            totalHeight: totalHeight,
-            gap: 8.0,
-            safeTop: 16.0,
-            safeBottom: totalHeight - 16.0
-        ) { [weak self] pod in
-            guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
-            return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
+        let items: [ResolvedPodLayoutItem]
+        switch railOverflowStrategy {
+        case .dynamicAccordion:
+            items = solveDynamicAccordionLayout(edgePods: allEdgePods, edge: edge, totalHeight: totalHeight)
+        case .decomposedMajorPod:
+            items = solveDecomposedMajorPodLayout(edgePods: allEdgePods, edge: edge, totalHeight: totalHeight)
+        case .pagedSpaces:
+            items = solvePagedSpacesLayout(edge: edge, totalHeight: totalHeight)
+        case .strictCeiling:
+            items = ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
+                pods: pods,
+                on: edge,
+                totalHeight: totalHeight,
+                gap: 8.0,
+                safeTop: 16.0,
+                safeBottom: totalHeight - 16.0
+            ) { [weak self] pod in
+                guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
+                return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
+            }
         }
 
-        cachedResolvedLayouts[edge] = (height: totalHeight, podsCount: pods.count, items: items, timestamp: now)
+        cachedResolvedLayouts[edge] = LayoutCacheEntry(
+            height: totalHeight,
+            podsCount: allEdgePods.count,
+            enabledSignature: signature,
+            strategy: railOverflowStrategy,
+            activePodId: activeDrawerPodId,
+            activeItemId: activeDrawerItemId,
+            pinnedIds: pinnedDrawerItemIds,
+            page: curPage,
+            items: items,
+            timestamp: now
+        )
         return items
+    }
+
+    private func solveDynamicAccordionLayout(edgePods: [SlotPod], edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
+        let safeTop = 16.0
+        let safeBottom = totalHeight - 16.0
+        let availableH = max(safeBottom - safeTop, 120.0)
+        let gap = 6.0
+        let totalGaps = Double(max(edgePods.count - 1, 0)) * gap
+
+        let fullSpans: [Double] = edgePods.map { pod in
+            Double(max(effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)), minimumDrawerHeight(for: pod.id)))
+        }
+        let sumFullH = fullSpans.reduce(0.0, +)
+
+        // When all pods fit comfortably at full height, use standard physical layout
+        if (sumFullH + totalGaps) <= availableH {
+            return ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
+                pods: pods,
+                on: edge,
+                totalHeight: totalHeight,
+                gap: 8.0,
+                safeTop: safeTop,
+                safeBottom: safeBottom
+            ) { [weak self] pod in
+                guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
+                return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
+            }
+        }
+
+        // High-density accordion solver
+        let netAvailable = max(availableH - totalGaps, Double(edgePods.count) * 20.0)
+        let expandedFlags = edgePods.map { isPodExpanded($0) }
+        let expandedCount = expandedFlags.filter { $0 }.count
+        let idleCount = edgePods.count - expandedCount
+
+        var spans = Array(repeating: 0.0, count: edgePods.count)
+
+        if expandedCount == 0 {
+            let minBarH = min(28.0, netAvailable / Double(edgePods.count))
+            let totalWeight = edgePods.reduce(0.0) { $0 + max($1.ergonomicWeight, 1.0) }
+            spans = edgePods.map { pod in
+                max(netAvailable * (max(pod.ergonomicWeight, 1.0) / max(totalWeight, 1.0)), minBarH)
+            }
+            let sumSpans = spans.reduce(0.0, +)
+            if sumSpans > netAvailable && sumSpans > 0 {
+                let scale = netAvailable / sumSpans
+                spans = spans.map { $0 * scale }
+            }
+        } else {
+            let minIdleBarH = min(26.0, (netAvailable * 0.45) / Double(max(idleCount, 1)))
+            let idleReserved = Double(idleCount) * minIdleBarH
+            let expandedBudget = max(netAvailable - idleReserved, 120.0)
+
+            let requestedExpanded: [Double] = edgePods.enumerated().map { idx, pod in
+                guard expandedFlags[idx] else { return 0.0 }
+                return Double(max(minimumDrawerHeight(for: pod.id), 150.0))
+            }
+            let totalRequestedExpanded = requestedExpanded.reduce(0.0, +)
+
+            if totalRequestedExpanded <= expandedBudget {
+                // Every expanded pod (pinned + hovered) receives its full requested height
+                for idx in edgePods.indices where expandedFlags[idx] {
+                    spans[idx] = requestedExpanded[idx]
+                }
+                let remainingForIdle = max(netAvailable - totalRequestedExpanded, idleReserved)
+                let idleWeightSum = edgePods.enumerated().reduce(0.0) { acc, pair in
+                    expandedFlags[pair.offset] ? acc : (acc + max(pair.element.ergonomicWeight, 1.0))
+                }
+                for idx in edgePods.indices where !expandedFlags[idx] {
+                    let w = max(edgePods[idx].ergonomicWeight, 1.0)
+                    spans[idx] = max(remainingForIdle * (w / max(idleWeightSum, 1.0)), minIdleBarH)
+                }
+                let currentTotal = spans.reduce(0.0, +)
+                if currentTotal > netAvailable && idleCount > 0 {
+                    let excess = currentTotal - netAvailable
+                    let perIdle = excess / Double(idleCount)
+                    for idx in edgePods.indices where !expandedFlags[idx] {
+                        spans[idx] = max(spans[idx] - perIdle, 18.0)
+                    }
+                }
+            } else {
+                // Multiple large pods expanded simultaneously: prioritize currently hovered activePod
+                let hoveredPodId = activeDrawerPodId ?? activePod?.id
+                var remainingExpandedBudget = expandedBudget
+                var pinnedExpandedIndices: [Int] = []
+
+                for idx in edgePods.indices where expandedFlags[idx] {
+                    if edgePods[idx].id == hoveredPodId {
+                        let minH = Double(max(minimumDrawerHeight(for: edgePods[idx].id), 120.0))
+                        let granted = min(minH, expandedBudget * 0.55)
+                        spans[idx] = max(granted, 110.0)
+                        remainingExpandedBudget = max(expandedBudget - spans[idx], 90.0)
+                    } else {
+                        pinnedExpandedIndices.append(idx)
+                    }
+                }
+
+                if !pinnedExpandedIndices.isEmpty {
+                    let share = remainingExpandedBudget / Double(pinnedExpandedIndices.count)
+                    for idx in pinnedExpandedIndices {
+                        spans[idx] = max(share, 90.0)
+                    }
+                }
+
+                for idx in edgePods.indices where !expandedFlags[idx] {
+                    spans[idx] = minIdleBarH
+                }
+
+                let totalAllocated = spans.reduce(0.0, +)
+                if totalAllocated > netAvailable && totalAllocated > 0 {
+                    let scale = netAvailable / totalAllocated
+                    spans = spans.map { $0 * scale }
+                }
+            }
+        }
+
+        var currentY = safeTop
+        var result: [ResolvedPodLayoutItem] = []
+        for (idx, pod) in edgePods.enumerated() {
+            let span = spans[idx]
+            result.append(ResolvedPodLayoutItem(pod: pod, startY: currentY, spanH: span))
+            currentY += span + gap
+        }
+        return result
+    }
+
+    private func solveDecomposedMajorPodLayout(edgePods: [SlotPod], edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
+        let safeTop = 16.0
+        let safeBottom = totalHeight - 16.0
+        let availableH = max(safeBottom - safeTop, 180.0)
+
+        let maxMajorGroups = max(2, min(Int(availableH / 220.0), 4))
+        let totalNeeded = edgePods.reduce(0.0) { $0 + Double(minimumDrawerHeight(for: $1.id)) + 8.0 }
+
+        let targetGroupCount: Int = {
+            if edgePods.count <= 1 { return 1 }
+            if edgePods.count > maxMajorGroups {
+                return maxMajorGroups
+            }
+            if totalNeeded > availableH {
+                return max(1, min(edgePods.count - 1, maxMajorGroups))
+            }
+            return max(1, edgePods.count / 2)
+        }()
+
+        var groups: [[SlotPod]] = []
+        let n = edgePods.count
+        let g = min(max(targetGroupCount, 1), n)
+        var startIndex = 0
+        for i in 0..<g {
+            let remainingPods = n - startIndex
+            let remainingGroups = g - i
+            let groupSize = Int(ceil(Double(remainingPods) / Double(remainingGroups)))
+            let endIndex = min(startIndex + groupSize, n)
+            groups.append(Array(edgePods[startIndex..<endIndex]))
+            startIndex = endIndex
+        }
+
+        let majorGap = 10.0
+        let totalMajorGaps = Double(max(groups.count - 1, 0)) * majorGap
+        let netMajorAvailable = max(availableH - totalMajorGaps, Double(groups.count) * 150.0)
+
+        let groupWeights: [Double] = groups.map { grp in
+            grp.reduce(0.0) { $0 + max($1.ergonomicWeight, 15.0) }
+        }
+        let totalGroupWeight = max(groupWeights.reduce(0.0, +), 1.0)
+
+        var majorSpans: [Double] = groups.enumerated().map { idx, _ in
+            max(netMajorAvailable * (groupWeights[idx] / totalGroupWeight), 155.0)
+        }
+        let sumMajorSpans = majorSpans.reduce(0.0, +)
+        if sumMajorSpans > netMajorAvailable && sumMajorSpans > 0 {
+            let scale = netMajorAvailable / sumMajorSpans
+            majorSpans = majorSpans.map { max($0 * scale, 150.0) }
+        }
+
+        var result: [ResolvedPodLayoutItem] = []
+        var currentMajorY = safeTop
+
+        for (groupIdx, grp) in groups.enumerated() {
+            let majorSpanH = majorSpans[groupIdx]
+            let majorGroupId = "major_\(edge.rawValue)_\(groupIdx)"
+            let m = grp.count
+            let subGap = 3.0
+            let totalSubGaps = Double(max(m - 1, 0)) * subGap
+            let subSpanH = max((majorSpanH - totalSubGaps) / Double(max(m, 1)), 22.0)
+
+            for (subIdx, pod) in grp.enumerated() {
+                let subStartY = currentMajorY + Double(subIdx) * (subSpanH + subGap)
+                result.append(
+                    ResolvedPodLayoutItem(
+                        pod: pod,
+                        startY: subStartY,
+                        spanH: subSpanH,
+                        drawerStartY: currentMajorY,
+                        drawerSpanH: majorSpanH,
+                        majorGroupId: majorGroupId
+                    )
+                )
+            }
+            currentMajorY += majorSpanH + majorGap
+        }
+
+        return result
+    }
+
+    private func solvePagedSpacesLayout(edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
+        let pages = paginatedPods(for: edge, totalHeight: totalHeight)
+        guard !pages.isEmpty else { return [] }
+
+        let pageIdx = min(max(currentRailPage(for: edge), 0), pages.count - 1)
+        let pagePods = pages[pageIdx]
+        guard !pagePods.isEmpty else { return [] }
+
+        let safeTop = pages.count > 1 ? 42.0 : 16.0
+        let safeBottom = totalHeight - 16.0
+        let gap = 8.0
+        let availableH = max(safeBottom - safeTop, 160.0)
+        let totalGaps = Double(max(pagePods.count - 1, 0)) * gap
+        let netAvailable = max(availableH - totalGaps, 120.0)
+
+        let minSpans = pagePods.map { Double(minimumDrawerHeight(for: $0.id)) }
+        var targetSpans = pagePods.enumerated().map { idx, pod in
+            max(Double(effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight))), minSpans[idx])
+        }
+
+        let totalTarget = targetSpans.reduce(0.0, +)
+        if totalTarget > netAvailable {
+            let excess = totalTarget - netAvailable
+            let slackSum = targetSpans.enumerated().reduce(0.0) { acc, pair in
+                acc + max(pair.element - minSpans[pair.offset], 0.0)
+            }
+            if slackSum >= excess && slackSum > 0 {
+                for i in targetSpans.indices {
+                    let slack = max(targetSpans[i] - minSpans[i], 0.0)
+                    targetSpans[i] = max(targetSpans[i] - excess * (slack / slackSum), minSpans[i])
+                }
+            } else {
+                targetSpans = minSpans
+            }
+        }
+
+        var currentY = safeTop
+        var result: [ResolvedPodLayoutItem] = []
+        for (idx, pod) in pagePods.enumerated() {
+            let span = targetSpans[idx]
+            result.append(ResolvedPodLayoutItem(pod: pod, startY: currentY, spanH: span))
+            currentY += span + gap
+        }
+        return result
     }
 
     public func activeDrawerCardFrames(for edge: MountEdge, totalHeight: Double, windowWidth: Double = 580.0) -> [CGRect] {
@@ -558,6 +964,21 @@ public final class PurahWorkspaceStore {
 
             // High-performance prune: Skip completely idle pods that have neither active nor pinned drawers
             guard isPodActive || isPodPinned || hasChild else { continue }
+
+            // In Shared Major Pod mode, check if this pod is the active drawer owner in its Major Group
+            let isSharedMajorSubBar = (railOverflowStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+            if isSharedMajorSubBar {
+                guard shouldRenderDrawer(for: item, in: layoutItems) else { continue }
+                let topOfPodY = totalHeight - item.drawerStartY
+                let bottomOfPodY = topOfPodY - item.drawerSpanH
+                let minY = max(bottomOfPodY - 6.0, 0.0)
+                let maxY = min(topOfPodY + 6.0, totalHeight)
+
+                let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
+                let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+                frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
+                continue
+            }
 
             if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id) {
                 let policy = provider.decomposedPolicy(store: self)
@@ -601,8 +1022,8 @@ public final class PurahWorkspaceStore {
                 }
 
                 if !matchedSubItem && (isPodActive || isPodPinned || hasChild) {
-                    let topOfPodY = totalHeight - item.startY
-                    let bottomOfPodY = topOfPodY - item.spanH
+                    let topOfPodY = totalHeight - item.drawerStartY
+                    let bottomOfPodY = topOfPodY - item.drawerSpanH
                     let minY = max(bottomOfPodY - 6.0, 0.0)
                     let maxY = min(topOfPodY + 6.0, totalHeight)
                     let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
@@ -614,8 +1035,8 @@ public final class PurahWorkspaceStore {
 
             // Full-pod Composite Drawers (Music, Shelf, Notes, and custom plugins)
             if isPodPinned || isPodActive || hasChild {
-                let topOfPodY = totalHeight - item.startY
-                let bottomOfPodY = topOfPodY - item.spanH
+                let topOfPodY = totalHeight - item.drawerStartY
+                let bottomOfPodY = topOfPodY - item.drawerSpanH
                 let minY = max(bottomOfPodY - 6.0, 0.0)
                 let maxY = min(topOfPodY + 6.0, totalHeight)
 
@@ -924,6 +1345,11 @@ public final class PurahWorkspaceStore {
             self.currentPreset = preset
         }
 
+        if let overflowStr = defaults.string(forKey: "purah.railOverflowStrategy"),
+           let strategy = RailOverflowStrategy(rawValue: overflowStr) {
+            self.railOverflowStrategy = strategy
+        }
+
         if defaults.object(forKey: "purah.hotkey.keyCode") != nil {
             let code = UInt32(defaults.integer(forKey: "purah.hotkey.keyCode"))
             let mods = UInt32(defaults.integer(forKey: "purah.hotkey.modifiers"))
@@ -997,6 +1423,7 @@ public final class PurahWorkspaceStore {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
+        defaults.set(railOverflowStrategy.rawValue, forKey: "purah.railOverflowStrategy")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
@@ -1042,15 +1469,17 @@ public final class PurahWorkspaceStore {
         guard let index = pods.firstIndex(where: { $0.id == id }) else { return }
         let pod = pods[index]
         if !pod.isEnabled {
-            // Guard minimum height: reject enabling if required height overflows screen budget
-            let currentReq = totalRequiredHeight(for: pod.edge)
-            let additional = minimumDrawerHeight(for: pod.id) + 10.0
-            let available = availableScreenHeight(for: pod.edge)
-            if (currentReq + additional) > available {
-                let reqTotal = Int(currentReq + additional)
-                let availInt = Int(available)
-                onCapacityWarningToast?("⚠️ Insufficient rail capacity (\(reqTotal)pt / \(availInt)pt). Cannot mount \(pod.name) without squashing existing pods.")
-                return
+            if railOverflowStrategy == .strictCeiling {
+                // Guard minimum height: reject enabling if required height overflows screen budget
+                let currentReq = totalRequiredHeight(for: pod.edge)
+                let additional = minimumDrawerHeight(for: pod.id) + 10.0
+                let available = availableScreenHeight(for: pod.edge)
+                if (currentReq + additional) > available {
+                    let reqTotal = Int(currentReq + additional)
+                    let availInt = Int(available)
+                    onCapacityWarningToast?("⚠️ Insufficient rail capacity (\(reqTotal)pt / \(availInt)pt). Cannot mount \(pod.name) without squashing existing pods.")
+                    return
+                }
             }
             pods[index].isEnabled = true
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)

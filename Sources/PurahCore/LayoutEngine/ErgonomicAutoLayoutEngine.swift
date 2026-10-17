@@ -1,16 +1,76 @@
 // Sources/PurahCore/LayoutEngine/ErgonomicAutoLayoutEngine.swift
 import Foundation
 
+public enum RailOverflowStrategy: String, Codable, CaseIterable, Sendable, Identifiable {
+    case dynamicAccordion   = "accordion"   // Mode 1: macOS Dock-style dynamic accordion expansion
+    case decomposedMajorPod = "majorPod"    // Mode 2: Decomposed sub-bars sharing a full-height Major Pod drawer
+    case pagedSpaces        = "paged"       // Mode 3: Arc-style multi-page scrollable rail spaces
+    case strictCeiling      = "strict"      // Legacy strict ceiling (rejects mounting when >100% height)
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .dynamicAccordion: return "Dynamic Accordion"
+        case .decomposedMajorPod: return "Shared Major Pod"
+        case .pagedSpaces: return "Paged Spaces"
+        case .strictCeiling: return "Strict Ceiling"
+        }
+    }
+
+    @MainActor
+    public var localizedDisplayName: String {
+        switch self {
+        case .dynamicAccordion: return "overflow.mode.accordion".localized
+        case .decomposedMajorPod: return "overflow.mode.majorPod".localized
+        case .pagedSpaces: return "overflow.mode.paged".localized
+        case .strictCeiling: return "overflow.mode.strict".localized
+        }
+    }
+
+    @MainActor
+    public var localizedSubtitle: String {
+        switch self {
+        case .dynamicAccordion: return "overflow.mode.accordion.desc".localized
+        case .decomposedMajorPod: return "overflow.mode.majorPod.desc".localized
+        case .pagedSpaces: return "overflow.mode.paged.desc".localized
+        case .strictCeiling: return "overflow.mode.strict.desc".localized
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .dynamicAccordion: return "arrow.up.and.down.square.fill"
+        case .decomposedMajorPod: return "rectangle.split.1x2.fill"
+        case .pagedSpaces: return "square.stack.3d.up.fill"
+        case .strictCeiling: return "lock.rectangle.stack.fill"
+        }
+    }
+}
+
 public struct ResolvedPodLayoutItem: Identifiable, Sendable {
     public var id: String { pod.id }
     public let pod: SlotPod
     public let startY: Double
     public let spanH: Double
+    public let drawerStartY: Double
+    public let drawerSpanH: Double
+    public let majorGroupId: String?
 
-    public init(pod: SlotPod, startY: Double, spanH: Double) {
+    public init(
+        pod: SlotPod,
+        startY: Double,
+        spanH: Double,
+        drawerStartY: Double? = nil,
+        drawerSpanH: Double? = nil,
+        majorGroupId: String? = nil
+    ) {
         self.pod = pod
         self.startY = startY
         self.spanH = spanH
+        self.drawerStartY = drawerStartY ?? startY
+        self.drawerSpanH = drawerSpanH ?? spanH
+        self.majorGroupId = majorGroupId
     }
 }
 

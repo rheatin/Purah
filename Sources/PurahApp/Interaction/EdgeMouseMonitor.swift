@@ -271,7 +271,10 @@ public final class EdgeMouseMonitor {
     }
 
     public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
-        if store.isPodDecomposed(item.pod.id), let provider = store.capabilityProvider(for: item.pod.id) {
+        let isSharedMajorSubBar = (store.railOverflowStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+        if !isSharedMajorSubBar,
+           store.isPodDecomposed(item.pod.id),
+           let provider = store.capabilityProvider(for: item.pod.id) {
             let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
             let minChipH = policy.minChipHeight
@@ -607,8 +610,11 @@ public final class EdgeMouseMonitor {
         coordinator?.setInteractive(true, for: edge)
 
         let wasDocked = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
+        let isSharedMajorSubBar = (store.railOverflowStrategy == .decomposedMajorPod && abs(matched.drawerSpanH - matched.spanH) > 1.0)
 
-        if let provider = store.capabilityProvider(for: candidate.id), provider.isDecomposed(store: store) {
+        if !isSharedMajorSubBar,
+           let provider = store.capabilityProvider(for: candidate.id),
+           provider.isDecomposed(store: store) {
             let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
             let minChipH = policy.minChipHeight

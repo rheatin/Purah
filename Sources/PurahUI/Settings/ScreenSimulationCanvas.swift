@@ -94,6 +94,28 @@ public struct ScreenSimulationCanvas: View {
                         let realScreenH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
                         let leftScale = workableHeight / realScreenH
                         let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: realScreenH)
+                        let leftPages = (store.railOverflowStrategy == .pagedSpaces)
+                            ? store.paginatedPods(for: .left, totalHeight: realScreenH)
+                            : []
+
+                        if store.railOverflowStrategy == .pagedSpaces && leftPages.count > 1 {
+                            let curPage = min(max(store.currentRailPage(for: .left), 0), leftPages.count - 1)
+                            RailPageIndicatorView(
+                                edge: .left,
+                                currentPage: curPage,
+                                pageCount: leftPages.count,
+                                accentColor: palette.primaryAccent
+                            ) {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    store.cycleRailPage(for: .left, delta: 1)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            }
+                            .scaleEffect(0.85, anchor: .topLeading)
+                            .offset(x: 4, y: 2)
+                            .zIndex(50)
+                        }
+
                         ForEach(Array(leftLayout.enumerated()), id: \.element.id) { idx, item in
                             let topY = CGFloat(item.startY * leftScale)
                             let podSpan = CGFloat(item.spanH * leftScale)
@@ -152,6 +174,28 @@ public struct ScreenSimulationCanvas: View {
                         let realScreenRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
                         let rightScale = workableHeight / realScreenRightH
                         let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: realScreenRightH)
+                        let rightPages = (store.railOverflowStrategy == .pagedSpaces)
+                            ? store.paginatedPods(for: .right, totalHeight: realScreenRightH)
+                            : []
+
+                        if store.railOverflowStrategy == .pagedSpaces && rightPages.count > 1 {
+                            let curPage = min(max(store.currentRailPage(for: .right), 0), rightPages.count - 1)
+                            RailPageIndicatorView(
+                                edge: .right,
+                                currentPage: curPage,
+                                pageCount: rightPages.count,
+                                accentColor: palette.primaryAccent
+                            ) {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    store.cycleRailPage(for: .right, delta: 1)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            }
+                            .scaleEffect(0.85, anchor: .topTrailing)
+                            .offset(x: -4, y: 2)
+                            .zIndex(50)
+                        }
+
                         ForEach(Array(rightLayout.enumerated()), id: \.element.id) { idx, item in
                             let topY = CGFloat(item.startY * rightScale)
                             let podSpan = CGFloat(item.spanH * rightScale)

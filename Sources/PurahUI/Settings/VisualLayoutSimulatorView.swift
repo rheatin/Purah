@@ -103,7 +103,10 @@ public struct VisualLayoutSimulatorView: View {
                 // 1. Mini Screen Simulation (Top Primary Focus)
                 ScreenSimulationCanvas(store: store)
 
-                // 2. Rail Module Assembly Card
+                // 2. High-Density Rail Overflow Mode Card
+                overflowStrategyCard
+
+                // 3. Rail Module Assembly Card
                 moduleAssemblyCard
 
                 // 3. Presets Card
@@ -216,6 +219,127 @@ public struct VisualLayoutSimulatorView: View {
             .frame(width: 680)
         }
         .frame(minHeight: 560)
+    }
+
+    // MARK: - High-Density Rail Overflow Mode Card
+    private var overflowStrategyCard: some View {
+        let palette = theme.palette
+        let realLeftH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
+        let realRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
+        let leftPages = store.paginatedPods(for: .left, totalHeight: realLeftH)
+        let rightPages = store.paginatedPods(for: .right, totalHeight: realRightH)
+        let leftPageCount = max(leftPages.count, 1)
+        let rightPageCount = max(rightPages.count, 1)
+        let curLeftPage = min(max(store.currentRailPage(for: .left), 0), leftPageCount - 1)
+        let curRightPage = min(max(store.currentRailPage(for: .right), 0), rightPageCount - 1)
+
+        return settingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("overflow.card.subtitle".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(RailOverflowStrategy.allCases) { strategy in
+                        let isSelected = (store.railOverflowStrategy == strategy)
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                store.railOverflowStrategy = strategy
+                                store.invalidateLayoutCache()
+                                store.savePersistentState()
+                                store.onWindowsRebuildNeeded?()
+                                store.triggerControlHaptic(.alignment)
+                            }
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: strategy.icon)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+                                    .frame(width: 24, height: 24)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(isSelected ? palette.primaryAccent.opacity(0.16) : Color.primary.opacity(0.06))
+                                    )
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(strategy.localizedDisplayName)
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .foregroundColor(isSelected ? palette.primaryAccent : (palette.style == .native ? Color.primary : .white))
+                                        .lineLimit(1)
+
+                                    Text(strategy.localizedSubtitle)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+                            .background(isSelected ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.25), lineWidth: isSelected ? 1.5 : 1.0)
+                            )
+                        }
+                        .buttonStyle(.tactile)
+                    }
+                }
+
+                if store.railOverflowStrategy == .pagedSpaces {
+                    HStack(spacing: 12) {
+                        Button {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                store.cycleRailPage(for: .left, delta: 1)
+                                store.triggerControlHaptic(.alignment)
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.left.to.line")
+                                    .font(.caption2)
+                                Text("\("overflow.paged.leftRail".localized): \(curLeftPage + 1)/\(leftPageCount)")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                Image(systemName: "chevron.right.circle.fill")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(palette.primaryAccent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(palette.primaryAccent.opacity(0.12))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.tactile)
+
+                        Spacer()
+
+                        Button {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                store.cycleRailPage(for: .right, delta: 1)
+                                store.triggerControlHaptic(.alignment)
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.right.to.line")
+                                    .font(.caption2)
+                                Text("\("overflow.paged.rightRail".localized): \(curRightPage + 1)/\(rightPageCount)")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                Image(systemName: "chevron.right.circle.fill")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(palette.primaryAccent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(palette.primaryAccent.opacity(0.12))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.tactile)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+        }
     }
 
     // MARK: - Rail Module Assembly Card
