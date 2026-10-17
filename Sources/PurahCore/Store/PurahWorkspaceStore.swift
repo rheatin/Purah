@@ -1845,8 +1845,11 @@ public final class PurahWorkspaceStore {
             }
             return Double(minimumDrawerHeight(for: pod.id))
         }
+        let maxVisuals: [Double] = pagePods.map { pod in
+            maxVisualHeight(for: pod.id, totalHeight: totalHeight)
+        }
         var targetSpans = pagePods.enumerated().map { idx, pod in
-            max(pod.range.length * totalHeight, minSpans[idx])
+            min(max(pod.range.length * totalHeight, minSpans[idx]), max(maxVisuals[idx], minSpans[idx]))
         }
 
         let totalTarget = targetSpans.reduce(0.0, +)
@@ -1922,7 +1925,6 @@ public final class PurahWorkspaceStore {
                 let maxChipH = Double(policy.maxChipHeight)
                 let spacing = Double(policy.spacing)
                 let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
-                let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
                 let maxAllowed = isDynamicAccordion
                     ? max(policy.maxRailItems, 1)
                     : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -1930,9 +1932,7 @@ public final class PurahWorkspaceStore {
                 let safeCount = max(count, 1)
                 let totalSpacing = spacing * Double(safeCount - 1)
                 let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
-                let itemH = isUnboundedStretch
-                    ? max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH)
-                    : min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
+                let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
                 let cardH = max(itemH, minChipH, 48.0)
 
                 var matchedSubItem = false

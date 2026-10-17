@@ -2,7 +2,9 @@
 import Testing
 import Foundation
 import CoreGraphics
+import SwiftUI
 @testable import PurahCore
+@testable import PurahUI
 @testable import PurahApp
 
 @Suite("High-Density Rail Overflow Modes Tests", .serialized)
@@ -819,5 +821,47 @@ struct HighDensityOverflowTests {
         #expect(store.overflowStrategy(for: .left) == .decomposedMajorPod, "Commit onto target pod must switch rail to decomposedMajorPod")
         #expect(notesAfter.majorGroupId != nil)
         #expect(notesAfter.majorGroupId == vitalsAfter.majorGroupId, "Both pods must be merged into the same Shared Major Pod group")
+    }
+
+    @Test("Exact Visual Rail Bar Hover Bounds: solvePagedSpacesLayout caps decomposed spanH by maxVisualHeight and prevents premature drawer pop-open")
+    func testExactVisualRailBarHoverBounds() throws {
+        let suiteName = "test_exact_rail_bounds_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.railBarWidth = 6.0
+        store.setOverflowStrategy(.pagedSpaces, for: .right)
+
+        // Give calendar a huge normalized range (0.45) on a 900pt screen
+        if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
+            store.pods[calIdx].range = NormalizedRange(start: 0.10, length: 0.45)
+        }
+        store.invalidateLayoutCache()
+
+        let totalHeight = 900.0
+        let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let calItem = try #require(rightLayout.first(where: { $0.pod.id == "calendar" }))
+        let maxVisual = store.maxVisualHeight(for: "calendar", totalHeight: totalHeight)
+        #expect(calItem.spanH <= maxVisual + 0.5, "Decomposed calendar pod in Paged Spaces must be capped by maxVisualHeight without dead space")
+
+        let monitor = EdgeMouseMonitor(store: store)
+        monitor.customTargetVisibleRect = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let occupiedH = monitor.actualOccupiedHeight(for: calItem)
+        #expect(occupiedH <= CGFloat(maxVisual) + 0.5, "actualOccupiedHeight must clamp each chip to maxChipH")
+
+        // Verify PassThroughHostingView hitTest strictly enforces exact railBarWidth (6pt) and exact [topY, bottomY] without padding
+        let hostingView = PassThroughHostingView(rootView: EmptyView(), edge: .right, store: store)
+        hostingView.frame = CGRect(x: 0, y: 0, width: 340, height: 900)
+
+        let midWinY = calItem.startY + Double(occupiedH) * 0.5
+        let appKitMidY = CGFloat(totalHeight - midWinY)
+
+        // 10pt from right edge (outside 6pt railBarWidth) must return nil when docked
+        let outsideHorizontalPoint = NSPoint(x: 340.0 - 10.0, y: appKitMidY)
+        #expect(hostingView.hitTest(outsideHorizontalPoint) == nil, "Point outside visual railBarWidth (10pt > 6pt) must not intercept hitTest")
+
+        // 2pt above topY must return nil (no -3pt vertical padding)
+        let aboveTopWinY = calItem.startY - 2.0
+        let aboveTopPoint = NSPoint(x: 340.0 - 3.0, y: CGFloat(totalHeight - aboveTopWinY))
+        #expect(hostingView.hitTest(aboveTopPoint) == nil, "Point 2pt above pod visual topY must not intercept hitTest")
     }
 }

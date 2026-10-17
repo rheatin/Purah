@@ -83,8 +83,15 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
         lock.deallocate()
     }
 
+    public static var isTestingEnvironment: Bool {
+        NSClassFromString("XCTest") != nil ||
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.arguments.contains(where: { $0.contains("swiftpm-testing-helper") || $0.contains("xctest") })
+    }
+
     public func start() {
         guard !isRunning else { return }
+        guard !Self.isTestingEnvironment else { return }
         guard #available(macOS 14.2, *) else { return }
 
         let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])

@@ -170,7 +170,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
 
-        let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+        let barW: CGFloat = max(CGFloat(store.railBarWidth), 4.0)
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
         let isInsideCard = isPointInInteractiveDrawer(winPoint)
 
@@ -202,7 +202,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     return
                 }
             } else {
-                let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+                let barW: CGFloat = max(CGFloat(store.railBarWidth), 4.0)
                 let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
                 if isOnRail || isPointInInteractiveDrawer(winPoint) {
                     return
@@ -232,7 +232,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return nil
         }
 
-        let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+        let barW: CGFloat = max(CGFloat(store.railBarWidth), 4.0)
         let totalH = Double(bounds.height)
         let currentWindowY = totalH - Double(point.y)
 
@@ -264,7 +264,6 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let maxChipH = Double(policy.maxChipHeight)
                     let spacing = Double(policy.spacing)
                     let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
-                    let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
                     let maxAllowed = isDynamicAccordion
                         ? max(policy.maxRailItems, 1)
                         : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -272,15 +271,13 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let safeCount = max(count, 1)
                     let totalSpacing = spacing * Double(safeCount - 1)
                     let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
-                    let itemH = isUnboundedStretch
-                        ? max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH)
-                        : min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
+                    let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
                     actualSpan = Double(count) * itemH + spacing * Double(max(count - 1, 0))
                 } else {
                     actualSpan = item.spanH
                 }
                 let bottomY = topY + actualSpan
-                return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
+                return currentWindowY >= topY && currentWindowY <= bottomY
             })
             if isOverPod {
                 return super.hitTest(point)

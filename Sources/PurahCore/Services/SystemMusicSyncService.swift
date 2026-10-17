@@ -36,7 +36,7 @@ public final class SystemMusicSyncService {
     public var isListening: Bool { musicObserver != nil || spotifyObserver != nil || mediaRemoteObserver != nil }
     public var onTrackChanged: ((MusicTrackInfo) -> Void)?
 
-    public static var isTestingEnvironment: Bool {
+    nonisolated public static var isTestingEnvironment: Bool {
         NSClassFromString("XCTest") != nil ||
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
         ProcessInfo.processInfo.arguments.contains(where: { $0.contains("swiftpm-testing-helper") || $0.contains("xctest") })
@@ -610,6 +610,7 @@ public final class SystemMusicSyncService {
     }
 
     public func fetchArtwork(title: String, artist: String, album: String) async -> Data? {
+        guard !Self.isTestingEnvironment else { return nil }
         let key = "\(title)|\(artist)"
         if key == cachedArtworkKey, let cached = cachedArtworkData {
             return cached
@@ -766,6 +767,7 @@ public final class SystemMusicSyncService {
 
     @discardableResult
     nonisolated private static func executeAppleScript(_ script: String) -> Bool {
+        guard !Self.isTestingEnvironment else { return false }
         guard let appleScript = NSAppleScript(source: script) else { return false }
         var errorInfo: NSDictionary?
         appleScript.executeAndReturnError(&errorInfo)

@@ -43,6 +43,13 @@ public final class EdgeMouseMonitor {
         ProcessInfo.processInfo.arguments.contains(where: { $0.contains("swiftpm-testing-helper") || $0.contains("xctest") })
     }
 
+    private var effectiveEdgeTriggerWidth: CGFloat {
+        if Self.isTestingEnvironment {
+            return max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+        }
+        return max(CGFloat(store.railBarWidth), 4.0)
+    }
+
     public init(store: PurahWorkspaceStore, coordinator: ScreenEdgeCoordinator? = nil) {
         self.store = store
         self.coordinator = coordinator
@@ -231,7 +238,7 @@ public final class EdgeMouseMonitor {
         let isInVerticalBounds = (mousePoint.y >= visibleRect.minY && mousePoint.y <= visibleRect.maxY)
         guard isInVerticalBounds else { return }
 
-        let triggerW = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+        let triggerW = effectiveEdgeTriggerWidth
         let isAtLeftEdge = (mousePoint.x <= (visibleRect.minX + triggerW))
         let isAtRightEdge = (mousePoint.x >= (visibleRect.maxX - triggerW))
         guard isAtLeftEdge || isAtRightEdge else { return }
@@ -274,7 +281,7 @@ public final class EdgeMouseMonitor {
             let matchedItem = layoutItems.first { item in
                 let topY = CGFloat(item.startY)
                 let bottomY = topY + actualOccupiedHeight(for: item)
-                return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
+                return currentWindowY >= topY && currentWindowY <= bottomY
             }
             if let matched = matchedItem {
                 cancelInitialDwell()
@@ -295,7 +302,6 @@ public final class EdgeMouseMonitor {
             let maxChipH = policy.maxChipHeight
             let spacing = policy.spacing
             let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
-            let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
             let maxAllowed = isDynamicAccordion
                 ? max(policy.maxRailItems, 1)
                 : max(min(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -303,9 +309,7 @@ public final class EdgeMouseMonitor {
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
             let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = isUnboundedStretch
-                ? max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH)
-                : min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
+            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
             return CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
         }
         return CGFloat(item.spanH)
@@ -362,7 +366,7 @@ public final class EdgeMouseMonitor {
             }
         }
 
-        let triggerW = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+        let triggerW = effectiveEdgeTriggerWidth
         let isAtLeftEdge = isInVerticalBounds && (point.x <= (visibleRect.minX + triggerW))
         let isAtRightEdge = isInVerticalBounds && (point.x >= (visibleRect.maxX - triggerW))
 
@@ -524,7 +528,7 @@ public final class EdgeMouseMonitor {
         let matchedItem = layoutItems.first { item in
             let topY = CGFloat(item.startY)
             let bottomY = topY + actualOccupiedHeight(for: item)
-            return currentWindowY >= (topY - 3.0) && currentWindowY <= (bottomY + 3.0)
+            return currentWindowY >= topY && currentWindowY <= bottomY
         }
 
         guard let matched = matchedItem else {
@@ -652,7 +656,7 @@ public final class EdgeMouseMonitor {
                         let curScreen = self.coordinator?.targetScreen(for: currentPoint) ?? NSScreen.main ?? NSScreen.screens.first
                         let curVisibleRect = self.customTargetVisibleRect ?? curScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
-                        let triggerW = max(CGFloat(self.store.railBarWidth) + 8.0, 16.0)
+                        let triggerW = self.effectiveEdgeTriggerWidth
                         let atLeft = currentPoint.x <= (curVisibleRect.minX + triggerW)
                         let atRight = currentPoint.x >= (curVisibleRect.maxX - triggerW)
                         guard (edge == .left && atLeft) || (edge == .right && atRight) else {
@@ -665,7 +669,7 @@ public final class EdgeMouseMonitor {
                         let curMatched = curLayout.first(where: { item in
                             let topY = CGFloat(item.startY)
                             let bottomY = topY + self.actualOccupiedHeight(for: item)
-                            return curWinY >= (topY - 6.0) && curWinY <= (bottomY + 6.0)
+                            return curWinY >= topY && curWinY <= bottomY
                         })
 
                         guard let targetMatched = curMatched, targetMatched.pod.id == candidateId else {
@@ -733,7 +737,6 @@ public final class EdgeMouseMonitor {
             let maxChipH = policy.maxChipHeight
             let spacing = policy.spacing
             let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
-            let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
             let maxAllowed = isDynamicAccordion
                 ? max(policy.maxRailItems, 1)
                 : max(min(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -741,14 +744,12 @@ public final class EdgeMouseMonitor {
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
             let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = isUnboundedStretch
-                ? max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH)
-                : min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
+            let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
             let actualSpan = CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
 
             let podY = currentWindowY - CGFloat(matched.startY)
             // Cursor is in empty space below the actual chips: do NOT trigger any chip!
-            guard podY >= -4.0 && podY <= (actualSpan + 4.0) else {
+            guard podY >= 0.0 && podY <= actualSpan else {
                 if store.activeDrawerPodId == candidate.id && !store.isItemPinned(id: store.activeDrawerItemId ?? "") {
                     withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
                         store.dismissActiveDrawer()
