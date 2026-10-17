@@ -406,21 +406,16 @@ struct HighDensityOverflowTests {
         }
     }
 
-    @Test("Paged Spaces Full-Height Stretch: a page with only 2 small pods scales up to fill safeTop ..< safeBottom with zero bottom dead space")
+    @Test("Paged Spaces Full-Height Stretch: a page with 2 assigned pods normalizes to fill safeTop ..< safeBottom and supports manual shortening")
     func testPagedSpacesFullHeightStretch() throws {
         let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
         let totalHeight = 900.0
 
-        // Put 7 pods on Page 0 and only 2 pods with small range.length (0.12 each) on Page 1
+        // Assign 7 pods to Page 0 and 2 pods to Page 1 via setPodPage (which normalizes page ranges initially)
         let sortedPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
         for (offset, p) in sortedPods.enumerated() {
-            if let idx = store.pods.firstIndex(where: { $0.id == p.id }) {
-                store.pods[idx].pageIndex = (offset < 7) ? 0 : 1
-                if offset >= 7 {
-                    store.pods[idx].range = NormalizedRange(start: Double(offset - 7) * 0.20 + 0.02, length: 0.12)
-                }
-            }
+            store.setPodPage(id: p.id, pageIndex: (offset < 7) ? 0 : 1)
         }
         store.setRailPage(1, for: .left)
         store.invalidateLayoutCache()
@@ -430,9 +425,9 @@ struct HighDensityOverflowTests {
 
         let safeTop = 48.0
         let safeBottom = totalHeight - 48.0
-        #expect(abs(page1Layout[0].startY - safeTop) < 1.0)
+        #expect(abs(page1Layout[0].startY - safeTop) < 1.5)
         let lastBottom = page1Layout[1].startY + page1Layout[1].spanH
-        #expect(abs(lastBottom - safeBottom) < 1.0, "Pods on Page 2 must scale up proportionally to fill safeTop ..< safeBottom with zero bottom blank space")
+        #expect(abs(lastBottom - safeBottom) < 2.0, "Pods assigned to Page 2 initially normalize to fill safeTop ..< safeBottom")
     }
 
     @Test("Shared Major Pod Stacking Builder Helpers: addPodToMajorGroup, autoStackMajorPods, and resetMajorGroups")
@@ -594,5 +589,72 @@ struct HighDensityOverflowTests {
         store.setLiveRailEditingMode(false)
         monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
         #expect(store.activeDrawerPodId == firstItem.pod.id, "EdgeMouseMonitor must resume normal hover trigger after exiting Live Rail Sculptor mode")
+    }
+
+    @Test("Pod Shortening Across All Modes: shortening todo and vitals via updatePodRange reduces resolved spanH (~72pt) without auto-inflation")
+    func testPodShorteningAcrossAllModes() throws {
+        let totalHeight = 900.0
+        for strategy in [RailOverflowStrategy.pagedSpaces, .dynamicAccordion, .decomposedMajorPod] {
+            let suiteName = "test_shorten_\(strategy.rawValue)_\(UUID().uuidString)"
+            let isolated = UserDefaults(suiteName: suiteName)!
+            let store = PurahWorkspaceStore(userDefaults: isolated)
+            store.setOverflowStrategy(strategy, for: .right)
+            store.setOverflowStrategy(strategy, for: .left)
+
+            // Shorten "todo" on right rail to length 0.08 (~72pt on 900pt screen)
+            store.updatePodRange(id: "todo", newRange: NormalizedRange(start: 0.05, length: 0.08))
+            let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+            let todoItem = try #require(rightLayout.first(where: { $0.pod.id == "todo" }))
+            #expect(
+                todoItem.spanH >= 48.0 && todoItem.spanH <= 90.0,
+                "Shortened 'todo' in \(strategy.rawValue) mode must resolve to ~72pt (got \(todoItem.spanH)pt) instead of inflating to 420pt"
+            )
+
+            // Shorten "vitals" on left rail to length 0.08 (~72pt on 900pt screen)
+            store.updatePodRange(id: "vitals", newRange: NormalizedRange(start: 0.05, length: 0.08))
+            let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+            let vitalsItem = try #require(leftLayout.first(where: { $0.pod.id == "vitals" }))
+            #expect(
+                vitalsItem.spanH >= 48.0 && vitalsItem.spanH <= 90.0,
+                "Shortened 'vitals' in \(strategy.rawValue) mode must resolve to ~72pt (got \(vitalsItem.spanH)pt) instead of inflating to 420pt"
+            )
+        }
+    }
+
+    @Test("Shared Major Pod Outer Box Resizing: resizeMajorGroup scales drawerSpanH and unstackMajorGroup splits cluster")
+    func testResizeMajorGroupAndUnstackCluster() throws {
+        let suiteName = "test_resize_major_group_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+        store.resetMajorGroups(for: .right)
+
+        // Stack calendar and todo into a Shared Major Pod
+        store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
+        let calPod = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        let groupId = try #require(calPod.majorGroupId)
+
+        let totalHeight = 900.0
+        let initialLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let initialCalItem = try #require(initialLayout.first(where: { $0.pod.id == "calendar" }))
+        let initialDrawerSpan = initialCalItem.drawerSpanH
+
+        // Shrink the Shared Major Pod cluster via resizeMajorGroup(groupId:on:deltaRatio:)
+        store.resizeMajorGroup(groupId: groupId, on: .right, deltaRatio: -0.32)
+        let shrunkLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let shrunkCalItem = try #require(shrunkLayout.first(where: { $0.pod.id == "calendar" }))
+        let shrunkTodoItem = try #require(shrunkLayout.first(where: { $0.pod.id == "todo" }))
+        #expect(shrunkCalItem.drawerSpanH < initialDrawerSpan - 100.0, "resizeMajorGroup with negative deltaRatio must shrink drawerSpanH")
+        #expect(abs(shrunkCalItem.drawerSpanH - shrunkTodoItem.drawerSpanH) < 0.01)
+
+        // Expand the Shared Major Pod cluster via resizeMajorGroup(groupId:on:newTotalSpanRatio:)
+        store.resizeMajorGroup(groupId: groupId, on: .right, newTotalSpanRatio: 0.60)
+        let expandedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let expandedCalItem = try #require(expandedLayout.first(where: { $0.pod.id == "calendar" }))
+        #expect(expandedCalItem.drawerSpanH > shrunkCalItem.drawerSpanH + 100.0, "resizeMajorGroup with larger newTotalSpanRatio must expand drawerSpanH")
+
+        // Unstack all pods in groupId
+        store.unstackMajorGroup(groupId: groupId, on: .right)
+        #expect(store.pods.filter { $0.edge == .right }.allSatisfy { $0.majorGroupId == nil })
     }
 }

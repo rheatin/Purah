@@ -10,6 +10,8 @@ public struct ScreenSimulationCanvas: View {
     public let menuBarHeight: Double = 20
     public let dockHeight: Double = 28
 
+    @State private var hoveredStackTargetPodId: String? = nil
+
     public var workableHeight: Double {
         canvasHeight - menuBarHeight - dockHeight
     }
@@ -20,6 +22,30 @@ public struct ScreenSimulationCanvas: View {
 
     public init(store: PurahWorkspaceStore) {
         self.store = store
+    }
+
+    private func detectSimulatorStackTarget(
+        draggedItem: ResolvedPodLayoutItem,
+        dragOffsetY: CGFloat,
+        scale: Double,
+        allItems: [ResolvedPodLayoutItem],
+        strategy: RailOverflowStrategy
+    ) -> String? {
+        guard abs(dragOffsetY) > 6 else { return nil }
+        let currentCenterY = (draggedItem.startY + draggedItem.spanH * 0.5) * scale + Double(dragOffsetY)
+        let draggedGroupId = (strategy == .decomposedMajorPod) ? draggedItem.majorGroupId : nil
+        for otherItem in allItems where otherItem.pod.id != draggedItem.pod.id {
+            let otherGroupId = (strategy == .decomposedMajorPod) ? otherItem.majorGroupId : nil
+            if let g1 = draggedGroupId, let g2 = otherGroupId, g1 == g2 {
+                continue
+            }
+            let topY = otherItem.startY * scale + 3.0
+            let bottomY = (otherItem.startY + otherItem.spanH) * scale - 3.0
+            if bottomY > topY && currentCenterY >= topY && currentCenterY <= bottomY {
+                return otherItem.pod.id
+            }
+        }
+        return nil
     }
 
     public var body: some View {
@@ -148,6 +174,38 @@ public struct ScreenSimulationCanvas: View {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                         store.snapPod(id: item.pod.id, to: .predecessor)
                                     }
+                                },
+                                isStackTargetHighlighted: hoveredStackTargetPodId == item.pod.id,
+                                onDragOffsetChanged: { offsetY in
+                                    if abs(offsetY) < 1.0 {
+                                        hoveredStackTargetPodId = nil
+                                    } else {
+                                        let matched = detectSimulatorStackTarget(
+                                            draggedItem: item,
+                                            dragOffsetY: offsetY,
+                                            scale: leftScale,
+                                            allItems: leftLayout,
+                                            strategy: leftStrategy
+                                        )
+                                        if matched != hoveredStackTargetPodId {
+                                            hoveredStackTargetPodId = matched
+                                            if matched != nil {
+                                                store.triggerControlHaptic(.levelChange)
+                                            }
+                                        }
+                                    }
+                                },
+                                onDropOntoStackTarget: {
+                                    guard let targetId = hoveredStackTargetPodId else { return false }
+                                    hoveredStackTargetPodId = nil
+                                    if store.overflowStrategy(for: .left) != .decomposedMajorPod {
+                                        store.setOverflowStrategy(.decomposedMajorPod, for: .left)
+                                    }
+                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                        store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
+                                        store.triggerControlHaptic(.levelChange)
+                                    }
+                                    return true
                                 }
                             )
                             .offset(x: 4, y: topY)
@@ -221,6 +279,38 @@ public struct ScreenSimulationCanvas: View {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                         store.snapPod(id: item.pod.id, to: .predecessor)
                                     }
+                                },
+                                isStackTargetHighlighted: hoveredStackTargetPodId == item.pod.id,
+                                onDragOffsetChanged: { offsetY in
+                                    if abs(offsetY) < 1.0 {
+                                        hoveredStackTargetPodId = nil
+                                    } else {
+                                        let matched = detectSimulatorStackTarget(
+                                            draggedItem: item,
+                                            dragOffsetY: offsetY,
+                                            scale: rightScale,
+                                            allItems: rightLayout,
+                                            strategy: rightStrategy
+                                        )
+                                        if matched != hoveredStackTargetPodId {
+                                            hoveredStackTargetPodId = matched
+                                            if matched != nil {
+                                                store.triggerControlHaptic(.levelChange)
+                                            }
+                                        }
+                                    }
+                                },
+                                onDropOntoStackTarget: {
+                                    guard let targetId = hoveredStackTargetPodId else { return false }
+                                    hoveredStackTargetPodId = nil
+                                    if store.overflowStrategy(for: .right) != .decomposedMajorPod {
+                                        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+                                    }
+                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                        store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
+                                        store.triggerControlHaptic(.levelChange)
+                                    }
+                                    return true
                                 }
                             )
                             .offset(x: -4, y: topY)

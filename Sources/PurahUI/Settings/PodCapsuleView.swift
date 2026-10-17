@@ -16,6 +16,9 @@ public struct PodCapsuleView: View {
     public let onDisable: () -> Void
     public var onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)?
     public var onSnapAbove: (() -> Void)?
+    public var isStackTargetHighlighted: Bool = false
+    public var onDragOffsetChanged: ((CGFloat) -> Void)? = nil
+    public var onDropOntoStackTarget: (() -> Bool)? = nil
 
     @State private var dragInitialStart: Double? = nil
     @State private var dragOffsetY: CGFloat = 0.0
@@ -65,7 +68,10 @@ public struct PodCapsuleView: View {
         onFillRail: @escaping () -> Void,
         onDisable: @escaping () -> Void = {},
         onMoveOrder: ((PurahWorkspaceStore.PodMoveDirection) -> Void)? = nil,
-        onSnapAbove: (() -> Void)? = nil
+        onSnapAbove: (() -> Void)? = nil,
+        isStackTargetHighlighted: Bool = false,
+        onDragOffsetChanged: ((CGFloat) -> Void)? = nil,
+        onDropOntoStackTarget: (() -> Bool)? = nil
     ) {
         self.pod = pod
         self.canvasHeight = canvasHeight
@@ -80,6 +86,9 @@ public struct PodCapsuleView: View {
         self.onDisable = onDisable
         self.onMoveOrder = onMoveOrder
         self.onSnapAbove = onSnapAbove
+        self.isStackTargetHighlighted = isStackTargetHighlighted
+        self.onDragOffsetChanged = onDragOffsetChanged
+        self.onDropOntoStackTarget = onDropOntoStackTarget
     }
 
     public var body: some View {
@@ -142,18 +151,24 @@ public struct PodCapsuleView: View {
             .padding(.top, isCompactBar ? 3 : 6)
             .padding(.bottom, isCompactBar ? 2 : 4)
             .contentShape(Rectangle())
-            // Header-driven move & reorder gesture
+            // Header-driven move & stack gesture (global coordinate space)
             .gesture(
-                DragGesture(minimumDistance: 2)
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
                     .onChanged { value in
                         isDraggingHeader = true
                         dragOffsetY = value.translation.height
+                        onDragOffsetChanged?(value.translation.height)
                     }
                     .onEnded { value in
                         let horizontalDistance = value.translation.width
                         let verticalDistance = value.translation.height
                         isDraggingHeader = false
                         dragOffsetY = 0.0
+                        onDragOffsetChanged?(0.0)
+
+                        if let onDropOntoStackTarget = onDropOntoStackTarget, onDropOntoStackTarget() {
+                            return
+                        }
 
                         if (pod.edge == .left && horizontalDistance > 60.0) || (pod.edge == .right && horizontalDistance < -60.0) {
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
@@ -186,7 +201,7 @@ public struct PodCapsuleView: View {
 
             Spacer(minLength: 0)
 
-            // 2. High-Affinity Bottom Resize Handle (Real-time 60FPS spring push with rubberband)
+            // 2. High-Affinity Bottom Resize Handle (Real-time 60FPS spring push with global coordinate space)
             if !isCompactBar {
                 ZStack {
                     Rectangle()
@@ -203,17 +218,18 @@ public struct PodCapsuleView: View {
                 .onHover { isHovered in
                     isResizeHovered = isHovered
                 }
-                // Real-time anchor-based resize gesture with Apple rubberband damping
                 .gesture(
-                    DragGesture(minimumDistance: 1)
+                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { value in
                             if resizeInitialLength == nil {
-                                resizeInitialLength = pod.range.length
+                                let visualRatio = (customHeight ?? (pod.range.length * canvasHeight)) / max(canvasHeight, 100.0)
+                                resizeInitialLength = visualRatio
                             }
-                            let deltaRatio = Double(value.translation.height / canvasHeight)
+                            let minResizeRatio = 0.05
+                            let deltaRatio = Double(value.translation.height / max(canvasHeight, 100.0))
                             let rawLength = (resizeInitialLength ?? pod.range.length) + deltaRatio
-                            let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
-                            let legalBounds: ClosedRange<Double> = pod.minLength...maxLegalLength
+                            let maxLegalLength = max(0.98 - pod.range.start, minResizeRatio)
+                            let legalBounds: ClosedRange<Double> = minResizeRatio...maxLegalLength
                             let dampedLength = RubberBandingEngine.clampWithRubberband(
                                 value: rawLength,
                                 bounds: legalBounds,
@@ -223,9 +239,10 @@ public struct PodCapsuleView: View {
                             onResize(dampedLength)
                         }
                         .onEnded { _ in
+                            let minResizeRatio = 0.05
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
-                                let finalLength = min(max(pod.range.length, pod.minLength), maxLegalLength)
+                                let maxLegalLength = max(0.98 - pod.range.start, minResizeRatio)
+                                let finalLength = min(max(pod.range.length, minResizeRatio), maxLegalLength)
                                 onResize(finalLength)
                             }
                             resizeInitialLength = nil
@@ -240,18 +257,35 @@ public struct PodCapsuleView: View {
                 .fill(palette.surfaceBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isCrossingThreshold ? palette.primaryAccent : podColor, lineWidth: isCrossingThreshold ? 2.2 : 1.5)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isStackTargetHighlighted
+                            ? Color.orange
+                            : (isCrossingThreshold ? palette.primaryAccent : podColor),
+                        lineWidth: (isStackTargetHighlighted || isCrossingThreshold) ? 2.2 : 1.5
+                    )
+                if isStackTargetHighlighted {
+                    Text("📦 Release to Stack")
+                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(Capsule().fill(Color.orange))
+                }
+            }
         )
         .shadow(
-            color: isCrossingThreshold ? palette.primaryAccent.opacity(0.45) : (palette.useGlow ? podColor.opacity(0.3) : Color.black.opacity(0.2)),
+            color: isStackTargetHighlighted
+                ? Color.orange.opacity(0.6)
+                : (isCrossingThreshold ? palette.primaryAccent.opacity(0.45) : (palette.useGlow ? podColor.opacity(0.3) : Color.black.opacity(0.2))),
             radius: isDraggingHeader ? 10 : 4,
             x: 0,
             y: isDraggingHeader ? 4 : 2
         )
-        .scaleEffect(isCrossingThreshold ? 1.02 : 1.0)
-        .animation(.spring(response: 0.20, dampingFraction: 0.70), value: isCrossingThreshold)
+        .scaleEffect((isCrossingThreshold || isStackTargetHighlighted) ? 1.02 : 1.0)
+        .animation(.spring(response: 0.20, dampingFraction: 0.70), value: isCrossingThreshold || isStackTargetHighlighted)
         .offset(y: dragOffsetY)
-        .zIndex(isDraggingHeader ? 50 : 1)
+        .zIndex(isDraggingHeader ? 50 : (isStackTargetHighlighted ? 40 : 1))
     }
 }
