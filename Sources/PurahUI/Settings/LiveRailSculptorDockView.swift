@@ -83,14 +83,41 @@ public struct LiveRailSculptorDockView: View {
             // Row 2: Plugin Add / Unmounted Dock
             if !unmounted.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("sculptor.dock.unmounted".localized)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        Text("sculptor.dock.unmounted".localized)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+
+                        Spacer(minLength: 4)
+
+                        if let draggedId = store.externalDraggedPodId,
+                           let draggedPod = store.pods.first(where: { $0.id == draggedId }) {
+                            if let targetPodId = store.externalDragTargetPodId,
+                               let targetPod = store.pods.first(where: { $0.id == targetPodId }) {
+                                Text("📦 Release to Stack \(draggedPod.name) with \(targetPod.name)")
+                                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                    .foregroundColor(.orange)
+                            } else if let targetEdge = store.externalDragTargetEdge {
+                                Text("🧲 Release to Mount \(draggedPod.name) on \(targetEdge == .left ? "Left" : "Right") Rail")
+                                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                    .foregroundColor(palette.primaryAccent)
+                            } else {
+                                Text("Drag \(draggedPod.name) to Left/Right Rail or onto any Pod to Stack")
+                                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                        } else {
+                            Text("Tip: Drag any pill onto a Rail or Stack, or click +L / +R")
+                                .font(.system(size: 9, weight: .medium, design: .rounded))
+                                .foregroundColor(.secondary.opacity(0.8))
+                        }
+                    }
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(unmounted) { pod in
                                 let podColor = palette.podColor(for: pod.id, store: store)
+                                let isBeingDragged = (store.externalDraggedPodId == pod.id)
                                 HStack(spacing: 5) {
                                     Image(systemName: pod.systemIcon)
                                         .font(.system(size: 10.5, weight: .semibold))
@@ -139,11 +166,37 @@ public struct LiveRailSculptorDockView: View {
                                 .padding(.vertical, 5)
                                 .background(
                                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(Color.white.opacity(0.08))
+                                        .fill(isBeingDragged ? podColor.opacity(0.26) : Color.white.opacity(0.08))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                                .stroke(podColor.opacity(0.45), lineWidth: 1.0)
+                                                .stroke(
+                                                    isBeingDragged ? Color.orange : podColor.opacity(0.45),
+                                                    lineWidth: isBeingDragged ? 1.6 : 1.0
+                                                )
                                         )
+                                )
+                                .scaleEffect(isBeingDragged ? 1.04 : 1.0)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                                        .onChanged { _ in
+                                            let screenLoc = NSEvent.mouseLocation
+                                            let screenFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+                                            store.updateExternalPodDrag(
+                                                podId: pod.id,
+                                                screenPoint: screenLoc,
+                                                screenFrame: screenFrame
+                                            )
+                                        }
+                                        .onEnded { _ in
+                                            let screenFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+                                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                                store.commitExternalPodDrag(
+                                                    podId: pod.id,
+                                                    screenFrame: screenFrame
+                                                )
+                                            }
+                                        }
                                 )
                             }
                         }

@@ -54,6 +54,10 @@ public final class PurahWorkspaceStore {
     public var isRightBottomPortalRevealed: Bool = false
     public var isRailsFrozen: Bool = false
     public var isLiveRailEditingMode: Bool = false
+    public var externalDraggedPodId: String? = nil
+    public var externalDragScreenLocation: CGPoint? = nil
+    public var externalDragTargetEdge: MountEdge? = nil
+    public var externalDragTargetPodId: String? = nil
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
 
     @ObservationIgnored
@@ -66,6 +70,11 @@ public final class PurahWorkspaceStore {
         guard isLiveRailEditingMode != enabled else { return }
         if enabled {
             dismissActiveDrawer()
+        } else {
+            externalDraggedPodId = nil
+            externalDragScreenLocation = nil
+            externalDragTargetEdge = nil
+            externalDragTargetPodId = nil
         }
         isLiveRailEditingMode = enabled
         invalidateLayoutCache()
@@ -78,6 +87,79 @@ public final class PurahWorkspaceStore {
 
     public func toggleLiveRailEditingMode() {
         setLiveRailEditingMode(!isLiveRailEditingMode)
+    }
+
+    public func updateExternalPodDrag(
+        podId: String,
+        screenPoint: CGPoint,
+        screenFrame: CGRect,
+        leftStripWidth: CGFloat = 215,
+        rightStripWidth: CGFloat = 215
+    ) {
+        externalDraggedPodId = podId
+        externalDragScreenLocation = screenPoint
+
+        let targetEdge: MountEdge?
+        if screenPoint.x <= screenFrame.minX + leftStripWidth {
+            targetEdge = .left
+        } else if screenPoint.x >= screenFrame.maxX - rightStripWidth {
+            targetEdge = .right
+        } else {
+            targetEdge = nil
+        }
+
+        if let edge = targetEdge {
+            let railY = Double(screenFrame.maxY - screenPoint.y)
+            let items = resolvedPhysicalLayout(for: edge, totalHeight: Double(screenFrame.height))
+            let matchedItem = items.first { item in
+                guard item.pod.id != podId else { return false }
+                let minY = item.drawerStartY + 6.0
+                let maxY = item.drawerStartY + item.drawerSpanH - 6.0
+                return maxY > minY && railY >= minY && railY <= maxY
+            }
+            if externalDragTargetPodId != matchedItem?.pod.id && matchedItem != nil {
+                triggerControlHaptic(.levelChange)
+            }
+            externalDragTargetEdge = edge
+            externalDragTargetPodId = matchedItem?.pod.id
+        } else {
+            externalDragTargetEdge = nil
+            externalDragTargetPodId = nil
+        }
+    }
+
+    public func commitExternalPodDrag(podId: String, screenFrame: CGRect) {
+        defer {
+            externalDraggedPodId = nil
+            externalDragScreenLocation = nil
+            externalDragTargetEdge = nil
+            externalDragTargetPodId = nil
+        }
+        guard let targetEdge = externalDragTargetEdge else { return }
+        let targetPodId = externalDragTargetPodId
+
+        if targetPodId != nil {
+            userDefaults.set(true, forKey: "purah.didSeedMajorGroups.\(targetEdge.rawValue)")
+        }
+
+        if let existingPod = pods.first(where: { $0.id == podId }) {
+            if existingPod.isEnabled && existingPod.edge != targetEdge {
+                splitPodFromMajorGroup(id: podId)
+            }
+            if !existingPod.isEnabled || existingPod.edge != targetEdge {
+                mountPod(id: podId, to: targetEdge)
+            }
+        }
+
+        if let targetPodId = targetPodId, targetPodId != podId {
+            if overflowStrategy(for: targetEdge) != .decomposedMajorPod {
+                setOverflowStrategy(.decomposedMajorPod, for: targetEdge)
+            }
+            addPodToMajorGroup(podId: podId, targetPodId: targetPodId)
+            triggerControlHaptic(.levelChange)
+        } else {
+            triggerControlHaptic(.alignment)
+        }
     }
 
     public func mountPod(id: String, to edge: MountEdge) {
@@ -317,6 +399,7 @@ public final class PurahWorkspaceStore {
 
         pods[dstIdx].majorGroupId = targetGroupId
         pods[srcIdx].majorGroupId = targetGroupId
+        userDefaults.set(true, forKey: "purah.didSeedMajorGroups.\(edge.rawValue)")
 
         if let oldSrcGroup = oldSrcGroup, oldSrcGroup != targetGroupId {
             let remainingOldIndices = pods.indices.filter {
@@ -426,6 +509,63 @@ public final class PurahWorkspaceStore {
         guard !groupIndices.isEmpty else { return }
         let currentTotalRatio = groupIndices.reduce(0.0) { $0 + max(pods[$1].range.length, 0.02) }
         resizeMajorGroup(groupId: groupId, on: edge, newTotalSpanRatio: currentTotalRatio + deltaRatio)
+    }
+
+    public func resizeSubPodInMajorGroup(podId: String, on edge: MountEdge, deltaRatio: Double) {
+        guard let targetIdx = pods.firstIndex(where: { $0.id == podId && $0.isEnabled && $0.edge == edge }) else { return }
+        let minSubRatio = 0.03
+        guard let groupId = pods[targetIdx].majorGroupId else {
+            let newLen = min(max(pods[targetIdx].range.length + deltaRatio, minSubRatio), 0.85)
+            pods[targetIdx].range.length = newLen
+            pods[targetIdx].minLength = min(pods[targetIdx].minLength, minSubRatio)
+            invalidateLayoutCache()
+            savePersistentState()
+            onWindowsRebuildNeeded?()
+            return
+        }
+
+        let groupIndices = pods.indices.filter {
+            pods[$0].isEnabled && pods[$0].edge == edge && pods[$0].majorGroupId == groupId
+        }.sorted { pods[$0].range.start < pods[$1].range.start }
+
+        guard let k = groupIndices.firstIndex(of: targetIdx) else { return }
+
+        if k < groupIndices.count - 1 {
+            let curIdx = groupIndices[k]
+            let nextIdx = groupIndices[k + 1]
+            let curLen = max(pods[curIdx].range.length, minSubRatio)
+            let nextLen = max(pods[nextIdx].range.length, minSubRatio)
+            let pairSum = curLen + nextLen
+            let newCurLen = min(max(curLen + deltaRatio, minSubRatio), max(pairSum - minSubRatio, minSubRatio))
+            let newNextLen = max(pairSum - newCurLen, minSubRatio)
+            pods[curIdx].range.length = newCurLen
+            pods[curIdx].minLength = min(pods[curIdx].minLength, minSubRatio)
+            pods[nextIdx].range.length = newNextLen
+            pods[nextIdx].minLength = min(pods[nextIdx].minLength, minSubRatio)
+        } else {
+            let curIdx = groupIndices[k]
+            let curLen = max(pods[curIdx].range.length, minSubRatio)
+            let newCurLen = min(max(curLen + deltaRatio, minSubRatio), 0.85)
+            pods[curIdx].range.length = newCurLen
+            pods[curIdx].minLength = min(pods[curIdx].minLength, minSubRatio)
+        }
+
+        let subGap = 0.004
+        var curStart = pods[groupIndices[0]].range.start
+        for idx in groupIndices {
+            pods[idx].range.start = curStart
+            curStart += pods[idx].range.length + subGap
+        }
+
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func resizeSubPodInMajorGroup(podId: String, on edge: MountEdge, newSubSpanRatio: Double) {
+        guard let targetIdx = pods.firstIndex(where: { $0.id == podId && $0.isEnabled && $0.edge == edge }) else { return }
+        let currentRatio = max(pods[targetIdx].range.length, 0.03)
+        resizeSubPodInMajorGroup(podId: podId, on: edge, deltaRatio: newSubSpanRatio - currentRatio)
     }
 
     public func autoStackMajorPods(for edge: MountEdge) {
@@ -1635,28 +1775,28 @@ public final class PurahWorkspaceStore {
                 let m = cluster.count
                 let subGap = 3.0
                 let totalSubGaps = Double(max(m - 1, 0)) * subGap
-                let availableSubSpan = max(majorSpanH - totalSubGaps, Double(m) * 18.0)
-                let desiredSubSpans = cluster.map { max($0.range.length * totalHeight, 18.0) }
-                let lockedSubMask = cluster.indices.map { i in
-                    cluster[i].minLength <= 0.06 && desiredSubSpans[i] <= min(100.0, availableSubSpan - Double(m - 1) * 20.0)
-                }
-                let lockedSubSum = cluster.indices.reduce(0.0) { acc, i in
-                    acc + (lockedSubMask[i] ? desiredSubSpans[i] : 0.0)
-                }
-                let unlockedIndices = cluster.indices.filter { !lockedSubMask[$0] }
-                let unlockedDesiredSum = max(unlockedIndices.reduce(0.0) { $0 + desiredSubSpans[$1] }, 1.0)
-                let unlockedAvailable = max(availableSubSpan - lockedSubSum, Double(unlockedIndices.count) * 18.0)
+                let minSubFloor = min(28.0, max((majorSpanH - totalSubGaps) / Double(max(m, 1)), 18.0))
+                let netSubSpan = max(majorSpanH - totalSubGaps, Double(m) * minSubFloor)
+                let subWeights = cluster.map { max($0.range.length, 0.025) }
+                let subWeightSum = max(subWeights.reduce(0.0, +), 0.0001)
 
-                var subSpans: [Double] = cluster.indices.map { i in
-                    if lockedSubMask[i] {
-                        return desiredSubSpans[i]
-                    }
-                    return max(unlockedAvailable * (desiredSubSpans[i] / unlockedDesiredSum), 18.0)
+                var subSpans: [Double] = subWeights.map { weight in
+                    max(netSubSpan * (weight / subWeightSum), minSubFloor)
                 }
                 let subSum = subSpans.reduce(0.0, +)
-                if subSum > availableSubSpan && subSum > 0 {
-                    let s = availableSubSpan / subSum
-                    subSpans = subSpans.map { max($0 * s, 18.0) }
+                if subSum > netSubSpan && subSum > 0 {
+                    let excess = subSum - netSubSpan
+                    let slackIndices = subSpans.indices.filter { subSpans[$0] > minSubFloor + 0.01 }
+                    let totalSlack = slackIndices.reduce(0.0) { $0 + (subSpans[$1] - minSubFloor) }
+                    if totalSlack >= excess && totalSlack > 0 {
+                        for idx in slackIndices {
+                            let itemSlack = subSpans[idx] - minSubFloor
+                            subSpans[idx] -= excess * (itemSlack / totalSlack)
+                        }
+                    } else {
+                        let s = netSubSpan / subSum
+                        subSpans = subSpans.map { max($0 * s, 18.0) }
+                    }
                 }
 
                 var curSubY = currentMajorY

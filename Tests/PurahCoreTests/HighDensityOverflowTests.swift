@@ -715,4 +715,109 @@ struct HighDensityOverflowTests {
         let layoutAfterSecondSplit = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
         #expect(layoutAfterSecondSplit.allSatisfy { $0.majorGroupId == nil }, "Splitting the second-to-last pod must dissolve the stack completely with zero auto-regrouping")
     }
+
+    @Test("Individual Sub-Pod Height in Stack: proportional spanH allocation and resizeSubPodInMajorGroup divider adjustment")
+    func testIndividualSubPodHeightInStackAndResize() throws {
+        let suiteName = "test_subpod_height_stack_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+        store.resetMajorGroups(for: .right)
+
+        // Stack 3 pods ("calendar", "todo", "music") on the right rail into one shared Major Group
+        store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
+        store.addPodToMajorGroup(podId: "music", targetPodId: "calendar")
+
+        // Assign distinct range.length values: 0.20, 0.10, 0.05
+        if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
+            store.pods[calIdx].range.start = 0.10
+            store.pods[calIdx].range.length = 0.20
+        }
+        if let todoIdx = store.pods.firstIndex(where: { $0.id == "todo" }) {
+            store.pods[todoIdx].range.start = 0.31
+            store.pods[todoIdx].range.length = 0.10
+        }
+        if let musicIdx = store.pods.firstIndex(where: { $0.id == "music" }) {
+            store.pods[musicIdx].range.start = 0.42
+            store.pods[musicIdx].range.length = 0.05
+        }
+        store.invalidateLayoutCache()
+
+        let totalHeight = 900.0
+        let layout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let calItem = try #require(layout.first(where: { $0.pod.id == "calendar" }))
+        let todoItem = try #require(layout.first(where: { $0.pod.id == "todo" }))
+        let musicItem = try #require(layout.first(where: { $0.pod.id == "music" }))
+
+        #expect(calItem.spanH > todoItem.spanH + 20.0, "Sub-pod with range.length 0.20 must be taller than sub-pod with 0.10")
+        #expect(todoItem.spanH > musicItem.spanH + 15.0, "Sub-pod with range.length 0.10 must be taller than sub-pod with 0.05")
+
+        // Resize divider between "calendar" (index 0) and "todo" (index 1) via resizeSubPodInMajorGroup
+        let pairLengthBefore = (store.pods.first(where: { $0.id == "calendar" })?.range.length ?? 0)
+            + (store.pods.first(where: { $0.id == "todo" })?.range.length ?? 0)
+        store.resizeSubPodInMajorGroup(podId: "calendar", on: .right, newSubSpanRatio: 0.12)
+
+        let calAfter = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        let todoAfter = try #require(store.pods.first(where: { $0.id == "todo" }))
+        #expect(abs(calAfter.range.length - 0.12) < 0.001)
+        #expect(abs((calAfter.range.length + todoAfter.range.length) - pairLengthBefore) < 0.001, "Internal sub-pod divider resize must keep the adjacent pair sum constant")
+
+        let layoutAfterDividerDrag = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let calItemAfter = try #require(layoutAfterDividerDrag.first(where: { $0.pod.id == "calendar" }))
+        let todoItemAfter = try #require(layoutAfterDividerDrag.first(where: { $0.pod.id == "todo" }))
+        #expect(todoItemAfter.spanH > calItemAfter.spanH, "After dragging calendar's bottom divider up, todo (0.18) must be taller than calendar (0.12)")
+
+        // Resize the bottom-most sub-pod ("music", index 2) via resizeSubPodInMajorGroup(deltaRatio:)
+        let drawerSpanBeforeBottomResize = calItemAfter.drawerSpanH
+        store.resizeSubPodInMajorGroup(podId: "music", on: .right, deltaRatio: 0.10)
+        let layoutAfterBottomResize = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let musicItemAfter = try #require(layoutAfterBottomResize.first(where: { $0.pod.id == "music" }))
+        #expect(musicItemAfter.spanH > musicItem.spanH + 40.0, "Resizing the bottom-most sub-pod in the stack must expand its spanH")
+        #expect(musicItemAfter.drawerSpanH > drawerSpanBeforeBottomResize + 40.0, "Resizing the bottom-most sub-pod must expand the overall Major Stack height")
+    }
+
+    @Test("External Dock Drag-to-Stack: updateExternalPodDrag and commitExternalPodDrag mounts unmounted pod and merges into target stack")
+    func testExternalDockDragToStack() throws {
+        let suiteName = "test_external_dock_drag_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.resetMajorGroups(for: .left)
+
+        // Ensure "notes" is unmounted initially
+        if let notesIdx = store.pods.firstIndex(where: { $0.id == "notes" }), store.pods[notesIdx].isEnabled {
+            store.togglePodEnabled(id: "notes")
+        }
+        #expect(store.pods.first(where: { $0.id == "notes" })?.isEnabled == false)
+
+        let screenFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let leftItems = store.resolvedPhysicalLayout(for: .left, totalHeight: Double(screenFrame.height))
+        let targetItem = try #require(leftItems.first(where: { $0.pod.id == "vitals" }))
+
+        // Compute screen point hovering over "vitals" on the left rail
+        let targetRailY = targetItem.drawerStartY + (targetItem.drawerSpanH * 0.5)
+        let dropScreenPoint = CGPoint(x: 80.0, y: screenFrame.maxY - CGFloat(targetRailY))
+
+        store.updateExternalPodDrag(
+            podId: "notes",
+            screenPoint: dropScreenPoint,
+            screenFrame: screenFrame
+        )
+        #expect(store.externalDraggedPodId == "notes")
+        #expect(store.externalDragTargetEdge == .left)
+        #expect(store.externalDragTargetPodId == "vitals")
+
+        store.commitExternalPodDrag(podId: "notes", screenFrame: screenFrame)
+
+        #expect(store.externalDraggedPodId == nil)
+        #expect(store.externalDragTargetEdge == nil)
+        #expect(store.externalDragTargetPodId == nil)
+
+        let notesAfter = try #require(store.pods.first(where: { $0.id == "notes" }))
+        let vitalsAfter = try #require(store.pods.first(where: { $0.id == "vitals" }))
+        #expect(notesAfter.isEnabled == true, "Dragging unmounted pod onto rail target must mount it")
+        #expect(notesAfter.edge == .left)
+        #expect(store.overflowStrategy(for: .left) == .decomposedMajorPod, "Commit onto target pod must switch rail to decomposedMajorPod")
+        #expect(notesAfter.majorGroupId != nil)
+        #expect(notesAfter.majorGroupId == vitalsAfter.majorGroupId, "Both pods must be merged into the same Shared Major Pod group")
+    }
 }
