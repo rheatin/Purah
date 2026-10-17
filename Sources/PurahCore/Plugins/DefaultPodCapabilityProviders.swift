@@ -84,6 +84,16 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { true }
     var decomposedPolicy: PurahDecomposedPolicy { .vitalsDefault }
 
+    func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: max(store._vitalsEnabledMetrics.count, 1),
+            minChipHeight: 56.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: .truncate
+        )
+    }
+
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         store._isVitalsDecomposed
     }

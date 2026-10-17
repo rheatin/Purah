@@ -295,6 +295,7 @@ public final class EdgeMouseMonitor {
             let maxChipH = policy.maxChipHeight
             let spacing = policy.spacing
             let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+            let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
             let maxAllowed = isDynamicAccordion
                 ? max(policy.maxRailItems, 1)
                 : max(min(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -302,7 +303,9 @@ public final class EdgeMouseMonitor {
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
             let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
+            let itemH = isUnboundedStretch
+                ? max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH)
+                : min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
             return CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
         }
         return CGFloat(item.spanH)
@@ -453,8 +456,8 @@ public final class EdgeMouseMonitor {
         if store.overflowStrategy(for: edge) == .pagedSpaces {
             let pages = store.paginatedPods(for: edge, totalHeight: Double(visibleRect.height))
             if pages.count > 1 {
-                let isTopPortal = (currentWindowY >= 32.0 && currentWindowY <= 66.0)
-                let isBottomPortal = (currentWindowY >= (visibleRect.height - 66.0) && currentWindowY <= (visibleRect.height - 32.0))
+                let isTopPortal = (currentWindowY >= 20.0 && currentWindowY <= 44.0)
+                let isBottomPortal = (currentWindowY >= (visibleRect.height - 44.0) && currentWindowY <= (visibleRect.height - 20.0))
                 if isTopPortal || isBottomPortal {
                     let delta = isTopPortal ? -1 : 1
                     cancelInitialDwell()
@@ -714,6 +717,7 @@ public final class EdgeMouseMonitor {
             let maxChipH = policy.maxChipHeight
             let spacing = policy.spacing
             let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+            let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
             let maxAllowed = isDynamicAccordion
                 ? max(policy.maxRailItems, 1)
                 : max(min(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -721,7 +725,9 @@ public final class EdgeMouseMonitor {
             let safeCount = max(count, 1)
             let totalSpacing = spacing * CGFloat(safeCount - 1)
             let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
+            let itemH = isUnboundedStretch
+                ? max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH)
+                : min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
             let actualSpan = CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
 
             let podY = currentWindowY - CGFloat(matched.startY)

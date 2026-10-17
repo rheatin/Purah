@@ -390,8 +390,285 @@ public struct VisualLayoutSimulatorView: View {
                     }
                     .padding(.top, 2)
                 }
+
+                if store.leftRailOverflowStrategy == .decomposedMajorPod || store.rightRailOverflowStrategy == .decomposedMajorPod {
+                    sharedMajorPodStackingEditor
+                        .padding(.top, 4)
+                }
             }
         }
+    }
+
+    // MARK: - Dedicated Shared Major Pod Stacking Editor
+    private var sharedMajorPodStackingEditor: some View {
+        let palette = theme.palette
+        let leftActive = (store.leftRailOverflowStrategy == .decomposedMajorPod)
+        let rightActive = (store.rightRailOverflowStrategy == .decomposedMajorPod)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Divider()
+                .background(palette.borderColor.opacity(0.35))
+
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "square.stack.3d.down.right.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("overflow.majorPod.editorTitle".localized)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    Text("overflow.majorPod.editorSubtitle".localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        if leftActive { store.autoStackMajorPods(for: .left) }
+                        if rightActive { store.autoStackMajorPods(for: .right) }
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("overflow.majorPod.autoStack".localized)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.16))
+                    .foregroundColor(.orange)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.tactile)
+
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        if leftActive { store.resetMajorGroups(for: .left) }
+                        if rightActive { store.resetMajorGroups(for: .right) }
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("overflow.majorPod.resetIndependent".localized)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.08))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.tactile)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                if leftActive {
+                    majorPodStackingRailColumn(edge: .left, title: "overflow.rail.left".localized)
+                }
+                if rightActive {
+                    majorPodStackingRailColumn(edge: .right, title: "overflow.rail.right".localized)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.orange.opacity(0.45), lineWidth: 1.2)
+        )
+    }
+
+    private func buildMajorSlotClusters(for pods: [SlotPod]) -> [[SlotPod]] {
+        var clusters: [[SlotPod]] = []
+        for pod in pods {
+            if let gid = pod.majorGroupId {
+                if let last = clusters.last, last.first?.majorGroupId == gid {
+                    clusters[clusters.count - 1].append(pod)
+                } else {
+                    clusters.append([pod])
+                }
+            } else {
+                clusters.append([pod])
+            }
+        }
+        return clusters
+    }
+
+    @ViewBuilder
+    private func majorPodStackingRailColumn(edge: MountEdge, title: String) -> some View {
+        let palette = theme.palette
+        let railPods = store.pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let clusters = buildMajorSlotClusters(for: railPods)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: edge == .left ? "arrow.left.to.line" : "arrow.right.to.line")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.orange)
+                Text(title)
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                Spacer()
+                Text("\(clusters.count) Major Slot(s)")
+                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
+                if cluster.count >= 2 {
+                    let clusterIds = Set(cluster.map(\.id))
+                    let availableToStack = railPods.filter { !clusterIds.contains($0.id) }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.stack.3d.up.fill")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .foregroundColor(.orange)
+                            Text("Shared Major Slot · \(cluster.count) Plugins Stacked")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.orange)
+                            Spacer()
+                        }
+
+                        ForEach(cluster) { pod in
+                            HStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(Color.orange)
+                                    .frame(width: 3, height: 14)
+
+                                Image(systemName: pod.systemIcon)
+                                    .font(.caption)
+                                    .foregroundColor(palette.podColor(for: pod.id, store: store))
+
+                                Text(pod.name)
+                                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 4)
+
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.splitPodFromMajorGroup(id: pod.id)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "scissors")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text("overflow.majorPod.unstack".localized)
+                                            .font(.system(size: 8.5, weight: .bold))
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.orange.opacity(0.18))
+                                    .foregroundColor(.orange)
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(palette.surfaceBackground)
+                            .cornerRadius(6)
+                        }
+
+                        if cluster.count < 4 && !availableToStack.isEmpty {
+                            Menu("overflow.majorPod.addPlugin".localized) {
+                                ForEach(availableToStack) { candidate in
+                                    Button("Stack \(candidate.name) here") {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            store.addPodToMajorGroup(podId: candidate.id, groupPodId: cluster[0].id)
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                    }
+                                }
+                            }
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .padding(.top, 2)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.orange.opacity(0.08))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.orange.opacity(0.55), lineWidth: 1.2)
+                    )
+                } else if let pod = cluster.first {
+                    let otherPods = railPods.filter { $0.id != pod.id }
+
+                    HStack(spacing: 6) {
+                        Image(systemName: pod.systemIcon)
+                            .font(.caption)
+                            .foregroundColor(palette.podColor(for: pod.id, store: store))
+
+                        Text(pod.name)
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        if store.canMergePodWithNext(id: pod.id) {
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.mergePodWithNext(id: pod.id)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "link.badge.plus")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text("overflow.majorPod.stackWithBelow".localized)
+                                        .font(.system(size: 8.5, weight: .bold))
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(palette.primaryAccent.opacity(0.16))
+                                .foregroundColor(palette.primaryAccent)
+                                .cornerRadius(4)
+                            }
+                            .buttonStyle(.tactile)
+                        }
+
+                        if !otherPods.isEmpty {
+                            Menu("overflow.majorPod.stackWithMenu".localized) {
+                                ForEach(otherPods) { otherPod in
+                                    Button(otherPod.name) {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            store.addPodToMajorGroup(podId: otherPod.id, groupPodId: pod.id)
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                    }
+                                }
+                            }
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .frame(width: 95)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(palette.surfaceBackground)
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.3), lineWidth: 1)
+                    )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder

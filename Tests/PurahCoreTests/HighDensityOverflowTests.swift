@@ -375,4 +375,94 @@ struct HighDensityOverflowTests {
         store.cycleRailPage(for: .left, delta: 1)
         #expect(store.currentRailPage(for: .left) == 0)
     }
+
+    @Test("Dynamic Accordion Contiguous Packing: expanding any middle pod leaves zero empty gaps between adjacent pods")
+    func testDynamicAccordionContiguousPackingZeroGaps() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        let totalHeight = 900.0
+        let sortedIds = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+            .map(\.id)
+
+        // Verify contiguous 8pt gap when idle
+        let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        for i in 0..<(idleLayout.count - 1) {
+            let gap = idleLayout[i + 1].startY - (idleLayout[i].startY + idleLayout[i].spanH)
+            #expect(abs(gap - 8.0) < 1.5, "Idle Dynamic Accordion pods must be packed contiguously with 8pt gap")
+        }
+
+        // Verify contiguous 8pt gap when any middle pod is hovered/expanded
+        for midIdx in [1, 2, 4, 6, 7] {
+            store.activateDrawer(podId: sortedIds[midIdx])
+            let expandedLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+            #expect(expandedLayout.count == 9)
+            for i in 0..<(expandedLayout.count - 1) {
+                let gap = expandedLayout[i + 1].startY - (expandedLayout[i].startY + expandedLayout[i].spanH)
+                #expect(abs(gap - 8.0) < 1.5, "Expanded Dynamic Accordion pods must be packed contiguously with zero empty gaps")
+            }
+            let lastItem = expandedLayout[expandedLayout.count - 1]
+            #expect(abs((lastItem.startY + lastItem.spanH) - (totalHeight - 16.0)) < 1.5)
+        }
+    }
+
+    @Test("Paged Spaces Full-Height Stretch: a page with only 2 small pods scales up to fill safeTop ..< safeBottom with zero bottom dead space")
+    func testPagedSpacesFullHeightStretch() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        let totalHeight = 900.0
+
+        // Put 7 pods on Page 0 and only 2 pods with small range.length (0.12 each) on Page 1
+        let sortedPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        for (offset, p) in sortedPods.enumerated() {
+            if let idx = store.pods.firstIndex(where: { $0.id == p.id }) {
+                store.pods[idx].pageIndex = (offset < 7) ? 0 : 1
+                if offset >= 7 {
+                    store.pods[idx].range = NormalizedRange(start: Double(offset - 7) * 0.20 + 0.02, length: 0.12)
+                }
+            }
+        }
+        store.setRailPage(1, for: .left)
+        store.invalidateLayoutCache()
+
+        let page1Layout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(page1Layout.count == 2)
+
+        let safeTop = 48.0
+        let safeBottom = totalHeight - 48.0
+        #expect(abs(page1Layout[0].startY - safeTop) < 1.0)
+        let lastBottom = page1Layout[1].startY + page1Layout[1].spanH
+        #expect(abs(lastBottom - safeBottom) < 1.0, "Pods on Page 2 must scale up proportionally to fill safeTop ..< safeBottom with zero bottom blank space")
+    }
+
+    @Test("Shared Major Pod Stacking Builder Helpers: addPodToMajorGroup, autoStackMajorPods, and resetMajorGroups")
+    func testSharedMajorPodStackingBuilderHelpers() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .decomposedMajorPod)
+
+        // 1. resetMajorGroups clears all majorGroupId on the edge
+        store.resetMajorGroups(for: .left)
+        #expect(store.pods.filter { $0.edge == .left }.allSatisfy { $0.majorGroupId == nil })
+
+        // 2. addPodToMajorGroup stacks two non-adjacent pods into a shared Major Group and places them adjacent
+        let sortedBefore = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let firstPodId = sortedBefore[0].id
+        let fifthPodId = sortedBefore[4].id
+
+        store.addPodToMajorGroup(podId: fifthPodId, targetPodId: firstPodId)
+        let pFirst = try #require(store.pods.first(where: { $0.id == firstPodId }))
+        let pFifth = try #require(store.pods.first(where: { $0.id == fifthPodId }))
+        #expect(pFirst.majorGroupId != nil)
+        #expect(pFirst.majorGroupId == pFifth.majorGroupId)
+
+        let sortedAfter = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let idxFirst = try #require(sortedAfter.firstIndex(where: { $0.id == firstPodId }))
+        let idxFifth = try #require(sortedAfter.firstIndex(where: { $0.id == fifthPodId }))
+        #expect(abs(idxFirst - idxFifth) == 1, "addPodToMajorGroup must move podId adjacent to targetPodId")
+
+        // 3. autoStackMajorPods groups all enabled pods on the rail into Shared Major Pods
+        store.autoStackMajorPods(for: .left)
+        let leftEnabled = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(leftEnabled.allSatisfy { $0.majorGroupId != nil }, "autoStackMajorPods must group all 9 pods into shared Major Pods of 2~3")
+    }
 }

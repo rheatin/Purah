@@ -196,10 +196,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
         let edgeStrategy = store.overflowStrategy(for: edge)
         if edgeStrategy == .pagedSpaces,
-           (currentWindowY >= 32.0 && currentWindowY <= 66.0) || (currentWindowY >= (totalH - 66.0) && currentWindowY <= (totalH - 32.0)),
+           (currentWindowY >= 20.0 && currentWindowY <= 44.0) || (currentWindowY >= (totalH - 44.0) && currentWindowY <= (totalH - 20.0)),
            store.paginatedPods(for: edge, totalHeight: totalH).count > 1 {
             let portalHitW: CGFloat = max(barW + 8.0, 16.0)
-            let isOverPortal = (edge == .right) ? (point.x >= bounds.maxX - portalHitW) : (point.x <= bounds.minX + portalHitW)
+            let isOverPortal = (edge == .right) ? (point.x >= bounds.maxX - portalHitW) : (point.x <= bounds.minX + barW + 8.0)
             if isOverPortal {
                 return super.hitTest(point)
             }
@@ -222,6 +222,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let maxChipH = Double(policy.maxChipHeight)
                     let spacing = Double(policy.spacing)
                     let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+                    let isUnboundedStretch = (edgeStrategy == .dynamicAccordion || edgeStrategy == .pagedSpaces)
                     let maxAllowed = isDynamicAccordion
                         ? max(policy.maxRailItems, 1)
                         : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -229,7 +230,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let safeCount = max(count, 1)
                     let totalSpacing = spacing * Double(safeCount - 1)
                     let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
-                    let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
+                    let itemH = isUnboundedStretch
+                        ? max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH)
+                        : min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
                     actualSpan = Double(count) * itemH + spacing * Double(max(count - 1, 0))
                 } else {
                     actualSpan = item.spanH

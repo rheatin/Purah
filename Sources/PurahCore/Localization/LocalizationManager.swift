@@ -195,6 +195,14 @@ public final class LocalizationManager {
             "overflow.rail.left": "Left Rail",
             "overflow.rail.right": "Right Rail",
             "overflow.rail.mixed": "Mixed",
+            "overflow.majorPod.editorTitle": "Shared Major Pod Stacking Builder",
+            "overflow.majorPod.editorSubtitle": "Combine 2–4 plugins into a single Shared Major Slot so compact rail sub-bars share one generous drawer card",
+            "overflow.majorPod.autoStack": "Auto-Stack",
+            "overflow.majorPod.resetIndependent": "Reset Independent",
+            "overflow.majorPod.unstack": "Unstack",
+            "overflow.majorPod.addPlugin": "+ Add Plugin to Stack",
+            "overflow.majorPod.stackWithBelow": "Stack with Below",
+            "overflow.majorPod.stackWithMenu": "+ Stack with...",
 
             // DropShelf
             "dropshelf.dropToStash": "Drop to Stash Files",
@@ -472,6 +480,14 @@ public final class LocalizationManager {
             "overflow.rail.left": "左轨",
             "overflow.rail.right": "右轨",
             "overflow.rail.mixed": "独立混搭",
+            "overflow.majorPod.editorTitle": "共享大母槽叠加编排器",
+            "overflow.majorPod.editorSubtitle": "将 2～4 个插件叠加进同一个共享大母槽：轨道显示紧凑子条，悬停时共享展开全尺寸大抽屉",
+            "overflow.majorPod.autoStack": "智能自动叠加",
+            "overflow.majorPod.resetIndependent": "全部拆分为独立",
+            "overflow.majorPod.unstack": "拆出",
+            "overflow.majorPod.addPlugin": "+ 添加插件到此母槽",
+            "overflow.majorPod.stackWithBelow": "与下一项叠加",
+            "overflow.majorPod.stackWithMenu": "+ 选择插件叠加...",
 
             // 拖拽暂存架
             "dropshelf.dropToStash": "释放以暂存文件",
@@ -692,7 +708,15 @@ public final class LocalizationManager {
             "overflow.rail.both": "雙軌同步",
             "overflow.rail.left": "左軌",
             "overflow.rail.right": "右軌",
-            "overflow.rail.mixed": "獨立混搭"
+            "overflow.rail.mixed": "獨立混搭",
+            "overflow.majorPod.editorTitle": "共享大母槽疊加編排器",
+            "overflow.majorPod.editorSubtitle": "將 2～4 個插件疊加進同一個共享大母槽：軌道顯示緊湊子條，懸停時共享展開全尺寸大抽屜",
+            "overflow.majorPod.autoStack": "智慧自動疊加",
+            "overflow.majorPod.resetIndependent": "全部拆分為獨立",
+            "overflow.majorPod.unstack": "拆出",
+            "overflow.majorPod.addPlugin": "+ 新增插件到此母槽",
+            "overflow.majorPod.stackWithBelow": "與下一項疊加",
+            "overflow.majorPod.stackWithMenu": "+ 選擇插件疊加..."
         ],
         .japanese: [
             "tab.general": "一般",

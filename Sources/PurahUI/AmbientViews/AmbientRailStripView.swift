@@ -48,7 +48,7 @@ public struct AmbientRailStripView: View {
                             store.triggerControlHaptic(.alignment)
                         }
                     }
-                    .offset(y: 36.0)
+                    .offset(y: 22.0)
                     .zIndex(200)
 
                     RailPagePortalView(
@@ -65,7 +65,7 @@ public struct AmbientRailStripView: View {
                             store.triggerControlHaptic(.alignment)
                         }
                     }
-                    .offset(y: max(totalHeight - 64.0, 72.0))
+                    .offset(y: max(totalHeight - 42.0, 52.0))
                     .zIndex(200)
                 }
 
@@ -459,29 +459,29 @@ public struct RailPagePortalView: View {
         Button {
             onTrigger()
         } label: {
-            VStack(spacing: 2.5) {
+            VStack(spacing: 1.5) {
                 if direction == .previous {
                     Image(systemName: "chevron.compact.up")
-                        .font(.system(size: 7.5, weight: .black))
+                        .font(.system(size: 6.5, weight: .black))
                         .foregroundColor(isHovered ? .white : accentColor)
                 }
 
-                VStack(spacing: 2) {
+                VStack(spacing: 1.5) {
                     ForEach(0..<min(pageCount, 4), id: \.self) { idx in
                         Circle()
                             .fill(idx == currentPage ? accentColor : accentColor.opacity(0.28))
-                            .frame(width: 3, height: 3)
+                            .frame(width: 2.5, height: 2.5)
                             .shadow(color: idx == currentPage ? accentColor.opacity(0.85) : .clear, radius: 2)
                     }
                 }
 
                 if direction == .next {
                     Image(systemName: "chevron.compact.down")
-                        .font(.system(size: 7.5, weight: .black))
+                        .font(.system(size: 6.5, weight: .black))
                         .foregroundColor(isHovered ? .white : accentColor)
                 }
             }
-            .frame(width: portalWidth, height: 28.0)
+            .frame(width: portalWidth, height: 20.0)
             .background(
                 portalShape
                     .fill(.ultraThinMaterial)
