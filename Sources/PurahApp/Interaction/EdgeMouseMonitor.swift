@@ -219,7 +219,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func handleHardwareRawMotion(point: CGPoint? = nil, rawDeltaX: Double, now: Date = Date()) {
-        guard !isFrozen, !store.isRailsFrozen else { return }
+        guard !isFrozen, !store.isRailsFrozen, !store.isLiveRailEditingMode else { return }
         guard store.edgeTriggerMode == .pushForce else { return }
         guard store.activeDrawerPodId == nil && store.activeDrawerItemId == nil else { return }
 
@@ -323,7 +323,7 @@ public final class EdgeMouseMonitor {
         now: Date = Date(),
         customVelocity: CGPoint? = nil
     ) {
-        guard !isFrozen, !store.isRailsFrozen else { return }
+        guard !isFrozen, !store.isRailsFrozen, !store.isLiveRailEditingMode else { return }
 
         if isRunning {
             if store.edgeTriggerMode == .pushForce {

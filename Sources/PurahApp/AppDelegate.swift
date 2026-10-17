@@ -13,6 +13,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     var statusMenu: NSMenu?
     private var preferencesWindow: NSWindow?
     private var updaterWindow: NSWindow?
+    private var restorePreferencesAfterSculpting: Bool = false
     private lazy var menuHeaderIcon: NSImage? = {
         if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
            let img = NSImage(contentsOf: iconURL) {
@@ -60,6 +61,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         store.onWindowsRebuildNeeded = { [weak self] in
             self?.coordinator?.rebuildWindows()
+        }
+
+        store.onLiveRailEditingChanged = { [weak self] isEditing in
+            guard let self = self else { return }
+            if isEditing {
+                if self.preferencesWindow?.isVisible == true {
+                    self.restorePreferencesAfterSculpting = true
+                    self.preferencesWindow?.orderOut(nil)
+                }
+                self.coordinator?.rebuildWindows()
+            } else {
+                self.coordinator?.rebuildWindows()
+                if self.restorePreferencesAfterSculpting {
+                    self.restorePreferencesAfterSculpting = false
+                    self.preferencesWindow?.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+            self.rebuildMenu()
         }
 
         store.onRequestExpandCanvas = { [weak self] edge in
@@ -160,6 +180,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         prefItem.target = self
         menu.addItem(prefItem)
 
+        // Live Rail Sculptor on Screen
+        let sculptorItem = NSMenuItem(title: "sculptor.menuItem".localized, action: #selector(toggleLiveRailSculptor), keyEquivalent: "e")
+        sculptorItem.target = self
+        sculptorItem.state = store.isLiveRailEditingMode ? .on : .off
+        menu.addItem(sculptorItem)
+
         // Freeze / Unfreeze Rails
         let freezeTitle = frozen ? "Unfreeze Rails (\(store.hotKeyShortcut.displayString))" : "Freeze Rails (\(store.hotKeyShortcut.displayString))"
         let freezeItem = NSMenuItem(title: freezeTitle, action: #selector(toggleFreezeMode), keyEquivalent: "")
@@ -182,7 +208,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     }
 
     @objc private func openPreferences() {
+        if store.isLiveRailEditingMode {
+            store.setLiveRailEditingMode(false)
+        }
         showPreferences(initialTab: .general)
+    }
+
+    @objc private func toggleLiveRailSculptor() {
+        store.toggleLiveRailEditingMode()
     }
 
     @objc private func openPermissions() {

@@ -48,6 +48,27 @@ public struct VisualLayoutSimulatorView: View {
                     Spacer()
 
                     Button {
+                        store.triggerControlHaptic(.levelChange)
+                        store.setLiveRailEditingMode(true)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "viewfinder.rectangular")
+                            Text("sculptor.enterButton".localized)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(palette.primaryAccent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(palette.primaryAccent.opacity(0.14))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(palette.primaryAccent.opacity(0.65), lineWidth: 1.2)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+
+                    Button {
                         withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
                             store.autoLayoutAll()
                         }

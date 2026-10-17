@@ -53,10 +53,49 @@ public final class PurahWorkspaceStore {
     public var isRightTopPortalRevealed: Bool = false
     public var isRightBottomPortalRevealed: Bool = false
     public var isRailsFrozen: Bool = false
+    public var isLiveRailEditingMode: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
 
     @ObservationIgnored
+    public var onLiveRailEditingChanged: (@MainActor (Bool) -> Void)?
+
+    @ObservationIgnored
     private var lastKnownTotalHeight: [MountEdge: Double] = [:]
+
+    public func setLiveRailEditingMode(_ enabled: Bool) {
+        guard isLiveRailEditingMode != enabled else { return }
+        if enabled {
+            dismissActiveDrawer()
+        }
+        isLiveRailEditingMode = enabled
+        invalidateLayoutCache()
+        if !enabled {
+            savePersistentState()
+        }
+        onLiveRailEditingChanged?(enabled)
+        onWindowsRebuildNeeded?()
+    }
+
+    public func toggleLiveRailEditingMode() {
+        setLiveRailEditingMode(!isLiveRailEditingMode)
+    }
+
+    public func mountPod(id: String, to edge: MountEdge) {
+        guard let idx = pods.firstIndex(where: { $0.id == id }) else { return }
+        pods[idx].edge = edge
+        if overflowStrategy(for: edge) == .pagedSpaces {
+            pods[idx].pageIndex = max(0, currentRailPage(for: edge))
+        } else {
+            pods[idx].pageIndex = 0
+        }
+        if !pods[idx].isEnabled {
+            togglePodEnabled(id: id)
+        } else {
+            invalidateLayoutCache()
+            savePersistentState()
+            onWindowsRebuildNeeded?()
+        }
+    }
 
     public func isPagePortalRevealed(for edge: MountEdge, isTop: Bool) -> Bool {
         switch (edge, isTop) {
@@ -1567,7 +1606,7 @@ public final class PurahWorkspaceStore {
         let pagePods = pages[pageIdx]
         guard !pagePods.isEmpty else { return [] }
 
-        let safeTop = pages.count > 1 ? 48.0 : 16.0
+        let safeTop = isLiveRailEditingMode ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
         let safeBottom = pages.count > 1 ? (totalHeight - 48.0) : (totalHeight - 16.0)
         let gap = 8.0
         let availableH = max(safeBottom - safeTop, 160.0)

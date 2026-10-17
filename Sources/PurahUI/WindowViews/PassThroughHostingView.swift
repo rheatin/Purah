@@ -110,6 +110,19 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
         let winPoint = event.locationInWindow
+        if store.isLiveRailEditingMode {
+            let sculptW: CGFloat = 215.0
+            let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
+            if isInsideSculptStrip {
+                if let panel = self.window as? NSPanel {
+                    panel.ignoresMouseEvents = false
+                }
+                super.scrollWheel(with: event)
+            } else if let panel = self.window as? NSPanel {
+                panel.ignoresMouseEvents = true
+            }
+            return
+        }
 
         if isPointInInteractiveDrawer(winPoint) {
             if let panel = self.window as? NSPanel {
@@ -148,6 +161,15 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         store.onLocalMouseMove?(event)
 
         let winPoint = event.locationInWindow
+        if store.isLiveRailEditingMode {
+            let sculptW: CGFloat = 215.0
+            let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
+            if let panel = self.window as? NSPanel {
+                panel.ignoresMouseEvents = !isInsideSculptStrip
+            }
+            return
+        }
+
         let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
         let isInsideCard = isPointInInteractiveDrawer(winPoint)
@@ -173,10 +195,18 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let mouseLoc = NSEvent.mouseLocation
         if let win = self.window, win.frame.contains(mouseLoc) {
             let winPoint = win.convertPoint(fromScreen: mouseLoc)
-            let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
-            let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
-            if isOnRail || isPointInInteractiveDrawer(winPoint) {
-                return
+            if store.isLiveRailEditingMode {
+                let sculptW: CGFloat = 215.0
+                let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
+                if isInsideSculptStrip {
+                    return
+                }
+            } else {
+                let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
+                let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
+                if isOnRail || isPointInInteractiveDrawer(winPoint) {
+                    return
+                }
             }
         }
 
@@ -190,6 +220,18 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public override func hitTest(_ point: NSPoint) -> NSView? {
         guard !store.isRailsFrozen else { return nil }
         let bounds = self.bounds
+        if store.isLiveRailEditingMode {
+            let sculptW: CGFloat = 215.0
+            let isInsideSculptStrip = (edge == .right) ? (point.x >= bounds.maxX - sculptW) : (point.x <= bounds.minX + sculptW)
+            if isInsideSculptStrip {
+                if let panel = self.window as? NSPanel, panel.ignoresMouseEvents {
+                    panel.ignoresMouseEvents = false
+                }
+                return super.hitTest(point)
+            }
+            return nil
+        }
+
         let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let totalH = Double(bounds.height)
         let currentWindowY = totalH - Double(point.y)

@@ -3,6 +3,7 @@ import Testing
 import Foundation
 import CoreGraphics
 @testable import PurahCore
+@testable import PurahApp
 
 @Suite("High-Density Rail Overflow Modes Tests", .serialized)
 @MainActor
@@ -519,5 +520,79 @@ struct HighDensityOverflowTests {
                 #expect(item.startY >= (prev.startY + prev.spanH - 0.01), "All 9 sub-bars in the single Shared Major Pod must not overlap")
             }
         }
+    }
+
+    @Test("Live Rail Sculptor Mode: setLiveRailEditingMode dismisses active drawers, fires callback, and mountPod assigns to active page in Paged Spaces")
+    func testLiveRailSculptorModeAndMountPod() throws {
+        let suiteName = "test_live_sculptor_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // Activate a drawer first
+        store.activateDrawer(podId: "notes")
+        #expect(store.activeDrawerPodId == "notes")
+
+        var callbackValues: [Bool] = []
+        store.onLiveRailEditingChanged = { isEditing in
+            callbackValues.append(isEditing)
+        }
+
+        // Enter Live Rail Editing mode
+        store.setLiveRailEditingMode(true)
+        #expect(store.isLiveRailEditingMode == true)
+        #expect(store.activeDrawerPodId == nil, "Entering Live Rail Editing mode must dismiss active drawers")
+        #expect(store.activeDrawerItemId == nil)
+        #expect(store.hoveredPodId == nil)
+        #expect(callbackValues == [true])
+
+        // Configure right rail as Paged Spaces on Page 2 (pageIndex = 1)
+        store.setOverflowStrategy(.pagedSpaces, for: .right)
+        store.setRailPage(1, for: .right)
+
+        // Unmount "music" first if enabled, then mount it onto .right via mountPod
+        if let idx = store.pods.firstIndex(where: { $0.id == "music" }), store.pods[idx].isEnabled {
+            store.togglePodEnabled(id: "music")
+        }
+        #expect(store.pods.first(where: { $0.id == "music" })?.isEnabled == false)
+
+        store.mountPod(id: "music", to: .right)
+        let mountedMusic = try #require(store.pods.first(where: { $0.id == "music" }))
+        #expect(mountedMusic.isEnabled == true)
+        #expect(mountedMusic.edge == .right)
+        #expect(mountedMusic.pageIndex == 1, "mountPod in Paged Spaces mode must assign the newly mounted pod to currentRailPage")
+
+        // Exit Live Rail Editing mode
+        store.toggleLiveRailEditingMode()
+        #expect(store.isLiveRailEditingMode == false)
+        #expect(callbackValues == [true, false])
+    }
+
+    @Test("EdgeMouseMonitor ignores normal hover drawer triggers while isLiveRailEditingMode is true")
+    func testEdgeMouseMonitorIgnoresHoverDuringLiveSculpting() throws {
+        let suiteName = "test_live_sculptor_monitor_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.edgeTriggerMode = .hoverDwell
+        store.edgeTriggerSensitivity = .agile
+
+        let monitor = EdgeMouseMonitor(store: store)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        let firstItem = try #require(layoutItems.first)
+        let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH * 0.5)
+        let edgePoint = NSPoint(x: 1.0, y: targetY)
+        monitor.customCurrentMouseLocation = edgePoint
+
+        // Enable Live Rail Editing mode -> EdgeMouseMonitor must ignore hover triggers
+        store.setLiveRailEditingMode(true)
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
+        #expect(store.activeDrawerPodId == nil, "EdgeMouseMonitor must not open drawers while in Live Rail Sculptor mode")
+
+        // Exit Live Rail Editing mode -> Agile hover trigger works normally again
+        store.setLiveRailEditingMode(false)
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
+        #expect(store.activeDrawerPodId == firstItem.pod.id, "EdgeMouseMonitor must resume normal hover trigger after exiting Live Rail Sculptor mode")
     }
 }

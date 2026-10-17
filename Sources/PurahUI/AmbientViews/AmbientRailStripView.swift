@@ -31,7 +31,10 @@ public struct AmbientRailStripView: View {
             let pageCount = pages.count
             let currentPage = min(max(store.currentRailPage(for: edge), 0), max(pageCount - 1, 0))
 
-            ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
+            if store.isLiveRailEditingMode {
+                LiveRailSculptorStripView(edge: edge, store: store, totalHeight: totalHeight)
+            } else {
+                ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
                 // Top & Bottom Hover Portals for Paged Spaces when multiple pages exist (avoiding 20pt macOS Hot Corners)
                 if edgeStrategy == .pagedSpaces && pageCount > 1 {
                     RailPagePortalView(
@@ -130,6 +133,7 @@ public struct AmbientRailStripView: View {
                 .spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08),
                 value: layoutItems.map { "\($0.id)_\(Int($0.startY))_\(Int($0.spanH))" }
             )
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .left ? .leading : .trailing)
         .ignoresSafeArea()

@@ -374,7 +374,18 @@ public final class LocalizationManager {
             "sound.hero": "Hero (Prominent)",
             "sound.submarine": "Submarine (Sonar)",
             "sound.purr": "Purr (Soft)",
-            "sound.funk": "Funk (Pop)"
+            "sound.funk": "Funk (Pop)",
+
+            // Live Rail Sculptor
+            "sculptor.enterButton": "Edit on Screen",
+            "sculptor.menuItem": "Edit Rails on Screen...",
+            "sculptor.dock.title": "1:1 On-Screen Rail Sculptor",
+            "sculptor.dock.unmounted": "Unmounted Plugins (Click +L or +R to mount):",
+            "sculptor.dock.allMounted": "All plugins are mounted on rails. Click [✕] on any edge capsule to unmount.",
+            "sculptor.dock.autoLayout": "Auto-Layout",
+            "sculptor.dock.done": "Done (Esc)",
+            "sculptor.dock.leftRail": "Left",
+            "sculptor.dock.rightRail": "Right"
         ],
         .chinese: [
             "app.name": "Purah Pad",
@@ -659,7 +670,18 @@ public final class LocalizationManager {
             "sound.hero": "Hero (醒目提示)",
             "sound.submarine": "Submarine (声呐脉冲)",
             "sound.purr": "Purr (柔和低鸣)",
-            "sound.funk": "Funk (清脆节拍)"
+            "sound.funk": "Funk (清脆节拍)",
+
+            // Live Rail Sculptor
+            "sculptor.enterButton": "屏幕实景编排",
+            "sculptor.menuItem": "在屏幕边缘实景调整布局...",
+            "sculptor.dock.title": "桌面边缘 1:1 实景轨道编排",
+            "sculptor.dock.unmounted": "待挂载插件库（点击 +L 挂左轨 / +R 挂右轨）：",
+            "sculptor.dock.allMounted": "全部插件均已挂载上轨。点击边缘胶囊右上角的 [✕] 可卸下插件。",
+            "sculptor.dock.autoLayout": "自动重排",
+            "sculptor.dock.done": "完成 (Esc)",
+            "sculptor.dock.leftRail": "左轨",
+            "sculptor.dock.rightRail": "右轨"
         ],
         .traditionalChinese: [
             "tab.general": "通用",
@@ -716,7 +738,16 @@ public final class LocalizationManager {
             "overflow.majorPod.unstack": "拆出",
             "overflow.majorPod.addPlugin": "+ 新增插件到此母槽",
             "overflow.majorPod.stackWithBelow": "與下一項疊加",
-            "overflow.majorPod.stackWithMenu": "+ 選擇插件疊加..."
+            "overflow.majorPod.stackWithMenu": "+ 選擇插件疊加...",
+            "sculptor.enterButton": "螢幕實景編排",
+            "sculptor.menuItem": "在螢幕邊緣實景調整布局...",
+            "sculptor.dock.title": "桌面邊緣 1:1 實景軌道編排",
+            "sculptor.dock.unmounted": "待掛載插件庫（點擊 +L 掛左軌 / +R 掛右軌）：",
+            "sculptor.dock.allMounted": "全部插件均已掛載上軌。點擊邊緣膠囊右上角的 [✕] 可卸下插件。",
+            "sculptor.dock.autoLayout": "自動重排",
+            "sculptor.dock.done": "完成 (Esc)",
+            "sculptor.dock.leftRail": "左軌",
+            "sculptor.dock.rightRail": "右軌"
         ],
         .japanese: [
             "tab.general": "一般",

@@ -5,10 +5,42 @@ import PurahCore
 import PurahUI
 
 @MainActor
+private final class SculptorDockPanel: NSPanel {
+    private let store: PurahWorkspaceStore
+
+    init(contentRect: NSRect, store: PurahWorkspaceStore) {
+        self.store = store
+        super.init(
+            contentRect: contentRect,
+            styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        self.level = .floating
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.hasShadow = true
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown && event.keyCode == 53 && store.isLiveRailEditingMode {
+            store.setLiveRailEditingMode(false)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+@MainActor
 public final class ScreenEdgeCoordinator {
     private let store: PurahWorkspaceStore
     private var leftRailWindow: AmbientRailWindow?
     private var rightRailWindow: AmbientRailWindow?
+    private var sculptorDockWindow: NSPanel?
     public private(set) var activeScreen: NSScreen?
     public private(set) var isFrozen: Bool = false
     private var isDismissingEdge: [MountEdge: Bool] = [:]
@@ -73,16 +105,24 @@ public final class ScreenEdgeCoordinator {
         guard let screen = targetScreen() ?? NSScreen.main ?? NSScreen.screens.first else { return }
         self.activeScreen = screen
 
-        let leftEnabled = store.pods.contains { $0.edge == .left && $0.isEnabled }
-        let rightEnabled = store.pods.contains { $0.edge == .right && $0.isEnabled }
+        let isLiveEditing = store.isLiveRailEditingMode
+        let leftEnabled = isLiveEditing || store.pods.contains { $0.edge == .left && $0.isEnabled }
+        let rightEnabled = isLiveEditing || store.pods.contains { $0.edge == .right && $0.isEnabled }
 
-        // Smart single-rail sleep: close and release window if rail has zero enabled pods
+        // Smart single-rail sleep: close and release window if rail has zero enabled pods (unless in Live Rail Sculptor mode)
         if leftEnabled {
             if let existing = leftRailWindow {
                 existing.relocate(to: screen)
             } else {
                 let win = AmbientRailWindow(edge: .left, screen: screen, store: store)
                 leftRailWindow = win
+            }
+            if isLiveEditing {
+                leftRailWindow?.setExpanded(true)
+                leftRailWindow?.setInteractive(true)
+            } else if !store.hasPinnedItem(on: .left) && store.activePod?.edge != .left {
+                leftRailWindow?.setExpanded(false)
+                leftRailWindow?.setInteractive(false)
             }
             leftRailWindow?.orderFront(nil)
         } else {
@@ -97,10 +137,38 @@ public final class ScreenEdgeCoordinator {
                 let win = AmbientRailWindow(edge: .right, screen: screen, store: store)
                 rightRailWindow = win
             }
+            if isLiveEditing {
+                rightRailWindow?.setExpanded(true)
+                rightRailWindow?.setInteractive(true)
+            } else if !store.hasPinnedItem(on: .right) && store.activePod?.edge != .right {
+                rightRailWindow?.setExpanded(false)
+                rightRailWindow?.setInteractive(false)
+            }
             rightRailWindow?.orderFront(nil)
         } else {
             rightRailWindow?.close()
             rightRailWindow = nil
+        }
+
+        if isLiveEditing {
+            let visibleRect = screen.visibleFrame
+            let dockWidth: CGFloat = 608
+            let dockHeight: CGFloat = 96
+            let dockX = visibleRect.midX - (dockWidth * 0.5)
+            let dockY = visibleRect.maxY - dockHeight - 14
+            let dockFrame = NSRect(x: dockX, y: dockY, width: dockWidth, height: dockHeight)
+
+            if let existingDock = sculptorDockWindow {
+                existingDock.setFrame(dockFrame, display: true)
+            } else {
+                let panel = SculptorDockPanel(contentRect: dockFrame, store: store)
+                panel.contentView = NSHostingView(rootView: LiveRailSculptorDockView(store: store))
+                sculptorDockWindow = panel
+            }
+            sculptorDockWindow?.makeKeyAndOrderFront(nil)
+        } else {
+            sculptorDockWindow?.orderOut(nil)
+            sculptorDockWindow = nil
         }
 
         if isFrozen {
