@@ -214,10 +214,80 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    // MARK: - Full Agenda Event List
+    // MARK: - Full Agenda Event List (Chrono Timeline View)
     @ViewBuilder
     private func agendaListView() -> some View {
+        let todayBadgeText = Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()).uppercased()
+
         VStack(alignment: .leading, spacing: 8) {
+            // Top Summary Bar
+            HStack(spacing: 6) {
+                Text(todayBadgeText)
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundColor(podColor)
+                    .lineLimit(1)
+
+                Text("\(state.events.count)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(podColor)
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(podColor.opacity(0.16)))
+
+                Spacer(minLength: 4)
+
+                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+                    Button {
+                        Task {
+                            let granted = await PermissionManager.shared.requestCalendarAccess()
+                            if granted {
+                                state.syncEvents(into: store)
+                                SystemCalendarSyncService.shared.syncEvents(into: store)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 7.5, weight: .semibold))
+                            Text("Connect")
+                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6.5)
+                        .padding(.vertical, 2.5)
+                        .background(Capsule().fill(Color.orange.opacity(0.14)))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+                    .help("Using sample events. Click to connect system Apple Calendar")
+                }
+
+                Button {
+                    openInSystemCalendar()
+                } label: {
+                    HStack(spacing: 3.5) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 8.5, weight: .semibold))
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 7.5, weight: .bold))
+                    }
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(Capsule().fill(palette.surfaceBackground))
+                    .overlay(
+                        Capsule()
+                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.tactile)
+                .help("Open Apple Calendar")
+            }
+
+            // Chrono Event Cards
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(state.events) { event in
@@ -225,68 +295,6 @@ public struct CalendarDrawerView: View {
                     }
                 }
                 .padding(.vertical, 2)
-            }
-
-            Divider()
-                .background(palette.borderColor.opacity(0.35))
-
-            // Action Bar
-            HStack {
-                Text(store.calendarScope.title)
-                    .font(.system(size: 9.5, weight: .medium))
-                    .foregroundColor(.secondary)
-
-                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
-                    Button {
-                        Task {
-                            let granted = await PermissionManager.shared.requestCalendarAccess()
-                            if granted {
-                                SystemCalendarSyncService.shared.syncEvents(into: store)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 3.5) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 8, weight: .semibold))
-                            Text("Sample · Connect")
-                                .font(.system(size: 8, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.orange.opacity(0.14))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
-                        )
-                        .cornerRadius(4)
-                    }
-                    .buttonStyle(.tactile)
-                    .help("Using sample events. Click to connect system Apple Calendar")
-                }
-
-                Spacer()
-
-                Button {
-                    openInSystemCalendar()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 8.5))
-                        Text("Apple Calendar")
-                            .font(.system(size: 9.5, weight: .medium))
-                    }
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(palette.surfaceBackground)
-                    .cornerRadius(5)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.tactile)
             }
         }
     }
@@ -298,77 +306,105 @@ public struct CalendarDrawerView: View {
         let isImminent = event.isImminent
         let calColor = event.colorHex.flatMap { Color(hex: $0) } ?? podColor
 
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(calColor)
-                    .frame(width: 5, height: 5)
+        HStack(spacing: 10) {
+            // Left Time Column (width: 44)
+            VStack(alignment: .trailing, spacing: 1.5) {
+                if event.isAllDay {
+                    Text("ALL DAY")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(isPast ? .secondary.opacity(0.6) : (palette.style == .native ? Color.primary : .white))
+                } else {
+                    Text(event.startTime.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute()))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(isPast ? .secondary.opacity(0.6) : (palette.style == .native ? Color.primary : .white))
+                    Text(event.endTime.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute()))
+                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(width: 44, alignment: .trailing)
 
+            // Vertical Color Accent Bar
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(calColor.opacity(isPast ? 0.45 : 1.0))
+                .frame(width: 3, height: 28)
+
+            // Middle Info Column
+            VStack(alignment: .leading, spacing: 2.5) {
                 Text(event.title)
-                    .font(.system(size: 11.5, weight: isOngoing ? .bold : .medium, design: .rounded))
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                     .foregroundColor(isPast ? .secondary : (palette.style == .native ? Color.primary : .white))
                     .lineLimit(1)
 
-                Spacer()
-
-                if isOngoing {
-                    Text("calendar.status.now".localized)
-                        .font(.system(size: 7.5, weight: .bold))
-                        .padding(.horizontal, 4)
+                HStack(spacing: 6) {
+                    Text(event.calendarTitle)
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 4.5)
                         .padding(.vertical, 1)
-                        .background(Color.green.opacity(0.18))
-                        .foregroundColor(.green)
+                        .background(calColor.opacity(isPast ? 0.10 : 0.16))
+                        .foregroundColor(calColor.opacity(isPast ? 0.6 : 1.0))
                         .cornerRadius(3)
-                } else if isImminent {
-                    Text("calendar.status.soon".localized)
-                        .font(.system(size: 7.5, weight: .bold))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.orange.opacity(0.18))
-                        .foregroundColor(.orange)
-                        .cornerRadius(3)
-                }
+                        .lineLimit(1)
 
-                if let url = event.url {
-                    Button {
-                        NSWorkspace.shared.open(url)
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "video.fill")
-                                .font(.system(size: 7))
-                            Text("calendar.action.join".localized)
-                                .font(.system(size: 8.5, weight: .bold))
+                    if !event.location.isEmpty && event.location != "Apple Calendar" {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.system(size: 7.5))
+                            Text(event.location)
+                                .font(.system(size: 8.5))
+                                .lineLimit(1)
                         }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(podColor.opacity(0.18))
-                        .foregroundColor(podColor)
-                        .cornerRadius(4)
+                        .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.tactile)
                 }
             }
 
-            HStack(spacing: 4) {
-                Text(formattedTime(event: event))
-                    .font(palette.fontMono)
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
+            Spacer(minLength: 4)
 
-                if !event.location.isEmpty && event.location != "Apple Calendar" {
-                    Text("·")
-                        .foregroundColor(.secondary)
-                    Text(event.location)
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+            // Right Status / Action Column
+            if let url = event.url {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 7.5, weight: .bold))
+                        Text("calendar.action.join".localized)
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    }
+                    .padding(.horizontal, 6.5)
+                    .padding(.vertical, 3)
+                    .background(podColor.opacity(0.20))
+                    .foregroundColor(podColor)
+                    .cornerRadius(5)
                 }
+                .buttonStyle(.tactile)
+                .fixedSize()
+            } else if isOngoing {
+                Text("calendar.status.now".localized)
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(podColor))
+                    .foregroundColor(.white)
+                    .shadow(color: podColor.opacity(0.55), radius: 3)
+                    .fixedSize()
+            } else if isImminent {
+                Text("calendar.status.soon".localized)
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.orange.opacity(0.18)))
+                    .foregroundColor(.orange)
+                    .fixedSize()
             }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(isOngoing ? podColor.opacity(0.08) : Color.clear)
-        .cornerRadius(6)
+        .padding(.vertical, 6)
+        .liquidCardBackground(
+            cornerRadius: 7,
+            strokeColor: isOngoing ? podColor.opacity(0.75) : palette.borderColor.opacity(0.32)
+        )
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {

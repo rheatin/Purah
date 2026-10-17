@@ -17,6 +17,8 @@ public struct ScriptActionItem: Identifiable, Codable, Sendable {
     public var description: String
     public var showNotification: Bool
 
+    public var command: String { scriptContent }
+
     public init(
         id: String,
         name: String,

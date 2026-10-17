@@ -357,6 +357,38 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public func majorPodClusters(for edge: MountEdge) -> [[SlotPod]] {
+        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        var clusters: [[SlotPod]] = []
+        for pod in railPods {
+            if let gid = pod.majorGroupId {
+                if let last = clusters.last, last.first?.majorGroupId == gid {
+                    clusters[clusters.count - 1].append(pod)
+                } else {
+                    clusters.append([pod])
+                }
+            } else {
+                clusters.append([pod])
+            }
+        }
+        return clusters
+    }
+
+    public func isInSharedMajorPod(podId: String) -> Bool {
+        guard let pod = pods.first(where: { $0.id == podId && $0.isEnabled }) else { return false }
+        guard overflowStrategy(for: pod.edge) == .decomposedMajorPod else { return false }
+        if let gid = pod.majorGroupId {
+            let peers = pods.filter { $0.edge == pod.edge && $0.isEnabled && $0.majorGroupId == gid }
+            if peers.count >= 2 { return true }
+        }
+        let edgePods = pods.filter { $0.edge == pod.edge && $0.isEnabled }
+        if edgePods.allSatisfy({ $0.majorGroupId == nil }) && edgePods.count >= 2 {
+            return true
+        }
+        return false
+    }
+
     public func cycleRailPage(for edge: MountEdge, delta: Int = 1) {
         let refH = lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: refH)
@@ -745,6 +777,19 @@ public final class PurahWorkspaceStore {
             _pluginStorageRevision &+= 1
             let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
             storage.setCodable(newValue, forKey: "isEventGlowAlertEnabled")
+        }
+    }
+
+    public var calendarOverflowStrategy: CalendarOverflowStrategy {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            return storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "overflowStrategy")
         }
     }
 

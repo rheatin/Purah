@@ -74,11 +74,18 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
+        let isDecomp = isDecomposed(store: store)
         if isDecomp {
             return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledActions.count)
         }
         return 160.0
+    }
+
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "scripts") {
+            return 360.0
+        }
+        return 300.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
@@ -95,7 +102,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.isDecomposed || store._isScriptsDecomposed
+        state.isDecomposed && store._isScriptsDecomposed
     }
 
     public var subItemCount: Int {

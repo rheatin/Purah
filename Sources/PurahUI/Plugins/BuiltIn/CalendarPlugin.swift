@@ -94,6 +94,13 @@ public struct CalendarPlugin: PurahPodPlugin {
         return decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count)
     }
 
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "calendar") {
+            return 360.0
+        }
+        return 310.0
+    }
+
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
         var combined = state.events
         for e in store._calendarEvents {
@@ -119,7 +126,7 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.overflowStrategy != .continuousStream
+        state.overflowStrategy != .continuousStream && store.calendarOverflowStrategy != .continuousStream
     }
 
     private func resolvedSubItemHeaders(store: PurahWorkspaceStore) -> [(id: String, title: String)] {

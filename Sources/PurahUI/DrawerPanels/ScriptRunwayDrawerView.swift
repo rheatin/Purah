@@ -36,33 +36,37 @@ public struct ScriptRunwayDrawerView: View {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(scriptColor.opacity(0.12))
-                                    .frame(width: 24, height: 24)
+                                    .frame(width: 26, height: 26)
                                 Image(systemName: action.systemIcon)
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(scriptColor)
                             }
 
-                            VStack(alignment: .leading, spacing: 1) {
+                            VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 5) {
                                     Text(action.name)
-                                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+
+                                    Spacer(minLength: 4)
 
                                     badgeForType(action.commandType, color: scriptColor)
                                 }
-                                Text(action.description)
-                                    .font(.system(size: 8))
+
+                                Text(action.description.isEmpty ? action.command : action.description)
+                                    .font(.system(size: 9, design: .monospaced))
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
-
-                            Spacer(minLength: 4)
 
                             Button {
                                 Task {
                                     let res = await state.executeAction(action, store: store)
                                     if action.showNotification {
-                                        let text = res.success ? "✨ Ran \(action.name)" : "⚠️ Failed: \(res.message)"
+                                        let text = res.success ? "Ran \(action.name)" : "Failed: \(res.message)"
                                         store.onCapacityWarningToast?(text)
                                     }
                                 }
@@ -72,31 +76,32 @@ public struct ScriptRunwayDrawerView: View {
                                         ProgressView()
                                             .controlSize(.mini)
                                         Text("Running")
-                                            .font(.system(size: 8, weight: .bold))
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(scriptColor.opacity(0.85))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(4)
-                                } else {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "play.fill")
-                                            .font(.system(size: 6.5))
-                                        Text("Run")
-                                            .font(.system(size: 8, weight: .bold))
+                                            .font(.system(size: 8.5, weight: .bold))
                                     }
                                     .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
+                                    .padding(.vertical, 3.5)
+                                    .background(scriptColor.opacity(0.85))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(5)
+                                } else {
+                                    HStack(spacing: 3.5) {
+                                        Image(systemName: "play.fill")
+                                            .font(.system(size: 7))
+                                        Text("Run")
+                                            .font(.system(size: 8.5, weight: .bold))
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3.5)
                                     .background(scriptColor)
                                     .foregroundColor(.white)
-                                    .cornerRadius(4)
+                                    .cornerRadius(5)
                                 }
                             }
                             .buttonStyle(.tactile)
+                            .fixedSize()
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
+                        .padding(.vertical, 6)
                         .liquidCardBackground(cornerRadius: 6, strokeColor: palette.borderColor.opacity(0.35))
                     }
                 }

@@ -29,7 +29,8 @@ public struct MusicRailBarContainerView: View {
             samples: liveTrack.waveformSamples,
             isPlaying: isPlaying,
             isAnimated: state.isWaveformAnimationEnabled,
-            height: slotHeight
+            height: slotHeight,
+            barWidth: railWidth
         )
         .frame(width: railWidth, height: slotHeight)
         .onAppear {

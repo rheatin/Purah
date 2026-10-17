@@ -8,7 +8,17 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { true }
     var decomposedPolicy: PurahDecomposedPolicy { .calendarDefault }
 
-    func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        store.calendarOverflowStrategy != .continuousStream
+    }
+
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "calendar") {
+            return 360.0
+        }
+        return 310.0
+    }
+
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let maxEvents = max(store.calendarMaxRailEvents, 1)
         let minChipH: CGFloat = 40.0
@@ -141,6 +151,13 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         store._isScriptsDecomposed
+    }
+
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "scripts") {
+            return 360.0
+        }
+        return 300.0
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {

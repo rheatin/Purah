@@ -11,6 +11,7 @@ public struct WaveMeterAmbientView: View {
     public var isPlaying: Bool
     public var isAnimated: Bool
     public var height: CGFloat
+    public var barWidth: CGFloat = 8.0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -30,7 +31,8 @@ public struct WaveMeterAmbientView: View {
         samples: [Double] = [],
         isPlaying: Bool,
         isAnimated: Bool = true,
-        height: CGFloat = 80.0
+        height: CGFloat = 80.0,
+        barWidth: CGFloat = 8.0
     ) {
         self.style = style
         self.subStyle = subStyle
@@ -40,6 +42,7 @@ public struct WaveMeterAmbientView: View {
         self.isPlaying = isPlaying
         self.isAnimated = isAnimated
         self.height = height
+        self.barWidth = barWidth
     }
 
     public init(
@@ -47,18 +50,19 @@ public struct WaveMeterAmbientView: View {
         samples: [Double] = [],
         isPlaying: Bool,
         isAnimated: Bool = true,
-        height: CGFloat = 80.0
+        height: CGFloat = 80.0,
+        barWidth: CGFloat = 8.0
     ) {
-        self.init(style: .dynamicWaveform, subStyle: .neonVUTower, track: MusicTrackInfo(), progress: progress, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
+        self.init(style: .dynamicWaveform, subStyle: .neonVUTower, track: MusicTrackInfo(), progress: progress, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height, barWidth: barWidth)
     }
 
-    public init(samples: [Double], isPlaying: Bool, isAnimated: Bool = true, height: CGFloat = 80.0) {
-        self.init(style: .dynamicWaveform, subStyle: .neonVUTower, track: MusicTrackInfo(), progress: 0.0, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height)
+    public init(samples: [Double], isPlaying: Bool, isAnimated: Bool = true, height: CGFloat = 80.0, barWidth: CGFloat = 8.0) {
+        self.init(style: .dynamicWaveform, subStyle: .neonVUTower, track: MusicTrackInfo(), progress: 0.0, samples: samples, isPlaying: isPlaying, isAnimated: isAnimated, height: height, barWidth: barWidth)
     }
 
     public var body: some View {
         let totalH = max(height, 40.0)
-        let barW: CGFloat = 8.0
+        let barW: CGFloat = max(barWidth, 4.0)
 
         Group {
             switch style {

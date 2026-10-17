@@ -1382,4 +1382,36 @@ struct DrawerInteractionUITests {
         #expect(plugin.adaptiveDrawerWidth(store: store) == 390.0)
         #expect(store.effectiveDrawerWidth(podId: "vitals") == 390.0)
     }
+
+    @Test("WaveMeterAmbientView barWidth and ScriptRunway/Calendar adaptiveDrawerWidth respect composite and Shared Major Pod modes")
+    @MainActor
+    func testMusicBarWidthAndScriptsCalendarAdaptiveDrawerWidth() {
+        let isolated = UserDefaults(suiteName: "test_scripts_cal_width_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // 1. WaveMeterAmbientView barWidth
+        let waveView = WaveMeterAmbientView(style: .minimalist, isPlaying: true, height: 120.0, barWidth: 5.0)
+        #expect(waveView.barWidth == 5.0)
+        _ = waveView.body
+
+        // 2. ScriptRunwayPlugin adaptiveDrawerWidth
+        let scriptsPlugin = ScriptRunwayPlugin()
+        store._isScriptsDecomposed = true
+        scriptsPlugin.state.isDecomposed = true
+        #expect(scriptsPlugin.adaptiveDrawerWidth(store: store) == 300.0)
+
+        store._isScriptsDecomposed = false
+        scriptsPlugin.state.isDecomposed = false
+        #expect(scriptsPlugin.adaptiveDrawerWidth(store: store) == 360.0)
+
+        // 3. CalendarPlugin adaptiveDrawerWidth
+        let calPlugin = CalendarPlugin()
+        store.calendarOverflowStrategy = .smartFold
+        calPlugin.state.overflowStrategy = .smartFold
+        #expect(calPlugin.adaptiveDrawerWidth(store: store) == 310.0)
+
+        store.calendarOverflowStrategy = .continuousStream
+        calPlugin.state.overflowStrategy = .continuousStream
+        #expect(calPlugin.adaptiveDrawerWidth(store: store) == 360.0)
+    }
 }
