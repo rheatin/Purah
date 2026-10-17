@@ -48,11 +48,35 @@ public final class PurahWorkspaceStore {
 
     public var leftRailPage: Int = 0
     public var rightRailPage: Int = 0
+    public var isLeftTopPortalRevealed: Bool = false
+    public var isLeftBottomPortalRevealed: Bool = false
+    public var isRightTopPortalRevealed: Bool = false
+    public var isRightBottomPortalRevealed: Bool = false
     public var isRailsFrozen: Bool = false
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
 
     @ObservationIgnored
     private var lastKnownTotalHeight: [MountEdge: Double] = [:]
+
+    public func isPagePortalRevealed(for edge: MountEdge, isTop: Bool) -> Bool {
+        switch (edge, isTop) {
+        case (.left, true): return isLeftTopPortalRevealed
+        case (.left, false): return isLeftBottomPortalRevealed
+        case (.right, true): return isRightTopPortalRevealed
+        case (.right, false): return isRightBottomPortalRevealed
+        }
+    }
+
+    public func updatePagePortalProximity(edge: MountEdge?, isNearTop: Bool, isNearBottom: Bool) {
+        let leftTop = (edge == .left && isNearTop)
+        let leftBottom = (edge == .left && isNearBottom)
+        let rightTop = (edge == .right && isNearTop)
+        let rightBottom = (edge == .right && isNearBottom)
+        if isLeftTopPortalRevealed != leftTop { isLeftTopPortalRevealed = leftTop }
+        if isLeftBottomPortalRevealed != leftBottom { isLeftBottomPortalRevealed = leftBottom }
+        if isRightTopPortalRevealed != rightTop { isRightTopPortalRevealed = rightTop }
+        if isRightBottomPortalRevealed != rightBottom { isRightBottomPortalRevealed = rightBottom }
+    }
 
     public func overflowStrategy(for edge: MountEdge) -> RailOverflowStrategy {
         edge == .left ? leftRailOverflowStrategy : rightRailOverflowStrategy

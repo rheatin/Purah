@@ -40,7 +40,8 @@ public struct AmbientRailStripView: View {
                         currentPage: currentPage,
                         pageCount: pageCount,
                         barWidth: barW,
-                        accentColor: palette.primaryAccent
+                        accentColor: palette.primaryAccent,
+                        isRevealed: store.isPagePortalRevealed(for: edge, isTop: true)
                     ) {
                         store.dismissActiveDrawer()
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -57,7 +58,8 @@ public struct AmbientRailStripView: View {
                         currentPage: currentPage,
                         pageCount: pageCount,
                         barWidth: barW,
-                        accentColor: palette.primaryAccent
+                        accentColor: palette.primaryAccent,
+                        isRevealed: store.isPagePortalRevealed(for: edge, isTop: false)
                     ) {
                         store.dismissActiveDrawer()
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -409,6 +411,7 @@ public struct RailPagePortalView: View {
     public let pageCount: Int
     public let barWidth: CGFloat
     public let accentColor: Color
+    public var isRevealed: Bool = false
     public let onTrigger: () -> Void
 
     @State private var isHovered: Bool = false
@@ -420,6 +423,7 @@ public struct RailPagePortalView: View {
         pageCount: Int,
         barWidth: CGFloat = 8.0,
         accentColor: Color,
+        isRevealed: Bool = false,
         onTrigger: @escaping () -> Void
     ) {
         self.edge = edge
@@ -428,6 +432,7 @@ public struct RailPagePortalView: View {
         self.pageCount = pageCount
         self.barWidth = barWidth
         self.accentColor = accentColor
+        self.isRevealed = isRevealed
         self.onTrigger = onTrigger
     }
 
@@ -456,6 +461,7 @@ public struct RailPagePortalView: View {
     }
 
     public var body: some View {
+        let visible = isRevealed || isHovered
         Button {
             onTrigger()
         } label: {
@@ -498,6 +504,9 @@ public struct RailPagePortalView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .opacity(visible ? 1.0 : 0.0)
+        .offset(x: visible ? 0 : (edge == .left ? -16 : 16))
+        .animation(.spring(response: 0.24, dampingFraction: 0.82), value: visible)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering

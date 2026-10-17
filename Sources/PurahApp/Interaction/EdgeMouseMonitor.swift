@@ -346,6 +346,22 @@ public final class EdgeMouseMonitor {
         let visibleRect = customTargetVisibleRect ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
         let isInVerticalBounds = (point.y >= visibleRect.minY && point.y <= visibleRect.maxY)
+        let nearEdge: MountEdge? = isInVerticalBounds
+            ? ((point.x <= visibleRect.minX + 70.0) ? .left : ((point.x >= visibleRect.maxX - 70.0) ? .right : nil))
+            : nil
+        if let nearEdge, store.overflowStrategy(for: nearEdge) == .pagedSpaces {
+            let winY = visibleRect.maxY - point.y
+            let isNearTop = (winY >= 0 && winY <= 110.0)
+            let isNearBottom = (winY >= (visibleRect.height - 110.0) && winY <= visibleRect.height)
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                store.updatePagePortalProximity(edge: nearEdge, isNearTop: isNearTop, isNearBottom: isNearBottom)
+            }
+        } else {
+            withAnimation(.spring(response: 0.20, dampingFraction: 0.90)) {
+                store.updatePagePortalProximity(edge: nil, isNearTop: false, isNearBottom: false)
+            }
+        }
+
         let triggerW = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let isAtLeftEdge = isInVerticalBounds && (point.x <= (visibleRect.minX + triggerW))
         let isAtRightEdge = isInVerticalBounds && (point.x >= (visibleRect.maxX - triggerW))
