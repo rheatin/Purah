@@ -4,6 +4,7 @@ import PurahCore
 
 public struct VisualLayoutSimulatorView: View {
     public let store: PurahWorkspaceStore
+    @State private var selectedOverflowRail: MountEdge = .left
 
     private var theme: ThemeManager {
         ThemeManager.shared
@@ -232,6 +233,7 @@ public struct VisualLayoutSimulatorView: View {
         let rightPageCount = max(rightPages.count, 1)
         let curLeftPage = min(max(store.currentRailPage(for: .left), 0), leftPageCount - 1)
         let curRightPage = min(max(store.currentRailPage(for: .right), 0), rightPageCount - 1)
+        let activeRailStrategy = store.overflowStrategy(for: selectedOverflowRail)
 
         return settingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
             VStack(alignment: .leading, spacing: 12) {
@@ -239,15 +241,28 @@ public struct VisualLayoutSimulatorView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
+                // Independent Left / Right Rail Selector Tabs
+                HStack(spacing: 10) {
+                    overflowRailSelectorTab(
+                        edge: .left,
+                        title: "Left Rail",
+                        icon: "arrow.left.to.line",
+                        strategy: store.leftRailOverflowStrategy
+                    )
+                    overflowRailSelectorTab(
+                        edge: .right,
+                        title: "Right Rail",
+                        icon: "arrow.right.to.line",
+                        strategy: store.rightRailOverflowStrategy
+                    )
+                }
+
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(RailOverflowStrategy.allCases) { strategy in
-                        let isSelected = (store.railOverflowStrategy == strategy)
+                        let isSelected = (activeRailStrategy == strategy)
                         Button {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                store.railOverflowStrategy = strategy
-                                store.invalidateLayoutCache()
-                                store.savePersistentState()
-                                store.onWindowsRebuildNeeded?()
+                                store.setOverflowStrategy(strategy, for: selectedOverflowRail)
                                 store.triggerControlHaptic(.alignment)
                             }
                         } label: {
@@ -288,53 +303,57 @@ public struct VisualLayoutSimulatorView: View {
                     }
                 }
 
-                if store.railOverflowStrategy == .pagedSpaces {
+                if store.leftRailOverflowStrategy == .pagedSpaces || store.rightRailOverflowStrategy == .pagedSpaces {
                     HStack(spacing: 12) {
-                        Button {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                store.cycleRailPage(for: .left, delta: 1)
-                                store.triggerControlHaptic(.alignment)
+                        if store.leftRailOverflowStrategy == .pagedSpaces {
+                            Button {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    store.cycleRailPage(for: .left, delta: 1)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.left.to.line")
+                                        .font(.caption2)
+                                    Text("\("overflow.paged.leftRail".localized): \(curLeftPage + 1)/\(leftPageCount)")
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    Image(systemName: "chevron.right.circle.fill")
+                                        .font(.caption2)
+                                }
+                                .foregroundColor(palette.primaryAccent)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(palette.primaryAccent.opacity(0.12))
+                                .cornerRadius(6)
                             }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.left.to.line")
-                                    .font(.caption2)
-                                Text("\("overflow.paged.leftRail".localized): \(curLeftPage + 1)/\(leftPageCount)")
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                Image(systemName: "chevron.right.circle.fill")
-                                    .font(.caption2)
-                            }
-                            .foregroundColor(palette.primaryAccent)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(palette.primaryAccent.opacity(0.12))
-                            .cornerRadius(6)
+                            .buttonStyle(.tactile)
                         }
-                        .buttonStyle(.tactile)
 
                         Spacer()
 
-                        Button {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                store.cycleRailPage(for: .right, delta: 1)
-                                store.triggerControlHaptic(.alignment)
+                        if store.rightRailOverflowStrategy == .pagedSpaces {
+                            Button {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    store.cycleRailPage(for: .right, delta: 1)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.right.to.line")
+                                        .font(.caption2)
+                                    Text("\("overflow.paged.rightRail".localized): \(curRightPage + 1)/\(rightPageCount)")
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    Image(systemName: "chevron.right.circle.fill")
+                                        .font(.caption2)
+                                }
+                                .foregroundColor(palette.primaryAccent)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(palette.primaryAccent.opacity(0.12))
+                                .cornerRadius(6)
                             }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.right.to.line")
-                                    .font(.caption2)
-                                Text("\("overflow.paged.rightRail".localized): \(curRightPage + 1)/\(rightPageCount)")
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                Image(systemName: "chevron.right.circle.fill")
-                                    .font(.caption2)
-                            }
-                            .foregroundColor(palette.primaryAccent)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(palette.primaryAccent.opacity(0.12))
-                            .cornerRadius(6)
+                            .buttonStyle(.tactile)
                         }
-                        .buttonStyle(.tactile)
                     }
                     .padding(.top, 2)
                 }
@@ -342,10 +361,61 @@ public struct VisualLayoutSimulatorView: View {
         }
     }
 
+    @ViewBuilder
+    private func overflowRailSelectorTab(
+        edge: MountEdge,
+        title: String,
+        icon: String,
+        strategy: RailOverflowStrategy
+    ) -> some View {
+        let palette = theme.palette
+        let isSelected = (selectedOverflowRail == edge)
+        Button {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
+                selectedOverflowRail = edge
+                store.triggerControlHaptic(.alignment)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+
+                Text(title)
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                    .foregroundColor(isSelected ? palette.primaryAccent : (palette.style == .native ? Color.primary : .white))
+
+                Spacer(minLength: 4)
+
+                Text(strategy.localizedDisplayName)
+                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? palette.primaryAccent.opacity(0.16) : Color.primary.opacity(0.06))
+                    )
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor).opacity(0.35))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.25), lineWidth: isSelected ? 1.5 : 1.0)
+            )
+        }
+        .buttonStyle(.tactile)
+    }
+
     // MARK: - Rail Module Assembly Card
     private var moduleAssemblyCard: some View {
         let palette = theme.palette
-        let mountedPods = store.pods.filter { $0.isEnabled }.sorted { ($0.edge == $1.edge) ? ($0.range.start < $1.range.start) : ($0.edge == .left) }
+        let leftMountedPods = store.pods.filter { $0.isEnabled && $0.edge == .left }.sorted { $0.range.start < $1.range.start }
+        let rightMountedPods = store.pods.filter { $0.isEnabled && $0.edge == .right }.sorted { $0.range.start < $1.range.start }
+        let mountedCount = leftMountedPods.count + rightMountedPods.count
         let unmountedPods = store.pods.filter { !$0.isEnabled }
 
         return settingsCard(title: "layout.moduleAssembly.title".localized, icon: "square.grid.2x2.fill") {
@@ -355,105 +425,25 @@ public struct VisualLayoutSimulatorView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text("\(mountedPods.count) of \(store.pods.count) mounted")
+                    Text("\(mountedCount) of \(store.pods.count) mounted")
                         .font(.system(.caption, design: .monospaced).weight(.semibold))
                         .foregroundColor(palette.primaryAccent)
                 }
 
-                // 1. Mounted Pods Grid
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    ForEach(mountedPods) { pod in
-                        HStack(spacing: 6) {
-                            Image(systemName: pod.systemIcon)
-                                .font(.caption)
-                                .foregroundColor(palette.podColor(for: pod.id, store: store))
-
-                            Text(pod.name)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                .lineLimit(1)
-
-                            Spacer()
-
-                            // Reorder: Move Up
-                            if store.canMovePod(id: pod.id, direction: .up) {
-                                Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                        store.movePodInOrder(id: pod.id, direction: .up)
-                                    }
-                                } label: {
-                                    Image(systemName: "arrow.up")
-                                        .font(.system(size: 8, weight: .bold))
-                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                        .frame(width: 17, height: 17)
-                                        .background(Color.primary.opacity(0.08))
-                                        .cornerRadius(4)
-                                }
-                                .buttonStyle(.tactile)
-                                .help("Move \(pod.name) up")
-                            }
-
-                            // Reorder: Move Down
-                            if store.canMovePod(id: pod.id, direction: .down) {
-                                Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                        store.movePodInOrder(id: pod.id, direction: .down)
-                                    }
-                                } label: {
-                                    Image(systemName: "arrow.down")
-                                        .font(.system(size: 8, weight: .bold))
-                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                        .frame(width: 17, height: 17)
-                                        .background(Color.primary.opacity(0.08))
-                                        .cornerRadius(4)
-                                }
-                                .buttonStyle(.tactile)
-                                .help("Move \(pod.name) down")
-                            }
-
-                            // Transfer Edge
-                            Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                    store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
-                                }
-                            } label: {
-                                HStack(spacing: 2) {
-                                    Image(systemName: pod.edge == .left ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
-                                        .font(.system(size: 7.5))
-                                    Text(pod.edge == .left ? "L" : "R")
-                                        .font(.system(size: 8, weight: .bold))
-                                }
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2.5)
-                                .background(palette.primaryAccent.opacity(0.15))
-                                .foregroundColor(palette.primaryAccent)
-                                .cornerRadius(4)
-                            }
-                            .buttonStyle(.tactile)
-                            .help("Move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
-
-                            // Unmount button
-                            Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                    store.togglePodEnabled(id: pod.id)
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(Color.red.opacity(0.85))
-                            }
-                            .buttonStyle(.tactile)
-                            .help("Unmount \(pod.name) from rail")
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color(nsColor: .controlBackgroundColor))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(palette.primaryAccent.opacity(0.25), lineWidth: 1)
-                        )
-                    }
+                // 1. Mounted Pods Split by Left Rail & Right Rail
+                HStack(alignment: .top, spacing: 12) {
+                    railAssemblyColumn(
+                        edge: .left,
+                        title: "Left Rail",
+                        pods: leftMountedPods,
+                        strategy: store.leftRailOverflowStrategy
+                    )
+                    railAssemblyColumn(
+                        edge: .right,
+                        title: "Right Rail",
+                        pods: rightMountedPods,
+                        strategy: store.rightRailOverflowStrategy
+                    )
                 }
 
                 // 2. Unmounted Pods Tray (if any exist)
@@ -505,6 +495,209 @@ public struct VisualLayoutSimulatorView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func railAssemblyColumn(
+        edge: MountEdge,
+        title: String,
+        pods: [SlotPod],
+        strategy: RailOverflowStrategy
+    ) -> some View {
+        let palette = theme.palette
+        let maxExistingPage = max(pods.map(\.pageIndex).max() ?? 0, 1)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: edge == .left ? "arrow.left.to.line" : "arrow.right.to.line")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(palette.primaryAccent)
+                Text("\(title) · \(strategy.localizedDisplayName)")
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(pods.count)")
+                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 2)
+
+            ForEach(pods) { pod in
+                let isGrouped = (strategy == .decomposedMajorPod && pod.majorGroupId != nil)
+                let canMergeNext = (strategy == .decomposedMajorPod && store.canMergePodWithNext(id: pod.id))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        if isGrouped {
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(Color.orange)
+                                .frame(width: 3, height: 14)
+                        }
+
+                        Image(systemName: pod.systemIcon)
+                            .font(.caption)
+                            .foregroundColor(palette.podColor(for: pod.id, store: store))
+
+                        Text(pod.name)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 2)
+
+                        // Paged Spaces: Per-Pod Page Assignment Menu
+                        if strategy == .pagedSpaces {
+                            Menu("P\(pod.pageIndex + 1)") {
+                                ForEach(0...max(maxExistingPage, 2), id: \.self) { pageIdx in
+                                    Button("Page \(pageIdx + 1)\(pod.pageIndex == pageIdx ? " ✓" : "")") {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            store.setPodPage(id: pod.id, pageIndex: pageIdx)
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button("+ New Page (P\(maxExistingPage + 2))") {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.setPodPage(id: pod.id, pageIndex: maxExistingPage + 1)
+                                    }
+                                }
+                            }
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .frame(width: 44)
+                            .help("Assign \(pod.name) to a specific rail page")
+                        }
+
+                        // Shared Major Pod: Split button when grouped
+                        if isGrouped {
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.splitPodFromMajorGroup(id: pod.id)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "scissors")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text("Split")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2.5)
+                                .background(Color.orange.opacity(0.18))
+                                .foregroundColor(.orange)
+                                .cornerRadius(4)
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Split \(pod.name) out of its Shared Major Pod")
+                        }
+
+                        // Shared Major Pod: Merge with next pod below
+                        if canMergeNext {
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.mergePodWithNext(id: pod.id)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "link.badge.plus")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text("Merge")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2.5)
+                                .background(palette.primaryAccent.opacity(0.16))
+                                .foregroundColor(palette.primaryAccent)
+                                .cornerRadius(4)
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Merge \(pod.name) with the module below into a Shared Major Pod")
+                        }
+
+                        // Reorder: Move Up
+                        if store.canMovePod(id: pod.id, direction: .up) {
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.movePodInOrder(id: pod.id, direction: .up)
+                                }
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .frame(width: 17, height: 17)
+                                    .background(Color.primary.opacity(0.08))
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Move \(pod.name) up")
+                        }
+
+                        // Reorder: Move Down
+                        if store.canMovePod(id: pod.id, direction: .down) {
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.movePodInOrder(id: pod.id, direction: .down)
+                                }
+                            } label: {
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .frame(width: 17, height: 17)
+                                    .background(Color.primary.opacity(0.08))
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.tactile)
+                            .help("Move \(pod.name) down")
+                        }
+
+                        // Transfer Edge
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
+                            }
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: pod.edge == .left ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
+                                    .font(.system(size: 7.5))
+                                Text(pod.edge == .left ? "L" : "R")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2.5)
+                            .background(palette.primaryAccent.opacity(0.15))
+                            .foregroundColor(palette.primaryAccent)
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.tactile)
+                        .help("Move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
+
+                        // Unmount button
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                store.togglePodEnabled(id: pod.id)
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(Color.red.opacity(0.85))
+                        }
+                        .buttonStyle(.tactile)
+                        .help("Unmount \(pod.name) from rail")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isGrouped ? Color.orange.opacity(0.55) : palette.primaryAccent.opacity(0.25), lineWidth: isGrouped ? 1.3 : 1)
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder

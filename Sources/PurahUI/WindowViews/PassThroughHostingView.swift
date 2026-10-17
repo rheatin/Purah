@@ -11,6 +11,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     // High-performance geometry snapshot cache to eliminate redundant layout solvers on hitTest
     private struct GeometrySnapshotCache {
         var boundsSize: CGSize = .zero
+        var hoveredPodId: String? = nil
         var activeDrawerItemId: String? = nil
         var activeDrawerPodId: String? = nil
         var pinnedItemIds: Set<String> = []
@@ -61,14 +62,16 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
     private func updateCacheIfNeeded() {
         let now = CACurrentMediaTime()
+        let hoveredId = store.hoveredPodId
         let activeItemId = store.activeDrawerItemId
         let activePodId = store.activeDrawerPodId
         let pinned = store.pinnedDrawerItemIds
-        let strategy = store.railOverflowStrategy
+        let strategy = store.overflowStrategy(for: edge)
         let page = store.currentRailPage(for: edge)
 
         // If bounds and active/pinned state are unchanged, throttle layout re-evaluation to 35ms (approx 30Hz)
         if cache.boundsSize == bounds.size,
+           cache.hoveredPodId == hoveredId,
            cache.activeDrawerItemId == activeItemId,
            cache.activeDrawerPodId == activePodId,
            cache.pinnedItemIds == pinned,
@@ -85,6 +88,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
         cache = GeometrySnapshotCache(
             boundsSize: bounds.size,
+            hoveredPodId: hoveredId,
             activeDrawerItemId: activeItemId,
             activeDrawerPodId: activePodId,
             pinnedItemIds: pinned,
@@ -111,7 +115,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - max(barW, 44.0)) : (winPoint.x <= bounds.minX + max(barW, 44.0))
 
-        if store.railOverflowStrategy == .pagedSpaces && isOnRail {
+        if store.overflowStrategy(for: edge) == .pagedSpaces && isOnRail {
             let pages = store.paginatedPods(for: edge, totalHeight: Double(bounds.height))
             if pages.count > 1 {
                 let now = CACurrentMediaTime()
@@ -214,7 +218,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let totalH = Double(bounds.height)
         let currentWindowY = totalH - Double(point.y)
 
-        if store.railOverflowStrategy == .pagedSpaces,
+        let edgeStrategy = store.overflowStrategy(for: edge)
+        if edgeStrategy == .pagedSpaces,
            currentWindowY <= 40.0,
            store.paginatedPods(for: edge, totalHeight: totalH).count > 1 {
             let pillHitW: CGFloat = max(barW, 56.0)
@@ -231,7 +236,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             let isOverPod = cache.cachedLayoutItems.contains(where: { item in
                 let topY = item.startY
                 let actualSpan: Double
-                let isSharedMajorSubBar = (store.railOverflowStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+                let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
                 if !isSharedMajorSubBar,
                    store.isPodDecomposed(item.pod.id),
                    let provider = store.capabilityProvider(for: item.pod.id) {

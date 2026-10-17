@@ -93,31 +93,29 @@ public struct ScreenSimulationCanvas: View {
 
                         let realScreenH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
                         let leftScale = workableHeight / realScreenH
+                        let leftStrategy = store.overflowStrategy(for: .left)
                         let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: realScreenH)
-                        let leftPages = (store.railOverflowStrategy == .pagedSpaces)
+                        let leftPages = (leftStrategy == .pagedSpaces)
                             ? store.paginatedPods(for: .left, totalHeight: realScreenH)
                             : []
+                        let leftTopExtraOffset: CGFloat = (leftStrategy == .pagedSpaces && leftPages.count <= 1) ? 14.0 : 0.0
 
-                        if store.railOverflowStrategy == .pagedSpaces && leftPages.count > 1 {
-                            let curPage = min(max(store.currentRailPage(for: .left), 0), leftPages.count - 1)
-                            RailPageIndicatorView(
-                                edge: .left,
-                                currentPage: curPage,
-                                pageCount: leftPages.count,
-                                accentColor: palette.primaryAccent
-                            ) {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                    store.cycleRailPage(for: .left, delta: 1)
-                                    store.triggerControlHaptic(.alignment)
-                                }
+                        if leftStrategy == .pagedSpaces && !leftLayout.isEmpty {
+                            simulatorPageBar(edge: .left, pages: leftPages)
+                                .offset(x: 4, y: 2)
+                                .zIndex(50)
+                        }
+
+                        if leftStrategy == .decomposedMajorPod {
+                            ForEach(majorGroupClusters(from: leftLayout), id: \.groupId) { cluster in
+                                simulatorMajorGroupBracket(cluster: cluster, scale: leftScale, isLeft: true)
+                                    .offset(x: 2, y: CGFloat(cluster.startY * leftScale) - 2)
+                                    .zIndex(0)
                             }
-                            .scaleEffect(0.85, anchor: .topLeading)
-                            .offset(x: 4, y: 2)
-                            .zIndex(50)
                         }
 
                         ForEach(Array(leftLayout.enumerated()), id: \.element.id) { idx, item in
-                            let topY = CGFloat(item.startY * leftScale)
+                            let topY = CGFloat(item.startY * leftScale) + leftTopExtraOffset
                             let podSpan = CGFloat(item.spanH * leftScale)
                             let neighborAboveH = (idx > 0) ? Double(leftLayout[idx - 1].spanH * leftScale) : nil
                             let neighborBelowH = (idx < leftLayout.count - 1) ? Double(leftLayout[idx + 1].spanH * leftScale) : nil
@@ -173,31 +171,29 @@ public struct ScreenSimulationCanvas: View {
 
                         let realScreenRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
                         let rightScale = workableHeight / realScreenRightH
+                        let rightStrategy = store.overflowStrategy(for: .right)
                         let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: realScreenRightH)
-                        let rightPages = (store.railOverflowStrategy == .pagedSpaces)
+                        let rightPages = (rightStrategy == .pagedSpaces)
                             ? store.paginatedPods(for: .right, totalHeight: realScreenRightH)
                             : []
+                        let rightTopExtraOffset: CGFloat = (rightStrategy == .pagedSpaces && rightPages.count <= 1) ? 14.0 : 0.0
 
-                        if store.railOverflowStrategy == .pagedSpaces && rightPages.count > 1 {
-                            let curPage = min(max(store.currentRailPage(for: .right), 0), rightPages.count - 1)
-                            RailPageIndicatorView(
-                                edge: .right,
-                                currentPage: curPage,
-                                pageCount: rightPages.count,
-                                accentColor: palette.primaryAccent
-                            ) {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                                    store.cycleRailPage(for: .right, delta: 1)
-                                    store.triggerControlHaptic(.alignment)
-                                }
+                        if rightStrategy == .pagedSpaces && !rightLayout.isEmpty {
+                            simulatorPageBar(edge: .right, pages: rightPages)
+                                .offset(x: -4, y: 2)
+                                .zIndex(50)
+                        }
+
+                        if rightStrategy == .decomposedMajorPod {
+                            ForEach(majorGroupClusters(from: rightLayout), id: \.groupId) { cluster in
+                                simulatorMajorGroupBracket(cluster: cluster, scale: rightScale, isLeft: false)
+                                    .offset(x: -2, y: CGFloat(cluster.startY * rightScale) - 2)
+                                    .zIndex(0)
                             }
-                            .scaleEffect(0.85, anchor: .topTrailing)
-                            .offset(x: -4, y: 2)
-                            .zIndex(50)
                         }
 
                         ForEach(Array(rightLayout.enumerated()), id: \.element.id) { idx, item in
-                            let topY = CGFloat(item.startY * rightScale)
+                            let topY = CGFloat(item.startY * rightScale) + rightTopExtraOffset
                             let podSpan = CGFloat(item.spanH * rightScale)
                             let neighborAboveH = (idx > 0) ? Double(rightLayout[idx - 1].spanH * rightScale) : nil
                             let neighborBelowH = (idx < rightLayout.count - 1) ? Double(rightLayout[idx + 1].spanH * rightScale) : nil
@@ -349,6 +345,122 @@ public struct ScreenSimulationCanvas: View {
             Image(systemName: symbol)
                 .font(.system(size: 7, weight: .semibold))
                 .foregroundColor(.white)
+        }
+    }
+
+    private struct SimulatorMajorCluster {
+        let groupId: String
+        let startY: Double
+        let spanH: Double
+        let count: Int
+    }
+
+    private func majorGroupClusters(from items: [ResolvedPodLayoutItem]) -> [SimulatorMajorCluster] {
+        var clusters: [SimulatorMajorCluster] = []
+        var seen: Set<String> = []
+        for item in items {
+            guard let gid = item.majorGroupId, !seen.contains(gid) else { continue }
+            let members = items.filter { $0.majorGroupId == gid }
+            guard members.count > 1 else { continue }
+            seen.insert(gid)
+            clusters.append(
+                SimulatorMajorCluster(
+                    groupId: gid,
+                    startY: item.drawerStartY,
+                    spanH: item.drawerSpanH,
+                    count: members.count
+                )
+            )
+        }
+        return clusters
+    }
+
+    @ViewBuilder
+    private func simulatorMajorGroupBracket(cluster: SimulatorMajorCluster, scale: Double, isLeft: Bool) -> some View {
+        let bracketHeight = max(CGFloat(cluster.spanH * scale) + 4, 44)
+        RoundedRectangle(cornerRadius: 9)
+            .strokeBorder(
+                palette.primaryAccent.opacity(0.80),
+                style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(palette.primaryAccent.opacity(0.08))
+            )
+            .overlay(
+                Text("MAJOR ×\(cluster.count)")
+                    .font(.system(size: 6.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(palette.primaryAccent)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.black.opacity(0.65))
+                    .cornerRadius(3)
+                    .offset(x: isLeft ? 6 : -6, y: -6),
+                alignment: isLeft ? .topLeading : .topTrailing
+            )
+            .frame(width: 179, height: bracketHeight)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func simulatorPageBar(edge: MountEdge, pages: [[SlotPod]]) -> some View {
+        let pageCount = max(pages.count, 1)
+        let curPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
+        let edgePods = store.pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+
+        HStack(spacing: 4) {
+            ForEach(0..<pageCount, id: \.self) { pIdx in
+                let isSelected = (pIdx == curPage)
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.setRailPage(pIdx, for: edge)
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    Text("P\(pIdx + 1)")
+                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(isSelected ? (palette.style == .native ? .white : .black) : palette.primaryAccent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule()
+                                .fill(isSelected ? palette.primaryAccent : Color.black.opacity(0.55))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(palette.primaryAccent.opacity(0.6), lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.tactile)
+                .help("Switch \(edge == .left ? "Left" : "Right") Rail to Page \(pIdx + 1)")
+            }
+
+            if edgePods.count > 1 {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        if let lastPod = edgePods.last {
+                            store.setPodPage(id: lastPod.id, pageIndex: pageCount)
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(palette.primaryAccent)
+                        .frame(width: 16, height: 15)
+                        .background(
+                            Capsule()
+                                .fill(Color.black.opacity(0.55))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(palette.primaryAccent.opacity(0.6), lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.tactile)
+                .help("Create new page and move last module on this rail to Page \(pageCount + 1)")
+            }
         }
     }
 }

@@ -4,7 +4,7 @@ import Foundation
 import CoreGraphics
 @testable import PurahCore
 
-@Suite("High-Density Rail Overflow Modes Tests")
+@Suite("High-Density Rail Overflow Modes Tests", .serialized)
 @MainActor
 struct HighDensityOverflowTests {
 
@@ -156,5 +156,130 @@ struct HighDensityOverflowTests {
             let minH = Double(store.minimumDrawerHeight(for: item.pod.id))
             #expect(item.spanH >= minH - 0.5, "Every pod on Page 2 must retain full uncompressed height (>= minimumDrawerHeight)")
         }
+    }
+
+    @Test("Cursor-Anchored Accordion Expansion: expanded pod never shrinks below idle/configured span and keeps idleCenterY inside expanded range")
+    func testCursorAnchoredAccordionExpansion() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        let totalHeight = 900.0
+
+        // Give middle pod #4 (index 4) a custom larger range length to verify it never shrinks
+        let sortedLeftIds = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+            .map(\.id)
+        let middlePodId = sortedLeftIds[4]
+        if let rawIdx = store.pods.firstIndex(where: { $0.id == middlePodId }) {
+            store.pods[rawIdx].range.length = 0.25
+        }
+        store.invalidateLayoutCache()
+
+        let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        let idleItem = try #require(idleLayout.first(where: { $0.pod.id == middlePodId }))
+        let idleSpanH = idleItem.spanH
+        let idleCenterY = idleItem.startY + (idleItem.spanH * 0.5)
+        let minDrawerH = Double(store.minimumDrawerHeight(for: middlePodId))
+
+        // Hover / activate middle pod #4
+        store.activateDrawer(podId: middlePodId)
+        let expandedLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        let expandedItem = try #require(expandedLayout.first(where: { $0.pod.id == middlePodId }))
+
+        #expect(expandedItem.spanH >= max(idleSpanH, minDrawerH), "Expanded spanH must never shrink below max(idleSpanH, minimumDrawerHeight)")
+        #expect(expandedItem.startY <= idleCenterY && (expandedItem.startY + expandedItem.spanH) >= idleCenterY, "Expanded [startY, startY + spanH] must contain idleCenterY so the bar never jumps away from the cursor")
+
+        // Verify all 9 pods remain strictly non-overlapping
+        for i in 1..<expandedLayout.count {
+            let prev = expandedLayout[i - 1]
+            let curr = expandedLayout[i]
+            #expect(curr.startY >= (prev.startY + prev.spanH - 0.01))
+        }
+    }
+
+    @Test("Per-Rail Independent Strategy: left and right rails operate with independent overflow strategies")
+    func testPerRailIndependentStrategy() throws {
+        let suiteName = "test_per_rail_independent_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // Place 5 pods on left rail and 4 pods on right rail
+        for idx in store.pods.indices {
+            store.pods[idx].edge = (idx < 5) ? .left : .right
+            store.pods[idx].range.start = Double(idx % 5) * 0.16 + 0.04
+            store.pods[idx].isEnabled = true
+        }
+
+        store.setOverflowStrategy(.pagedSpaces, for: .left)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+
+        #expect(store.overflowStrategy(for: .left) == .pagedSpaces)
+        #expect(store.overflowStrategy(for: .right) == .decomposedMajorPod)
+        #expect(store.leftRailOverflowStrategy == .pagedSpaces)
+        #expect(store.rightRailOverflowStrategy == .decomposedMajorPod)
+
+        let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
+        #expect(rightLayout.contains(where: { $0.majorGroupId != nil }), "Right rail in .decomposedMajorPod mode must group pods into shared Major Pods")
+
+        let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        #expect(leftLayout.allSatisfy { $0.majorGroupId == nil }, "Left rail in .pagedSpaces mode must not apply Major Pod grouping")
+    }
+
+    @Test("Custom Major Pod Merge & Split: mergePodWithNext pairs pods into shared Major Pod and splitPodFromMajorGroup restores standalone pods")
+    func testCustomMajorPodMergeAndSplit() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .decomposedMajorPod)
+        // Clear any default seeded groups first so all start standalone
+        for i in store.pods.indices {
+            store.pods[i].majorGroupId = nil
+        }
+        store.invalidateLayoutCache()
+
+        let sortedPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let firstId = sortedPods[0].id
+        let secondId = sortedPods[1].id
+
+        #expect(store.canMergePodWithNext(id: firstId) == true)
+        store.mergePodWithNext(id: firstId)
+
+        let p1AfterMerge = try #require(store.pods.first(where: { $0.id == firstId }))
+        let p2AfterMerge = try #require(store.pods.first(where: { $0.id == secondId }))
+        #expect(p1AfterMerge.majorGroupId != nil)
+        #expect(p1AfterMerge.majorGroupId == p2AfterMerge.majorGroupId)
+
+        let mergedLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        let item1 = try #require(mergedLayout.first(where: { $0.pod.id == firstId }))
+        let item2 = try #require(mergedLayout.first(where: { $0.pod.id == secondId }))
+        #expect(abs(item1.drawerStartY - item2.drawerStartY) < 0.01)
+        #expect(abs(item1.drawerSpanH - item2.drawerSpanH) < 0.01)
+
+        // Split first pod from the Major Group -> both should return to standalone (majorGroupId == nil)
+        store.splitPodFromMajorGroup(id: firstId)
+        let p1AfterSplit = try #require(store.pods.first(where: { $0.id == firstId }))
+        let p2AfterSplit = try #require(store.pods.first(where: { $0.id == secondId }))
+        #expect(p1AfterSplit.majorGroupId == nil)
+        #expect(p2AfterSplit.majorGroupId == nil)
+    }
+
+    @Test("Explicit Per-Pod Page Assignment: setPodPage moves a pod to Page 2 and paginatedPods reflects custom page assignment")
+    func testExplicitPerPodPageAssignment() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        for i in store.pods.indices {
+            store.pods[i].pageIndex = 0
+        }
+        store.invalidateLayoutCache()
+
+        let sortedPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let targetPodId = sortedPods[0].id
+
+        store.setPodPage(id: targetPodId, pageIndex: 1)
+
+        let updatedPod = try #require(store.pods.first(where: { $0.id == targetPodId }))
+        #expect(updatedPod.pageIndex == 1)
+        #expect(store.currentRailPage(for: .left) == 1)
+
+        let pages = store.paginatedPods(for: .left, totalHeight: 900.0)
+        #expect(pages.count == 2)
+        #expect(pages[1].map(\.id) == [targetPodId])
+        #expect(!pages[0].map(\.id).contains(targetPodId))
     }
 }

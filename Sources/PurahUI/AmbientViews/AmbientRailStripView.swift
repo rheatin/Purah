@@ -23,8 +23,9 @@ public struct AmbientRailStripView: View {
     public var body: some View {
         GeometryReader { geo in
             let totalHeight = geo.size.height
+            let edgeStrategy = store.overflowStrategy(for: edge)
             let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(totalHeight))
-            let pages = (store.railOverflowStrategy == .pagedSpaces)
+            let pages = (edgeStrategy == .pagedSpaces)
                 ? store.paginatedPods(for: edge, totalHeight: Double(totalHeight))
                 : []
             let pageCount = pages.count
@@ -32,7 +33,7 @@ public struct AmbientRailStripView: View {
 
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
                 // Page Pill Indicator for Paged Spaces when multiple pages exist
-                if store.railOverflowStrategy == .pagedSpaces && pageCount > 1 {
+                if edgeStrategy == .pagedSpaces && pageCount > 1 {
                     RailPageIndicatorView(
                         edge: edge,
                         currentPage: currentPage,
@@ -49,7 +50,7 @@ public struct AmbientRailStripView: View {
                 }
 
                 // Shared Major Pod group brackets when in Decomposed Major Pod mode
-                if store.railOverflowStrategy == .decomposedMajorPod {
+                if edgeStrategy == .decomposedMajorPod {
                     ForEach(majorGroupClusters(from: layoutItems), id: \.groupId) { cluster in
                         RoundedRectangle(cornerRadius: 3)
                             .strokeBorder(palette.primaryAccent.opacity(0.45), lineWidth: 1.5)
@@ -71,7 +72,7 @@ public struct AmbientRailStripView: View {
                     let startY = CGFloat(item.startY)
                     let drawerStartY = CGFloat(item.drawerStartY)
                     let drawerSpanH = CGFloat(item.drawerSpanH)
-                    let isSharedMajorSubBar = (store.railOverflowStrategy == .decomposedMajorPod && abs(drawerSpanH - spanH) > 1.0)
+                    let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(drawerSpanH - spanH) > 1.0)
                     let shouldShowDrawer = store.shouldRenderDrawer(for: item, in: layoutItems)
                     let isThisPodActive = shouldShowDrawer || (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id) || store.capabilityProvider(for: pod.id)?.hasPinnedChild(store: store) == true)
 

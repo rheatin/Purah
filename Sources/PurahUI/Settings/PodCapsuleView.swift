@@ -83,7 +83,8 @@ public struct PodCapsuleView: View {
     }
 
     public var body: some View {
-        let capsuleHeight = max(customHeight ?? (pod.range.length * canvasHeight), 36.0)
+        let capsuleHeight = customHeight != nil ? max(customHeight!, 22.0) : max(pod.range.length * canvasHeight, 36.0)
+        let isCompactBar = capsuleHeight < 32.0
 
         VStack(spacing: 0) {
             // 1. Move Header (Drag to move pod vertically)
@@ -138,8 +139,8 @@ public struct PodCapsuleView: View {
                 .help("Disable module (unmount from rail)")
             }
             .padding(.horizontal, 8)
-            .padding(.top, 6)
-            .padding(.bottom, 4)
+            .padding(.top, isCompactBar ? 3 : 6)
+            .padding(.bottom, isCompactBar ? 2 : 4)
             .contentShape(Rectangle())
             // Header-driven move & reorder gesture
             .gesture(
@@ -183,53 +184,55 @@ public struct PodCapsuleView: View {
                     }
             )
 
-            Spacer()
+            Spacer(minLength: 0)
 
             // 2. High-Affinity Bottom Resize Handle (Real-time 60FPS spring push with rubberband)
-            ZStack {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(height: 20)
+            if !isCompactBar {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(height: 16)
 
-                Capsule()
-                    .fill(isResizeHovered ? podColor : podColor.opacity(0.75))
-                    .frame(width: isResizeHovered ? 36 : 28, height: isResizeHovered ? 4.5 : 3.5)
-                    .modifier(OptionalGlow(color: podColor, enabled: isResizeHovered && palette.useGlow))
-                    .animation(.spring(response: 0.16, dampingFraction: 0.70), value: isResizeHovered)
-            }
-            .contentShape(Rectangle())
-            .onHover { isHovered in
-                isResizeHovered = isHovered
-            }
-            // Real-time anchor-based resize gesture with Apple rubberband damping
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if resizeInitialLength == nil {
-                            resizeInitialLength = pod.range.length
-                        }
-                        let deltaRatio = Double(value.translation.height / canvasHeight)
-                        let rawLength = (resizeInitialLength ?? pod.range.length) + deltaRatio
-                        let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
-                        let legalBounds: ClosedRange<Double> = pod.minLength...maxLegalLength
-                        let dampedLength = RubberBandingEngine.clampWithRubberband(
-                            value: rawLength,
-                            bounds: legalBounds,
-                            dimension: 0.25,
-                            constant: 0.55
-                        )
-                        onResize(dampedLength)
-                    }
-                    .onEnded { _ in
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    Capsule()
+                        .fill(isResizeHovered ? podColor : podColor.opacity(0.75))
+                        .frame(width: isResizeHovered ? 36 : 28, height: isResizeHovered ? 4.5 : 3.5)
+                        .modifier(OptionalGlow(color: podColor, enabled: isResizeHovered && palette.useGlow))
+                        .animation(.spring(response: 0.16, dampingFraction: 0.70), value: isResizeHovered)
+                }
+                .contentShape(Rectangle())
+                .onHover { isHovered in
+                    isResizeHovered = isHovered
+                }
+                // Real-time anchor-based resize gesture with Apple rubberband damping
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { value in
+                            if resizeInitialLength == nil {
+                                resizeInitialLength = pod.range.length
+                            }
+                            let deltaRatio = Double(value.translation.height / canvasHeight)
+                            let rawLength = (resizeInitialLength ?? pod.range.length) + deltaRatio
                             let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
-                            let finalLength = min(max(pod.range.length, pod.minLength), maxLegalLength)
-                            onResize(finalLength)
+                            let legalBounds: ClosedRange<Double> = pod.minLength...maxLegalLength
+                            let dampedLength = RubberBandingEngine.clampWithRubberband(
+                                value: rawLength,
+                                bounds: legalBounds,
+                                dimension: 0.25,
+                                constant: 0.55
+                            )
+                            onResize(dampedLength)
                         }
-                        resizeInitialLength = nil
-                    }
-            )
-            .help("Drag to resize rail height")
+                        .onEnded { _ in
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                let maxLegalLength = max(0.98 - pod.range.start, pod.minLength)
+                                let finalLength = min(max(pod.range.length, pod.minLength), maxLegalLength)
+                                onResize(finalLength)
+                            }
+                            resizeInitialLength = nil
+                        }
+                )
+                .help("Drag to resize rail height")
+            }
         }
         .frame(width: 175, height: capsuleHeight, alignment: .top)
         .background(

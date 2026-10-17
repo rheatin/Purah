@@ -271,7 +271,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
-        let isSharedMajorSubBar = (store.railOverflowStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+        let isSharedMajorSubBar = (store.overflowStrategy(for: item.pod.edge) == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
         if !isSharedMajorSubBar,
            store.isPodDecomposed(item.pod.id),
            let provider = store.capabilityProvider(for: item.pod.id) {
@@ -456,11 +456,15 @@ public final class EdgeMouseMonitor {
 
         guard let matched = matchedItem else {
             cancelInitialDwell()
-            store.hoveredPodId = nil
+            if isFromDockedState {
+                store.hoveredPodId = nil
+            }
             return
         }
         let candidate = matched.pod
-        store.hoveredPodId = candidate.id
+        if !isFromDockedState {
+            store.hoveredPodId = candidate.id
+        }
 
         // Hover dwell hysteresis: when moving between pods, require deliberate intent
         if candidate.id != lastCandidatePodId {
@@ -610,7 +614,7 @@ public final class EdgeMouseMonitor {
         coordinator?.setInteractive(true, for: edge)
 
         let wasDocked = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
-        let isSharedMajorSubBar = (store.railOverflowStrategy == .decomposedMajorPod && abs(matched.drawerSpanH - matched.spanH) > 1.0)
+        let isSharedMajorSubBar = (store.overflowStrategy(for: edge) == .decomposedMajorPod && abs(matched.drawerSpanH - matched.spanH) > 1.0)
 
         if !isSharedMajorSubBar,
            let provider = store.capabilityProvider(for: candidate.id),
