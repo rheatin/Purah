@@ -323,4 +323,56 @@ struct HighDensityOverflowTests {
         #expect(pages[1].map(\.id) == [targetPodId])
         #expect(!pages[0].map(\.id).contains(targetPodId))
     }
+
+    @Test("Dynamic Accordion Hardware Vitals with 4 metrics exposes all 4 sub-items when idle and expands to preferredDrawerHeight when hovered")
+    func testDynamicAccordionVitalsFourMetricsIdleAndExpanded() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        store._isVitalsDecomposed = true
+        store._vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
+        store.invalidateLayoutCache()
+
+        let totalHeight = 900.0
+        let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        let vitalsIdleItem = try #require(idleLayout.first(where: { $0.pod.id == "vitals" }))
+
+        let provider = try #require(store.capabilityProvider(for: "vitals"))
+        let policy = provider.decomposedPolicy(store: store)
+        let rawCount = provider.subItemCount(store: store)
+        #expect(rawCount == 4)
+        #expect(policy.maxRailItems == 4)
+
+        // In .dynamicAccordion mode, maxAllowed is policy.maxRailItems (4), never truncated when idle
+        let maxAllowedIdle = max(policy.maxRailItems, 1)
+        let visibleIdleCount = min(rawCount, maxAllowedIdle)
+        #expect(visibleIdleCount == 4, "Hardware Vitals in Dynamic Accordion must expose all 4 enabled metrics when idle")
+
+        // Hover vitals -> expands to preferredDrawerHeight (>= 260pt)
+        store.activateDrawer(podId: "vitals", itemId: "vitals-cpu")
+        let expandedLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        let vitalsExpandedItem = try #require(expandedLayout.first(where: { $0.pod.id == "vitals" }))
+        let prefH = Double(store.preferredDrawerHeight(for: "vitals"))
+
+        #expect(vitalsExpandedItem.spanH >= prefH - 0.5, "Hovered Hardware Vitals pod must expand to preferredDrawerHeight")
+        #expect(vitalsExpandedItem.spanH > vitalsIdleItem.spanH)
+    }
+
+    @Test("Cyclic Page Rotation: cycleRailPage wraps around cyclically for both delta -1 and delta +1")
+    func testCyclicPageRotationWrapAround() throws {
+        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        let totalHeight = 900.0
+        let pages = store.paginatedPods(for: .left, totalHeight: totalHeight)
+        let pageCount = pages.count
+        #expect(pageCount >= 2)
+
+        store.setRailPage(0, for: .left)
+        #expect(store.currentRailPage(for: .left) == 0)
+
+        // Top Portal (Previous Page, delta: -1) from page 0 wraps around to pageCount - 1
+        store.cycleRailPage(for: .left, delta: -1)
+        #expect(store.currentRailPage(for: .left) == pageCount - 1)
+
+        // Bottom Portal (Next Page, delta: +1) from pageCount - 1 wraps around to 0
+        store.cycleRailPage(for: .left, delta: 1)
+        #expect(store.currentRailPage(for: .left) == 0)
+    }
 }

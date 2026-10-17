@@ -96,6 +96,10 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
         return 300.0
     }
 
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        isDecomposed(store: store) ? 320.0 : 390.0
+    }
+
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store._vitalsEnabledMetrics.contains { store.isItemPinned(id: "vitals-\($0.rawValue)") }
     }

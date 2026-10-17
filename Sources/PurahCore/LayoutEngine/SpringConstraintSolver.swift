@@ -23,7 +23,7 @@ public enum SpringConstraintSolver {
 
         func effectiveMin(for pod: SlotPod) -> Double {
             if let provider = minRatioProvider {
-                return max(pod.minLength, provider(pod))
+                return provider(pod)
             }
             return pod.minLength
         }

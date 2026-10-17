@@ -113,7 +113,7 @@ public final class PurahWorkspaceStore {
         guard allZero else { return }
 
         let screenH = Double(availableScreenHeight(for: edge))
-        let pageBudget = max(screenH - 56.0, 260.0)
+        let pageBudget = max(screenH - 144.0, 260.0)
         let totalRequired = enabledIndices.reduce(0.0) { $0 + Double(minimumDrawerHeight(for: pods[$1].id)) + 12.0 }
         guard totalRequired > pageBudget else { return }
 
@@ -823,7 +823,7 @@ public final class PurahWorkspaceStore {
             }
         }
 
-        let pageBudget = max(totalHeight - 56.0, 260.0)
+        let pageBudget = max(totalHeight - 144.0, 260.0)
         var pages: [[SlotPod]] = []
         var currentPage: [SlotPod] = []
         var currentHeight: Double = 0.0
@@ -939,28 +939,26 @@ public final class PurahWorkspaceStore {
         let gap = 8.0
         let totalGaps = Double(max(edgePods.count - 1, 0)) * gap
 
-        let fullSpans: [Double] = edgePods.map { pod in
-            Double(max(preferredDrawerHeight(for: pod.id), effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight))))
-        }
-
-        // High-density accordion solver: always active in .dynamicAccordion mode so any hovered pod expands to preferredDrawerHeight
+        // High-density accordion solver: compute idleSpans directly from user-configured pod.range.length without enforcing minimumDrawerHeight
         let netAvailable = max(availableH - totalGaps, Double(edgePods.count) * 20.0)
         let minIdleBaseBarH = min(28.0, netAvailable / Double(edgePods.count))
         let weights = edgePods.map { pod in
-            max(pod.range.length * 100.0, max(pod.ergonomicWeight, 1.0))
+            max(pod.range.length, 0.035)
         }
-        let totalWeight = max(weights.reduce(0.0, +), 1.0)
-        var idleSpans = edgePods.enumerated().map { idx, pod in
-            let rawShare = netAvailable * (weights[idx] / totalWeight)
-            let prefH = Double(preferredDrawerHeight(for: pod.id))
-            let maxIdleH = max(min(prefH * 0.65, netAvailable / Double(edgePods.count)), minIdleBaseBarH)
-            return min(max(rawShare, minIdleBaseBarH), maxIdleH)
+        let totalWeight = max(weights.reduce(0.0, +), 0.001)
+        var idleSpans = edgePods.enumerated().map { idx, _ in
+            max(netAvailable * (weights[idx] / totalWeight), minIdleBaseBarH)
         }
         let sumIdleSpans = idleSpans.reduce(0.0, +)
         if sumIdleSpans > netAvailable && sumIdleSpans > 0 {
             let scale = netAvailable / sumIdleSpans
             idleSpans = idleSpans.map { $0 * scale }
         }
+
+        let fullSpans: [Double] = edgePods.enumerated().map { idx, pod in
+            max(idleSpans[idx], Double(preferredDrawerHeight(for: pod.id)))
+        }
+
         var idleStartYs: [Double] = []
         var curIdleY = safeTop
         for span in idleSpans {
@@ -1279,8 +1277,8 @@ public final class PurahWorkspaceStore {
         let pagePods = pages[pageIdx]
         guard !pagePods.isEmpty else { return [] }
 
-        let safeTop = pages.count > 1 ? 42.0 : 16.0
-        let safeBottom = totalHeight - 16.0
+        let safeTop = pages.count > 1 ? 72.0 : 16.0
+        let safeBottom = pages.count > 1 ? (totalHeight - 72.0) : (totalHeight - 16.0)
         let gap = 8.0
         let availableH = max(safeBottom - safeTop, 160.0)
         let totalGaps = Double(max(pagePods.count - 1, 0)) * gap
@@ -1354,12 +1352,16 @@ public final class PurahWorkspaceStore {
                 let minChipH = Double(policy.minChipHeight)
                 let maxChipH = Double(policy.maxChipHeight)
                 let spacing = Double(policy.spacing)
-                let maxAllowed = max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
+                let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+                let maxAllowed = isDynamicAccordion
+                    ? max(policy.maxRailItems, 1)
+                    : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
                 let count = min(rawCount, maxAllowed)
                 let safeCount = max(count, 1)
                 let totalSpacing = spacing * Double(safeCount - 1)
-                let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), minChipH), maxChipH)
-                let cardH = max(itemH, 44.0)
+                let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
+                let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
+                let cardH = max(itemH, minChipH, 48.0)
 
                 var matchedSubItem = false
                 for idx in 0..<count {
@@ -1605,8 +1607,12 @@ public final class PurahWorkspaceStore {
             for idx in pods.indices {
                 let pod = pods[idx]
                 let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-                let minPt = Double(minimumDrawerHeight(for: pod.id))
-                pods[idx].minLength = max(minPt / screenH, 0.05)
+                if overflowStrategy(for: pod.edge) == .dynamicAccordion {
+                    pods[idx].minLength = max(28.0 / screenH, 0.035)
+                } else {
+                    let minPt = Double(minimumDrawerHeight(for: pod.id))
+                    pods[idx].minLength = max(minPt / screenH, 0.05)
+                }
             }
             invalidateLayoutCache()
         }
@@ -1830,8 +1836,12 @@ public final class PurahWorkspaceStore {
         for idx in pods.indices {
             let pod = pods[idx]
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            let minPt = Double(minimumDrawerHeight(for: pod.id))
-            pods[idx].minLength = max(minPt / screenH, 0.05)
+            if overflowStrategy(for: pod.edge) == .dynamicAccordion {
+                pods[idx].minLength = max(28.0 / screenH, 0.035)
+            } else {
+                let minPt = Double(minimumDrawerHeight(for: pod.id))
+                pods[idx].minLength = max(minPt / screenH, 0.05)
+            }
         }
 
         pods = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(
@@ -1862,8 +1872,12 @@ public final class PurahWorkspaceStore {
             }
             pods[index].isEnabled = true
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            let minPt = Double(minimumDrawerHeight(for: pod.id))
-            pods[index].minLength = max(minPt / screenH, 0.05)
+            if overflowStrategy(for: pod.edge) == .dynamicAccordion {
+                pods[index].minLength = max(28.0 / screenH, 0.035)
+            } else {
+                let minPt = Double(minimumDrawerHeight(for: pod.id))
+                pods[index].minLength = max(minPt / screenH, 0.05)
+            }
             onPodEnabledChanged?(id, true)
         } else {
             let oldGroupId = pods[index].majorGroupId
@@ -1963,7 +1977,7 @@ public final class PurahWorkspaceStore {
     public func updatePodRange(id: String, newRange: NormalizedRange) {
         guard let pod = pods.first(where: { $0.id == id }) else { return }
         let screenH = max(Double(availableScreenHeight(for: pod.edge)), 600.0)
-        let isResizing = abs(newRange.length - pod.range.length) > 0.0001
+        let isDynamicAccordion = (overflowStrategy(for: pod.edge) == .dynamicAccordion)
         pods = SpringConstraintSolver.resolve(
             draggedPodId: id,
             newRange: newRange,
@@ -1971,15 +1985,13 @@ public final class PurahWorkspaceStore {
             on: pod.edge,
             minRatioProvider: { [weak self] p in
                 guard let self else { return p.minLength }
+                if isDynamicAccordion {
+                    return 28.0 / screenH
+                }
                 let minH = Double(self.minimumDrawerHeight(for: p.id))
-                return minH / screenH
+                return max(p.minLength, minH / screenH)
             }
         )
-        if isResizing && overflowStrategy(for: pod.edge) == .dynamicAccordion,
-           let idx = pods.firstIndex(where: { $0.id == id }) {
-            let minH = Double(minimumDrawerHeight(for: id))
-            pods[idx].preferredExpandedHeight = max(newRange.length * screenH, minH)
-        }
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()

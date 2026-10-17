@@ -56,10 +56,14 @@ public struct HardwareVitalsDrawerView: View {
                             Text("CPU")
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Spacer()
                             Text("\(Int(metrics.cpuUsage * 100))%")
                                 .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(cpuColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
@@ -71,6 +75,12 @@ public struct HardwareVitalsDrawerView: View {
                             }
                         }
                         .frame(height: 4.5)
+
+                        Text("\(ProcessInfo.processInfo.activeProcessorCount) Cores • \(thermalStatusLabel(cpuUsage: metrics.cpuUsage))")
+                            .font(.system(size: 7.5, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                     .padding(6.5)
                     .background(Color.primary.opacity(0.035))
@@ -83,10 +93,14 @@ public struct HardwareVitalsDrawerView: View {
                             Text("GPU")
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Spacer()
                             Text("\(Int(metrics.gpuUsage * 100))%")
                                 .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(gpuColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
@@ -98,6 +112,12 @@ public struct HardwareVitalsDrawerView: View {
                             }
                         }
                         .frame(height: 4.5)
+
+                        Text(metrics.gpuUsage > 0.70 ? "High Metal Render Load" : "Metal Engine Active")
+                            .font(.system(size: 7.5, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                     .padding(6.5)
                     .background(Color.primary.opacity(0.035))
@@ -113,10 +133,14 @@ public struct HardwareVitalsDrawerView: View {
                             Text("RAM")
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Spacer()
                             Text("\(Int(metrics.memoryUsage * 100))%")
                                 .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(ramColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
@@ -129,9 +153,11 @@ public struct HardwareVitalsDrawerView: View {
                         }
                         .frame(height: 4.5)
 
-                        Text("\(String(format: "%.1f", metrics.memoryUsedGB)) / \(String(format: "%.0f", metrics.memoryTotalGB)) GB")
+                        Text("\(String(format: "%.1f", metrics.memoryUsedGB)) / \(String(format: "%.0f", metrics.memoryTotalGB)) GB • \(memoryPressureLabel(usage: metrics.memoryUsage))")
                             .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                     .padding(6.5)
                     .background(Color.primary.opacity(0.035))
@@ -144,10 +170,14 @@ public struct HardwareVitalsDrawerView: View {
                             Text("Disk")
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Spacer()
                             Text("\(Int(metrics.diskFreeGB))G")
                                 .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(diskColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         let usedDiskRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
                         GeometryReader { geo in
@@ -164,6 +194,8 @@ public struct HardwareVitalsDrawerView: View {
                         Text("\(Int(metrics.diskFreeGB))GB free / \(Int(metrics.diskTotalGB))GB")
                             .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                     .padding(6.5)
                     .background(Color.primary.opacity(0.035))
@@ -179,6 +211,8 @@ public struct HardwareVitalsDrawerView: View {
                             Text("Network")
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Spacer()
                             Circle()
                                 .fill(netColor)
@@ -192,6 +226,8 @@ public struct HardwareVitalsDrawerView: View {
                                 Text(formatSpeed(metrics.networkDownSpeed))
                                     .font(.system(size: 8, weight: .medium, design: .monospaced))
                                     .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
                             }
                             Spacer()
                             HStack(spacing: 2) {
@@ -201,6 +237,8 @@ public struct HardwareVitalsDrawerView: View {
                                 Text(formatSpeed(metrics.networkUpSpeed))
                                     .font(.system(size: 8, weight: .medium, design: .monospaced))
                                     .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
                             }
                         }
                     }
@@ -215,15 +253,20 @@ public struct HardwareVitalsDrawerView: View {
                             Label("Power", systemImage: batteryIcon(level: metrics.batteryLevel, isCharging: metrics.isCharging))
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(powerColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                             Spacer()
                             Text("\(metrics.batteryLevel)%")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(powerColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         Text(metrics.isCharging ? "Charging (\(metrics.powerSource))" : metrics.powerSource)
                             .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                     .padding(6.5)
                     .background(Color.primary.opacity(0.035))
@@ -247,6 +290,8 @@ public struct HardwareVitalsDrawerView: View {
                         Text(metrics.cpuUsage > 0.85 ? "Heavy Compute Load" : "System Running Optimally")
                             .font(.system(size: 8.5, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
 
                     Spacer()
@@ -261,6 +306,8 @@ public struct HardwareVitalsDrawerView: View {
                                 .font(.system(size: 8.5))
                             Text("Refresh")
                                 .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
@@ -277,6 +324,8 @@ public struct HardwareVitalsDrawerView: View {
                     Text("Top Processes")
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
                     VStack(spacing: 4) {
                         ForEach(metrics.topProcesses) { proc in
@@ -290,6 +339,7 @@ public struct HardwareVitalsDrawerView: View {
                                         .font(.system(size: 10, weight: .medium, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                                         .lineLimit(1)
+                                        .minimumScaleFactor(0.85)
 
                                     GeometryReader { g in
                                         ZStack(alignment: .leading) {
@@ -305,15 +355,19 @@ public struct HardwareVitalsDrawerView: View {
 
                                 Spacer()
 
-                                Text("\(String(format: "%.1f", proc.cpuPercent))%")
+                                Text("CPU \(String(format: "%.1f", proc.cpuPercent))% • MEM \(String(format: "%.1f", proc.memoryPercent))%")
                                     .font(.system(size: 8, weight: .semibold, design: .monospaced))
                                     .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
 
                                 Button {
                                     vitals.killProcess(pid: proc.id)
                                 } label: {
                                     Text("Kill")
                                         .font(.system(size: 8, weight: .semibold))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.85)
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 1.5)
                                         .background(palette.dangerAccent.opacity(0.12))
@@ -342,6 +396,31 @@ public struct HardwareVitalsDrawerView: View {
                 await vitals.refreshMetricsAsync(includeProcesses: true)
                 state.refreshMetrics(includeProcesses: true)
             }
+        }
+    }
+
+    private func thermalStatusLabel(cpuUsage: Double) -> String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal:
+            return cpuUsage > 0.75 ? "High Load" : "Nominal"
+        case .fair:
+            return "Warm"
+        case .serious:
+            return "Hot"
+        case .critical:
+            return "Throttling"
+        @unknown default:
+            return "Nominal"
+        }
+    }
+
+    private func memoryPressureLabel(usage: Double) -> String {
+        if usage >= effectiveThresholds.ramDanger {
+            return "High Pressure"
+        } else if usage >= effectiveThresholds.ramWarning {
+            return "Elevated"
+        } else {
+            return "Normal"
         }
     }
 

@@ -158,7 +158,35 @@ public struct TodoPlugin: PurahPodPlugin {
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
         if subItemId == "todo_more_items" {
-            return AnyView(TodoDrawerView(state: state, store: context.store))
+            let isPinned = context.isItemPinned(subItemId)
+            let isExpanded = context.isExpanded || isPinned
+            let barW = max(context.railWidth, CGFloat(context.store.railBarWidth))
+            let barH = max(context.slotHeight, 6.0)
+            let radius = min(barW / 2, 4)
+            return AnyView(
+                ZStack(alignment: context.edge == .right ? .topTrailing : .topLeading) {
+                    RoundedRectangle(cornerRadius: radius)
+                        .fill(context.accentColor.opacity(0.85))
+                        .frame(width: barW, height: barH)
+
+                    if isExpanded {
+                        TodoDrawerView(state: state, store: context.store)
+                            .padding(8)
+                            .frame(width: context.drawerWidth, height: max(barH, 180.0))
+                            .liquidDrawerBackground(
+                                shape: UnevenRoundedRectangle(
+                                    topLeadingRadius: context.edge == .right ? 8 : 0,
+                                    bottomLeadingRadius: context.edge == .right ? 8 : 0,
+                                    bottomTrailingRadius: context.edge == .left ? 8 : 0,
+                                    topTrailingRadius: context.edge == .left ? 8 : 0,
+                                    style: .continuous
+                                ),
+                                accentColor: context.accentColor
+                            )
+                    }
+                }
+                .frame(height: barH, alignment: .top)
+            )
         }
         let todos = effectiveTodos(store: context.store)
         guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }

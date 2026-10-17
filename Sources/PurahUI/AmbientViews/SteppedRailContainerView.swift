@@ -43,7 +43,10 @@ public struct SteppedRailContainerView: View {
         let minChipH: CGFloat = policy.minChipHeight
         let maxChipH: CGFloat = policy.maxChipHeight
         let spacing: CGFloat = policy.spacing
-        let maxAllowedItems = max(min(Int((totalHeight + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
+        let isDynamicAccordion = (store.overflowStrategy(for: edge) == .dynamicAccordion)
+        let maxAllowedItems = isDynamicAccordion
+            ? max(policy.maxRailItems, 1)
+            : max(min(Int((totalHeight + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
 
         let items: [PurahPluginSubItem] = {
             guard allItems.count > maxAllowedItems else { return allItems }
@@ -72,7 +75,8 @@ public struct SteppedRailContainerView: View {
 
         let count = max(items.count, 1)
         let totalSpacing = spacing * CGFloat(count - 1)
-        let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), minChipH), maxChipH)
+        let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
+        let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), effectiveMinChipH), maxChipH)
         let actualSpanH = CGFloat(items.count) * itemH + spacing * CGFloat(max(items.count - 1, 0))
 
         let barW = max(context.railWidth, CGFloat(store.railBarWidth))
@@ -89,14 +93,15 @@ public struct SteppedRailContainerView: View {
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                         // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
-                        let cardH = max(itemH, 44.0)
+                        let cardH = max(itemH, policy.minChipHeight, 48.0)
+                        let effectiveChipH = isActive ? cardH : itemH
                         let itemTop = startY + CGFloat(idx) * (itemH + spacing)
                         let itemBottom = itemTop + cardH
                         let maxAllowedY = screenHeight - 12.0
                         let shift = isActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
 
                         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: itemH)
+                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: effectiveChipH)
                                 .id(subItem.id)
                                 .offset(y: -shift)
 
@@ -196,9 +201,9 @@ public struct SteppedRailContainerView: View {
         itemH: CGFloat
     ) -> some View {
         let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
-        let cardH = max(itemH, 32.0)
-        let drawerW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0)
         let isExpanded = (state == .expandedDrawer)
+        let cardH = isExpanded ? max(itemH, 32.0) : max(itemH, 6.0)
+        let drawerW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)

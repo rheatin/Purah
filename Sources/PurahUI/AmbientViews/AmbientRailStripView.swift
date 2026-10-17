@@ -32,20 +32,40 @@ public struct AmbientRailStripView: View {
             let currentPage = min(max(store.currentRailPage(for: edge), 0), max(pageCount - 1, 0))
 
             ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
-                // Page Pill Indicator for Paged Spaces when multiple pages exist
+                // Top & Bottom Hover Portals for Paged Spaces when multiple pages exist (avoiding 20pt macOS Hot Corners)
                 if edgeStrategy == .pagedSpaces && pageCount > 1 {
-                    RailPageIndicatorView(
+                    RailPagePortalView(
                         edge: edge,
+                        direction: .previous,
                         currentPage: currentPage,
                         pageCount: pageCount,
+                        barWidth: barW,
                         accentColor: palette.primaryAccent
                     ) {
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                        store.dismissActiveDrawer()
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            store.cycleRailPage(for: edge, delta: -1)
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    }
+                    .offset(y: 36.0)
+                    .zIndex(200)
+
+                    RailPagePortalView(
+                        edge: edge,
+                        direction: .next,
+                        currentPage: currentPage,
+                        pageCount: pageCount,
+                        barWidth: barW,
+                        accentColor: palette.primaryAccent
+                    ) {
+                        store.dismissActiveDrawer()
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             store.cycleRailPage(for: edge, delta: 1)
                             store.triggerControlHaptic(.alignment)
                         }
                     }
-                    .offset(x: edge == .left ? 2 : -2, y: 10)
+                    .offset(y: max(totalHeight - 64.0, 72.0))
                     .zIndex(200)
                 }
 
@@ -377,54 +397,111 @@ public struct AmbientRailStripView: View {
     }
 }
 
-public struct RailPageIndicatorView: View {
+public enum RailPagePortalDirection: Sendable {
+    case previous
+    case next
+}
+
+public struct RailPagePortalView: View {
     public let edge: MountEdge
+    public let direction: RailPagePortalDirection
     public let currentPage: Int
     public let pageCount: Int
+    public let barWidth: CGFloat
     public let accentColor: Color
-    public let onCyclePage: () -> Void
+    public let onTrigger: () -> Void
+
+    @State private var isHovered: Bool = false
 
     public init(
         edge: MountEdge,
+        direction: RailPagePortalDirection,
         currentPage: Int,
         pageCount: Int,
+        barWidth: CGFloat = 8.0,
         accentColor: Color,
-        onCyclePage: @escaping () -> Void
+        onTrigger: @escaping () -> Void
     ) {
         self.edge = edge
+        self.direction = direction
         self.currentPage = currentPage
         self.pageCount = pageCount
+        self.barWidth = barWidth
         self.accentColor = accentColor
-        self.onCyclePage = onCyclePage
+        self.onTrigger = onTrigger
+    }
+
+    private var portalWidth: CGFloat {
+        max(barWidth + 6.0, 14.0)
+    }
+
+    private var portalShape: UnevenRoundedRectangle {
+        if edge == .right {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 7,
+                bottomLeadingRadius: 7,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+        } else {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 7,
+                topTrailingRadius: 7,
+                style: .continuous
+            )
+        }
     }
 
     public var body: some View {
         Button {
-            onCyclePage()
+            onTrigger()
         } label: {
-            HStack(spacing: 3) {
-                ForEach(0..<pageCount, id: \.self) { idx in
-                    Circle()
-                        .fill(idx == currentPage ? accentColor : Color.secondary.opacity(0.45))
-                        .frame(width: idx == currentPage ? 4.5 : 3.5, height: idx == currentPage ? 4.5 : 3.5)
+            VStack(spacing: 2.5) {
+                if direction == .previous {
+                    Image(systemName: "chevron.compact.up")
+                        .font(.system(size: 7.5, weight: .black))
+                        .foregroundColor(isHovered ? .white : accentColor)
                 }
-                Text("\(currentPage + 1)/\(pageCount)")
-                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(.primary)
+
+                VStack(spacing: 2) {
+                    ForEach(0..<min(pageCount, 4), id: \.self) { idx in
+                        Circle()
+                            .fill(idx == currentPage ? accentColor : accentColor.opacity(0.28))
+                            .frame(width: 3, height: 3)
+                            .shadow(color: idx == currentPage ? accentColor.opacity(0.85) : .clear, radius: 2)
+                    }
+                }
+
+                if direction == .next {
+                    Image(systemName: "chevron.compact.down")
+                        .font(.system(size: 7.5, weight: .black))
+                        .foregroundColor(isHovered ? .white : accentColor)
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3.5)
+            .frame(width: portalWidth, height: 28.0)
             .background(
-                Capsule()
+                portalShape
                     .fill(.ultraThinMaterial)
                     .overlay(
-                        Capsule()
-                            .strokeBorder(accentColor.opacity(0.5), lineWidth: 1)
+                        portalShape
+                            .fill(accentColor.opacity(isHovered ? 0.28 : 0.12))
+                    )
+                    .overlay(
+                        portalShape
+                            .strokeBorder(accentColor.opacity(isHovered ? 0.9 : 0.45), lineWidth: isHovered ? 1.2 : 0.8)
                     )
             )
-            .contentShape(Capsule())
+            .shadow(color: accentColor.opacity(isHovered ? 0.75 : 0.25), radius: isHovered ? 6 : 2)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.tactile)
-        .help("Switch Rail Page (\(currentPage + 1)/\(pageCount))")
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
     }
 }

@@ -1326,4 +1326,60 @@ struct DrawerInteractionUITests {
             _ = window.performKeyEquivalent(with: redoEvent)
         }
     }
+
+    @Test("TodoPlugin makeSteppedDrawerView for todo_more_items does not render an expanded drawer when docked")
+    @MainActor
+    func testTodoPluginMoreItemsDoesNotRenderUnconditionalDrawerWhenDocked() {
+        let isolated = UserDefaults(suiteName: "test_todo_more_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        let plugin = TodoPlugin()
+        let pod = store.pods.first(where: { $0.id == "todo" }) ?? SlotPod(
+            id: "todo",
+            name: "Reminders & Todos",
+            systemIcon: "checklist",
+            edge: .right,
+            range: .init(start: 0.5, length: 0.2),
+            ambientStyle: .segmentGauge,
+            preferredZone: .goldenAction,
+            ergonomicWeight: 35.0
+        )
+        let dockedContext = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 32.0,
+            drawerWidth: 280.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .green,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        let steppedView = plugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: dockedContext)
+        #expect(steppedView != nil)
+        let hosting = NSHostingView(rootView: steppedView!)
+        let fittingSize = hosting.fittingSize
+        #expect(fittingSize.width <= 16.0, "When docked (isExpanded == false), todo_more_items must render only the 8pt rail bar without expanding the TodoDrawerView card")
+    }
+
+    @Test("HardwareVitalsPlugin adaptiveDrawerWidth returns 390pt in composite mode and 320pt in stepped mode")
+    @MainActor
+    func testHardwareVitalsAdaptiveDrawerWidth() {
+        let isolated = UserDefaults(suiteName: "test_vitals_width_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        let plugin = HardwareVitalsPlugin()
+
+        store._isVitalsDecomposed = true
+        plugin.state.isDecomposed = true
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 320.0)
+
+        store._isVitalsDecomposed = false
+        plugin.state.isDecomposed = false
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 390.0)
+        #expect(store.effectiveDrawerWidth(podId: "vitals") == 390.0)
+    }
 }

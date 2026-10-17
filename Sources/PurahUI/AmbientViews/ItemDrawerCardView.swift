@@ -40,7 +40,8 @@ public struct TodoItemDrawerView: View {
 
     public var body: some View {
         let isDone = todo.isCompleted
-        let cardH = max(height, 32.0)
+        let isExpanded = (state == .expandedDrawer)
+        let cardH = isExpanded ? max(height, 32.0) : max(height, 6.0)
         let listColor: Color = {
             if let hex = todo.listColorHex {
                 return Color(hex: hex)
@@ -49,7 +50,6 @@ public struct TodoItemDrawerView: View {
         }()
 
         let effectiveW = store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0)
-        let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline color bar (using native category list color)
@@ -217,7 +217,8 @@ public struct CalendarItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, event.url != nil ? 38.0 : 34.0)
+        let isExpanded = (state == .expandedDrawer)
+        let cardH = isExpanded ? max(height, event.url != nil ? 38.0 : 34.0) : max(height, 6.0)
         let isPast = event.isPast
         let isOngoing = event.isOngoing
         let isImminent = event.isImminent
@@ -232,7 +233,6 @@ public struct CalendarItemDrawerView: View {
 
         let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
         let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
-        let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Rail-anchored indicator bar (co-planar flush height with dynamic attention beacon)
@@ -891,12 +891,12 @@ public struct VitalsItemDrawerView: View {
     }
 
     public var body: some View {
-        let cardH = max(height, 32.0)
+        let isExpanded = (state == .expandedDrawer)
+        let cardH = isExpanded ? max(height, 48.0) : max(height, 6.0)
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
 
         let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
-        let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline bar (micro dynamic telemetry meter level)

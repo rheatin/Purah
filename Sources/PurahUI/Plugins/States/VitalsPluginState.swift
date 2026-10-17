@@ -43,15 +43,24 @@ public final class VitalsPluginState: Sendable {
         set { thresholds = newValue }
     }
 
-    public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "vitals")) {
-        self.storage = storage
-        if storage.string(forKey: "isDecomposed") != nil {
-            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+    public init(storage: (any PurahPluginStorage)? = nil) {
+        let resolvedStorage: any PurahPluginStorage
+        if let storage = storage {
+            resolvedStorage = storage
+        } else if PurahWorkspaceStore.isTestingEnvironment {
+            let testDefaults = UserDefaults(suiteName: "test_vitals_state_\(UUID().uuidString)") ?? .standard
+            resolvedStorage = ScopedPluginStorage(pluginId: "vitals", defaults: testDefaults)
+        } else {
+            resolvedStorage = ScopedPluginStorage(pluginId: "vitals")
+        }
+        self.storage = resolvedStorage
+        if resolvedStorage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = resolvedStorage.bool(forKey: "isDecomposed")
         } else {
             self.isDecomposed = true
         }
-        self.enabledMetrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
-        self.thresholds = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
+        self.enabledMetrics = resolvedStorage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
+        self.thresholds = resolvedStorage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
     }
 
     public func history(for metric: VitalsMetricType) -> [VitalsHistoryPoint] {

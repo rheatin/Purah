@@ -22,8 +22,6 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         var timestamp: TimeInterval = 0
     }
     private var cache = GeometrySnapshotCache()
-    private var accumulatedScrollY: CGFloat = 0.0
-    private var lastPageFlipTimestamp: TimeInterval = 0.0
 
     public init(rootView: Content, edge: MountEdge, store: PurahWorkspaceStore) {
         self.edge = edge
@@ -112,28 +110,6 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
         let winPoint = event.locationInWindow
-        let barW: CGFloat = max(CGFloat(store.railBarWidth) + 4.0, 12.0)
-        let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - max(barW, 44.0)) : (winPoint.x <= bounds.minX + max(barW, 44.0))
-
-        if store.overflowStrategy(for: edge) == .pagedSpaces && isOnRail {
-            let pages = store.paginatedPods(for: edge, totalHeight: Double(bounds.height))
-            if pages.count > 1 {
-                let now = CACurrentMediaTime()
-                if (now - lastPageFlipTimestamp) >= 0.28 {
-                    accumulatedScrollY += event.scrollingDeltaY
-                    if abs(accumulatedScrollY) > 22.0 {
-                        let delta = accumulatedScrollY < 0 ? 1 : -1
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
-                            store.cycleRailPage(for: edge, delta: delta)
-                        }
-                        store.triggerControlHaptic(.alignment)
-                        accumulatedScrollY = 0.0
-                        lastPageFlipTimestamp = now
-                    }
-                }
-                return
-            }
-        }
 
         if isPointInInteractiveDrawer(winPoint) {
             if let panel = self.window as? NSPanel {
@@ -220,11 +196,11 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
         let edgeStrategy = store.overflowStrategy(for: edge)
         if edgeStrategy == .pagedSpaces,
-           currentWindowY <= 40.0,
+           (currentWindowY >= 32.0 && currentWindowY <= 66.0) || (currentWindowY >= (totalH - 66.0) && currentWindowY <= (totalH - 32.0)),
            store.paginatedPods(for: edge, totalHeight: totalH).count > 1 {
-            let pillHitW: CGFloat = max(barW, 56.0)
-            let isOverPill = (edge == .right) ? (point.x >= bounds.maxX - pillHitW) : (point.x <= bounds.minX + pillHitW)
-            if isOverPill {
+            let portalHitW: CGFloat = max(barW + 8.0, 16.0)
+            let isOverPortal = (edge == .right) ? (point.x >= bounds.maxX - portalHitW) : (point.x <= bounds.minX + portalHitW)
+            if isOverPortal {
                 return super.hitTest(point)
             }
         }
@@ -245,11 +221,15 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let minChipH = Double(policy.minChipHeight)
                     let maxChipH = Double(policy.maxChipHeight)
                     let spacing = Double(policy.spacing)
-                    let maxAllowed = max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
+                    let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+                    let maxAllowed = isDynamicAccordion
+                        ? max(policy.maxRailItems, 1)
+                        : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
                     let count = min(rawCount, maxAllowed)
                     let safeCount = max(count, 1)
                     let totalSpacing = spacing * Double(safeCount - 1)
-                    let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), minChipH), maxChipH)
+                    let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
+                    let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
                     actualSpan = Double(count) * itemH + spacing * Double(max(count - 1, 0))
                 } else {
                     actualSpan = item.spanH

@@ -74,11 +74,15 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        let isDecomp = isDecomposed(store: store)
         if isDecomp {
             return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledMetrics.count)
         }
         return 300.0
+    }
+
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        isDecomposed(store: store) ? 320.0 : 390.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
@@ -95,7 +99,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.isDecomposed || store._isVitalsDecomposed
+        state.isDecomposed && store._isVitalsDecomposed
     }
 
     public var subItemCount: Int {
@@ -107,14 +111,14 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        let isDecomp = isDecomposed(store: store)
         guard isDecomp else { return 0 }
         let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         return metrics.count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        let isDecomp = isDecomposed(store: store)
         guard isDecomp else { return nil }
         let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         guard metrics.indices.contains(index) else { return nil }
@@ -122,7 +126,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store._isVitalsDecomposed
+        let isDecomp = isDecomposed(store: store)
         guard isDecomp else { return nil }
         let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         guard metrics.indices.contains(index) else { return nil }
@@ -243,7 +247,9 @@ public struct VitalsPluginSettingsView: View {
                     state.isDecomposed = $0
                     state.save()
                     store._isVitalsDecomposed = $0
+                    store.invalidateLayoutCache()
                     store.savePersistentState()
+                    store.onWindowsRebuildNeeded?()
                 }
             ))
             .font(.subheadline.weight(.semibold))

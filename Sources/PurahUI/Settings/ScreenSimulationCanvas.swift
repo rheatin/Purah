@@ -98,16 +98,19 @@ public struct ScreenSimulationCanvas: View {
                         let leftPages = (leftStrategy == .pagedSpaces)
                             ? store.paginatedPods(for: .left, totalHeight: realScreenH)
                             : []
-                        let leftTopExtraOffset: CGFloat = (leftStrategy == .pagedSpaces && leftPages.count <= 1) ? 14.0 : 0.0
 
-                        if leftStrategy == .pagedSpaces && !leftLayout.isEmpty {
-                            simulatorPageBar(edge: .left, pages: leftPages)
-                                .offset(x: 4, y: 2)
+                        if leftStrategy == .pagedSpaces && leftPages.count > 1 {
+                            simulatorPagePortal(edge: .left, direction: .previous, pages: leftPages)
+                                .offset(x: 4, y: 4)
+                                .zIndex(50)
+
+                            simulatorPagePortal(edge: .left, direction: .next, pages: leftPages)
+                                .offset(x: 4, y: workableHeight - 22)
                                 .zIndex(50)
                         }
 
                         ForEach(Array(leftLayout.enumerated()), id: \.element.id) { idx, item in
-                            let topY = CGFloat(item.startY * leftScale) + leftTopExtraOffset
+                            let topY = CGFloat(item.startY * leftScale)
                             let podSpan = CGFloat(item.spanH * leftScale)
                             let neighborAboveH = (idx > 0) ? Double(leftLayout[idx - 1].spanH * leftScale) : nil
                             let neighborBelowH = (idx < leftLayout.count - 1) ? Double(leftLayout[idx + 1].spanH * leftScale) : nil
@@ -168,16 +171,19 @@ public struct ScreenSimulationCanvas: View {
                         let rightPages = (rightStrategy == .pagedSpaces)
                             ? store.paginatedPods(for: .right, totalHeight: realScreenRightH)
                             : []
-                        let rightTopExtraOffset: CGFloat = (rightStrategy == .pagedSpaces && rightPages.count <= 1) ? 14.0 : 0.0
 
-                        if rightStrategy == .pagedSpaces && !rightLayout.isEmpty {
-                            simulatorPageBar(edge: .right, pages: rightPages)
-                                .offset(x: -4, y: 2)
+                        if rightStrategy == .pagedSpaces && rightPages.count > 1 {
+                            simulatorPagePortal(edge: .right, direction: .previous, pages: rightPages)
+                                .offset(x: -4, y: 4)
+                                .zIndex(50)
+
+                            simulatorPagePortal(edge: .right, direction: .next, pages: rightPages)
+                                .offset(x: -4, y: workableHeight - 22)
                                 .zIndex(50)
                         }
 
                         ForEach(Array(rightLayout.enumerated()), id: \.element.id) { idx, item in
-                            let topY = CGFloat(item.startY * rightScale) + rightTopExtraOffset
+                            let topY = CGFloat(item.startY * rightScale)
                             let podSpan = CGFloat(item.spanH * rightScale)
                             let neighborAboveH = (idx > 0) ? Double(rightLayout[idx - 1].spanH * rightScale) : nil
                             let neighborBelowH = (idx < rightLayout.count - 1) ? Double(rightLayout[idx + 1].spanH * rightScale) : nil
@@ -333,64 +339,49 @@ public struct ScreenSimulationCanvas: View {
     }
 
     @ViewBuilder
-    private func simulatorPageBar(edge: MountEdge, pages: [[SlotPod]]) -> some View {
+    private func simulatorPagePortal(edge: MountEdge, direction: RailPagePortalDirection, pages: [[SlotPod]]) -> some View {
         let pageCount = max(pages.count, 1)
         let curPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
-        let edgePods = store.pods.filter { $0.edge == edge && $0.isEnabled }
-            .sorted { $0.range.start < $1.range.start }
+        let delta = (direction == .previous) ? -1 : 1
+        let chevronName = (direction == .previous) ? "chevron.compact.up" : "chevron.compact.down"
 
-        HStack(spacing: 4) {
-            ForEach(0..<pageCount, id: \.self) { pIdx in
-                let isSelected = (pIdx == curPage)
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        store.setRailPage(pIdx, for: edge)
-                        store.triggerControlHaptic(.alignment)
-                    }
-                } label: {
-                    Text("P\(pIdx + 1)")
-                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        .foregroundColor(isSelected ? (palette.style == .native ? .white : .black) : palette.primaryAccent)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? palette.primaryAccent : Color.black.opacity(0.55))
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(palette.primaryAccent.opacity(0.6), lineWidth: 0.8)
-                        )
-                }
-                .buttonStyle(.tactile)
-                .help("Switch \(edge == .left ? "Left" : "Right") Rail to Page \(pIdx + 1)")
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                store.cycleRailPage(for: edge, delta: delta)
+                store.triggerControlHaptic(.alignment)
             }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: chevronName)
+                    .font(.system(size: 7.5, weight: .black))
+                    .foregroundColor(palette.primaryAccent)
 
-            if edgePods.count > 1 {
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        if let lastPod = edgePods.last {
-                            store.setPodPage(id: lastPod.id, pageIndex: pageCount)
-                            store.triggerControlHaptic(.alignment)
-                        }
+                HStack(spacing: 2.5) {
+                    ForEach(0..<min(pageCount, 4), id: \.self) { pIdx in
+                        Circle()
+                            .fill(pIdx == curPage ? palette.primaryAccent : palette.primaryAccent.opacity(0.28))
+                            .frame(width: 3, height: 3)
+                            .shadow(color: pIdx == curPage ? palette.primaryAccent.opacity(0.85) : .clear, radius: 1.5)
                     }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(palette.primaryAccent)
-                        .frame(width: 16, height: 15)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.55))
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(palette.primaryAccent.opacity(0.6), lineWidth: 0.8)
-                        )
                 }
-                .buttonStyle(.tactile)
-                .help("Create new page and move last module on this rail to Page \(pageCount + 1)")
             }
+            .padding(.horizontal, 6)
+            .frame(height: 17)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.65))
+                    .overlay(
+                        Capsule()
+                            .fill(palette.primaryAccent.opacity(0.14))
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(palette.primaryAccent.opacity(0.65), lineWidth: 0.8)
+            )
+            .shadow(color: palette.primaryAccent.opacity(0.35), radius: 3)
         }
+        .buttonStyle(.tactile)
+        .help(direction == .previous ? "Previous Page" : "Next Page")
     }
 }
