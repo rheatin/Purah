@@ -8,6 +8,7 @@ import SwiftUI
 @testable import PurahApp
 
 @Suite("Sensory Feedback & Haptics Tests", .serialized)
+@MainActor
 struct SensoryFeedbackTests {
 
     @Test("ToastNotificationSound enum properties and localization")

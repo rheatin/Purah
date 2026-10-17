@@ -17,6 +17,7 @@ public final class ShortcutRecorderState {
         isRecording = true
         pulseOutline = true
         stopLocalMonitor()
+        guard !PurahWorkspaceStore.isTestingEnvironment else { return }
 
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak store] event in
             guard let self = self, let store = store else { return event }

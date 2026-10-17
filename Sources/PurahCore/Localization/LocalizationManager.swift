@@ -191,6 +191,10 @@ public final class LocalizationManager {
             "overflow.mode.strict.desc": "Classic fixed height budget: blocks mounting new modules once rail reaches 100%",
             "overflow.paged.leftRail": "Left Rail Page",
             "overflow.paged.rightRail": "Right Rail Page",
+            "overflow.rail.both": "Both Rails",
+            "overflow.rail.left": "Left Rail",
+            "overflow.rail.right": "Right Rail",
+            "overflow.rail.mixed": "Mixed",
 
             // DropShelf
             "dropshelf.dropToStash": "Drop to Stash Files",
@@ -464,6 +468,10 @@ public final class LocalizationManager {
             "overflow.mode.strict.desc": "经典固定物理高度预算：超出 100% 屏幕高度时拒绝挂载新插件",
             "overflow.paged.leftRail": "左轨页面",
             "overflow.paged.rightRail": "右轨页面",
+            "overflow.rail.both": "双轨同步",
+            "overflow.rail.left": "左轨",
+            "overflow.rail.right": "右轨",
+            "overflow.rail.mixed": "独立混搭",
 
             // 拖拽暂存架
             "dropshelf.dropToStash": "释放以暂存文件",
@@ -680,7 +688,11 @@ public final class LocalizationManager {
             "overflow.mode.strict": "嚴格上限 (Strict Ceiling)",
             "overflow.mode.strict.desc": "經典固定物理高度預算：超出 100% 螢幕高度時拒絕掛載新插件",
             "overflow.paged.leftRail": "左軌頁面",
-            "overflow.paged.rightRail": "右軌頁面"
+            "overflow.paged.rightRail": "右軌頁面",
+            "overflow.rail.both": "雙軌同步",
+            "overflow.rail.left": "左軌",
+            "overflow.rail.right": "右軌",
+            "overflow.rail.mixed": "獨立混搭"
         ],
         .japanese: [
             "tab.general": "一般",

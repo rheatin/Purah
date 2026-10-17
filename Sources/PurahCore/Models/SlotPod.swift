@@ -18,6 +18,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
     public var defaultColorHex: String
     public var pageIndex: Int
     public var majorGroupId: String?
+    public var preferredExpandedHeight: Double?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -36,6 +37,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         case defaultColorHex
         case pageIndex
         case majorGroupId
+        case preferredExpandedHeight
     }
 
     public init(from decoder: Decoder) throws {
@@ -56,6 +58,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         self.defaultColorHex = try container.decodeIfPresent(String.self, forKey: .defaultColorHex) ?? "#00F5D4"
         self.pageIndex = try container.decodeIfPresent(Int.self, forKey: .pageIndex) ?? 0
         self.majorGroupId = try container.decodeIfPresent(String.self, forKey: .majorGroupId)
+        self.preferredExpandedHeight = try container.decodeIfPresent(Double.self, forKey: .preferredExpandedHeight)
     }
 
     public init(
@@ -74,7 +77,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         drawerWidth: Double = 260,
         defaultColorHex: String = "#00F5D4",
         pageIndex: Int = 0,
-        majorGroupId: String? = nil
+        majorGroupId: String? = nil,
+        preferredExpandedHeight: Double? = nil
     ) {
         self.id = id
         self.nameKey = nameKey
@@ -92,6 +96,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         self.defaultColorHex = defaultColorHex
         self.pageIndex = pageIndex
         self.majorGroupId = majorGroupId
+        self.preferredExpandedHeight = preferredExpandedHeight
     }
 
     public init(
@@ -109,7 +114,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         drawerWidth: Double = 260,
         defaultColorHex: String = "#00F5D4",
         pageIndex: Int = 0,
-        majorGroupId: String? = nil
+        majorGroupId: String? = nil,
+        preferredExpandedHeight: Double? = nil
     ) {
         self.id = id
         self.nameKey = "plugin.\(id).name"
@@ -127,6 +133,7 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         self.defaultColorHex = defaultColorHex
         self.pageIndex = pageIndex
         self.majorGroupId = majorGroupId
+        self.preferredExpandedHeight = preferredExpandedHeight
     }
 
     public init(
@@ -143,7 +150,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
         drawerWidth: Double = 260,
         defaultColorHex: String = "#00F5D4",
         pageIndex: Int = 0,
-        majorGroupId: String? = nil
+        majorGroupId: String? = nil,
+        preferredExpandedHeight: Double? = nil
     ) {
         self.init(
             id: id,
@@ -160,7 +168,8 @@ public struct SlotPod: Identifiable, Codable, Sendable, Equatable {
             drawerWidth: drawerWidth,
             defaultColorHex: defaultColorHex,
             pageIndex: pageIndex,
-            majorGroupId: majorGroupId
+            majorGroupId: majorGroupId,
+            preferredExpandedHeight: preferredExpandedHeight
         )
     }
 

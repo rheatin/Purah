@@ -49,22 +49,6 @@ public struct AmbientRailStripView: View {
                     .zIndex(200)
                 }
 
-                // Shared Major Pod group brackets when in Decomposed Major Pod mode
-                if edgeStrategy == .decomposedMajorPod {
-                    ForEach(majorGroupClusters(from: layoutItems), id: \.groupId) { cluster in
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(palette.primaryAccent.opacity(0.45), lineWidth: 1.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(palette.primaryAccent.opacity(0.08))
-                            )
-                            .frame(width: barW + 3, height: CGFloat(cluster.spanH))
-                            .offset(y: CGFloat(cluster.startY))
-                            .allowsHitTesting(false)
-                            .zIndex(0)
-                    }
-                }
-
                 // Active slot pods mounted with strict non-overlapping physical positions
                 ForEach(layoutItems) { item in
                     let pod = item.pod
@@ -74,11 +58,12 @@ public struct AmbientRailStripView: View {
                     let drawerSpanH = CGFloat(item.drawerSpanH)
                     let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(drawerSpanH - spanH) > 1.0)
                     let shouldShowDrawer = store.shouldRenderDrawer(for: item, in: layoutItems)
-                    let isThisPodActive = shouldShowDrawer || (store.activePod?.id == pod.id || store.isItemPinned(id: pod.id) || store.capabilityProvider(for: pod.id)?.hasPinnedChild(store: store) == true)
+                    let isThisPodActive = shouldShowDrawer || (store.hoveredPodId == pod.id || store.activePod?.id == pod.id || store.isItemPinned(id: pod.id) || store.capabilityProvider(for: pod.id)?.hasPinnedChild(store: store) == true)
+                    let activeBarW: CGFloat = (edgeStrategy == .dynamicAccordion && isThisPodActive) ? (barW + 2.5) : barW
 
                     let isPinned = store.isItemPinned(id: pod.id)
                     let isActive = shouldShowDrawer
-                    let context = makeContext(for: pod, totalHeight: spanH, isActive: isActive, isPinned: isPinned)
+                    let context = makeContext(for: pod, totalHeight: spanH, isActive: isActive, isPinned: isPinned, railWidth: activeBarW)
 
                     VStack(alignment: edge == .left ? .leading : .trailing, spacing: 0) {
                         if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
@@ -100,21 +85,27 @@ public struct AmbientRailStripView: View {
                                     barHeight: spanH,
                                     drawerHeight: drawerSpanH,
                                     drawerOffsetY: drawerStartY - startY,
-                                    shouldShowDrawer: shouldShowDrawer
+                                    shouldShowDrawer: shouldShowDrawer,
+                                    railWidth: activeBarW,
+                                    isThisPodActive: isThisPodActive
                                 )
                             }
                         } else {
-                            genericRailBar(pod: pod, totalHeight: spanH)
+                            genericRailBar(pod: pod, totalHeight: spanH, railWidth: activeBarW, isThisPodActive: isThisPodActive)
                         }
                     }
                     .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
+                    .opacity(edgeStrategy == .dynamicAccordion && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
                     .offset(y: startY)
                     .zIndex(shouldShowDrawer ? 120 : (isThisPodActive ? 100 : 1))
+                    .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: spanH)
+                    .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: startY)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.78), value: isThisPodActive)
                 }
             }
             .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
             .animation(
-                .spring(response: 0.32, dampingFraction: 0.82),
+                .spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08),
                 value: layoutItems.map { "\($0.id)_\(Int($0.startY))_\(Int($0.spanH))" }
             )
         }
@@ -122,33 +113,14 @@ public struct AmbientRailStripView: View {
         .ignoresSafeArea()
     }
 
-    private struct MajorGroupCluster {
-        let groupId: String
-        let startY: Double
-        let spanH: Double
-    }
-
-    private func majorGroupClusters(from items: [ResolvedPodLayoutItem]) -> [MajorGroupCluster] {
-        var clusters: [MajorGroupCluster] = []
-        var seen: Set<String> = []
-        for item in items {
-            guard let gid = item.majorGroupId, !seen.contains(gid) else { continue }
-            let members = items.filter { $0.majorGroupId == gid }
-            guard members.count > 1 else { continue }
-            seen.insert(gid)
-            clusters.append(MajorGroupCluster(groupId: gid, startY: item.drawerStartY, spanH: item.drawerSpanH))
-        }
-        return clusters
-    }
-
-    private func makeContext(for pod: SlotPod, totalHeight: CGFloat, isActive: Bool, isPinned: Bool) -> PurahPluginContext {
+    private func makeContext(for pod: SlotPod, totalHeight: CGFloat, isActive: Bool, isPinned: Bool, railWidth: CGFloat) -> PurahPluginContext {
         let color = palette.podColor(for: pod.id, store: store)
         let slotH = max(totalHeight, 36.0)
 
         return PurahPluginContext(
             pod: pod,
             edge: edge,
-            railWidth: barW,
+            railWidth: railWidth,
             slotHeight: slotH,
             drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id),
             isExpanded: isActive,
@@ -157,7 +129,7 @@ public struct AmbientRailStripView: View {
             palette: palette,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
                     store.activateDrawer(podId: pod.id)
                 }
             },
@@ -169,6 +141,10 @@ public struct AmbientRailStripView: View {
                     if store.activeDrawerPodId == pod.id {
                         store.activeDrawerPodId = nil
                     }
+                    if store.hoveredPodId == pod.id {
+                        store.hoveredPodId = nil
+                    }
+                    store.invalidateLayoutCache()
                 }
             },
             togglePin: {
@@ -217,14 +193,16 @@ public struct AmbientRailStripView: View {
         barHeight: CGFloat,
         drawerHeight: CGFloat,
         drawerOffsetY: CGFloat,
-        shouldShowDrawer: Bool
+        shouldShowDrawer: Bool,
+        railWidth: CGFloat,
+        isThisPodActive: Bool
     ) -> some View {
         let isPinned = store.isItemPinned(id: pod.id)
         let isActive = shouldShowDrawer
         let barSlotH = max(barHeight, 22.0)
         let drawerSlotH = max(drawerHeight, 36.0)
         let color = plugin.dynamicBarColor(context: PurahPluginContext(
-            pod: pod, edge: edge, railWidth: barW, slotHeight: barSlotH,
+            pod: pod, edge: edge, railWidth: railWidth, slotHeight: barSlotH,
             drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), isExpanded: isActive,
             isPinned: isPinned, accentColor: palette.podColor(for: pod.id, store: store),
             palette: palette, store: store, requestExpand: {}, requestDismiss: {}, togglePin: {}
@@ -233,7 +211,7 @@ public struct AmbientRailStripView: View {
         let barContext = PurahPluginContext(
             pod: pod,
             edge: edge,
-            railWidth: barW,
+            railWidth: railWidth,
             slotHeight: barSlotH,
             drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id),
             isExpanded: isActive,
@@ -242,7 +220,7 @@ public struct AmbientRailStripView: View {
             palette: palette,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
                     store.activateDrawer(podId: pod.id)
                 }
             },
@@ -253,6 +231,9 @@ public struct AmbientRailStripView: View {
                     }
                     if store.activeDrawerPodId == pod.id {
                         store.activeDrawerPodId = nil
+                    }
+                    if store.hoveredPodId == pod.id {
+                        store.hoveredPodId = nil
                     }
                     store.invalidateLayoutCache()
                 }
@@ -267,7 +248,7 @@ public struct AmbientRailStripView: View {
         let drawerContext = PurahPluginContext(
             pod: pod,
             edge: edge,
-            railWidth: barW,
+            railWidth: railWidth,
             slotHeight: drawerSlotH,
             drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id),
             isExpanded: isActive,
@@ -282,9 +263,9 @@ public struct AmbientRailStripView: View {
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             plugin.makeRailBarView(context: barContext)
-                .frame(width: barW, height: barSlotH)
+                .frame(width: railWidth, height: barSlotH)
+                .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
-                .transaction { $0.animation = nil }
                 .onTapGesture {
                     plugin.onRailBarTap(subItemId: nil, context: barContext)
                 }
@@ -381,12 +362,12 @@ public struct AmbientRailStripView: View {
     }
 
     @ViewBuilder
-    private func genericRailBar(pod: SlotPod, totalHeight: CGFloat) -> some View {
+    private func genericRailBar(pod: SlotPod, totalHeight: CGFloat, railWidth: CGFloat, isThisPodActive: Bool) -> some View {
         let color = palette.podColor(for: pod.id, store: store)
         RoundedRectangle(cornerRadius: 3.5)
             .fill(color.opacity(0.5))
-            .frame(width: barW, height: totalHeight)
-            .transaction { $0.animation = nil }
+            .frame(width: railWidth, height: totalHeight)
+            .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
     }
 
     private func pinButton(id: String, isPinned: Bool, color: Color) -> some View {

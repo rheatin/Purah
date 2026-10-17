@@ -106,14 +106,6 @@ public struct ScreenSimulationCanvas: View {
                                 .zIndex(50)
                         }
 
-                        if leftStrategy == .decomposedMajorPod {
-                            ForEach(majorGroupClusters(from: leftLayout), id: \.groupId) { cluster in
-                                simulatorMajorGroupBracket(cluster: cluster, scale: leftScale, isLeft: true)
-                                    .offset(x: 2, y: CGFloat(cluster.startY * leftScale) - 2)
-                                    .zIndex(0)
-                            }
-                        }
-
                         ForEach(Array(leftLayout.enumerated()), id: \.element.id) { idx, item in
                             let topY = CGFloat(item.startY * leftScale) + leftTopExtraOffset
                             let podSpan = CGFloat(item.spanH * leftScale)
@@ -182,14 +174,6 @@ public struct ScreenSimulationCanvas: View {
                             simulatorPageBar(edge: .right, pages: rightPages)
                                 .offset(x: -4, y: 2)
                                 .zIndex(50)
-                        }
-
-                        if rightStrategy == .decomposedMajorPod {
-                            ForEach(majorGroupClusters(from: rightLayout), id: \.groupId) { cluster in
-                                simulatorMajorGroupBracket(cluster: cluster, scale: rightScale, isLeft: false)
-                                    .offset(x: -2, y: CGFloat(cluster.startY * rightScale) - 2)
-                                    .zIndex(0)
-                            }
                         }
 
                         ForEach(Array(rightLayout.enumerated()), id: \.element.id) { idx, item in
@@ -346,60 +330,6 @@ public struct ScreenSimulationCanvas: View {
                 .font(.system(size: 7, weight: .semibold))
                 .foregroundColor(.white)
         }
-    }
-
-    private struct SimulatorMajorCluster {
-        let groupId: String
-        let startY: Double
-        let spanH: Double
-        let count: Int
-    }
-
-    private func majorGroupClusters(from items: [ResolvedPodLayoutItem]) -> [SimulatorMajorCluster] {
-        var clusters: [SimulatorMajorCluster] = []
-        var seen: Set<String> = []
-        for item in items {
-            guard let gid = item.majorGroupId, !seen.contains(gid) else { continue }
-            let members = items.filter { $0.majorGroupId == gid }
-            guard members.count > 1 else { continue }
-            seen.insert(gid)
-            clusters.append(
-                SimulatorMajorCluster(
-                    groupId: gid,
-                    startY: item.drawerStartY,
-                    spanH: item.drawerSpanH,
-                    count: members.count
-                )
-            )
-        }
-        return clusters
-    }
-
-    @ViewBuilder
-    private func simulatorMajorGroupBracket(cluster: SimulatorMajorCluster, scale: Double, isLeft: Bool) -> some View {
-        let bracketHeight = max(CGFloat(cluster.spanH * scale) + 4, 44)
-        RoundedRectangle(cornerRadius: 9)
-            .strokeBorder(
-                palette.primaryAccent.opacity(0.80),
-                style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])
-            )
-            .background(
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(palette.primaryAccent.opacity(0.08))
-            )
-            .overlay(
-                Text("MAJOR ×\(cluster.count)")
-                    .font(.system(size: 6.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(palette.primaryAccent)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Color.black.opacity(0.65))
-                    .cornerRadius(3)
-                    .offset(x: isLeft ? 6 : -6, y: -6),
-                alignment: isLeft ? .topLeading : .topTrailing
-            )
-            .frame(width: 179, height: bracketHeight)
-            .allowsHitTesting(false)
     }
 
     @ViewBuilder

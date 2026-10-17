@@ -4,7 +4,15 @@ import PurahCore
 
 public struct VisualLayoutSimulatorView: View {
     public let store: PurahWorkspaceStore
-    @State private var selectedOverflowRail: MountEdge = .left
+    @State private var selectedOverflowTarget: OverflowRailTarget = .both
+
+    private enum OverflowRailTarget: String, CaseIterable, Identifiable {
+        case both
+        case left
+        case right
+
+        var id: String { rawValue }
+    }
 
     private var theme: ThemeManager {
         ThemeManager.shared
@@ -233,7 +241,9 @@ public struct VisualLayoutSimulatorView: View {
         let rightPageCount = max(rightPages.count, 1)
         let curLeftPage = min(max(store.currentRailPage(for: .left), 0), leftPageCount - 1)
         let curRightPage = min(max(store.currentRailPage(for: .right), 0), rightPageCount - 1)
-        let activeRailStrategy = store.overflowStrategy(for: selectedOverflowRail)
+        let bothBadgeText = (store.leftRailOverflowStrategy == store.rightRailOverflowStrategy)
+            ? store.leftRailOverflowStrategy.localizedDisplayName
+            : "overflow.rail.mixed".localized
 
         return settingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
             VStack(alignment: .leading, spacing: 12) {
@@ -241,28 +251,51 @@ public struct VisualLayoutSimulatorView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                // Independent Left / Right Rail Selector Tabs
-                HStack(spacing: 10) {
+                // Both Rails (default) / Left Rail / Right Rail Selector Tabs
+                HStack(spacing: 8) {
                     overflowRailSelectorTab(
-                        edge: .left,
-                        title: "Left Rail",
-                        icon: "arrow.left.to.line",
-                        strategy: store.leftRailOverflowStrategy
+                        target: .both,
+                        title: "overflow.rail.both".localized,
+                        icon: "arrow.left.and.right.righttriangle.left.righttriangle.right",
+                        badgeText: bothBadgeText
                     )
                     overflowRailSelectorTab(
-                        edge: .right,
-                        title: "Right Rail",
+                        target: .left,
+                        title: "overflow.rail.left".localized,
+                        icon: "arrow.left.to.line",
+                        badgeText: store.leftRailOverflowStrategy.localizedDisplayName
+                    )
+                    overflowRailSelectorTab(
+                        target: .right,
+                        title: "overflow.rail.right".localized,
                         icon: "arrow.right.to.line",
-                        strategy: store.rightRailOverflowStrategy
+                        badgeText: store.rightRailOverflowStrategy.localizedDisplayName
                     )
                 }
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(RailOverflowStrategy.allCases) { strategy in
-                        let isSelected = (activeRailStrategy == strategy)
+                        let isSelected: Bool = {
+                            switch selectedOverflowTarget {
+                            case .both:
+                                return store.leftRailOverflowStrategy == strategy && store.rightRailOverflowStrategy == strategy
+                            case .left:
+                                return store.leftRailOverflowStrategy == strategy
+                            case .right:
+                                return store.rightRailOverflowStrategy == strategy
+                            }
+                        }()
                         Button {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                store.setOverflowStrategy(strategy, for: selectedOverflowRail)
+                                switch selectedOverflowTarget {
+                                case .both:
+                                    store.setOverflowStrategy(strategy, for: .left)
+                                    store.setOverflowStrategy(strategy, for: .right)
+                                case .left:
+                                    store.setOverflowStrategy(strategy, for: .left)
+                                case .right:
+                                    store.setOverflowStrategy(strategy, for: .right)
+                                }
                                 store.triggerControlHaptic(.alignment)
                             }
                         } label: {
@@ -363,41 +396,43 @@ public struct VisualLayoutSimulatorView: View {
 
     @ViewBuilder
     private func overflowRailSelectorTab(
-        edge: MountEdge,
+        target: OverflowRailTarget,
         title: String,
         icon: String,
-        strategy: RailOverflowStrategy
+        badgeText: String
     ) -> some View {
         let palette = theme.palette
-        let isSelected = (selectedOverflowRail == edge)
+        let isSelected = (selectedOverflowTarget == target)
         Button {
             withAnimation(.spring(response: 0.24, dampingFraction: 0.84)) {
-                selectedOverflowRail = edge
+                selectedOverflowTarget = target
                 store.triggerControlHaptic(.alignment)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10.5, weight: .bold))
                     .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
 
                 Text(title)
-                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(isSelected ? palette.primaryAccent : (palette.style == .native ? Color.primary : .white))
+                    .lineLimit(1)
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
 
-                Text(strategy.localizedDisplayName)
-                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                Text(badgeText)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
-                    .padding(.horizontal, 6)
+                    .lineLimit(1)
+                    .padding(.horizontal, 5)
                     .padding(.vertical, 2)
                     .background(
                         Capsule()
                             .fill(isSelected ? palette.primaryAccent.opacity(0.16) : Color.primary.opacity(0.06))
                     )
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
             .padding(.vertical, 7)
             .frame(maxWidth: .infinity)
             .background(isSelected ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor).opacity(0.35))

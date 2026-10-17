@@ -56,7 +56,6 @@ public struct TodoItemDrawerView: View {
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(listColor.opacity(isDone ? 0.35 : 0.9))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
-                .transaction { $0.animation = nil }
 
             expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
                 .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
@@ -240,7 +239,6 @@ public struct CalendarItemDrawerView: View {
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
-                .transaction { $0.animation = nil }
                 .dynamicAttentionBeacon(
                     isAlerting: isAlerting,
                     edge: edge,

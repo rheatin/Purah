@@ -8,6 +8,7 @@ import SwiftUI
 @testable import PurahApp
 
 @Suite("Drawer Interaction & UI Hit-Test Simulation Tests", .serialized)
+@MainActor
 struct DrawerInteractionUITests {
     @Test("Canonical window coordinate math covers all 7 pods on default rails")
     @MainActor
@@ -1039,7 +1040,6 @@ struct DrawerInteractionUITests {
         let layout = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
         guard layout.count >= 2 else { return }
         let pod1 = layout[0]
-        let pod2 = layout[1]
 
         // 1. Initially activate Pod 1
         let topY1 = CGFloat(pod1.startY) + 4.0
@@ -1047,14 +1047,16 @@ struct DrawerInteractionUITests {
         #expect(store.activeDrawerPodId == pod1.pod.id)
 
         // 2. Slide directly to Pod 2 with high vertical velocity (e.g. 400 pt/s)
+        let activeLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
+        let activePod2 = activeLayout[1]
         let edgeX = visibleRect.maxX - 6.0
-        let screenY2 = visibleRect.maxY - (CGFloat(pod2.startY) + 4.0)
+        let screenY2 = visibleRect.maxY - (CGFloat(activePod2.startY) + 4.0)
         let slidePoint = NSPoint(x: edgeX, y: screenY2)
         monitor.customCurrentMouseLocation = slidePoint
         monitor.processMouse(point: slidePoint, now: Date(), customVelocity: CGPoint(x: 0, y: -400.0))
 
         // In expanded state, Pod 2 must switch immediately with 0ms delay!
-        #expect(store.activeDrawerPodId == pod2.pod.id)
+        #expect(store.activeDrawerPodId == activePod2.pod.id)
     }
 
     @Test("CalendarItemDrawerView instantiates across Compact, Standard, and Flagship height tiers")

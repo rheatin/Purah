@@ -190,10 +190,17 @@ public final class ScreenEdgeCoordinator {
 
             if isCurrentOnEdge && !isPinned {
                 isDismissingEdge[targetEdge] = true
-                withAnimation(.spring(response: 0.18, dampingFraction: 0.92)) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
                     store.activeDrawerItemId = nil
                     store.activeDrawerPodId = nil
                     store.hoveredPodId = nil
+                    store.invalidateLayoutCache()
+                }
+            } else if let hoveredId = store.hoveredPodId,
+                      store.pod(forItemId: hoveredId)?.edge == targetEdge {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                    store.hoveredPodId = nil
+                    store.invalidateLayoutCache()
                 }
             }
             // Reset window to pass-through after drawer retraction so clicks pass directly to underlying apps

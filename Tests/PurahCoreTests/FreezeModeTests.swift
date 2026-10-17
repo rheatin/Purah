@@ -6,6 +6,7 @@ import SwiftUI
 @testable import PurahApp
 
 @Suite("Freeze Mode Windowing and Suppression Tests", .serialized)
+@MainActor
 struct FreezeModeTests {
     @Test("ScreenEdgeCoordinator setFrozen hides windows and disables interactivity")
     @MainActor

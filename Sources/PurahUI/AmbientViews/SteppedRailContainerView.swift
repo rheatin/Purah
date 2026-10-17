@@ -75,10 +75,12 @@ public struct SteppedRailContainerView: View {
         let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), minChipH), maxChipH)
         let actualSpanH = CGFloat(items.count) * itemH + spacing * CGFloat(max(items.count - 1, 0))
 
+        let barW = max(context.railWidth, CGFloat(store.railBarWidth))
+
         Group {
             if items.isEmpty {
                 plugin.makeRailBarView(context: context)
-                    .frame(width: CGFloat(store.railBarWidth), height: totalHeight)
+                    .frame(width: barW, height: totalHeight)
             } else {
                 VStack(alignment: edge == .left ? .leading : .trailing, spacing: spacing) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, subItem in
@@ -99,11 +101,10 @@ public struct SteppedRailContainerView: View {
                                 .offset(y: -shift)
 
                             // Scope rail tap gestures strictly to the rail bar indicator shape (not the entire ZStack containing expanded card)
-                            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
+                            RoundedRectangle(cornerRadius: min(barW / 2, 4))
                                 .fill(Color.clear)
-                                .frame(width: CGFloat(store.railBarWidth), height: itemH)
+                                .frame(width: barW, height: itemH)
                                 .contentShape(Rectangle())
-                                .transaction { $0.animation = nil }
                                 .onTapGesture {
                                     if store.dismissAlertOnHover && subItem.state == .alerting {
                                         store.acknowledgeAlert(id: subItem.id)
@@ -119,6 +120,7 @@ public struct SteppedRailContainerView: View {
                 .frame(height: actualSpanH, alignment: .top)
             }
         }
+        .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: totalHeight)
         .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
             plugin.onDrop(providers: providers, context: context)
         })
@@ -234,7 +236,6 @@ public struct SteppedRailContainerView: View {
             }
         }
         .frame(width: barW, height: itemH)
-        .transaction { $0.animation = nil }
         .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
     }
 

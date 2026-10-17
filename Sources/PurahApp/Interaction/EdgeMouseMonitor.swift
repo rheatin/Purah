@@ -403,7 +403,12 @@ public final class EdgeMouseMonitor {
             wasAtAbsoluteBezel = false
             bezelArrivalTime = nil
             cancelInitialDwell()
-            store.hoveredPodId = nil
+            if store.hoveredPodId != nil {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                    store.hoveredPodId = nil
+                    store.invalidateLayoutCache()
+                }
+            }
             lastCandidatePodId = nil
             candidateHoverStartTime = nil
             return
@@ -456,14 +461,20 @@ public final class EdgeMouseMonitor {
 
         guard let matched = matchedItem else {
             cancelInitialDwell()
-            if isFromDockedState {
-                store.hoveredPodId = nil
+            if isFromDockedState && store.hoveredPodId != nil {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                    store.hoveredPodId = nil
+                    store.invalidateLayoutCache()
+                }
             }
             return
         }
         let candidate = matched.pod
-        if !isFromDockedState {
-            store.hoveredPodId = candidate.id
+        if !isFromDockedState && store.hoveredPodId != candidate.id {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                store.hoveredPodId = candidate.id
+                store.invalidateLayoutCache()
+            }
         }
 
         // Hover dwell hysteresis: when moving between pods, require deliberate intent

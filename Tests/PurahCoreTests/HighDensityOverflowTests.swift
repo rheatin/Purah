@@ -78,6 +78,47 @@ struct HighDensityOverflowTests {
         }
     }
 
+    @Test("Dynamic Accordion with 3-4 pods on a 900pt rail expands hovered pod from compact idle height to preferredDrawerHeight (>= 220pt) and resets Page 2")
+    func testDynamicAccordionPreferredHeightAndPageReset() throws {
+        let suiteName = "test_accordion_pref_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // Start in Paged Spaces with pods assigned to Page 2
+        store.setOverflowStrategy(.pagedSpaces, for: .left)
+        store.setRailPage(1, for: .left)
+        for i in store.pods.indices where store.pods[i].edge == .left {
+            store.pods[i].pageIndex = 1
+        }
+
+        // Switch to Dynamic Accordion -> must reset currentRailPage = 0 and all pods' pageIndex = 0
+        store.setOverflowStrategy(.dynamicAccordion, for: .left)
+        #expect(store.currentRailPage(for: .left) == 0)
+        #expect(store.pods.filter { $0.edge == .left }.allSatisfy { $0.pageIndex == 0 })
+
+        // Verify with 3~4 pods on left rail (default balanced/initial left rail has 4 enabled pods)
+        let totalHeight = 900.0
+        let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(idleLayout.count >= 3 && idleLayout.count <= 4)
+
+        let targetItem = idleLayout[1]
+        let targetPodId = targetItem.pod.id
+        let idleSpanH = targetItem.spanH
+        let idleCenter = targetItem.startY + (idleSpanH * 0.5)
+        let prefH = Double(store.preferredDrawerHeight(for: targetPodId))
+        #expect(prefH >= 220.0)
+        #expect(idleSpanH < prefH, "Idle accordion bar must be compact and smaller than preferredDrawerHeight")
+
+        // Hover target pod -> must expand up to preferredDrawerHeight anchored over idleCenter
+        store.activateDrawer(podId: targetPodId)
+        let expandedLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        let expandedItem = try #require(expandedLayout.first(where: { $0.pod.id == targetPodId }))
+
+        #expect(expandedItem.spanH >= prefH - 0.5, "Hovered pod in Dynamic Accordion must expand to its preferredDrawerHeight (>= 220pt)")
+        #expect(expandedItem.spanH > idleSpanH)
+        #expect(expandedItem.startY <= idleCenter && (expandedItem.startY + expandedItem.spanH) >= idleCenter)
+    }
+
     @Test("Mode 2 (Decomposed Major Pod): sub-bars have distinct rail ranges while sharing full Major Pod drawer range and frames")
     func testDecomposedMajorPodMode() throws {
         let store = makeNinePodsLeftRailStore(strategy: .decomposedMajorPod)

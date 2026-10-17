@@ -69,12 +69,14 @@ open class PurahTerminalView: LocalProcessTerminalView {
     }
 
     open override func viewDidMoveToWindow() {
+        guard !PurahWorkspaceStore.isTestingEnvironment else { return }
         super.viewDidMoveToWindow()
         guard window != nil else { return }
         setupMouseDragMonitorIfNeeded()
     }
 
     private func setupMouseDragMonitorIfNeeded() {
+        guard !PurahWorkspaceStore.isTestingEnvironment else { return }
         guard mouseMonitorToken == nil else { return }
         mouseMonitorToken = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
             MainActor.assumeIsolated {

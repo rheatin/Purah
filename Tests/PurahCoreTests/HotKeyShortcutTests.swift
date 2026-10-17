@@ -3,6 +3,7 @@ import Foundation
 @testable import PurahCore
 
 @Suite("HotKey Shortcut & Freeze State Tests", .serialized)
+@MainActor
 struct HotKeyShortcutTests {
     @Test("Default shortcut formats as Option-Tab")
     func testDefaultShortcutFormat() {
