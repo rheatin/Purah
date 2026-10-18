@@ -383,6 +383,87 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    public func detachPodFromMajorGroup(id: String, targetCenterY: Double, totalHeight: Double) {
+        guard let initialIdx = pods.firstIndex(where: { $0.id == id }) else { return }
+        let edge = pods[initialIdx].edge
+        let oldGroupId = pods[initialIdx].majorGroupId
+        let originalGroupStart: Double? = {
+            guard let gid = oldGroupId else { return nil }
+            return pods.filter { $0.edge == edge && $0.isEnabled && $0.majorGroupId == gid }
+                .map(\.range.start)
+                .min()
+        }()
+
+        splitPodFromMajorGroup(id: id)
+        guard let idx = pods.firstIndex(where: { $0.id == id }) else { return }
+
+        let safeTotalH = max(totalHeight, 400.0)
+        let podLength = pods[idx].range.length
+        var newStart = min(
+            max((targetCenterY / safeTotalH) - (podLength * 0.5), 0.02),
+            max(0.96 - podLength, 0.02)
+        )
+
+        if let oldGroupId = oldGroupId {
+            let remainingIndices = pods.indices.filter {
+                pods[$0].edge == edge && pods[$0].isEnabled && pods[$0].majorGroupId == oldGroupId
+            }.sorted { pods[$0].range.start < pods[$1].range.start }
+
+            if remainingIndices.count >= 2 {
+                let subGap = 0.004
+                var curStart = originalGroupStart ?? pods[remainingIndices[0]].range.start
+                for remIdx in remainingIndices {
+                    pods[remIdx].range.start = curStart
+                    curStart += pods[remIdx].range.length + subGap
+                }
+                let groupStart = pods[remainingIndices[0]].range.start
+                let groupEnd = curStart - subGap
+                let groupMid = (groupStart + groupEnd) * 0.5
+                if newStart >= groupStart - 0.01 && newStart <= groupEnd + 0.01 {
+                    if (targetCenterY / safeTotalH) < groupMid {
+                        newStart = max(groupStart - podLength - 0.02, 0.02)
+                    } else {
+                        newStart = min(groupEnd + 0.02, max(0.96 - podLength, 0.02))
+                    }
+                }
+                if (targetCenterY / safeTotalH) < groupMid && (newStart + podLength + 0.01) > groupStart {
+                    var shiftedStart = min(newStart + podLength + 0.015, max(0.94 - (groupEnd - groupStart), 0.04))
+                    for remIdx in remainingIndices {
+                        pods[remIdx].range.start = shiftedStart
+                        shiftedStart += pods[remIdx].range.length + subGap
+                    }
+                }
+            }
+        }
+
+        pods[idx].range.start = newStart
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func moveMajorGroup(groupId: String, on edge: MountEdge, newStartRatio: Double) {
+        let groupIndices = pods.indices.filter {
+            pods[$0].isEnabled && pods[$0].edge == edge && pods[$0].majorGroupId == groupId
+        }.sorted { pods[$0].range.start < pods[$1].range.start }
+        guard !groupIndices.isEmpty else { return }
+
+        let subGap = 0.004
+        let totalSpan = groupIndices.reduce(0.0) { $0 + pods[$1].range.length }
+            + Double(max(groupIndices.count - 1, 0)) * subGap
+        let clampedStart = min(max(newStartRatio, 0.02), max(0.96 - totalSpan, 0.02))
+
+        var curStart = clampedStart
+        for idx in groupIndices {
+            pods[idx].range.start = curStart
+            curStart += pods[idx].range.length + subGap
+        }
+
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
     public func addPodToMajorGroup(podId: String, groupPodId: String) {
         addPodToMajorGroup(podId: podId, targetPodId: groupPodId)
     }
@@ -1753,10 +1834,37 @@ public final class PurahWorkspaceStore {
             }
         }
 
+        var clusterStartYs: [Double] = []
+        var currentY = safeTop
+        for cIdx in 0..<clusters.count {
+            let desiredStart = clusters[cIdx][0].range.start * totalHeight
+            let idealY = max(desiredStart, currentY)
+            clusterStartYs.append(idealY)
+            currentY = idealY + majorSpans[cIdx] + majorGap
+        }
+        if let lastStart = clusterStartYs.last, let lastSpan = majorSpans.last {
+            let overflow = (lastStart + lastSpan) - safeBottom
+            if overflow > 0 {
+                var targetBottom = safeBottom
+                for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
+                    let maxAllowedStart = targetBottom - majorSpans[cIdx]
+                    clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowedStart)
+                    targetBottom = clusterStartYs[cIdx] - majorGap
+                }
+            }
+        }
+        for cIdx in 0..<clusters.count {
+            if cIdx == 0 {
+                clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
+            } else {
+                clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + majorSpans[cIdx - 1] + majorGap)
+            }
+        }
+
         var result: [ResolvedPodLayoutItem] = []
-        var currentMajorY = safeTop
 
         for (cIdx, cluster) in clusters.enumerated() {
+            let currentMajorY = clusterStartYs[cIdx]
             let majorSpanH = majorSpans[cIdx]
             if cluster.count == 1 {
                 let pod = cluster[0]
@@ -1818,7 +1926,6 @@ public final class PurahWorkspaceStore {
                     )
                 }
             }
-            currentMajorY += majorSpanH + majorGap
         }
 
         return result

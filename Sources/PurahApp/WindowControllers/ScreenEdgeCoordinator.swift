@@ -152,7 +152,7 @@ public final class ScreenEdgeCoordinator {
 
         if isLiveEditing {
             let visibleRect = screen.visibleFrame
-            let dockWidth: CGFloat = 608
+            let dockWidth: CGFloat = 720
             let dockHeight: CGFloat = 96
             let dockX = visibleRect.midX - (dockWidth * 0.5)
             let dockY = visibleRect.maxY - dockHeight - 14

@@ -258,24 +258,18 @@ public struct LiveRailSculptorStripView: View {
             if translationY < -14 {
                 let crossedAbove = allItems[0..<myIdx].filter { ($0.startY + $0.spanH * 0.5) > finalCenterY }.count
                 if crossedAbove > 0 {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        for _ in 0..<crossedAbove {
-                            store.movePodInOrder(id: item.pod.id, direction: .up)
-                        }
-                        store.triggerControlHaptic(.alignment)
+                    for _ in 0..<crossedAbove {
+                        store.movePodInOrder(id: item.pod.id, direction: .up)
                     }
-                    return
+                    store.triggerControlHaptic(.alignment)
                 }
             } else if translationY > 14 {
                 let crossedBelow = allItems[(myIdx + 1)..<allItems.count].filter { ($0.startY + $0.spanH * 0.5) < finalCenterY }.count
                 if crossedBelow > 0 {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        for _ in 0..<crossedBelow {
-                            store.movePodInOrder(id: item.pod.id, direction: .down)
-                        }
-                        store.triggerControlHaptic(.alignment)
+                    for _ in 0..<crossedBelow {
+                        store.movePodInOrder(id: item.pod.id, direction: .down)
                     }
-                    return
+                    store.triggerControlHaptic(.alignment)
                 }
             }
         }
@@ -354,6 +348,15 @@ public struct LiveRailSculptorStripView: View {
                             totalHeight: totalHeight,
                             store: store,
                             isStackTargetHighlighted: isClusterHighlighted,
+                            hasActiveStackMergeTarget: hoveredStackTargetPodId != nil || store.externalDraggedPodId != nil,
+                            onCancelParentDragState: {
+                                hoverMergeTask?.cancel()
+                                hoverMergeTask = nil
+                                hoveredStackTargetPodId = nil
+                                draggingPodId = nil
+                                dragInitialCenterY = nil
+                                didAutoMergeDuringDrag = false
+                            },
                             onSubPodDragChanged: { subItem, translationY in
                                 handlePodDragChanged(
                                     item: subItem,
@@ -543,6 +546,8 @@ public struct LiveSculptMajorClusterBoxView: View {
     public let totalHeight: CGFloat
     public let store: PurahWorkspaceStore
     public let isStackTargetHighlighted: Bool
+    public let hasActiveStackMergeTarget: Bool
+    public let onCancelParentDragState: () -> Void
     public let onSubPodDragChanged: (ResolvedPodLayoutItem, CGFloat) -> Void
     public let onSubPodDragEnded: (ResolvedPodLayoutItem, CGFloat) -> Void
 
@@ -550,7 +555,12 @@ public struct LiveSculptMajorClusterBoxView: View {
     @State private var lastResizeHapticStep: Int = 0
     @State private var isResizeHovered: Bool = false
     @State private var activeDraggingSubId: String? = nil
-    @State private var activeSubDragOffsetY: CGFloat = 0.0
+    @State private var activeSubDragOffset: CGSize = .zero
+    @State private var isSubPodPulledOutside: Bool = false
+    @State private var detachHoverTask: Task<Void, Never>? = nil
+    @State private var didAutoDetachDuringDrag: Bool = false
+    @State private var stackMoveInitialStart: Double? = nil
+    @State private var lastStackMoveHapticStep: Int = 0
     @State private var activeResizingSubId: String? = nil
     @State private var subResizeInitialLength: Double? = nil
     @State private var lastSubResizeHapticStep: Int = 0
@@ -568,6 +578,8 @@ public struct LiveSculptMajorClusterBoxView: View {
         totalHeight: CGFloat,
         store: PurahWorkspaceStore,
         isStackTargetHighlighted: Bool = false,
+        hasActiveStackMergeTarget: Bool = false,
+        onCancelParentDragState: @escaping () -> Void = {},
         onSubPodDragChanged: @escaping (ResolvedPodLayoutItem, CGFloat) -> Void = { _, _ in },
         onSubPodDragEnded: @escaping (ResolvedPodLayoutItem, CGFloat) -> Void = { _, _ in }
     ) {
@@ -577,8 +589,28 @@ public struct LiveSculptMajorClusterBoxView: View {
         self.totalHeight = totalHeight
         self.store = store
         self.isStackTargetHighlighted = isStackTargetHighlighted
+        self.hasActiveStackMergeTarget = hasActiveStackMergeTarget
+        self.onCancelParentDragState = onCancelParentDragState
         self.onSubPodDragChanged = onSubPodDragChanged
         self.onSubPodDragEnded = onSubPodDragEnded
+    }
+
+    private func computeDetachTargetY(
+        subItem: ResolvedPodLayoutItem,
+        translation: CGSize,
+        safeTotalH: Double
+    ) -> Double {
+        let currentSubCenterY = subItem.startY + (subItem.spanH * 0.5) + Double(translation.height)
+        let isPulledVerticallyOut = (currentSubCenterY < cluster.drawerStartY - 14.0)
+            || (currentSubCenterY > cluster.drawerStartY + cluster.drawerSpanH + 14.0)
+        if isPulledVerticallyOut {
+            return currentSubCenterY
+        }
+        let placeBelow = cluster.drawerStartY + cluster.drawerSpanH + 40.0 + (subItem.spanH * 0.5)
+        if placeBelow + (subItem.spanH * 0.5) < safeTotalH - 20.0 {
+            return placeBelow
+        }
+        return max(cluster.drawerStartY - 40.0 - (subItem.spanH * 0.5), 40.0)
     }
 
     public var body: some View {
@@ -595,7 +627,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
         ZStack {
             VStack(alignment: .leading, spacing: 2) {
-                // Top Header Bar: Shared Stack summary + [Unstack All]
+                // Top Header Bar: Shared Stack summary (draggable vertically) + [Unstack All]
                 HStack(spacing: 4) {
                     Text("📦 Stack (\(cluster.pods.count)) · \(Int(cluster.drawerSpanH))pt")
                         .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -624,6 +656,30 @@ public struct LiveSculptMajorClusterBoxView: View {
                 .padding(.horizontal, 7)
                 .frame(height: headerH)
                 .background(Color.orange.opacity(0.14))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                        .onChanged { value in
+                            if stackMoveInitialStart == nil {
+                                stackMoveInitialStart = cluster.drawerStartY / safeTotalH
+                                lastStackMoveHapticStep = 0
+                            }
+                            let deltaY = Double(value.translation.height)
+                            let step = Int(deltaY / 24.0)
+                            if step != lastStackMoveHapticStep {
+                                lastStackMoveHapticStep = step
+                                store.triggerControlHaptic(.alignment)
+                            }
+                            let baseStart = stackMoveInitialStart ?? (cluster.drawerStartY / safeTotalH)
+                            let newStartRatio = baseStart + (deltaY / safeTotalH)
+                            store.moveMajorGroup(groupId: groupId, on: edge, newStartRatio: newStartRatio)
+                        }
+                        .onEnded { _ in
+                            stackMoveInitialStart = nil
+                            lastStackMoveHapticStep = 0
+                        }
+                )
+                .help("Drag vertically to move this entire Shared Stack along the rail")
 
                 // Stacked Sub-Pod Slices
                 VStack(spacing: innerSpacing) {
@@ -635,217 +691,318 @@ public struct LiveSculptMajorClusterBoxView: View {
                         let isDraggingSub = (activeDraggingSubId == pod.id)
                         let isSubResizeHovered = (hoveredSubResizeId == pod.id)
 
-                        VStack(alignment: .leading, spacing: 0) {
-                            // Upper draggable area of sub-pod slice
-                            VStack(alignment: .leading, spacing: 3) {
-                                // Row 1: Header Row — Full Width for Plugin Name
-                                HStack(spacing: 5) {
-                                    RoundedRectangle(cornerRadius: 1.5)
-                                        .fill(podColor)
-                                        .frame(width: 3, height: 12)
+                        ZStack {
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Upper draggable area of sub-pod slice
+                                VStack(alignment: .leading, spacing: 3) {
+                                    // Row 1: Header Row — Full Width for Plugin Name
+                                    HStack(spacing: 5) {
+                                        RoundedRectangle(cornerRadius: 1.5)
+                                            .fill(podColor)
+                                            .frame(width: 3, height: 12)
 
-                                    Image(systemName: pod.systemIcon)
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(podColor)
+                                        Image(systemName: pod.systemIcon)
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(podColor)
 
-                                    Text(pod.name)
-                                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
+                                        Text(pod.name)
+                                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
 
-                                    Spacer(minLength: 2)
+                                        Spacer(minLength: 2)
 
-                                    Text("\(Int(subItem.spanH))pt")
-                                        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(podColor)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1.5)
-                                        .background(Capsule().fill(podColor.opacity(0.18)))
+                                        Text("\(Int(subItem.spanH))pt")
+                                            .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(podColor)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1.5)
+                                            .background(Capsule().fill(podColor.opacity(0.18)))
 
-                                    // Unmount button [✕]
-                                    Button {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.splitPodFromMajorGroup(id: pod.id)
-                                            store.togglePodEnabled(id: pod.id)
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(.red.opacity(0.9))
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("Unmount \(pod.name) from rail")
-                                }
-
-                                // Row 2: Action Toolbar Row — shown when sliceH >= 46
-                                if sliceH >= 46 {
-                                    HStack(spacing: 4) {
-                                        // Move Up [↑]
-                                        Button {
-                                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                                store.movePodInOrder(id: pod.id, direction: .up)
-                                                store.triggerControlHaptic(.alignment)
-                                            }
-                                        } label: {
-                                            Text("↑")
-                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                                .foregroundColor(.white)
-                                                .frame(width: 18, height: 17)
-                                                .background(Color.white.opacity(0.14))
-                                                .cornerRadius(4)
-                                        }
-                                        .buttonStyle(.tactile)
-                                        .disabled(!store.canMovePod(id: pod.id, direction: .up))
-                                        .help("Move up in stack")
-
-                                        // Move Down [↓]
-                                        Button {
-                                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                                store.movePodInOrder(id: pod.id, direction: .down)
-                                                store.triggerControlHaptic(.alignment)
-                                            }
-                                        } label: {
-                                            Text("↓")
-                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                                .foregroundColor(.white)
-                                                .frame(width: 18, height: 17)
-                                                .background(Color.white.opacity(0.14))
-                                                .cornerRadius(4)
-                                        }
-                                        .buttonStyle(.tactile)
-                                        .disabled(!store.canMovePod(id: pod.id, direction: .down))
-                                        .help("Move down in stack")
-
-                                        // Pop Out / Split from Stack [✂️ Split]
+                                        // Unmount button [✕]
                                         Button {
                                             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                                 store.splitPodFromMajorGroup(id: pod.id)
+                                                store.togglePodEnabled(id: pod.id)
                                                 store.triggerControlHaptic(.alignment)
                                             }
                                         } label: {
-                                            HStack(spacing: 2) {
-                                                Image(systemName: "scissors")
-                                                    .font(.system(size: 8, weight: .bold))
-                                                Text("Split")
-                                                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                                            }
-                                            .foregroundColor(.orange)
-                                            .padding(.horizontal, 5)
-                                            .frame(height: 17)
-                                            .background(Color.orange.opacity(0.22))
-                                            .cornerRadius(4)
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.red.opacity(0.9))
                                         }
                                         .buttonStyle(.tactile)
-                                        .help("Pop \(pod.name) out of this Shared Stack")
+                                        .help("Unmount \(pod.name) from rail")
+                                    }
 
-                                        Spacer(minLength: 0)
-
-                                        // Throw to Opposite Rail [⇄]
-                                        Button {
-                                            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                                                store.splitPodFromMajorGroup(id: pod.id)
-                                                store.movePod(id: pod.id, to: edge == .left ? .right : .left)
-                                                store.triggerControlHaptic(.alignment)
+                                    // Row 2: Action Toolbar Row — shown when sliceH >= 46
+                                    if sliceH >= 46 {
+                                        HStack(spacing: 4) {
+                                            // Move Up [↑]
+                                            Button {
+                                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                                    store.movePodInOrder(id: pod.id, direction: .up)
+                                                    store.triggerControlHaptic(.alignment)
+                                                }
+                                            } label: {
+                                                Text("↑")
+                                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 18, height: 17)
+                                                    .background(Color.white.opacity(0.14))
+                                                    .cornerRadius(4)
                                             }
-                                        } label: {
-                                            Text("⇄")
-                                                .font(.system(size: 9, weight: .bold))
-                                                .foregroundColor(palette.warningAccent)
-                                                .frame(width: 19, height: 17)
-                                                .background(palette.warningAccent.opacity(0.18))
+                                            .buttonStyle(.tactile)
+                                            .disabled(!store.canMovePod(id: pod.id, direction: .up))
+                                            .help("Move up in stack")
+
+                                            // Move Down [↓]
+                                            Button {
+                                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                                    store.movePodInOrder(id: pod.id, direction: .down)
+                                                    store.triggerControlHaptic(.alignment)
+                                                }
+                                            } label: {
+                                                Text("↓")
+                                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 18, height: 17)
+                                                    .background(Color.white.opacity(0.14))
+                                                    .cornerRadius(4)
+                                            }
+                                            .buttonStyle(.tactile)
+                                            .disabled(!store.canMovePod(id: pod.id, direction: .down))
+                                            .help("Move down in stack")
+
+                                            // Pop Out / Split from Stack [✂️ Split]
+                                            Button {
+                                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                                    store.splitPodFromMajorGroup(id: pod.id)
+                                                    store.triggerControlHaptic(.alignment)
+                                                }
+                                            } label: {
+                                                HStack(spacing: 2) {
+                                                    Image(systemName: "scissors")
+                                                        .font(.system(size: 8, weight: .bold))
+                                                    Text("Split")
+                                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                                }
+                                                .foregroundColor(.orange)
+                                                .padding(.horizontal, 5)
+                                                .frame(height: 17)
+                                                .background(Color.orange.opacity(0.22))
                                                 .cornerRadius(4)
+                                            }
+                                            .buttonStyle(.tactile)
+                                            .help("Pop \(pod.name) out of this Shared Stack")
+
+                                            Spacer(minLength: 0)
+
+                                            // Throw to Opposite Rail [⇄]
+                                            Button {
+                                                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                                    store.splitPodFromMajorGroup(id: pod.id)
+                                                    store.movePod(id: pod.id, to: edge == .left ? .right : .left)
+                                                    store.triggerControlHaptic(.alignment)
+                                                }
+                                            } label: {
+                                                Text("⇄")
+                                                    .font(.system(size: 9, weight: .bold))
+                                                    .foregroundColor(palette.warningAccent)
+                                                    .frame(width: 19, height: 17)
+                                                    .background(palette.warningAccent.opacity(0.18))
+                                                    .cornerRadius(4)
+                                            }
+                                            .buttonStyle(.tactile)
+                                            .help(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
                                         }
-                                        .buttonStyle(.tactile)
-                                        .help(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
+                                    }
+
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.top, sliceH >= 48 ? 5 : 2)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                                        .onChanged { value in
+                                            if activeDraggingSubId != pod.id {
+                                                activeDraggingSubId = pod.id
+                                                didAutoDetachDuringDrag = false
+                                                isSubPodPulledOutside = false
+                                            }
+                                            guard !didAutoDetachDuringDrag else { return }
+
+                                            activeSubDragOffset = value.translation
+                                            onSubPodDragChanged(subItem, value.translation.height)
+
+                                            let currentSubCenterY = subItem.startY + (subItem.spanH * 0.5) + Double(value.translation.height)
+                                            let isPulledVerticallyOut = (currentSubCenterY < cluster.drawerStartY - 14.0)
+                                                || (currentSubCenterY > cluster.drawerStartY + cluster.drawerSpanH + 14.0)
+                                            let isPulledHorizontallyOut = abs(value.translation.width) > 36.0
+                                            let pulledOut = isPulledVerticallyOut || isPulledHorizontallyOut
+
+                                            if pulledOut && !isSubPodPulledOutside {
+                                                isSubPodPulledOutside = true
+                                                store.triggerControlHaptic(.alignment)
+                                                detachHoverTask?.cancel()
+                                                detachHoverTask = Task { @MainActor in
+                                                    try? await Task.sleep(nanoseconds: 400_000_000)
+                                                    guard !Task.isCancelled else { return }
+                                                    guard activeDraggingSubId == pod.id,
+                                                          isSubPodPulledOutside,
+                                                          !didAutoDetachDuringDrag,
+                                                          !hasActiveStackMergeTarget else { return }
+                                                    let latestOffset = activeSubDragOffset
+                                                    let targetY = computeDetachTargetY(
+                                                        subItem: subItem,
+                                                        translation: latestOffset,
+                                                        safeTotalH: safeTotalH
+                                                    )
+                                                    didAutoDetachDuringDrag = true
+                                                    isSubPodPulledOutside = false
+                                                    activeDraggingSubId = nil
+                                                    activeSubDragOffset = .zero
+                                                    onCancelParentDragState()
+                                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                                        store.detachPodFromMajorGroup(
+                                                            id: pod.id,
+                                                            targetCenterY: targetY,
+                                                            totalHeight: safeTotalH
+                                                        )
+                                                        store.triggerControlHaptic(.levelChange)
+                                                    }
+                                                }
+                                            } else if !pulledOut && isSubPodPulledOutside {
+                                                detachHoverTask?.cancel()
+                                                detachHoverTask = nil
+                                                isSubPodPulledOutside = false
+                                            }
+                                        }
+                                        .onEnded { value in
+                                            detachHoverTask?.cancel()
+                                            detachHoverTask = nil
+
+                                            let wasAutoDetached = didAutoDetachDuringDrag
+                                            let wasPulledOut = isSubPodPulledOutside
+
+                                            activeDraggingSubId = nil
+                                            activeSubDragOffset = .zero
+                                            isSubPodPulledOutside = false
+                                            didAutoDetachDuringDrag = false
+
+                                            guard !wasAutoDetached else { return }
+
+                                            let currentSubCenterY = subItem.startY + (subItem.spanH * 0.5) + Double(value.translation.height)
+                                            let isPulledVerticallyOut = (currentSubCenterY < cluster.drawerStartY - 14.0)
+                                                || (currentSubCenterY > cluster.drawerStartY + cluster.drawerSpanH + 14.0)
+                                            let isPulledHorizontallyOut = abs(value.translation.width) > 36.0
+                                            let pulledOut = wasPulledOut || isPulledVerticallyOut || isPulledHorizontallyOut
+
+                                            if pulledOut && !hasActiveStackMergeTarget {
+                                                let targetY = computeDetachTargetY(
+                                                    subItem: subItem,
+                                                    translation: value.translation,
+                                                    safeTotalH: safeTotalH
+                                                )
+                                                onCancelParentDragState()
+                                                withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                                    store.detachPodFromMajorGroup(
+                                                        id: pod.id,
+                                                        targetCenterY: targetY,
+                                                        totalHeight: safeTotalH
+                                                    )
+                                                    store.triggerControlHaptic(.levelChange)
+                                                }
+                                            } else {
+                                                onSubPodDragEnded(subItem, value.translation.height)
+                                            }
+                                        }
+                                )
+
+                                // Sub-Pod Resize Handle (`── ══ ──`, 8pt tall)
+                                ZStack {
+                                    Rectangle()
+                                        .fill(Color.clear)
+                                        .frame(height: 8)
+
+                                    Text("── ══ ──")
+                                        .font(.system(size: 6.5, weight: .bold, design: .monospaced))
+                                        .foregroundColor(isSubResizeHovered ? .white : podColor.opacity(0.85))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 8)
+                                .contentShape(Rectangle())
+                                .onHover { hovering in
+                                    if hovering {
+                                        hoveredSubResizeId = pod.id
+                                    } else if hoveredSubResizeId == pod.id {
+                                        hoveredSubResizeId = nil
                                     }
                                 }
-
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.top, sliceH >= 48 ? 5 : 2)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                                    .onChanged { value in
-                                        activeDraggingSubId = pod.id
-                                        activeSubDragOffsetY = value.translation.height
-                                        onSubPodDragChanged(subItem, value.translation.height)
-                                    }
-                                    .onEnded { value in
-                                        activeDraggingSubId = nil
-                                        activeSubDragOffsetY = 0.0
-                                        onSubPodDragEnded(subItem, value.translation.height)
-                                    }
-                            )
-
-                            // Sub-Pod Resize Handle (`── ══ ──`, 8pt tall)
-                            ZStack {
-                                Rectangle()
-                                    .fill(Color.clear)
-                                    .frame(height: 8)
-
-                                Text("── ══ ──")
-                                    .font(.system(size: 6.5, weight: .bold, design: .monospaced))
-                                    .foregroundColor(isSubResizeHovered ? .white : podColor.opacity(0.85))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 8)
-                            .contentShape(Rectangle())
-                            .onHover { hovering in
-                                if hovering {
-                                    hoveredSubResizeId = pod.id
-                                } else if hoveredSubResizeId == pod.id {
-                                    hoveredSubResizeId = nil
-                                }
-                            }
-                            .highPriorityGesture(
-                                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                                    .onChanged { value in
-                                        if subResizeInitialLength == nil || activeResizingSubId != pod.id {
-                                            activeResizingSubId = pod.id
-                                            subResizeInitialLength = max(pod.range.length, 0.03)
+                                .highPriorityGesture(
+                                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                                        .onChanged { value in
+                                            if subResizeInitialLength == nil || activeResizingSubId != pod.id {
+                                                activeResizingSubId = pod.id
+                                                subResizeInitialLength = max(pod.range.length, 0.03)
+                                                lastSubResizeHapticStep = 0
+                                            }
+                                            let deltaY = Double(value.translation.height)
+                                            let step = Int(deltaY / 16.0)
+                                            if step != lastSubResizeHapticStep {
+                                                lastSubResizeHapticStep = step
+                                                store.triggerControlHaptic(.alignment)
+                                            }
+                                            let baseLen = subResizeInitialLength ?? max(pod.range.length, 0.03)
+                                            let clusterTotalRatio = max(cluster.items.reduce(0.0) { $0 + max($1.pod.range.length, 0.025) }, 0.05)
+                                            let clusterRenderedSubRatio = max(cluster.items.reduce(0.0) { $0 + $1.spanH } / safeTotalH, 0.05)
+                                            let ratioPerScreenUnit = clusterTotalRatio / clusterRenderedSubRatio
+                                            let targetRatio = max(baseLen + (deltaY / safeTotalH) * ratioPerScreenUnit, 0.03)
+                                            store.resizeSubPodInMajorGroup(
+                                                podId: pod.id,
+                                                on: edge,
+                                                newSubSpanRatio: targetRatio
+                                            )
+                                        }
+                                        .onEnded { _ in
+                                            activeResizingSubId = nil
+                                            subResizeInitialLength = nil
                                             lastSubResizeHapticStep = 0
                                         }
-                                        let deltaY = Double(value.translation.height)
-                                        let step = Int(deltaY / 16.0)
-                                        if step != lastSubResizeHapticStep {
-                                            lastSubResizeHapticStep = step
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                        let baseLen = subResizeInitialLength ?? max(pod.range.length, 0.03)
-                                        let clusterTotalRatio = max(cluster.items.reduce(0.0) { $0 + max($1.pod.range.length, 0.025) }, 0.05)
-                                        let clusterRenderedSubRatio = max(cluster.items.reduce(0.0) { $0 + $1.spanH } / safeTotalH, 0.05)
-                                        let ratioPerScreenUnit = clusterTotalRatio / clusterRenderedSubRatio
-                                        let targetRatio = max(baseLen + (deltaY / safeTotalH) * ratioPerScreenUnit, 0.03)
-                                        store.resizeSubPodInMajorGroup(
-                                            podId: pod.id,
-                                            on: edge,
-                                            newSubSpanRatio: targetRatio
-                                        )
-                                    }
-                                    .onEnded { _ in
-                                        activeResizingSubId = nil
-                                        subResizeInitialLength = nil
-                                        lastSubResizeHapticStep = 0
-                                    }
+                                )
+                                .help("Drag vertically to resize \(pod.name) inside this Shared Stack")
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .frame(height: sliceH, alignment: .topLeading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(podColor.opacity(isDraggingSub && isSubPodPulledOutside ? 0.36 : 0.18))
                             )
-                            .help("Drag vertically to resize \(pod.name) inside this Shared Stack")
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(
+                                        isDraggingSub && isSubPodPulledOutside ? palette.primaryAccent : podColor.opacity(0.55),
+                                        lineWidth: isDraggingSub && isSubPodPulledOutside ? 1.8 : 0.9
+                                    )
+                            )
+
+                            if isDraggingSub && isSubPodPulledOutside {
+                                Text("💧 Hold or Release to Detach")
+                                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                    .foregroundColor(.black)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(palette.primaryAccent))
+                                    .shadow(color: Color.black.opacity(0.45), radius: 4)
+                            }
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .frame(height: sliceH, alignment: .topLeading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(podColor.opacity(0.18))
+                        .scaleEffect(isDraggingSub ? (isSubPodPulledOutside ? 1.05 : 1.02) : 1.0)
+                        .offset(
+                            x: isDraggingSub ? activeSubDragOffset.width : 0,
+                            y: isDraggingSub ? activeSubDragOffset.height : 0
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(podColor.opacity(0.55), lineWidth: 0.9)
-                        )
-                        .scaleEffect(isDraggingSub ? 1.03 : 1.0)
-                        .offset(y: isDraggingSub ? activeSubDragOffsetY : 0)
                         .zIndex(isDraggingSub ? 50 : 1)
                     }
                 }
@@ -914,7 +1071,6 @@ public struct LiveSculptMajorClusterBoxView: View {
                 color: isStackTargetHighlighted ? Color.orange.opacity(isPulseOn ? 0.85 : 0.45) : Color.orange.opacity(0.25),
                 radius: isStackTargetHighlighted ? 11 : 4
             )
-            .clipped()
 
             if isStackTargetHighlighted {
                 Text("📦 Release or Hold to Stack")

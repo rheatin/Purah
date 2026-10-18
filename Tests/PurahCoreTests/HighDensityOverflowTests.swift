@@ -864,4 +864,59 @@ struct HighDensityOverflowTests {
         let aboveTopPoint = NSPoint(x: 340.0 - 3.0, y: CGFloat(totalHeight - aboveTopWinY))
         #expect(hostingView.hitTest(aboveTopPoint) == nil, "Point 2pt above pod visual topY must not intercept hitTest")
     }
+
+    @Test("Water-Droplet Detach & Free Spacing Outside Stack: detachPodFromMajorGroup and solveDecomposedMajorPodLayout preserve gap between Stack and standalone pod")
+    func testWaterDropletDetachAndFreeSpacingOutsideStack() throws {
+        let suiteName = "test_water_droplet_detach_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+        store.resetMajorGroups(for: .right)
+
+        // Stack 3 pods ("calendar", "todo", "music") on the right rail at the top
+        store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
+        store.addPodToMajorGroup(podId: "music", targetPodId: "calendar")
+
+        if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
+            store.pods[calIdx].range = NormalizedRange(start: 0.05, length: 0.12)
+        }
+        if let todoIdx = store.pods.firstIndex(where: { $0.id == "todo" }) {
+            store.pods[todoIdx].range = NormalizedRange(start: 0.174, length: 0.12)
+        }
+        if let musicIdx = store.pods.firstIndex(where: { $0.id == "music" }) {
+            store.pods[musicIdx].range = NormalizedRange(start: 0.298, length: 0.12)
+        }
+        store.invalidateLayoutCache()
+
+        let totalHeight = 900.0
+
+        // Detach "music" from the stack and drop it at targetCenterY = 660.0 (start ~ 0.67)
+        store.detachPodFromMajorGroup(id: "music", targetCenterY: 660.0, totalHeight: totalHeight)
+
+        let musicAfter = try #require(store.pods.first(where: { $0.id == "music" }))
+        let calAfter = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        let todoAfter = try #require(store.pods.first(where: { $0.id == "todo" }))
+
+        #expect(musicAfter.majorGroupId == nil, "Detached pod must have majorGroupId == nil")
+        #expect(calAfter.majorGroupId != nil, "Remaining 2 pods in stack must retain shared majorGroupId")
+        #expect(calAfter.majorGroupId == todoAfter.majorGroupId)
+
+        let layout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let calItem = try #require(layout.first(where: { $0.pod.id == "calendar" }))
+        let musicItem = try #require(layout.first(where: { $0.pod.id == "music" }))
+
+        let stackBottomY = calItem.drawerStartY + calItem.drawerSpanH
+        #expect(
+            musicItem.startY > stackBottomY + 100.0,
+            "solveDecomposedMajorPodLayout must preserve free vertical spacing between the Stack (bottom \(stackBottomY)pt) and the detached standalone pod (startY \(musicItem.startY)pt)"
+        )
+
+        // Move the remaining 2-pod Stack down to startRatio = 0.20 via moveMajorGroup
+        if let gid = calAfter.majorGroupId {
+            store.moveMajorGroup(groupId: gid, on: .right, newStartRatio: 0.20)
+            let movedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+            let movedCalItem = try #require(movedLayout.first(where: { $0.pod.id == "calendar" }))
+            #expect(movedCalItem.drawerStartY >= 170.0, "moveMajorGroup must reposition the entire Shared Stack along the rail")
+        }
+    }
 }

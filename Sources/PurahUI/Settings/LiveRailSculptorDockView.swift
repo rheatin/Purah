@@ -28,6 +28,7 @@ public struct LiveRailSculptorDockView: View {
                     .font(.system(size: 12.5, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
                 Spacer(minLength: 4)
 
@@ -47,7 +48,10 @@ public struct LiveRailSculptorDockView: View {
                             .font(.system(size: 10, weight: .bold))
                         Text("sculptor.dock.autoLayout".localized)
                             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                     .foregroundColor(.white)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
@@ -66,7 +70,10 @@ public struct LiveRailSculptorDockView: View {
                             .font(.system(size: 11, weight: .bold))
                         Text("sculptor.dock.done".localized)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                     .foregroundColor(.black)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 5)
@@ -216,7 +223,7 @@ public struct LiveRailSculptorDockView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .frame(width: 600)
+        .frame(width: 720)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.black.opacity(0.72))
@@ -248,13 +255,15 @@ public struct LiveRailSculptorDockView: View {
                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                     .foregroundColor(palette.primaryAccent)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .background(palette.primaryAccent.opacity(0.15))
             .cornerRadius(6)
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
