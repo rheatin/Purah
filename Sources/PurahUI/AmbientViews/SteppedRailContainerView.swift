@@ -145,9 +145,7 @@ public struct SteppedRailContainerView: View {
             storage: context.storage,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
-                    store.activateDrawer(podId: pod.id, itemId: subItem.id)
-                }
+                store.activateDrawer(podId: pod.id, itemId: subItem.id)
             },
             requestDismiss: {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
@@ -207,6 +205,11 @@ public struct SteppedRailContainerView: View {
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)
+                .transaction { t in
+                    if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                        t.animation = nil
+                    }
+                }
 
             genericSubItemDrawerCard(subItem: subItem, isPinned: isPinned, cardH: cardH, tintColor: tintColor)
                 .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))

@@ -42,13 +42,10 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                     }
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: isAlerting)
             .onHover { isHovered in
                 if isHovered && isAlerting {
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-                    withAnimation(.easeInOut(duration: 0.22)) {
-                        onHoverDismiss()
-                    }
+                    onHoverDismiss()
                 }
             }
     }

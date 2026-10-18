@@ -169,9 +169,7 @@ public struct AmbientRailStripView: View {
             palette: palette,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
-                    store.activateDrawer(podId: pod.id)
-                }
+                store.activateDrawer(podId: pod.id)
             },
             requestDismiss: {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
@@ -285,9 +283,7 @@ public struct AmbientRailStripView: View {
             palette: palette,
             store: store,
             requestExpand: {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
-                    store.activateDrawer(podId: pod.id)
-                }
+                store.activateDrawer(podId: pod.id)
             },
             requestDismiss: {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {

@@ -56,6 +56,11 @@ public struct TodoItemDrawerView: View {
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(listColor.opacity(isDone ? 0.35 : 0.9))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
+                .transaction { t in
+                    if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                        t.animation = nil
+                    }
+                }
 
             expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
                 .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
@@ -251,6 +256,11 @@ public struct CalendarItemDrawerView: View {
                         }
                     }
                 )
+                .transaction { t in
+                    if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                        t.animation = nil
+                    }
+                }
 
             expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
                 .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
@@ -910,6 +920,11 @@ public struct VitalsItemDrawerView: View {
                     .frame(width: barW, height: max(cardH * CGFloat(telemetryRatio), 4.0))
             }
             .frame(width: barW, height: cardH)
+            .transaction { t in
+                if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                    t.animation = nil
+                }
+            }
 
             expandedCard(cardH: cardH)
                 .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
@@ -1102,6 +1117,11 @@ public struct ScriptItemDrawerView: View {
             .frame(width: barW, height: cardH)
             .scaleEffect(isHovered ? 1.02 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+            .transaction { t in
+                if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                    t.animation = nil
+                }
+            }
 
             expandedCard(cardH: cardH)
                 .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))

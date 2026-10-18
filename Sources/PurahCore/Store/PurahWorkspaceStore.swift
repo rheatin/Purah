@@ -31,6 +31,7 @@ public final class PurahWorkspaceStore {
     public var activeDrawerPodId: String? = nil
     public var activeDrawerItemId: String? = nil
     public var hoveredPodId: String? = nil
+    @ObservationIgnored private var pendingHoverPodId: String? = nil
     public var isDrawerPinned: Bool = false
     public var pinnedDrawerItemIds: Set<String> = []
     public var isDraggingFromDrawer: Bool = false
@@ -827,32 +828,20 @@ public final class PurahWorkspaceStore {
     }
 
     public func activateDrawer(podId: String, itemId: String? = nil) {
+        if dismissAlertOnHover {
+            acknowledgeAllAlerts(forPodId: podId)
+            if let itemId {
+                acknowledgeAlert(id: itemId)
+            }
+        }
+
         let isAlreadyExpanded = (activeDrawerPodId != nil || activeDrawerItemId != nil)
         let targetEdge = pods.first(where: { $0.id == podId })?.edge ?? .right
-        onRequestExpandCanvas?(targetEdge)
-
         let targetItemId = itemId ?? podId
+        pendingHoverPodId = podId
 
-        if !isAlreadyExpanded && !Self.isTestingEnvironment && overflowStrategy(for: targetEdge) == .dynamicAccordion {
-            // Two-stage choreographed expansion:
-            // Stage 1 (t = 0ms): Stretch rail bar in-place under cursor
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
-                hoveredPodId = podId
-                invalidateLayoutCache()
-            }
-            // Stage 2 (t = 80ms): Extrude drawer card from the stretched rail bar
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-                guard let self = self else { return }
-                if self.hoveredPodId == podId {
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
-                        self.activeDrawerPodId = podId
-                        self.activeDrawerItemId = targetItemId
-                        self.invalidateLayoutCache()
-                    }
-                }
-            }
-        } else if isAlreadyExpanded || Self.isTestingEnvironment {
-            // Already expanded or unit test runner: 0ms instant transition without frame-wait
+        if isAlreadyExpanded || Self.isTestingEnvironment {
+            onRequestExpandCanvas?(targetEdge)
             withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
                 activeDrawerPodId = podId
                 activeDrawerItemId = targetItemId
@@ -860,16 +849,31 @@ public final class PurahWorkspaceStore {
                 invalidateLayoutCache()
             }
         } else {
-            // Frame-pacing ready queue: expand canvas on frame 0, animate card on frame 1 (~16ms)
-            // This prevents SwiftUI container width interpolation from dragging card from screen center!
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
-                hoveredPodId = podId
-                invalidateLayoutCache()
-            }
+            // Frame 0: Expand NSPanel canvas from 28pt to 580pt WITHOUT any withAnimation transaction!
+            // Do NOT mutate hoveredPodId, activeDrawerPodId, or activeDrawerItemId inside withAnimation on Frame 0!
+            onRequestExpandCanvas?(targetEdge)
+
+            // Frame 1 (~16ms): Now that NSPanel is 580pt wide and anchored at final screen coordinates:
             DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                if self.hoveredPodId == podId {
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                guard let self = self, self.pendingHoverPodId == podId else { return }
+                if self.overflowStrategy(for: targetEdge) == .dynamicAccordion {
+                    // Stage 1: Stretch rail bar in-place under cursor
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                        self.hoveredPodId = podId
+                        self.invalidateLayoutCache()
+                    }
+                    // Stage 2 (+0.06s): Extrude drawer card from the stretched rail bar
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+                        guard let self = self, self.pendingHoverPodId == podId, self.hoveredPodId == podId else { return }
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            self.activeDrawerPodId = podId
+                            self.activeDrawerItemId = targetItemId
+                            self.invalidateLayoutCache()
+                        }
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                        self.hoveredPodId = podId
                         self.activeDrawerPodId = podId
                         self.activeDrawerItemId = targetItemId
                         self.invalidateLayoutCache()
@@ -880,6 +884,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func dismissActiveDrawer() {
+        pendingHoverPodId = nil
         activeDrawerPodId = nil
         activeDrawerItemId = nil
         hoveredPodId = nil
