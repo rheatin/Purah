@@ -929,6 +929,7 @@ public final class PurahWorkspaceStore {
     public var alertStyle: PluginAlertStyle = .breathingBeacon
     public var dismissAlertOnHover: Bool = true
     public var isEventToastAlertEnabled: Bool = true
+    public var activePluginAlertIds: Set<String> = []
     public var acknowledgedAlertIds: Set<String> = []
     public var notifiedToastEventIds: Set<String> = []
 
@@ -984,6 +985,78 @@ public final class PurahWorkspaceStore {
 
     public func resetAlertAcknowledgment(id: String) {
         acknowledgedAlertIds.remove(id)
+    }
+
+    public func setPluginAlert(id: String, isAlerting: Bool) {
+        if isAlerting {
+            activePluginAlertIds.insert(id)
+            acknowledgedAlertIds.remove(id)
+        } else {
+            activePluginAlertIds.remove(id)
+        }
+    }
+
+    public func isPodAlerting(podId: String) -> Bool {
+        if activePluginAlertIds.contains(podId) && !isAlertAcknowledged(id: podId) {
+            return true
+        }
+        if podId == "calendar" {
+            if isEventGlowAlertEnabled && alertStyle != .off {
+                if _calendarEvents.contains(where: { ($0.isOngoing || $0.isImminent) && !isAlertAcknowledged(id: $0.id) }) {
+                    return true
+                }
+            }
+        }
+        if podId == "vitals" {
+            if alertStyle != .off && !isAlertAcknowledged(id: "vitals") {
+                let m = HardwareVitalsService.shared.metrics
+                let t = _vitalsThresholds
+                if (m.cpuUsage > t.cpuDanger && !isAlertAcknowledged(id: "vitals-cpu")) ||
+                   (m.memoryUsage > t.ramDanger && !isAlertAcknowledged(id: "vitals-ram")) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    public func acknowledgeAllAlerts(forPodId podId: String) {
+        acknowledgedAlertIds.insert(podId)
+        if podId == "calendar" {
+            for event in _calendarEvents where (event.isOngoing || event.isImminent) {
+                acknowledgedAlertIds.insert(event.id)
+            }
+        }
+        if podId == "vitals" {
+            for metricId in ["vitals-cpu", "vitals-ram", "vitals-gpu", "vitals-power", "vitals-disk", "vitals-network"] {
+                acknowledgedAlertIds.insert(metricId)
+            }
+        }
+    }
+
+    /// Returns the set of page indices (0..<pages.count) on `edge` that contain at least one alerting pod.
+    public func alertingPageIndices(for edge: MountEdge, totalHeight: Double) -> Set<Int> {
+        let pages = paginatedPods(for: edge, totalHeight: totalHeight)
+        var result: Set<Int> = []
+        for (pIdx, pagePods) in pages.enumerated() {
+            if pagePods.contains(where: { isPodAlerting(podId: $0.id) }) {
+                result.insert(pIdx)
+            }
+        }
+        return result
+    }
+
+    /// Returns the first alerting pod on a non-current page for `edge`, if any.
+    public func firstOffPageAlertingPod(for edge: MountEdge, totalHeight: Double) -> (pageIndex: Int, pod: SlotPod)? {
+        let pages = paginatedPods(for: edge, totalHeight: totalHeight)
+        guard pages.count > 1 else { return nil }
+        let curPage = min(max(currentRailPage(for: edge), 0), pages.count - 1)
+        for (pIdx, pagePods) in pages.enumerated() where pIdx != curPage {
+            if let alertingPod = pagePods.first(where: { isPodAlerting(podId: $0.id) }) {
+                return (pIdx, alertingPod)
+            }
+        }
+        return nil
     }
 
     public func postToastNotification(id: String, message: String) {

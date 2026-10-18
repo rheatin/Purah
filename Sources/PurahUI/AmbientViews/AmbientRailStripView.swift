@@ -37,6 +37,12 @@ public struct AmbientRailStripView: View {
                 ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
                 // Top & Bottom Hover Portals for Paged Spaces when multiple pages exist (avoiding 20pt macOS Hot Corners)
                 if edgeStrategy == .pagedSpaces && pageCount > 1 {
+                    let alertingPages = store.alertingPageIndices(for: edge, totalHeight: Double(totalHeight))
+                    let offPageAlert = store.firstOffPageAlertingPod(for: edge, totalHeight: Double(totalHeight))
+                    let offPageAlertColor = offPageAlert.map { palette.podColor(for: $0.pod.id, store: store) }
+                    let isTopPortalAlerting = (store.alertStyle != .off) && (offPageAlert.map { $0.pageIndex < currentPage } ?? false)
+                    let isBottomPortalAlerting = (store.alertStyle != .off) && (offPageAlert.map { $0.pageIndex > currentPage } ?? false)
+
                     RailPagePortalView(
                         edge: edge,
                         direction: .previous,
@@ -44,7 +50,11 @@ public struct AmbientRailStripView: View {
                         pageCount: pageCount,
                         barWidth: barW,
                         accentColor: palette.primaryAccent,
-                        isRevealed: store.isPagePortalRevealed(for: edge, isTop: true)
+                        isRevealed: store.isPagePortalRevealed(for: edge, isTop: true) || isTopPortalAlerting,
+                        isAlerting: isTopPortalAlerting,
+                        alertingPageIndices: alertingPages,
+                        alertColor: offPageAlertColor,
+                        alertStyle: store.alertStyle
                     ) {
                         store.dismissActiveDrawer()
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -62,7 +72,11 @@ public struct AmbientRailStripView: View {
                         pageCount: pageCount,
                         barWidth: barW,
                         accentColor: palette.primaryAccent,
-                        isRevealed: store.isPagePortalRevealed(for: edge, isTop: false)
+                        isRevealed: store.isPagePortalRevealed(for: edge, isTop: false) || isBottomPortalAlerting,
+                        isAlerting: isBottomPortalAlerting,
+                        alertingPageIndices: alertingPages,
+                        alertColor: offPageAlertColor,
+                        alertStyle: store.alertStyle
                     ) {
                         store.dismissActiveDrawer()
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -211,6 +225,31 @@ public struct AmbientRailStripView: View {
         )
     }
 
+    // MARK: - Plugin Pod Alert Helpers
+    private func isPluginPodAlerting(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext) -> Bool {
+        if store.isPodAlerting(podId: pod.id) {
+            return true
+        }
+        let items = plugin.steppedItems(context: context)
+        if items.contains(where: { $0.state == .alerting && !store.isAlertAcknowledged(id: $0.id) }) {
+            return true
+        }
+        return false
+    }
+
+    private func acknowledgePluginPodAlerts(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext) {
+        store.acknowledgeAllAlerts(forPodId: pod.id)
+        for sub in plugin.steppedItems(context: context) where sub.state == .alerting {
+            context.acknowledgeAlert(sub.id)
+        }
+        if let calPlugin = plugin as? CalendarPlugin {
+            for event in calPlugin.state.events where (event.isOngoing || event.isImminent(leadTime: calPlugin.state.alertLeadTime)) {
+                calPlugin.state.acknowledgeAlert(id: event.id)
+                store.acknowledgeAlert(id: event.id)
+            }
+        }
+    }
+
     // MARK: - Plugin Pod Rendering
     @ViewBuilder
     private func renderPluginPod(
@@ -287,12 +326,28 @@ public struct AmbientRailStripView: View {
             togglePin: barContext.togglePin
         )
 
+        let isPodAlerting = (store.alertStyle != .off) && isPluginPodAlerting(plugin: plugin, pod: pod, context: barContext)
+
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             plugin.makeRailBarView(context: barContext)
                 .frame(width: railWidth, height: barSlotH)
+                .dynamicAttentionBeacon(
+                    isAlerting: isPodAlerting,
+                    edge: edge,
+                    baseWidth: railWidth,
+                    color: color,
+                    alertStyle: store.alertStyle
+                ) {
+                    if store.dismissAlertOnHover {
+                        acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
+                    }
+                }
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    if store.dismissAlertOnHover && isPodAlerting {
+                        acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
+                    }
                     plugin.onRailBarTap(subItemId: nil, context: barContext)
                 }
 
@@ -300,6 +355,11 @@ public struct AmbientRailStripView: View {
                 pluginDrawerCard(plugin: plugin, pod: pod, context: drawerContext, totalHeight: drawerSlotH)
                     .offset(y: drawerOffsetY)
                     .transition(drawerTransition)
+                    .onAppear {
+                        if store.dismissAlertOnHover && isPodAlerting {
+                            acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
+                        }
+                    }
             }
         }
         .frame(height: barSlotH, alignment: .top)
@@ -416,6 +476,10 @@ public struct RailPagePortalView: View {
     public let barWidth: CGFloat
     public let accentColor: Color
     public var isRevealed: Bool = false
+    public var isAlerting: Bool = false
+    public var alertingPageIndices: Set<Int> = []
+    public var alertColor: Color? = nil
+    public var alertStyle: PluginAlertStyle = .breathingBeacon
     public let onTrigger: () -> Void
 
     @State private var isHovered: Bool = false
@@ -428,6 +492,10 @@ public struct RailPagePortalView: View {
         barWidth: CGFloat = 8.0,
         accentColor: Color,
         isRevealed: Bool = false,
+        isAlerting: Bool = false,
+        alertingPageIndices: Set<Int> = [],
+        alertColor: Color? = nil,
+        alertStyle: PluginAlertStyle = .breathingBeacon,
         onTrigger: @escaping () -> Void
     ) {
         self.edge = edge
@@ -437,6 +505,10 @@ public struct RailPagePortalView: View {
         self.barWidth = barWidth
         self.accentColor = accentColor
         self.isRevealed = isRevealed
+        self.isAlerting = isAlerting
+        self.alertingPageIndices = alertingPageIndices
+        self.alertColor = alertColor
+        self.alertStyle = alertStyle
         self.onTrigger = onTrigger
     }
 
@@ -465,7 +537,8 @@ public struct RailPagePortalView: View {
     }
 
     public var body: some View {
-        let visible = isRevealed || isHovered
+        let visible = isRevealed || isHovered || isAlerting
+        let effectiveColor = isAlerting ? (alertColor ?? accentColor) : accentColor
         Button {
             onTrigger()
         } label: {
@@ -473,22 +546,30 @@ public struct RailPagePortalView: View {
                 if direction == .previous {
                     Image(systemName: "chevron.compact.up")
                         .font(.system(size: 6.5, weight: .black))
-                        .foregroundColor(isHovered ? .white : accentColor)
+                        .foregroundColor(isHovered ? .white : effectiveColor)
                 }
 
                 VStack(spacing: 1.5) {
                     ForEach(0..<min(pageCount, 4), id: \.self) { idx in
+                        let isPageAlerting = alertingPageIndices.contains(idx)
+                        let dotColor = isPageAlerting
+                            ? (alertColor ?? .orange)
+                            : (idx == currentPage ? effectiveColor : effectiveColor.opacity(0.28))
+                        let dotSize: CGFloat = isPageAlerting ? 3.5 : 2.5
                         Circle()
-                            .fill(idx == currentPage ? accentColor : accentColor.opacity(0.28))
-                            .frame(width: 2.5, height: 2.5)
-                            .shadow(color: idx == currentPage ? accentColor.opacity(0.85) : .clear, radius: 2)
+                            .fill(dotColor)
+                            .frame(width: dotSize, height: dotSize)
+                            .shadow(
+                                color: (isPageAlerting || idx == currentPage) ? dotColor.opacity(0.85) : .clear,
+                                radius: isPageAlerting ? 3.5 : 2.0
+                            )
                     }
                 }
 
                 if direction == .next {
                     Image(systemName: "chevron.compact.down")
                         .font(.system(size: 6.5, weight: .black))
-                        .foregroundColor(isHovered ? .white : accentColor)
+                        .foregroundColor(isHovered ? .white : effectiveColor)
                 }
             }
             .frame(width: portalWidth, height: 20.0)
@@ -497,14 +578,21 @@ public struct RailPagePortalView: View {
                     .fill(.ultraThinMaterial)
                     .overlay(
                         portalShape
-                            .fill(accentColor.opacity(isHovered ? 0.28 : 0.12))
+                            .fill(effectiveColor.opacity(isHovered ? 0.28 : (isAlerting ? 0.22 : 0.12)))
                     )
                     .overlay(
                         portalShape
-                            .strokeBorder(accentColor.opacity(isHovered ? 0.9 : 0.45), lineWidth: isHovered ? 1.2 : 0.8)
+                            .strokeBorder(effectiveColor.opacity(isHovered ? 0.9 : (isAlerting ? 0.85 : 0.45)), lineWidth: (isHovered || isAlerting) ? 1.2 : 0.8)
                     )
             )
-            .shadow(color: accentColor.opacity(isHovered ? 0.75 : 0.25), radius: isHovered ? 6 : 2)
+            .dynamicAttentionBeacon(
+                isAlerting: isAlerting,
+                edge: edge,
+                baseWidth: portalWidth,
+                color: effectiveColor,
+                alertStyle: alertStyle
+            )
+            .shadow(color: effectiveColor.opacity(isHovered ? 0.75 : (isAlerting ? 0.65 : 0.25)), radius: (isHovered || isAlerting) ? 6 : 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

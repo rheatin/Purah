@@ -919,4 +919,42 @@ struct HighDensityOverflowTests {
             #expect(movedCalItem.drawerStartY >= 170.0, "moveMajorGroup must reposition the entire Shared Stack along the rail")
         }
     }
+
+    @Test("Unified Pod Alert Detection & Cross-Page Portal Alert Beacon: setPluginAlert, acknowledgeAllAlerts, alertingPageIndices, and firstOffPageAlertingPod")
+    func testUnifiedPodAlertAndCrossPagePortalBeacon() throws {
+        let suiteName = "test_pod_alert_portal_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.alertStyle = .breathingBeacon
+        store._calendarEvents = []
+        store.setOverflowStrategy(.pagedSpaces, for: .right)
+
+        // Move "calendar" to Page 2 (pageIndex = 1) while keeping currentRailPage on Page 1 (0)
+        store.setPodPage(id: "calendar", pageIndex: 1)
+        store.setRailPage(0, for: .right)
+
+        let totalHeight = 900.0
+        #expect(store.currentRailPage(for: .right) == 0)
+        #expect(store.isPodAlerting(podId: "calendar") == false)
+        #expect(store.alertingPageIndices(for: .right, totalHeight: totalHeight).isEmpty)
+        #expect(store.firstOffPageAlertingPod(for: .right, totalHeight: totalHeight) == nil)
+
+        // 1. Trigger alert on "calendar" on Page 2
+        store.setPluginAlert(id: "calendar", isAlerting: true)
+        #expect(store.isPodAlerting(podId: "calendar") == true)
+
+        // 2. Verify cross-page portal alert detection while on Page 1 (index 0)
+        let alertingPages = store.alertingPageIndices(for: .right, totalHeight: totalHeight)
+        #expect(alertingPages.contains(1))
+
+        let offPageAlert = try #require(store.firstOffPageAlertingPod(for: .right, totalHeight: totalHeight))
+        #expect(offPageAlert.pageIndex == 1)
+        #expect(offPageAlert.pod.id == "calendar")
+
+        // 3. Acknowledge all alerts for "calendar" -> clears both pod alert and off-page portal alert
+        store.acknowledgeAllAlerts(forPodId: "calendar")
+        #expect(store.isPodAlerting(podId: "calendar") == false)
+        #expect(store.alertingPageIndices(for: .right, totalHeight: totalHeight).isEmpty)
+        #expect(store.firstOffPageAlertingPod(for: .right, totalHeight: totalHeight) == nil)
+    }
 }
