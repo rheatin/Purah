@@ -337,4 +337,17 @@ struct MusicSyncTests {
         ultraFlatHosting.layoutSubtreeIfNeeded()
         #expect(ultraFlatHosting.fittingSize.width > 0)
     }
+
+    @Test("MusicPlugin.normalizedSourceDisplayName and MusicDrawerView.resolveSourceAppIcon resolve cleanly")
+    func testNormalizedSourceDisplayNameAndAppIconResolution() {
+        #expect(MusicPlugin.normalizedSourceDisplayName(sourceApp: "Music") == "Apple Music")
+        #expect(MusicPlugin.normalizedSourceDisplayName(sourceApp: "Apple Music") == "Apple Music")
+        #expect(MusicPlugin.normalizedSourceDisplayName(sourceApp: "Player", bundleId: "com.apple.Music") == "Apple Music")
+        #expect(MusicPlugin.normalizedSourceDisplayName(sourceApp: "Spotify") == "Spotify")
+        #expect(MusicPlugin.normalizedSourceDisplayName(sourceApp: "Google Chrome") == "Chrome")
+        #expect(MusicPlugin.normalizedSourceDisplayName(sourceApp: "Safari") == "Safari")
+
+        let appleMusicIcon = MusicDrawerView.resolveSourceAppIcon(sourceApp: "Apple Music", bundleId: "com.apple.Music")
+        #expect(appleMusicIcon != nil)
+    }
 }

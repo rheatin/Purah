@@ -78,21 +78,36 @@ public struct MusicPlugin: PurahPodPlugin {
         AnyView(MusicDrawerView(state: state, store: context.store))
     }
 
+    public static func normalizedSourceDisplayName(sourceApp: String, bundleId: String = "") -> String {
+        let lower = sourceApp.lowercased()
+        if lower == "music" || lower == "apple music" || bundleId == "com.apple.Music" {
+            return "Apple Music"
+        }
+        if lower.contains("spotify") || bundleId == "com.spotify.client" {
+            return "Spotify"
+        }
+        if lower.contains("chrome") {
+            return "Chrome"
+        }
+        if lower.contains("safari") {
+            return "Safari"
+        }
+        return sourceApp
+    }
+
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         let source = state.track.sourceApp
-        guard !source.isEmpty else { return nil }
+        let bundleId = state.track.sourceBundleId
+        let displaySource = Self.normalizedSourceDisplayName(sourceApp: source, bundleId: bundleId)
+        guard !displaySource.isEmpty else { return nil }
         return AnyView(
-            HStack(spacing: 3.5) {
-                Image(systemName: state.track.sourceIconName)
-                    .font(.system(size: 8, weight: .bold))
-                Text(source)
-                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-            }
-            .foregroundColor(context.accentColor)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .background(context.accentColor.opacity(0.12))
-            .cornerRadius(4)
+            Text(displaySource)
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                .foregroundColor(context.accentColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1.5)
+                .background(context.accentColor.opacity(0.12))
+                .cornerRadius(4)
         )
     }
 

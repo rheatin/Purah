@@ -591,20 +591,103 @@ public struct MusicDrawerView: View {
             }
 
             // Audio Source Badge
-            let badgeSize: CGFloat = max(size * 0.32, 12.0)
-            ZStack {
-                Circle()
-                    .fill(Color.black.opacity(0.85))
+            let badgeSize: CGFloat = max(size * 0.34, 14.0)
+            if let appIcon = Self.resolveSourceAppIcon(sourceApp: state.track.sourceApp, bundleId: state.track.sourceBundleId) {
+                Image(nsImage: appIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
                     .frame(width: badgeSize, height: badgeSize)
-                    .overlay(
-                        Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-                    )
+                    .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
+                    .offset(x: 3, y: 3)
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(sourceBadgeColor(for: state.track.sourceApp, bundleId: state.track.sourceBundleId))
+                        .frame(width: badgeSize, height: badgeSize)
+                        .overlay(
+                            Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
 
-                Image(systemName: sourceIconName(for: state.track.sourceApp))
-                    .font(.system(size: badgeSize * 0.55, weight: .bold))
-                    .foregroundColor(.white)
+                    Image(systemName: sourceIconName(for: state.track.sourceApp))
+                        .font(.system(size: badgeSize * 0.55, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .offset(x: 3, y: 3)
             }
-            .offset(x: 2, y: 2)
+        }
+    }
+
+    @MainActor
+    private static var sourceAppIconCache: [String: NSImage] = [:]
+
+    @MainActor
+    public static func resolveSourceAppIcon(sourceApp: String, bundleId: String) -> NSImage? {
+        let cacheKey = "\(sourceApp.lowercased())|\(bundleId)"
+        if let cached = sourceAppIconCache[cacheKey] {
+            return cached
+        }
+
+        var candidateBundleIds: [String] = []
+        if !bundleId.isEmpty {
+            candidateBundleIds.append(bundleId)
+        }
+
+        let lower = sourceApp.lowercased()
+        if lower == "music" || lower == "apple music" {
+            candidateBundleIds.append("com.apple.Music")
+        } else if lower.contains("spotify") {
+            candidateBundleIds.append("com.spotify.client")
+        } else if lower.contains("chrome") || lower == "google chrome" {
+            candidateBundleIds.append("com.google.Chrome")
+        } else if lower.contains("safari") {
+            candidateBundleIds.append("com.apple.Safari")
+        } else if lower == "arc" || lower.contains("arc") {
+            candidateBundleIds.append("company.thebrowser.Browser")
+        } else if lower.contains("netease") {
+            candidateBundleIds.append("com.netease.163music")
+        } else if lower.contains("qqmusic") || lower.contains("qq music") {
+            candidateBundleIds.append("com.tencent.QQMusicMac")
+        }
+
+        for targetBundleId in candidateBundleIds {
+            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: targetBundleId) {
+                let icon = NSWorkspace.shared.icon(forFile: appURL.path)
+                sourceAppIconCache[cacheKey] = icon
+                return icon
+            }
+            if targetBundleId == "com.apple.Music",
+               FileManager.default.fileExists(atPath: "/System/Applications/Music.app") {
+                let icon = NSWorkspace.shared.icon(forFile: "/System/Applications/Music.app")
+                sourceAppIconCache[cacheKey] = icon
+                return icon
+            }
+            if targetBundleId == "com.apple.Safari" {
+                let safariPaths = [
+                    "/Applications/Safari.app",
+                    "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app",
+                    "/System/Applications/Safari.app"
+                ]
+                for path in safariPaths where FileManager.default.fileExists(atPath: path) {
+                    let icon = NSWorkspace.shared.icon(forFile: path)
+                    sourceAppIconCache[cacheKey] = icon
+                    return icon
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func sourceBadgeColor(for source: String, bundleId: String) -> Color {
+        let lower = source.lowercased()
+        if lower.contains("spotify") || bundleId == "com.spotify.client" {
+            return Color(hex: "#1DB954")
+        } else if lower.contains("chrome") || lower.contains("safari") || lower.contains("browser") || bundleId == "com.google.Chrome" || bundleId == "com.apple.Safari" {
+            return Color(hex: "#4285F4")
+        } else {
+            return Color(hex: "#FA2D48")
         }
     }
 
