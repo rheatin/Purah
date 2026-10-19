@@ -259,4 +259,165 @@ struct TerminalPluginTests {
         terminalView.removeFromSuperview()
         #expect(terminalView.window == nil)
     }
+
+    @Test("TerminalManager supports multi-tab creation, switching, closing, and shell path escaping")
+    @MainActor
+    func testTerminalMultiTabAndShellEscaping() {
+        let manager = TerminalManager.shared
+        manager.stopProcess()
+        defer { manager.stopProcess() }
+        #expect(manager.tabs.isEmpty)
+
+        let tab1Id = manager.createNewTab()
+        #expect(manager.tabs.count == 1)
+        #expect(manager.activeTabId == tab1Id)
+        #expect(manager.tabs[0].title.hasSuffix(" 1"))
+
+        let tab2Id = manager.createNewTab()
+        #expect(manager.tabs.count == 2)
+        #expect(manager.activeTabId == tab2Id)
+        #expect(manager.tabs[1].title.hasSuffix(" 2"))
+
+        // Switch back to tab 1
+        manager.selectTab(id: tab1Id)
+        #expect(manager.activeTabId == tab1Id)
+        #expect(manager.terminalView === manager.tabs[0].terminalView)
+
+        // Cap at 5 tabs
+        _ = manager.createNewTab()
+        _ = manager.createNewTab()
+        let tab5Id = manager.createNewTab()
+        #expect(manager.tabs.count == 5)
+        let overflowId = manager.createNewTab()
+        #expect(manager.tabs.count == 5)
+        #expect(overflowId == tab5Id)
+
+        // Close active tab and verify fallback selection
+        manager.closeTab(id: tab5Id)
+        #expect(manager.tabs.count == 4)
+
+        // Close all tabs -> automatically recreates tab 1
+        for id in manager.tabs.map(\.id) {
+            manager.closeTab(id: id)
+        }
+        #expect(manager.tabs.count == 1)
+        #expect(manager.tabs[0].title.hasSuffix(" 1"))
+
+        // Shell path escaping and cd Finder fallback
+        let escaped = TerminalManager.shellEscapedPath("/Users/char/My Folder's Test")
+        #expect(escaped == "'/Users/char/My Folder'\\''s Test'")
+
+        let cdPath = manager.cdToFrontmostFinderDirectory()
+        #expect(cdPath != nil)
+        #expect(!(cdPath ?? "").isEmpty)
+    }
+
+    @Test("ScriptsPluginState supports live streaming output and stopRunningScript")
+    @MainActor
+    func testScriptRunwayStreamingAndStop() async {
+        let storage = ScopedPluginStorage(pluginId: "test-scripts-\(UUID().uuidString)")
+        let state = ScriptsPluginState(storage: storage)
+
+        let tail = ScriptRunwayService.tailNonEmptyLines(from: "line1\n\nline2\nline3\nline4\nline5\n", maxLines: 4)
+        #expect(tail == "line2\nline3\nline4\nline5")
+
+        let echoAction = ScriptActionItem(
+            id: "stream-test",
+            name: "Stream Echo",
+            systemIcon: "terminal",
+            commandType: .shell,
+            scriptContent: "printf 'step 1\\nstep 2\\nstep 3\\n'",
+            description: "Streams three lines",
+            showNotification: false
+        )
+        let res = await state.executeAction(echoAction)
+        #expect(res.success == true)
+        #expect(state.liveStreamingOutput.contains("step 3"))
+        #expect(state.lastOutput?.contains("step 3") == true)
+
+        state.stopRunningScript()
+        #expect(state.isRunning == false)
+        #expect(state.lastOutput == "⏹ Stopped by user")
+        #expect(state.liveStreamingOutput == "⏹ Stopped by user")
+    }
+
+    @Test("TodoPlugin assigns overdue (#FF453A) and due-today (#FF9F0A) chromatic tints and setDueDate")
+    @MainActor
+    func testTodoUrgencyChromaticTintsAndSetDueDate() {
+        let now = Date()
+        let overdueTodo = TodoItem(
+            id: "todo-overdue",
+            title: "Overdue Task",
+            listTitle: "Work",
+            listColorHex: "#30D158",
+            dueDate: now.addingTimeInterval(-3600),
+            isCompleted: false
+        )
+        let overduePres = TodoPlugin.urgencyPresentation(for: overdueTodo, now: now)
+        #expect(overduePres.tintColorHex == "#FF453A")
+        #expect(overduePres.badge == "OVERDUE")
+
+        // Completed overdue task should NOT show overdue alert tint
+        var completedOverdue = overdueTodo
+        completedOverdue.isCompleted = true
+        let completedPres = TodoPlugin.urgencyPresentation(for: completedOverdue, now: now)
+        #expect(completedPres.tintColorHex == "#30D158")
+        #expect(completedPres.badge == nil)
+
+        // Due today (future time today, or tested via Calendar.current.isDateInToday)
+        if let endOfToday = Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: now), endOfToday > now {
+            let todayTodo = TodoItem(
+                id: "todo-today",
+                title: "Today Task",
+                listTitle: "Work",
+                listColorHex: "#30D158",
+                dueDate: endOfToday,
+                isCompleted: false
+            )
+            let todayPres = TodoPlugin.urgencyPresentation(for: todayTodo, now: now)
+            #expect(todayPres.tintColorHex == "#FF9F0A")
+            #expect(todayPres.badge == "TODAY")
+        }
+
+        // Test setDueDate on TodoPluginState
+        let storage = ScopedPluginStorage(pluginId: "test-todo-\(UUID().uuidString)")
+        let todoState = TodoPluginState(storage: storage)
+        todoState.addTodo(title: "Check deadline")
+        let addedId = todoState.todos.last!.id
+        let tomorrowDate = TodoPluginState.dueTomorrowAt09(from: now)
+        todoState.setDueDate(id: addedId, date: tomorrowDate)
+        #expect(todoState.todos.first(where: { $0.id == addedId })?.dueDate == tomorrowDate)
+
+        todoState.setDueDate(id: addedId, date: nil)
+        #expect(todoState.todos.first(where: { $0.id == addedId })?.dueDate == nil)
+    }
+
+    @Test("NotesPluginState cross-folder search filtering and Music preferred height 295pt")
+    @MainActor
+    func testNotesCrossFolderSearchAndMusicHeight() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_notes_search_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = ScopedPluginStorage(pluginId: "test-notes-search-\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "test-notes-search", customBaseDirectory: tempDir)
+        let state = NotesPluginState(storage: storage, fileStorage: fileStorage)
+
+        _ = state.createNote(title: "Kubernetes Deploy", folder: "Work", content: "kubectl apply -f cluster.yaml")
+        _ = state.createNote(title: "Grocery List", folder: "General", content: "Matcha green tea and oat milk")
+
+        let k8sMatches = state.searchNotes(query: "kubectl")
+        #expect(k8sMatches.count == 1)
+        #expect(k8sMatches.first?.folder == "Work")
+
+        let matchaMatches = state.searchNotes(query: "matcha")
+        #expect(matchaMatches.count == 1)
+        #expect(matchaMatches.first?.title == "Grocery List")
+
+        let store = PurahWorkspaceStore()
+        #expect(store.preferredDrawerHeight(for: "music") == 295.0)
+
+        let rawLrc = "[00:05.00] First line\n[00:12.00] Second active line\n[00:20.00] Third line"
+        #expect(LyricsDisplayView.activeLyricLine(in: rawLrc, at: 14.0) == "Second active line")
+    }
 }

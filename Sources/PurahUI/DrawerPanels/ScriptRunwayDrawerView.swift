@@ -62,28 +62,51 @@ public struct ScriptRunwayDrawerView: View {
                                     .truncationMode(.middle)
                             }
 
-                            Button {
-                                Task {
-                                    let res = await state.executeAction(action, store: store)
-                                    if action.showNotification {
-                                        let text = res.success ? "Ran \(action.name)" : "Failed: \(res.message)"
-                                        store.onCapacityWarningToast?(text)
-                                    }
-                                }
-                            } label: {
-                                if isThisRunning {
+                            if isThisRunning {
+                                HStack(spacing: 4) {
                                     HStack(spacing: 3) {
                                         ProgressView()
                                             .controlSize(.mini)
                                         Text("Running")
                                             .font(.system(size: 8.5, weight: .bold))
                                     }
-                                    .padding(.horizontal, 7)
+                                    .padding(.horizontal, 6)
                                     .padding(.vertical, 3.5)
-                                    .background(scriptColor.opacity(0.85))
+                                    .background(scriptColor.opacity(0.75))
                                     .foregroundColor(.white)
                                     .cornerRadius(5)
-                                } else {
+
+                                    Button {
+                                        isOutputDismissed = false
+                                        state.stopRunningScript()
+                                    } label: {
+                                        HStack(spacing: 2.5) {
+                                            Image(systemName: "stop.fill")
+                                                .font(.system(size: 6.5, weight: .bold))
+                                            Text("Stop")
+                                                .font(.system(size: 8.5, weight: .bold))
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3.5)
+                                        .background(Color.red.opacity(0.9))
+                                        .foregroundColor(.white)
+                                        .cornerRadius(5)
+                                    }
+                                    .buttonStyle(.tactile)
+                                    .help("Stop running script")
+                                }
+                                .fixedSize()
+                            } else {
+                                Button {
+                                    isOutputDismissed = false
+                                    Task {
+                                        let res = await state.executeAction(action, store: store)
+                                        if action.showNotification {
+                                            let text = res.success ? "Ran \(action.name)" : "Failed: \(res.message)"
+                                            store.onCapacityWarningToast?(text)
+                                        }
+                                    }
+                                } label: {
                                     HStack(spacing: 3.5) {
                                         Image(systemName: "play.fill")
                                             .font(.system(size: 7))
@@ -96,9 +119,9 @@ public struct ScriptRunwayDrawerView: View {
                                     .foregroundColor(.white)
                                     .cornerRadius(5)
                                 }
+                                .buttonStyle(.tactile)
+                                .fixedSize()
                             }
-                            .buttonStyle(.tactile)
-                            .fixedSize()
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
@@ -107,19 +130,40 @@ public struct ScriptRunwayDrawerView: View {
                 }
             }
 
-            if !isOutputDismissed, let msg = state.lastOutput ?? runway.lastOutput, !msg.isEmpty {
-                HStack(spacing: 5) {
-                    Text("$")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundColor(.green.opacity(0.9))
+            let anyRunning = state.isRunning || runway.isRunning
+            let activeMessage: String? = {
+                if !state.liveStreamingOutput.isEmpty { return state.liveStreamingOutput }
+                if !runway.liveStreamingOutput.isEmpty { return runway.liveStreamingOutput }
+                return state.lastOutput ?? runway.lastOutput
+            }()
+
+            if !isOutputDismissed, let msg = activeMessage, !msg.isEmpty {
+                HStack(alignment: .top, spacing: 5) {
+                    HStack(spacing: 3) {
+                        if anyRunning {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 4.5, height: 4.5)
+                                .shadow(color: Color.green.opacity(0.8), radius: 3)
+                        }
+                        Text("$")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(.green.opacity(0.9))
+                    }
+                    .padding(.top, 1)
+
                     Text(msg)
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(.primary.opacity(0.85))
-                        .lineLimit(1)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+
                     Spacer()
+
                     Button {
                         isOutputDismissed = true
                         state.lastOutput = nil
+                        state.liveStreamingOutput = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 8))
@@ -128,7 +172,7 @@ public struct ScriptRunwayDrawerView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 6)
-                .padding(.vertical, 3.5)
+                .padding(.vertical, 4)
                 .background(Color.primary.opacity(0.04))
                 .cornerRadius(4)
                 .overlay(

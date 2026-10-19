@@ -1308,7 +1308,7 @@ public final class PurahWorkspaceStore {
         case "shelf":
             return 250.0
         case "music":
-            return 220.0
+            return 295.0
         default:
             return max(minH * 1.5, 240.0)
         }

@@ -106,6 +106,34 @@ public final class TodoPluginState: Sendable {
         }
     }
 
+    public func setDueDate(id: String, date: Date?) {
+        if let idx = todos.firstIndex(where: { $0.id == id }) {
+            todos[idx].dueDate = date
+            save()
+        }
+        if let boundStore {
+            if let idx = boundStore._todos.firstIndex(where: { $0.id == id }) {
+                boundStore._todos[idx].dueDate = date
+            }
+            boundStore.invalidateLayoutCache()
+            boundStore.onWindowsRebuildNeeded?()
+        }
+    }
+
+    public static func dueTodayAt18(from now: Date = Date()) -> Date {
+        let cal = Calendar.current
+        if let date = cal.date(bySettingHour: 18, minute: 0, second: 0, of: now), date > now {
+            return date
+        }
+        return now.addingTimeInterval(3600)
+    }
+
+    public static func dueTomorrowAt09(from now: Date = Date()) -> Date {
+        let cal = Calendar.current
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: now) ?? now.addingTimeInterval(86400)
+        return cal.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+    }
+
     public func addTodo(title: String, store: PurahWorkspaceStore? = nil) {
         let item = TodoItem(title: title, isCompleted: false)
         todos.append(item)

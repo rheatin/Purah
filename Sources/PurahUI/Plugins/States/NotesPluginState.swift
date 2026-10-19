@@ -52,6 +52,18 @@ public final class NotesPluginState: Sendable {
         return documents.filter { $0.folder == selectedFolder }
     }
 
+    public func searchNotes(query: String) -> [NoteDocument] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return documents
+        }
+        return documents.filter { doc in
+            doc.title.localizedCaseInsensitiveContains(trimmed) ||
+            doc.content.localizedCaseInsensitiveContains(trimmed) ||
+            doc.folder.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
     public init(
         storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "notes"),
         fileStorage: PurahPluginFileStorage = PurahPluginFileStorage(pluginId: "notes")

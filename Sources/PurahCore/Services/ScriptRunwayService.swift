@@ -60,8 +60,12 @@ public final class ScriptRunwayService {
 
     public var actions: [ScriptActionItem] = []
     public private(set) var lastExecutedActionId: String?
-    public private(set) var isRunning: Bool = false
-    public private(set) var lastOutput: String?
+    public var isRunning: Bool = false
+    public var lastOutput: String?
+    public var liveStreamingOutput: String = ""
+
+    @ObservationIgnored private var activeProcess: Process? = nil
+    @ObservationIgnored private var wasStoppedByUser: Bool = false
 
     public init() {
         self.actions = Self.defaultActions()
@@ -109,40 +113,111 @@ public final class ScriptRunwayService {
         }
     }
 
-    public func executeAction(_ action: ScriptActionItem) async -> (success: Bool, message: String) {
+    public nonisolated static func tailNonEmptyLines(from text: String, maxLines: Int = 4) -> String {
+        let lines = text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return "" }
+        return lines.suffix(maxLines).joined(separator: "\n")
+    }
+
+    public func stopRunningScript() {
+        wasStoppedByUser = true
+        activeProcess?.terminate()
+        activeProcess = nil
+        isRunning = false
+        lastOutput = "⏹ Stopped by user"
+        liveStreamingOutput = "⏹ Stopped by user"
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+    }
+
+    public func executeAction(
+        _ action: ScriptActionItem,
+        onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
+    ) async -> (success: Bool, message: String) {
+        wasStoppedByUser = false
         isRunning = true
         lastExecutedActionId = action.id
+        liveStreamingOutput = ""
 
         defer {
+            activeProcess = nil
             isRunning = false
         }
 
+        let result: (success: Bool, message: String)
         switch action.commandType {
         case .shell:
-            return await runShell(command: action.scriptContent)
+            result = await runShell(command: action.scriptContent, onStreamUpdate: onStreamUpdate)
         case .appleScript:
-            return await runAppleScript(script: action.scriptContent)
+            result = await runAppleScript(script: action.scriptContent, onStreamUpdate: onStreamUpdate)
         case .shortcut:
-            return await runShortcut(name: action.scriptContent)
+            result = await runShortcut(name: action.scriptContent, onStreamUpdate: onStreamUpdate)
         }
+
+        if wasStoppedByUser {
+            let stopMessage = "⏹ Stopped by user"
+            lastOutput = stopMessage
+            liveStreamingOutput = stopMessage
+            return (false, stopMessage)
+        }
+
+        lastOutput = result.message
+        liveStreamingOutput = result.message
+        return result
     }
 
-    private func runShell(command: String) async -> (success: Bool, message: String) {
+    private func runShell(
+        command: String,
+        onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
+    ) async -> (success: Bool, message: String) {
         DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command: \(command.prefix(40))...")
-        return await Task.detached(priority: .userInitiated) {
-            let task = Process()
-            task.launchPath = "/bin/zsh"
-            task.arguments = ["-c", command]
+        let task = Process()
+        task.launchPath = "/bin/zsh"
+        task.arguments = ["-c", command]
 
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = pipe
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        self.activeProcess = task
 
-            // Concurrently drain stdout/stderr pipe to prevent kernel pipe buffer deadlock
-            let outputTask = Task<Data, Never> {
-                pipe.fileHandleForReading.readDataToEndOfFile()
+        final class StreamAccumulator: @unchecked Sendable {
+            private let lock = NSLock()
+            private var buffer = Data()
+
+            func append(_ data: Data) -> String {
+                lock.lock()
+                defer { lock.unlock() }
+                buffer.append(data)
+                return String(data: buffer, encoding: .utf8) ?? ""
             }
 
+            func fullText() -> String {
+                lock.lock()
+                defer { lock.unlock() }
+                return String(data: buffer, encoding: .utf8) ?? ""
+            }
+        }
+
+        let accumulator = StreamAccumulator()
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                return
+            }
+            let fullString = accumulator.append(chunk)
+            let tail = ScriptRunwayService.tailNonEmptyLines(from: fullString, maxLines: 4)
+            guard !tail.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                guard let self = self, !self.wasStoppedByUser else { return }
+                self.liveStreamingOutput = tail
+                self.lastOutput = tail
+                onStreamUpdate?(tail)
+            }
+        }
+
+        return await Task.detached(priority: .userInitiated) {
             do {
                 try task.run()
 
@@ -167,27 +242,35 @@ public final class ScriptRunwayService {
                     return first
                 }
 
+                pipe.fileHandleForReading.readabilityHandler = nil
+                let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
+                if !remaining.isEmpty {
+                    _ = accumulator.append(remaining)
+                }
+
                 if didTimeout {
                     DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after 15s: \(command.prefix(40))")
-                    _ = await outputTask.value
                     return (false, "Execution timed out after 15s")
                 }
 
-                let data = await outputTask.value
-                let output = String(data: data, encoding: .utf8) ?? ""
+                let rawOutput = accumulator.fullText()
+                let tailOutput = ScriptRunwayService.tailNonEmptyLines(from: rawOutput, maxLines: 4)
                 let success = (task.terminationStatus == 0)
-                let msg = success ? (output.isEmpty ? "Success" : output) : "Failed (exit code \(task.terminationStatus))"
+                let msg = success ? (tailOutput.isEmpty ? "Success" : tailOutput) : (tailOutput.isEmpty ? "Failed (exit code \(task.terminationStatus))" : tailOutput)
                 DiagnosticLogger.shared.info("ScriptRunway", "Shell command result: \(success ? "Success" : "Failed")")
                 return (success, msg)
             } catch {
-                outputTask.cancel()
+                pipe.fileHandleForReading.readabilityHandler = nil
                 DiagnosticLogger.shared.error("ScriptRunway", "Process error: \(error.localizedDescription)")
                 return (false, "Process error: \(error.localizedDescription)")
             }
         }.value
     }
 
-    private func runAppleScript(script: String) async -> (success: Bool, message: String) {
+    private func runAppleScript(
+        script: String,
+        onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
+    ) async -> (success: Bool, message: String) {
         DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript: \(script.prefix(40))...")
         return await Task.detached(priority: .userInitiated) {
             guard let appleScript = NSAppleScript(source: script) else {
@@ -195,19 +278,27 @@ public final class ScriptRunwayService {
                 return (false, "AppleScript syntax error")
             }
             var errorDict: NSDictionary?
-            appleScript.executeAndReturnError(&errorDict)
+            let descriptor = appleScript.executeAndReturnError(&errorDict)
             if let err = errorDict {
                 let msg = err[NSAppleScript.errorMessage] as? String ?? "Execution failed"
                 DiagnosticLogger.shared.warn("ScriptRunway", "AppleScript error: \(msg)")
                 return (false, msg)
             }
+            let resultText = descriptor.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let msg = resultText.isEmpty ? "AppleScript executed successfully" : ScriptRunwayService.tailNonEmptyLines(from: resultText, maxLines: 4)
+            Task { @MainActor in
+                onStreamUpdate?(msg)
+            }
             DiagnosticLogger.shared.info("ScriptRunway", "AppleScript completed successfully")
-            return (true, "AppleScript executed successfully")
+            return (true, msg)
         }.value
     }
 
-    private func runShortcut(name: String) async -> (success: Bool, message: String) {
-        return await runShell(command: "/usr/bin/shortcuts run \"\(name)\"")
+    private func runShortcut(
+        name: String,
+        onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
+    ) async -> (success: Bool, message: String) {
+        return await runShell(command: "/usr/bin/shortcuts run \"\(name)\"", onStreamUpdate: onStreamUpdate)
     }
 
     public static func defaultActions() -> [ScriptActionItem] {

@@ -12,10 +12,12 @@ public final class ScriptsPluginState: Sendable {
     public var enabledActionIds: [String]
     public var actions: [ScriptActionItem]
     public var lastOutput: String?
+    public var liveStreamingOutput: String = ""
     public var isRunning: Bool
     public var lastExecutedActionId: String?
     public let storage: any PurahPluginStorage
 
+    @ObservationIgnored private var activeProcess: Process? = nil
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var enabledActions: [ScriptActionItem] {
@@ -111,14 +113,30 @@ public final class ScriptsPluginState: Sendable {
         boundStore?._scriptsEnabledActionIds = enabledActionIds
     }
 
+    public func stopRunningScript() {
+        activeProcess?.terminate()
+        activeProcess = nil
+        ScriptRunwayService.shared.stopRunningScript()
+        isRunning = false
+        lastOutput = "⏹ Stopped by user"
+        liveStreamingOutput = "⏹ Stopped by user"
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+    }
+
     public func executeAction(_ action: ScriptActionItem, store: PurahWorkspaceStore? = nil) async -> (success: Bool, message: String) {
         isRunning = true
         lastExecutedActionId = action.id
+        liveStreamingOutput = ""
         defer {
             isRunning = false
         }
-        let result = await ScriptRunwayService.shared.executeAction(action)
+        let result = await ScriptRunwayService.shared.executeAction(action) { [weak self] chunkTail in
+            guard let self = self else { return }
+            self.liveStreamingOutput = chunkTail
+            self.lastOutput = chunkTail
+        }
         lastOutput = result.message
+        liveStreamingOutput = result.message
         return result
     }
 

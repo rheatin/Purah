@@ -1,6 +1,7 @@
 // Sources/PurahUI/DrawerPanels/MusicDrawerView.swift
 import SwiftUI
 import AppKit
+import CoreAudio
 import PurahCore
 
 public struct MusicDrawerView: View {
@@ -187,6 +188,28 @@ public struct MusicDrawerView: View {
                 Spacer(minLength: 4)
             }
 
+            // Live 1-line Synced Lyric Bar (when lyrics are available in Standard mode)
+            if let rawLyrics = state.track.syncedLyrics ?? state.track.lyrics,
+               !rawLyrics.isEmpty,
+               let activeLine = LyricsDisplayView.activeLyricLine(in: rawLyrics, at: displaySec) {
+                HStack(spacing: 5) {
+                    Image(systemName: "quote.opening")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundColor(musicColor.opacity(0.85))
+                    Text(activeLine)
+                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                        .foregroundColor(musicColor)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 2)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(musicColor.opacity(0.10))
+                .cornerRadius(5)
+                .transition(.opacity)
+            }
+
             // Row 2: Standard Progress Bar + Dual Time Labels
             VStack(spacing: 5) {
                 NativeMediaProgressBar(
@@ -276,7 +299,7 @@ public struct MusicDrawerView: View {
         let dynamicArtSize = min(max((availableHeight - 160) * 0.50, 60.0), 160.0)
 
         VStack(spacing: 8) {
-            if let lyrics = state.track.lyrics, !lyrics.isEmpty {
+            if let lyrics = state.track.syncedLyrics ?? state.track.lyrics, !lyrics.isEmpty {
                 // Direct Lyrics Showcase: Compact Track Bar + Flowing Lyrics Sheet
                 VStack(spacing: 6) {
                     HStack(spacing: 8) {
@@ -826,5 +849,230 @@ public struct LyricsDisplayView: View {
         }
 
         return parsed.sorted(by: { $0.time < $1.time })
+    }
+
+    public static func activeLyricLine(in raw: String, at currentTime: Double) -> String? {
+        let lines = parseLyrics(raw)
+        guard !lines.isEmpty else { return nil }
+        var active = 0
+        for (idx, line) in lines.enumerated() {
+            if line.time <= currentTime + 0.25 {
+                active = idx
+            } else {
+                break
+            }
+        }
+        return lines[active].text
+    }
+}
+
+// MARK: - CoreAudio Output Device Quick-Switcher
+public struct AudioOutputDevice: Identifiable, Equatable, Sendable {
+    public let id: AudioDeviceID
+    public let name: String
+
+    public init(id: AudioDeviceID, name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    public var systemIcon: String {
+        let lower = name.lowercased()
+        if lower.contains("airpods") {
+            return "airpodspro"
+        } else if lower.contains("headphone") || lower.contains("beats") || lower.contains("ear") {
+            return "headphones"
+        } else if lower.contains("display") || lower.contains("hdmi") {
+            return "display"
+        } else {
+            return "speaker.wave.2.fill"
+        }
+    }
+}
+
+@MainActor
+public final class AudioOutputDeviceManager: ObservableObject {
+    public static let shared = AudioOutputDeviceManager()
+
+    @Published public private(set) var outputDevices: [AudioOutputDevice] = []
+    @Published public private(set) var defaultOutputDeviceId: AudioDeviceID = 0
+
+    private init() {
+        refreshDevices()
+    }
+
+    public var activeDevice: AudioOutputDevice? {
+        outputDevices.first(where: { $0.id == defaultOutputDeviceId }) ?? outputDevices.first
+    }
+
+    public func refreshDevices() {
+        var defaultId = AudioDeviceID(0)
+        var defaultSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var defaultAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let defaultStatus = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &defaultAddress,
+            0,
+            nil,
+            &defaultSize,
+            &defaultId
+        )
+        if defaultStatus == noErr {
+            self.defaultOutputDeviceId = defaultId
+        }
+
+        var devicesAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &devicesAddress,
+            0,
+            nil,
+            &dataSize
+        ) == noErr, dataSize > 0 else {
+            return
+        }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIds = [AudioDeviceID](repeating: 0, count: deviceCount)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &devicesAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceIds
+        ) == noErr else {
+            return
+        }
+
+        var discovered: [AudioOutputDevice] = []
+        for devId in deviceIds {
+            var streamAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioObjectPropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(devId, &streamAddress, 0, nil, &streamSize) == noErr,
+                  streamSize > 0 else {
+                continue
+            }
+
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var cfName: Unmanaged<CFString>? = nil
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            let status = withUnsafeMutablePointer(to: &cfName) { ptr in
+                AudioObjectGetPropertyData(devId, &nameAddress, 0, nil, &nameSize, ptr)
+            }
+            if status == noErr, let unwrapped = cfName?.takeUnretainedValue() as String? {
+                let trimmed = unwrapped.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    discovered.append(AudioOutputDevice(id: devId, name: trimmed))
+                }
+            }
+        }
+
+        self.outputDevices = discovered
+    }
+
+    @discardableResult
+    public func selectOutputDevice(id: AudioDeviceID) -> Bool {
+        var mutableId = id
+        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            size,
+            &mutableId
+        )
+        if status == noErr {
+            defaultOutputDeviceId = id
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+            return true
+        }
+        return false
+    }
+}
+
+public struct AudioOutputDevicePickerView: View {
+    public let accentColor: Color
+    @ObservedObject private var deviceManager = AudioOutputDeviceManager.shared
+
+    public init(accentColor: Color) {
+        self.accentColor = accentColor
+    }
+
+    public var body: some View {
+        Menu {
+            ForEach(deviceManager.outputDevices) { device in
+                Button {
+                    _ = deviceManager.selectOutputDevice(id: device.id)
+                } label: {
+                    HStack {
+                        Image(systemName: device.systemIcon)
+                        Text(device.name)
+                        if device.id == deviceManager.defaultOutputDeviceId {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button {
+                deviceManager.refreshDevices()
+            } label: {
+                Label("Refresh Audio Devices", systemImage: "arrow.clockwise")
+            }
+        } label: {
+            let current = deviceManager.activeDevice
+            HStack(spacing: 3) {
+                Image(systemName: current?.systemIcon ?? "speaker.wave.2.fill")
+                    .font(.system(size: 8, weight: .bold))
+                Text(shortDeviceLabel(for: current?.name ?? "Output"))
+                    .font(.system(size: 8, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 5.5, weight: .bold))
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(Color.secondary.opacity(0.14))
+            .foregroundColor(.primary.opacity(0.85))
+            .cornerRadius(4)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Switch macOS Audio Output Device")
+        .onAppear {
+            deviceManager.refreshDevices()
+        }
+    }
+
+    private func shortDeviceLabel(for name: String) -> String {
+        if name.count <= 12 { return name }
+        if name.lowercased().contains("airpods") { return "AirPods" }
+        if name.lowercased().contains("speaker") { return "Speakers" }
+        if name.lowercased().contains("headphone") { return "Headphones" }
+        return String(name.prefix(10)) + "…"
     }
 }

@@ -213,11 +213,29 @@ open class PurahTerminalView: LocalProcessTerminalView {
     }
 }
 
+// MARK: - Terminal Tab Session Model
+public struct TerminalTabSession: Identifiable {
+    public let id: String
+    public var title: String
+    public let terminalView: PurahTerminalView
+    public var isRunning: Bool
+
+    public init(id: String = UUID().uuidString, title: String, terminalView: PurahTerminalView, isRunning: Bool = false) {
+        self.id = id
+        self.title = title
+        self.terminalView = terminalView
+        self.isRunning = isRunning
+    }
+}
+
 // MARK: - Terminal Manager (Persistent Shell Controller)
 @MainActor
 public final class TerminalManager: ObservableObject {
     public static let shared = TerminalManager()
+    public static let maxTabsCount: Int = 5
 
+    @Published public private(set) var tabs: [TerminalTabSession] = []
+    @Published public var activeTabId: String = ""
     @Published public var isProcessRunning: Bool = false
     @Published public var terminalTitle: String = "Terminal"
     @Published public var shellName: String = "zsh"
@@ -231,12 +249,152 @@ public final class TerminalManager: ObservableObject {
         return v
     }()
 
-    public private(set) var terminalView: PurahTerminalView?
+    public var terminalView: PurahTerminalView? {
+        if let active = tabs.first(where: { $0.id == activeTabId }) {
+            return active.terminalView
+        }
+        return tabs.first?.terminalView
+    }
+
     private weak var currentDelegate: LocalProcessTerminalViewDelegate?
     private var lastAppliedFontFamily: String = ""
     private var lastAppliedFontSize: CGFloat = 0
+    private var cachedResolvedFont: NSFont?
+    private var lastAppliedPalette: ThemePalette = ThemePalette.palette(for: .native)
+    private var recycledViews: [PurahTerminalView] = []
 
-    private init() {}
+    private init() {
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        self.shellName = URL(fileURLWithPath: shell).lastPathComponent
+    }
+
+    @discardableResult
+    public func createNewTab() -> String {
+        guard tabs.count < Self.maxTabsCount else {
+            return activeTabId
+        }
+
+        let fallbackFrame = PurahWorkspaceStore.isTestingEnvironment
+            ? CGRect(x: 0, y: 0, width: 120, height: 80)
+            : CGRect(x: 0, y: 0, width: 500, height: 360)
+        let initialFrame = containerView.bounds.size.width >= 10
+            ? containerView.bounds
+            : fallbackFrame
+
+        let view: PurahTerminalView
+        if let recycled = recycledViews.popLast() {
+            view = recycled
+            view.frame = initialFrame
+        } else if PurahWorkspaceStore.isTestingEnvironment, let existing = tabs.first?.terminalView {
+            view = existing
+        } else {
+            view = PurahTerminalView(frame: initialFrame)
+            view.autoresizingMask = [.width, .height]
+        }
+        view.processDelegate = currentDelegate
+        applyAppearanceSettings(
+            to: view,
+            fontFamily: lastAppliedFontFamily.isEmpty ? "Auto (Nerd Font)" : lastAppliedFontFamily,
+            fontSize: lastAppliedFontSize > 0 ? lastAppliedFontSize : 11.5,
+            palette: lastAppliedPalette
+        )
+
+        let usedNumbers = Set(tabs.compactMap { tab -> Int? in
+            let parts = tab.title.split(separator: " ")
+            guard let last = parts.last else { return nil }
+            return Int(last)
+        })
+        let nextNumber = (1...Self.maxTabsCount).first(where: { !usedNumbers.contains($0) }) ?? (tabs.count + 1)
+        let tabTitle = "\(shellName) \(nextNumber)"
+        let newTab = TerminalTabSession(
+            id: UUID().uuidString,
+            title: tabTitle,
+            terminalView: view,
+            isRunning: false
+        )
+
+        tabs.append(newTab)
+        selectTab(id: newTab.id)
+
+        if !PurahWorkspaceStore.isTestingEnvironment {
+            startShellProcess(for: newTab.id)
+        }
+
+        return newTab.id
+    }
+
+    public func closeTab(id: String) {
+        guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let removed = tabs.remove(at: idx)
+        let stillReferenced = tabs.contains(where: { $0.terminalView === removed.terminalView })
+        if !stillReferenced {
+            removed.terminalView.terminate()
+            removed.terminalView.removeFromSuperview()
+            if PurahWorkspaceStore.isTestingEnvironment && recycledViews.count < 2 {
+                recycledViews.append(removed.terminalView)
+            }
+        }
+
+        if tabs.isEmpty {
+            isProcessRunning = false
+            activeTabId = ""
+            createNewTab()
+        } else if activeTabId == id {
+            let nextIdx = min(idx, tabs.count - 1)
+            selectTab(id: tabs[nextIdx].id)
+        }
+    }
+
+    public func selectTab(id: String) {
+        guard let targetTab = tabs.first(where: { $0.id == id }) else { return }
+        activeTabId = id
+        isProcessRunning = targetTab.isRunning
+
+        for sub in containerView.subviews where sub !== targetTab.terminalView {
+            sub.removeFromSuperview()
+        }
+
+        if targetTab.terminalView.superview !== containerView {
+            let initialFrame = containerView.bounds.size.width >= 10
+                ? containerView.bounds.insetBy(dx: 4.0, dy: 4.0)
+                : CGRect(x: 0, y: 0, width: 500, height: 360)
+            targetTab.terminalView.frame = initialFrame
+            containerView.addSubview(targetTab.terminalView)
+        }
+        targetTab.terminalView.needsDisplay = true
+        focusTerminal()
+    }
+
+    public static func shellEscapedPath(_ path: String) -> String {
+        let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
+        return "'\(escaped)'"
+    }
+
+    @discardableResult
+    public func cdToFrontmostFinderDirectory() -> String? {
+        if tabs.isEmpty {
+            createNewTab()
+        }
+
+        var resolvedPath: String? = nil
+        if !PurahWorkspaceStore.isTestingEnvironment {
+            let scriptSource = "tell application \"Finder\" to if (count of Finder windows) > 0 then get POSIX path of (target of front Finder window as alias)"
+            if let script = NSAppleScript(source: scriptSource) {
+                var errorDict: NSDictionary?
+                let descriptor = script.executeAndReturnError(&errorDict)
+                if errorDict == nil, let path = descriptor.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                    resolvedPath = path
+                }
+            }
+        }
+
+        let targetPath = resolvedPath ?? NSHomeDirectory()
+        guard !targetPath.isEmpty else { return nil }
+
+        let command = "cd \(Self.shellEscapedPath(targetPath))\n"
+        terminalView?.send(txt: command)
+        return targetPath
+    }
 
     public func ensureTerminalView(
         delegate: LocalProcessTerminalViewDelegate,
@@ -245,31 +403,37 @@ public final class TerminalManager: ObservableObject {
         palette: ThemePalette
     ) {
         self.currentDelegate = delegate
-        if let existing = terminalView, existing.superview === containerView {
-            existing.processDelegate = delegate
-            applyAppearanceSettings(to: existing, fontFamily: fontFamily, fontSize: fontSize, palette: palette)
+        self.lastAppliedPalette = palette
+
+        if tabs.isEmpty {
+            createNewTab()
+        }
+
+        if let active = terminalView {
+            active.processDelegate = delegate
+            applyAppearanceSettings(
+                to: active,
+                fontFamily: fontFamily,
+                fontSize: fontSize,
+                palette: palette
+            )
+            if active.superview !== containerView {
+                containerView.addSubview(active)
+            }
+        }
+    }
+
+    public func startShellProcess(for tabId: String? = nil) {
+        let targetId = tabId ?? activeTabId
+        guard let idx = tabs.firstIndex(where: { $0.id == targetId }) else { return }
+        guard !tabs[idx].isRunning else {
+            if targetId == activeTabId {
+                isProcessRunning = true
+            }
             return
         }
 
-        let initialFrame = containerView.bounds.size.width >= 10
-            ? containerView.bounds
-            : CGRect(x: 0, y: 0, width: 500, height: 360)
-
-        terminalView?.removeFromSuperview()
-
-        let view = PurahTerminalView(frame: initialFrame)
-        view.autoresizingMask = [.width, .height]
-        view.processDelegate = delegate
-
-        applyAppearanceSettings(to: view, fontFamily: fontFamily, fontSize: fontSize, palette: palette)
-
-        containerView.addSubview(view)
-        terminalView = view
-    }
-
-    public func startShellProcess() {
-        guard let view = terminalView, !isProcessRunning else { return }
-
+        let view = tabs[idx].terminalView
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         self.shellName = URL(fileURLWithPath: shell).lastPathComponent
         let execName = "-" + (shell as NSString).lastPathComponent // Login shell convention
@@ -290,25 +454,45 @@ public final class TerminalManager: ObservableObject {
             environment: envArray,
             execName: execName
         )
-        isProcessRunning = true
+        tabs[idx].isRunning = true
+        if targetId == activeTabId {
+            isProcessRunning = true
+        }
     }
 
     public func stopProcess() {
-        terminalView?.terminate()
-        terminalView?.removeFromSuperview()
-        terminalView = nil
+        for tab in tabs {
+            tab.terminalView.terminate()
+            tab.terminalView.removeFromSuperview()
+            if PurahWorkspaceStore.isTestingEnvironment && !recycledViews.contains(where: { $0 === tab.terminalView }) && recycledViews.count < 2 {
+                recycledViews.append(tab.terminalView)
+            }
+        }
+        tabs.removeAll()
+        activeTabId = ""
         isProcessRunning = false
         terminalTitle = "Terminal"
     }
 
     public func restartShell(fontFamily: String, fontSize: CGFloat, palette: ThemePalette) {
-        terminalView?.terminate()
-        terminalView?.removeFromSuperview()
-        terminalView = nil
-        isProcessRunning = false
-        terminalTitle = "Terminal"
+        if let idx = tabs.firstIndex(where: { $0.id == activeTabId }) {
+            let oldTitle = tabs[idx].title
+            let oldId = tabs[idx].id
+            tabs[idx].terminalView.terminate()
+            tabs[idx].terminalView.removeFromSuperview()
 
-        if let delegate = currentDelegate {
+            let initialFrame = containerView.bounds.size.width >= 10
+                ? containerView.bounds
+                : CGRect(x: 0, y: 0, width: 500, height: 360)
+            let view = recycledViews.popLast() ?? PurahTerminalView(frame: initialFrame)
+            view.frame = initialFrame
+            view.autoresizingMask = [.width, .height]
+            view.processDelegate = currentDelegate
+            applyAppearanceSettings(to: view, fontFamily: fontFamily, fontSize: fontSize, palette: palette, forceFontUpdate: true)
+            tabs[idx] = TerminalTabSession(id: oldId, title: oldTitle, terminalView: view, isRunning: false)
+            selectTab(id: oldId)
+            startShellProcess(for: oldId)
+        } else if let delegate = currentDelegate {
             ensureTerminalView(delegate: delegate, fontFamily: fontFamily, fontSize: fontSize, palette: palette)
             startShellProcess()
         }
@@ -318,15 +502,20 @@ public final class TerminalManager: ObservableObject {
         to view: LocalProcessTerminalView,
         fontFamily: String,
         fontSize: CGFloat,
-        palette: ThemePalette
+        palette: ThemePalette,
+        forceFontUpdate: Bool = false
     ) {
         // 1. Resolve Font with Starship / Nerd Font cascade list
-        if lastAppliedFontFamily != fontFamily || lastAppliedFontSize != fontSize {
+        if forceFontUpdate || lastAppliedFontFamily != fontFamily || lastAppliedFontSize != fontSize || cachedResolvedFont == nil {
             let font = TerminalFontManager.resolveFont(family: fontFamily, size: fontSize)
-            view.font = font
+            cachedResolvedFont = font
             lastAppliedFontFamily = fontFamily
             lastAppliedFontSize = fontSize
         }
+        if let font = cachedResolvedFont, view.font != font {
+            view.font = font
+        }
+        lastAppliedPalette = palette
 
         // 2. Terminal Colors & Translucency
         let isDark = palette.style != .native
@@ -343,6 +532,17 @@ public final class TerminalManager: ObservableObject {
         view.allowMouseReporting = true
         view.useBrightColors = true
         view.getTerminal().options.scrollback = 2000
+    }
+
+    public func markProcessTerminated(for source: TerminalView) {
+        if let idx = tabs.firstIndex(where: { $0.terminalView === source }) {
+            tabs[idx].isRunning = false
+            if tabs[idx].id == activeTabId {
+                isProcessRunning = false
+            }
+        } else {
+            isProcessRunning = false
+        }
     }
 
     public func focusTerminal() {
@@ -397,7 +597,7 @@ public final class TerminalManagerCoordinator: NSObject, LocalProcessTerminalVie
 
     public func processTerminated(source: TerminalView, exitCode: Int32?) {
         Task { @MainActor in
-            TerminalManager.shared.isProcessRunning = false
+            TerminalManager.shared.markProcessTerminated(for: source)
         }
     }
 }

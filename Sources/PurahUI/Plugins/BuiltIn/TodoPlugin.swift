@@ -125,21 +125,38 @@ public struct TodoPlugin: PurahPodPlugin {
         return todos[index].title
     }
 
+    public static func urgencyPresentation(for todo: TodoItem, now: Date = Date()) -> (tintColorHex: String?, badge: String?) {
+        var resolvedHex = todo.listColorHex
+        var resolvedBadge: String? = nil
+        if !todo.isCompleted, let due = todo.dueDate {
+            if due < now {
+                resolvedHex = "#FF453A"
+                resolvedBadge = "OVERDUE"
+            } else if Calendar.current.isDateInToday(due) {
+                resolvedHex = "#FF9F0A"
+                resolvedBadge = "TODAY"
+            }
+        }
+        return (resolvedHex, resolvedBadge)
+    }
+
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let items = effectiveTodos(store: context.store)
         let maxTasks = max(context.store.todoMaxRailTasks, 1)
         let displayItems = items.prefix(maxTasks)
+        let now = Date()
         return displayItems.map { todo in
-            PurahPluginSubItem(
+            let urgency = Self.urgencyPresentation(for: todo, now: now)
+            return PurahPluginSubItem(
                 id: todo.id,
                 title: todo.title,
                 subtitle: todo.listTitle,
                 systemIcon: "checklist",
-                badge: nil,
+                badge: urgency.badge,
                 state: todo.isCompleted ? .inactive : .normal,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
-                tintColorHex: todo.listColorHex,
+                tintColorHex: urgency.tintColorHex,
                 isPinned: context.isItemPinned(todo.id)
             )
         }

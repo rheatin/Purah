@@ -2037,6 +2037,30 @@ public final class PurahNotesNSTextView: NSTextView {
         }
     }
 
+    public override func paste(_ sender: Any?) {
+        let pb = NSPasteboard.general
+        let hasPlainString = (pb.string(forType: .string)?.isEmpty == false)
+        if !hasPlainString {
+            var pngData: Data? = pb.data(forType: .png)
+            if pngData == nil, let tiffData = pb.data(forType: .tiff),
+               let bitmap = NSBitmapImageRep(data: tiffData) {
+                pngData = bitmap.representation(using: .png, properties: [:])
+            }
+            if let data = pngData {
+                let assetsDir = PurahPluginFileStorage(pluginId: "notes").assetsDirectory
+                try? FileManager.default.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+                let savedURL = assetsDir.appendingPathComponent("img_\(Int(Date().timeIntervalSince1970)).png")
+                if (try? data.write(to: savedURL, options: .atomic)) != nil {
+                    let markdownSnippet = "![Image](\(savedURL.lastPathComponent))\n"
+                    insertText(markdownSnippet, replacementRange: selectedRange())
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                    return
+                }
+            }
+        }
+        super.paste(sender)
+    }
+
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags == .command {
@@ -2247,6 +2271,8 @@ public struct QuickNoteDrawerView: View {
     @State private var activeTextView: PurahNotesNSTextView? = nil
     @State private var isCopied: Bool = false
     @State private var isShowingTips: Bool = false
+    @State private var isSearchingNotes: Bool = false
+    @State private var searchQuery: String = ""
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -2278,8 +2304,12 @@ public struct QuickNoteDrawerView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Tips, Star
+            // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Search, Tips, Star
             navigationToolbar
+
+            if isSearchingNotes {
+                crossFolderSearchOverlay
+            }
 
             // 2. Single Continuous Native NSTextView Live Markdown Document Canvas
             documentCanvasView
@@ -2293,6 +2323,87 @@ public struct QuickNoteDrawerView: View {
             state.save()
             store.savePersistentState()
         }
+    }
+
+    // MARK: - Cross-Folder Search Bar & Results
+    private var crossFolderSearchOverlay: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(noteColor)
+                TextField("Search across all notes...", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 10, design: .rounded))
+                if !searchQuery.isEmpty {
+                    Button {
+                        searchQuery = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3.5)
+            .background(Color.primary.opacity(0.06))
+            .cornerRadius(5)
+
+            let matches = state.searchNotes(query: searchQuery)
+            if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if matches.isEmpty {
+                            Text("No matching notes found")
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                        } else {
+                            ForEach(matches.prefix(6)) { doc in
+                                Button {
+                                    state.selectedFolder = doc.folder
+                                    state.selectedNoteId = doc.id
+                                    state.save()
+                                    withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                                        isSearchingNotes = false
+                                        searchQuery = ""
+                                    }
+                                    store.triggerControlHaptic(.alignment)
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: doc.isFavorite ? "star.fill" : "doc.text")
+                                            .font(.system(size: 8.5))
+                                            .foregroundColor(doc.isFavorite ? Color(hex: "#FF9F0A") : noteColor)
+                                        Text(doc.title)
+                                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                            .foregroundColor(.primary)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text(doc.folder)
+                                            .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(noteColor.opacity(0.14))
+                                            .foregroundColor(noteColor)
+                                            .cornerRadius(3)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.primary.opacity(0.04))
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 88)
+            }
+        }
+        .transition(.opacity)
     }
 
     // MARK: - Native Live Markdown Canvas
@@ -2472,6 +2583,26 @@ public struct QuickNoteDrawerView: View {
             .help("New Note")
 
             Spacer(minLength: 4)
+
+            // Cross-Folder Search Filter Toggle
+            Button {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                    isSearchingNotes.toggle()
+                    if !isSearchingNotes {
+                        searchQuery = ""
+                    }
+                }
+                store.triggerControlHaptic(.alignment)
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 9.5, weight: isSearchingNotes ? .bold : .regular))
+                    .foregroundColor(isSearchingNotes ? noteColor : .secondary)
+                    .padding(2)
+                    .background(isSearchingNotes ? noteColor.opacity(0.14) : Color.clear)
+                    .cornerRadius(3)
+            }
+            .buttonStyle(.plain)
+            .help("Search across all notes")
 
             // Markdown Tips icon: triggers popover immediately on mouse hover or click
             Button {

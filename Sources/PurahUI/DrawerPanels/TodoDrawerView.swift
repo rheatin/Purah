@@ -70,6 +70,13 @@ public struct TodoDrawerView: View {
     @ViewBuilder
     private func todoCard(todo: TodoItem) -> some View {
         let isDone = todo.isCompleted
+        let urgency = TodoPlugin.urgencyPresentation(for: todo)
+        let effectiveColor: Color = {
+            if let hex = urgency.tintColorHex {
+                return Color(hex: hex)
+            }
+            return podColor
+        }()
 
         HStack(spacing: 8) {
             Button {
@@ -79,7 +86,7 @@ public struct TodoDrawerView: View {
             } label: {
                 Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
                     // Completed state maintains low-contrast harmonic hue
-                    .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
+                    .foregroundColor(isDone ? effectiveColor.opacity(0.4) : effectiveColor)
                     .font(.system(size: 14))
             }
             .buttonStyle(.tactile)
@@ -102,20 +109,42 @@ public struct TodoDrawerView: View {
                 .lineLimit(2)
 
                 if let due = todo.dueDate {
-                    Text(due.formatted(date: .abbreviated, time: .shortened))
-                        .font(.system(size: 9))
-                        .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
+                    HStack(spacing: 4) {
+                        if let badge = urgency.badge {
+                            Text(badge)
+                                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 0.5)
+                                .background(effectiveColor.opacity(0.18))
+                                .foregroundColor(effectiveColor)
+                                .cornerRadius(3)
+                        }
+                        Text(due.formatted(date: .abbreviated, time: .shortened))
+                            .font(.system(size: 9))
+                            .foregroundColor(isDone ? effectiveColor.opacity(0.35) : (urgency.badge != nil ? effectiveColor : .gray))
+                    }
                 }
             }
 
             Spacer(minLength: 4)
 
+            Menu {
+                dueDateMenuItems(for: todo.id)
+            } label: {
+                Image(systemName: todo.dueDate != nil ? "calendar.badge.clock" : "calendar")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(todo.dueDate != nil ? effectiveColor : .secondary.opacity(0.65))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Set Quick Due Date")
+
             Text(todo.listTitle)
                 .font(.system(size: 8))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(podColor.opacity(isDone ? 0.10 : 0.18))
-                .foregroundColor(podColor.opacity(isDone ? 0.45 : 1.0))
+                .background(effectiveColor.opacity(isDone ? 0.10 : 0.18))
+                .foregroundColor(effectiveColor.opacity(isDone ? 0.45 : 1.0))
                 .cornerRadius(3)
 
             Button {
@@ -134,7 +163,38 @@ public struct TodoDrawerView: View {
         .padding(.vertical, 7)
         .liquidCardBackground(
             cornerRadius: 8,
-            strokeColor: podColor.opacity(isDone ? 0.35 : 0.9)
+            strokeColor: effectiveColor.opacity(isDone ? 0.35 : 0.9)
         )
+        .contextMenu {
+            dueDateMenuItems(for: todo.id)
+        }
+    }
+
+    @ViewBuilder
+    private func dueDateMenuItems(for todoId: String) -> some View {
+        Button("Due Today (18:00)") {
+            let target = TodoPluginState.dueTodayAt18()
+            state.setDueDate(id: todoId, date: target)
+            if let idx = store._todos.firstIndex(where: { $0.id == todoId }) {
+                store._todos[idx].dueDate = target
+            }
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+        }
+        Button("Due Tomorrow (09:00)") {
+            let target = TodoPluginState.dueTomorrowAt09()
+            state.setDueDate(id: todoId, date: target)
+            if let idx = store._todos.firstIndex(where: { $0.id == todoId }) {
+                store._todos[idx].dueDate = target
+            }
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+        }
+        Divider()
+        Button("Clear Due Date") {
+            state.setDueDate(id: todoId, date: nil)
+            if let idx = store._todos.firstIndex(where: { $0.id == todoId }) {
+                store._todos[idx].dueDate = nil
+            }
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+        }
     }
 }

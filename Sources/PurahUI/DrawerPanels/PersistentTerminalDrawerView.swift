@@ -71,23 +71,78 @@ public struct TerminalHeaderAccessoryView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(manager.isProcessRunning ? Color.green : Color.red)
-                .frame(width: 5, height: 5)
-
-            Text(manager.shellName.uppercased())
-                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
+        HStack(spacing: 3) {
+            if manager.tabs.isEmpty {
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(manager.isProcessRunning ? Color.green : Color.red)
+                        .frame(width: 4.5, height: 4.5)
+                    Text("\(manager.shellName) 1")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
                 .background(color.opacity(0.18))
                 .foregroundColor(color)
-                .cornerRadius(3)
+                .cornerRadius(4)
+            } else {
+                ForEach(manager.tabs) { tab in
+                    let isActive = (tab.id == manager.activeTabId)
+                    HStack(spacing: 3) {
+                        Button {
+                            manager.selectTab(id: tab.id)
+                            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                        } label: {
+                            HStack(spacing: 3) {
+                                if isActive {
+                                    Circle()
+                                        .fill((tab.isRunning || manager.isProcessRunning) ? Color.green : Color.red)
+                                        .frame(width: 4.5, height: 4.5)
+                                }
+                                Text(tab.title)
+                                    .font(.system(size: 8, weight: isActive ? .bold : .medium, design: .monospaced))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
 
-            if !manager.isProcessRunning {
-                Text("EXITED")
-                    .font(.system(size: 7.5, weight: .bold))
-                    .foregroundColor(.red)
+                        if manager.tabs.count > 1 {
+                            Button {
+                                manager.closeTab(id: tab.id)
+                                SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 6.5, weight: .bold))
+                                    .foregroundColor(isActive ? color.opacity(0.85) : .secondary.opacity(0.75))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Close Tab")
+                        }
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(isActive ? color.opacity(0.20) : Color.primary.opacity(0.06))
+                    .foregroundColor(isActive ? color : .secondary)
+                    .cornerRadius(4)
+                }
+            }
+
+            if manager.tabs.count < TerminalManager.maxTabsCount {
+                Button {
+                    manager.createNewTab()
+                    manager.startShellProcess()
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundColor(color)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(color.opacity(0.14))
+                        .cornerRadius(3.5)
+                }
+                .buttonStyle(.plain)
+                .help("New Terminal Tab (up to 5)")
             }
         }
     }
@@ -104,6 +159,27 @@ public struct TerminalHeaderTrailingToolbarView: View {
 
     public var body: some View {
         HStack(spacing: 4) {
+            // cd Finder quick jump button
+            Button {
+                _ = manager.cdToFrontmostFinderDirectory()
+                SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                manager.focusTerminal()
+            } label: {
+                HStack(spacing: 2.5) {
+                    Image(systemName: "folder.badge.gearshape")
+                        .font(.system(size: 7.5, weight: .semibold))
+                    Text("cd Finder")
+                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 4.5)
+                .padding(.vertical, 1.5)
+                .background(Color.secondary.opacity(0.14))
+                .foregroundColor(.primary.opacity(0.85))
+                .cornerRadius(3.5)
+            }
+            .buttonStyle(.plain)
+            .help("cd into the frontmost Finder window directory")
+
             // Font size quick adjuster
             HStack(spacing: 2) {
                 Button {

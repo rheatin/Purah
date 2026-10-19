@@ -96,6 +96,10 @@ public struct MusicPlugin: PurahPodPlugin {
         )
     }
 
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        AnyView(AudioOutputDevicePickerView(accentColor: context.accentColor))
+    }
+
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(MusicPluginSettingsView(state: state, store: store))
     }

@@ -42,8 +42,9 @@ public struct TodoItemDrawerView: View {
         let isDone = todo.isCompleted
         let isExpanded = (state == .expandedDrawer)
         let cardH = isExpanded ? max(height, 32.0) : max(height, 6.0)
+        let urgency = TodoPlugin.urgencyPresentation(for: todo)
         let listColor: Color = {
-            if let hex = todo.listColorHex {
+            if let hex = urgency.tintColorHex {
                 return Color(hex: hex)
             }
             return podColor
@@ -132,6 +133,30 @@ public struct TodoItemDrawerView: View {
         .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: listColor.opacity(isDone ? 0.35 : 1.0))
         .contextMenu {
+            Button("Due Today (18:00)") {
+                let target = TodoPluginState.dueTodayAt18()
+                (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state.setDueDate(id: todo.id, date: target)
+                if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
+                    store._todos[idx].dueDate = target
+                }
+                SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+            }
+            Button("Due Tomorrow (09:00)") {
+                let target = TodoPluginState.dueTomorrowAt09()
+                (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state.setDueDate(id: todo.id, date: target)
+                if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
+                    store._todos[idx].dueDate = target
+                }
+                SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+            }
+            Button("Clear Due Date") {
+                (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state.setDueDate(id: todo.id, date: nil)
+                if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
+                    store._todos[idx].dueDate = nil
+                }
+                SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+            }
+            Divider()
             Button {
                 store.openPluginSettings(id: "todo")
             } label: {
@@ -1190,9 +1215,12 @@ public struct ScriptItemDrawerView: View {
                         }
 
                         if isRunning {
-                            Text("Executing command...")
-                                .purahCaption(size: 8.5, weight: .medium)
+                            let streamLine = runway.liveStreamingOutput.components(separatedBy: .newlines).last ?? ""
+                            Text(streamLine.isEmpty ? "Executing command..." : streamLine)
+                                .purahCaption(size: 8.5, weight: .medium, design: streamLine.isEmpty ? .default : .monospaced)
                                 .foregroundColor(podColor)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         } else if let output = runway.lastOutput, runway.lastExecutedActionId == action.id {
                             HStack(spacing: 3) {
                                 Image(systemName: "checkmark.circle.fill")
@@ -1220,6 +1248,26 @@ public struct ScriptItemDrawerView: View {
             }
             .buttonStyle(.tactile)
             .disabled(runway.isRunning)
+
+            if isRunning {
+                Button {
+                    runway.stopRunningScript()
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 6.5, weight: .bold))
+                        Text("Stop")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2.5)
+                    .background(Color.red.opacity(0.9))
+                    .foregroundColor(.white)
+                    .cornerRadius(4)
+                }
+                .buttonStyle(.tactile)
+                .help("Stop running script")
+            }
 
             // Pin button (Matches Hardware Vitals design)
             pinButton
