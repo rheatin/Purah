@@ -18,6 +18,30 @@ public struct MusicTrackInfo: Codable, Sendable {
     public var sourceApp: String // "Apple Music", "Spotify", "Chrome", etc.
     public var sourceBundleId: String // "com.apple.Music", etc.
 
+    public static let defaultSampleSyncedLyrics: String = """
+    [00:00.00] ♪ Ambient Sheikah Slate Resonance ♪
+    [00:15.00] Across the quiet skies of Hyrule
+    [00:32.00] Ancient towers hum in golden light
+    [00:50.00] Watch the stars align above the clouds
+    [01:10.00] Every memory echoes through the wind
+    [01:28.00] Close your eyes and hear the lullaby
+    [01:50.00] Guiding courage through the endless night
+    [02:15.00] Dawn awakens on the distant ridge
+    [02:45.00] ♪ Zelda's Lullaby — Purah Symphonic Mix ♪
+    """
+
+    public static let defaultSamplePlainLyrics: String = """
+    ♪ Ambient Sheikah Slate Resonance ♪
+    Across the quiet skies of Hyrule
+    Ancient towers hum in golden light
+    Watch the stars align above the clouds
+    Every memory echoes through the wind
+    Close your eyes and hear the lullaby
+    Guiding courage through the endless night
+    Dawn awakens on the distant ridge
+    ♪ Zelda's Lullaby — Purah Symphonic Mix ♪
+    """
+
     public init(
         title: String = "Zelda's Lullaby",
         artist: String = "Purah OST",
@@ -47,8 +71,13 @@ public struct MusicTrackInfo: Codable, Sendable {
         self.playbackRate = playbackRate != 0.0 ? playbackRate : (resolvedPlaying ? 1.0 : 0.0)
         self.waveformSamples = waveformSamples
         self.artworkData = artworkData
-        self.lyrics = lyrics
-        self.syncedLyrics = syncedLyrics
+        if (title == "Zelda's Lullaby" || title == "Midnight City") && lyrics == nil && syncedLyrics == nil {
+            self.lyrics = Self.defaultSamplePlainLyrics
+            self.syncedLyrics = Self.defaultSampleSyncedLyrics
+        } else {
+            self.lyrics = lyrics
+            self.syncedLyrics = syncedLyrics
+        }
         self.sourceApp = sourceApp
         self.sourceBundleId = sourceBundleId
     }

@@ -1,7 +1,10 @@
 // Tests/PurahCoreTests/MusicSyncTests.swift
 import Testing
 import Foundation
+import SwiftUI
+import AppKit
 @testable import PurahCore
+@testable import PurahUI
 
 @Suite("System Music Sync Tests")
 @MainActor
@@ -216,5 +219,122 @@ struct MusicSyncTests {
 
         let appleMusic = MusicTrackInfo(sourceApp: "Apple Music")
         #expect(appleMusic.sourceIconName == "music.note")
+    }
+
+    @Test("Preserves lyrics and syncedLyrics across 2s heartbeat updates in MediaRemote, Apple Music, and Spotify")
+    func testLyricsPreservedAcrossHeartbeatUpdates() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService.shared
+        let state = MusicPluginState(storage: ScopedPluginStorage(pluginId: "music_test_\(UUID().uuidString)"))
+        state.mount(store: store)
+
+        let plainText = "Line one of lyrics\nLine two of lyrics"
+        let syncedLrc = "[00:10.00] Line one of lyrics\n[00:20.00] Line two of lyrics"
+
+        store._musicTrack = MusicTrackInfo(
+            title: "Starlight",
+            artist: "Muse",
+            album: "Black Holes and Revelations",
+            isPlaying: true,
+            currentPositionSeconds: 12.0,
+            durationSeconds: 240.0,
+            lyrics: plainText,
+            syncedLyrics: syncedLrc
+        )
+        state.track = store._musicTrack
+
+        // 1. Simulate 2.0s MediaRemote heartbeat update for the same track
+        let mediaRemoteDict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "Starlight",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Muse",
+            "kMRMediaRemoteNowPlayingInfoAlbum": "Black Holes and Revelations",
+            "kMRMediaRemoteNowPlayingInfoDuration": 240.0,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 14.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1.0
+        ]
+        service.processMediaRemoteData(dict: mediaRemoteDict, pid: 0, store: store)
+
+        #expect(store._musicTrack.lyrics == plainText, "processMediaRemoteData must preserve existing plain lyrics")
+        #expect(store._musicTrack.syncedLyrics == syncedLrc, "processMediaRemoteData must preserve existing synced lyrics")
+        #expect(state.track.lyrics == plainText, "MusicPluginState.track must preserve plain lyrics after heartbeat")
+        #expect(state.track.syncedLyrics == syncedLrc, "MusicPluginState.track must preserve synced lyrics after heartbeat")
+
+        // 2. Simulate Apple Music notification for the same track
+        let appleMusicNotif = Notification(
+            name: Notification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            userInfo: [
+                "Player State": "Playing",
+                "Name": "Starlight",
+                "Artist": "Muse",
+                "Album": "Black Holes and Revelations",
+                "Total Time": 240000.0,
+                "Player Position": 16.0
+            ]
+        )
+        service.handleAppleMusicInfo(notification: appleMusicNotif, store: store)
+
+        #expect(store._musicTrack.lyrics == plainText, "handleAppleMusicInfo must preserve existing plain lyrics")
+        #expect(store._musicTrack.syncedLyrics == syncedLrc, "handleAppleMusicInfo must preserve existing synced lyrics")
+        #expect(state.track.lyrics == plainText)
+        #expect(state.track.syncedLyrics == syncedLrc)
+
+        // 3. Simulate Spotify notification for the same track
+        let spotifyNotif = Notification(
+            name: Notification.Name("com.spotify.client.PlaybackStateChanged"),
+            object: nil,
+            userInfo: [
+                "Player State": "Playing",
+                "Name": "Starlight",
+                "Artist": "Muse",
+                "Album": "Black Holes and Revelations",
+                "Duration": 240000.0,
+                "Playback Position": 18.0
+            ]
+        )
+        service.handleSpotifyInfo(notification: spotifyNotif, store: store)
+
+        #expect(store._musicTrack.lyrics == plainText, "handleSpotifyInfo must preserve existing plain lyrics")
+        #expect(store._musicTrack.syncedLyrics == syncedLrc, "handleSpotifyInfo must preserve existing synced lyrics")
+        #expect(state.track.lyrics == plainText)
+        #expect(state.track.syncedLyrics == syncedLrc)
+
+        // 4. Verify cachedLyrics fallback when store track is recreated
+        service.cacheLyrics(
+            for: "Cached Song",
+            artist: "Cached Artist",
+            result: OnlineLyricsResult(plainLyrics: "Cached plain", syncedLyrics: "[00:05.00] Cached synced")
+        )
+        let cachedDict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "Cached Song",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Cached Artist",
+            "kMRMediaRemoteNowPlayingInfoDuration": 180.0,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 5.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1.0
+        ]
+        service.processMediaRemoteData(dict: cachedDict, pid: 0, store: store)
+        #expect(store._musicTrack.lyrics == "Cached plain")
+        #expect(store._musicTrack.syncedLyrics == "[00:05.00] Cached synced")
+    }
+
+    @Test("Default sample tracks populate synced LRC lyrics out of the box and ultra-flat MusicDrawerView renders cleanly")
+    func testDefaultSampleLyricsAndUltraFlatDrawer() {
+        let defaultZelda = MusicTrackInfo()
+        #expect(defaultZelda.lyrics != nil)
+        #expect(defaultZelda.syncedLyrics != nil)
+
+        let defaultMidnight = MusicTrackInfo(title: "Midnight City", artist: "M83")
+        #expect(defaultMidnight.lyrics != nil)
+        #expect(defaultMidnight.syncedLyrics != nil)
+
+        let store = PurahWorkspaceStore()
+        let state = MusicPluginState(storage: ScopedPluginStorage(pluginId: "music_flat_test_\(UUID().uuidString)"))
+        let ultraFlatHosting = NSHostingView(
+            rootView: MusicDrawerView(state: state, store: store)
+                .frame(width: 320, height: 42)
+        )
+        ultraFlatHosting.frame = NSRect(x: 0, y: 0, width: 320, height: 42)
+        ultraFlatHosting.layoutSubtreeIfNeeded()
+        #expect(ultraFlatHosting.fittingSize.width > 0)
     }
 }

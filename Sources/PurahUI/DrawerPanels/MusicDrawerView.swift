@@ -45,12 +45,12 @@ public struct MusicDrawerView: View {
 
             PurahAdaptiveTierDrawer(
                 compactThreshold: 145,
-                immersiveThreshold: 265,
-                compact: { _ in
-                    compactCapsuleView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying)
+                immersiveThreshold: 215,
+                compact: { h in
+                    compactCapsuleView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
                 },
-                standard: { _ in
-                    classicStudioView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying)
+                standard: { h in
+                    classicStudioView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
                 },
                 immersive: { h in
                     immersiveVinylView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
@@ -62,122 +62,232 @@ public struct MusicDrawerView: View {
         }
     }
 
-    // MARK: - Tier 1: Compact Capsule Layout (< 155pt)
+    // MARK: - Tier 1: Compact Capsule Layout (< 145pt)
     @ViewBuilder
-    private func compactCapsuleView(displayProgress: Double, displaySec: Double, isPlaying: Bool) -> some View {
-        VStack(spacing: 8) {
-            // Row 1: Micro Artwork + Title/Artist + Pin
-            HStack(spacing: 8) {
-                Button {
-                    activateMusicPlayerApp()
-                } label: {
-                    HStack(spacing: 8) {
-                        artworkThumbnail(size: 32, cornerRadius: 6)
+    private func compactCapsuleView(displayProgress: Double, displaySec: Double, isPlaying: Bool, availableHeight: CGFloat = 100.0) -> some View {
+        if availableHeight < 66.0 {
+            // Ultra-Flat Single-Row Mode (26pt ~ 65pt inner height): Transport Controls ALWAYS visible on Row 1
+            VStack(spacing: 3) {
+                HStack(spacing: 6) {
+                    Button {
+                        activateMusicPlayerApp()
+                    } label: {
+                        HStack(spacing: 6) {
+                            artworkThumbnail(size: 22, cornerRadius: 5)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(state.track.title)
-                                .purahTitle(size: 11, weight: .bold, design: .rounded)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(state.track.title)
+                                    .purahTitle(size: 10.5, weight: .bold, design: .rounded)
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
+
+                                if availableHeight >= 34.0 {
+                                    Text(state.track.artist)
+                                        .purahBody(size: 8.5, weight: .medium, design: .rounded)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer(minLength: 4)
+
+                    // Inline Transport Controls right on Row 1
+                    HStack(spacing: 3) {
+                        Button {
+                            state.previousTrack(store: store)
+                        } label: {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                .lineLimit(1)
-
-                            Text(state.track.artist)
-                                .purahBody(size: 9.5, weight: .medium, design: .rounded)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
+                                .frame(width: 20, height: 20)
                         }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            state.togglePlayPause(store: store)
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(musicColor.opacity(0.20))
+                                    .frame(width: 24, height: 24)
+
+                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(musicColor)
+                            }
+                        }
+                        .buttonStyle(HeroPlayPauseButtonStyle())
+
+                        Button {
+                            state.nextTrack(store: store)
+                        } label: {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .buttonStyle(.plain)
 
-                Spacer(minLength: 4)
+                if availableHeight >= 40.0 {
+                    NativeMediaProgressBar(
+                        progress: displayProgress,
+                        color: musicColor,
+                        height: 6,
+                        onScrubChange: { dragging, prog in
+                            isScrubbing = dragging
+                            scrubbedProgress = prog
+                        },
+                        onSeek: { newProg in
+                            isScrubbing = false
+                            state.seek(to: newProg, store: store)
+                        }
+                    )
+                }
             }
-
-            // Row 2: Inline Mini Transport Controls + Scrubber + Time
-            HStack(spacing: 8) {
-                // Micro transport buttons
-                HStack(spacing: 4) {
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        } else {
+            // 2-Row Compact Mode (66pt ~ 144pt inner height): Transport Controls anchored on Row 1
+            VStack(spacing: 4) {
+                // Row 1: Micro Artwork + Title/Artist + Inline Transport Controls
+                HStack(spacing: 6) {
                     Button {
-                        state.previousTrack(store: store)
+                        activateMusicPlayerApp()
                     } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 20, height: 20)
+                        HStack(spacing: 6) {
+                            artworkThumbnail(size: 28, cornerRadius: 6)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(state.track.title)
+                                    .purahTitle(size: 11, weight: .bold, design: .rounded)
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
+
+                                Text(state.track.artist)
+                                    .purahBody(size: 9.0, weight: .medium, design: .rounded)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
 
-                    Button {
-                        state.togglePlayPause(store: store)
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(musicColor.opacity(0.20))
-                                .frame(width: 26, height: 26)
+                    Spacer(minLength: 4)
 
-                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(musicColor)
+                    // Micro transport buttons on Row 1 so they are never clipped
+                    HStack(spacing: 4) {
+                        Button {
+                            state.previousTrack(store: store)
+                        } label: {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .frame(width: 20, height: 20)
                         }
-                    }
-                    .buttonStyle(HeroPlayPauseButtonStyle())
+                        .buttonStyle(.plain)
 
-                    Button {
-                        state.nextTrack(store: store)
-                    } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 20, height: 20)
+                        Button {
+                            state.togglePlayPause(store: store)
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(musicColor.opacity(0.20))
+                                    .frame(width: 26, height: 26)
+
+                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(musicColor)
+                            }
+                        }
+                        .buttonStyle(HeroPlayPauseButtonStyle())
+
+                        Button {
+                            state.nextTrack(store: store)
+                        } label: {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
 
-                // Compact Progress Bar
-                NativeMediaProgressBar(
-                    progress: displayProgress,
-                    color: musicColor,
-                    height: 14,
-                    onScrubChange: { dragging, prog in
-                        isScrubbing = dragging
-                        scrubbedProgress = prog
-                    },
-                    onSeek: { newProg in
-                        isScrubbing = false
-                        state.seek(to: newProg, store: store)
+                // Live 1-line Synced Lyric Preview when space permits (>= 90pt inner height)
+                if availableHeight >= 90.0,
+                   let rawLyrics = state.track.syncedLyrics ?? state.track.lyrics,
+                   !rawLyrics.isEmpty,
+                   let activeLine = LyricsDisplayView.activeLyricLine(in: rawLyrics, at: displaySec) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "quote.opening")
+                            .font(.system(size: 7.0, weight: .bold))
+                            .foregroundColor(musicColor.opacity(0.85))
+                        Text(activeLine)
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundColor(musicColor)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 2)
                     }
-                )
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(musicColor.opacity(0.10))
+                    .cornerRadius(4)
+                }
 
-                // Time Indicator (Compact single-label)
-                Text("\(timeString(for: displaySec))/\(timeString(for: state.track.durationSeconds))")
-                    .purahCaption(size: 8, weight: .medium, design: .monospaced)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                // Row 2: Scrubber + Time
+                HStack(spacing: 6) {
+                    NativeMediaProgressBar(
+                        progress: displayProgress,
+                        color: musicColor,
+                        height: 12,
+                        onScrubChange: { dragging, prog in
+                            isScrubbing = dragging
+                            scrubbedProgress = prog
+                        },
+                        onSeek: { newProg in
+                            isScrubbing = false
+                            state.seek(to: newProg, store: store)
+                        }
+                    )
+
+                    Text("\(timeString(for: displaySec))/\(timeString(for: state.track.durationSeconds))")
+                        .purahCaption(size: 8, weight: .medium, design: .monospaced)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
+            .padding(4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
-    // MARK: - Tier 2: Classic Studio Layout (155pt ~ 235pt)
+    // MARK: - Tier 2: Classic Studio Layout (145pt ~ 214pt)
     @ViewBuilder
-    private func classicStudioView(displayProgress: Double, displaySec: Double, isPlaying: Bool) -> some View {
-        VStack(spacing: 8) {
+    private func classicStudioView(displayProgress: Double, displaySec: Double, isPlaying: Bool, availableHeight: CGFloat = 180.0) -> some View {
+        VStack(spacing: 6) {
             // Row 1: Artwork + Title/Artist + Pin
             HStack(spacing: 10) {
                 Button {
                     activateMusicPlayerApp()
                 } label: {
                     HStack(spacing: 10) {
-                        artworkThumbnail(size: 42, cornerRadius: 8)
+                        artworkThumbnail(size: 38, cornerRadius: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(state.track.title)
-                                .purahTitle(size: 12.5, weight: .bold, design: .rounded)
+                                .purahTitle(size: 12, weight: .bold, design: .rounded)
                                 .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 .lineLimit(1)
 
                             Text(state.track.artist)
-                                .purahBody(size: 10, weight: .medium, design: .rounded)
+                                .purahBody(size: 9.5, weight: .medium, design: .rounded)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
@@ -211,11 +321,11 @@ public struct MusicDrawerView: View {
             }
 
             // Row 2: Standard Progress Bar + Dual Time Labels
-            VStack(spacing: 5) {
+            VStack(spacing: 3) {
                 NativeMediaProgressBar(
                     progress: displayProgress,
                     color: musicColor,
-                    height: 16,
+                    height: 14,
                     onScrubChange: { dragging, prog in
                         isScrubbing = dragging
                         scrubbedProgress = prog
@@ -246,7 +356,7 @@ public struct MusicDrawerView: View {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .frame(width: 30, height: 26)
+                        .frame(width: 30, height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(isBackwardHovered ? Color.primary.opacity(0.10) : Color.clear)
@@ -261,14 +371,14 @@ public struct MusicDrawerView: View {
                     ZStack {
                         Circle()
                             .fill(musicColor.opacity(0.20))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 32, height: 32)
                             .modifier(OptionalGlow(color: musicColor, enabled: palette.useGlow))
 
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(musicColor)
                     }
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
 
@@ -278,7 +388,7 @@ public struct MusicDrawerView: View {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .frame(width: 30, height: 26)
+                        .frame(width: 30, height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(isForwardHovered ? Color.primary.opacity(0.10) : Color.clear)
@@ -289,21 +399,21 @@ public struct MusicDrawerView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(8)
+        .padding(6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
-    // MARK: - Tier 3: Immersive Vinyl Showcase Layout (>= 265pt)
+    // MARK: - Tier 3: Immersive Vinyl Showcase Layout (>= 215pt)
     @ViewBuilder
     private func immersiveVinylView(displayProgress: Double, displaySec: Double, isPlaying: Bool, availableHeight: CGFloat) -> some View {
-        let dynamicArtSize = min(max((availableHeight - 160) * 0.50, 60.0), 160.0)
+        let dynamicArtSize = min(max((availableHeight - 150) * 0.50, 56.0), 160.0)
 
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             if let lyrics = state.track.syncedLyrics ?? state.track.lyrics, !lyrics.isEmpty {
                 // Direct Lyrics Showcase: Compact Track Bar + Flowing Lyrics Sheet
                 VStack(spacing: 6) {
                     HStack(spacing: 8) {
-                        artworkThumbnail(size: 34, cornerRadius: 6)
+                        artworkThumbnail(size: 32, cornerRadius: 6)
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(state.track.title)
@@ -333,7 +443,7 @@ public struct MusicDrawerView: View {
                         isPlaying: isPlaying,
                         accentColor: musicColor,
                         palette: palette,
-                        maxHeight: max(availableHeight - 170, 110),
+                        maxHeight: max(availableHeight - 135, 68),
                         onSeek: { targetProg in
                             state.seek(to: targetProg, store: store)
                         }

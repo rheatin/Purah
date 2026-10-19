@@ -48,6 +48,10 @@ public final class MusicPluginState: Sendable {
         var loadedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) ?? MusicTrackInfo()
         loadedTrack.isPlaying = false
         loadedTrack.playbackRate = 0.0
+        if (loadedTrack.title == "Zelda's Lullaby" || loadedTrack.title == "Midnight City") && loadedTrack.lyrics == nil && loadedTrack.syncedLyrics == nil {
+            loadedTrack.lyrics = MusicTrackInfo.defaultSamplePlainLyrics
+            loadedTrack.syncedLyrics = MusicTrackInfo.defaultSampleSyncedLyrics
+        }
         self.track = loadedTrack
     }
 
@@ -65,6 +69,10 @@ public final class MusicPluginState: Sendable {
         if var savedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) {
             savedTrack.isPlaying = false
             savedTrack.playbackRate = 0.0
+            if (savedTrack.title == "Zelda's Lullaby" || savedTrack.title == "Midnight City") && savedTrack.lyrics == nil && savedTrack.syncedLyrics == nil {
+                savedTrack.lyrics = MusicTrackInfo.defaultSamplePlainLyrics
+                savedTrack.syncedLyrics = MusicTrackInfo.defaultSampleSyncedLyrics
+            }
             self.track = savedTrack
         }
     }
@@ -129,13 +137,27 @@ public final class MusicPluginState: Sendable {
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
         if !store._musicTrack.title.isEmpty {
-            self.track = store._musicTrack
+            var merged = store._musicTrack
+            if merged.title == self.track.title && merged.artist == self.track.artist {
+                if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
+                if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
+                if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
+            }
+            self.track = merged
+            store._musicTrack = merged
         }
         self.isWaveformAnimationEnabled = store.isMusicWaveformAnimationEnabled
 
         startListening()
         SystemMusicSyncService.shared.onTrackChanged = { [weak self] newTrack in
-            self?.track = newTrack
+            guard let self = self else { return }
+            var merged = newTrack
+            if merged.title == self.track.title && merged.artist == self.track.artist {
+                if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
+                if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
+                if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
+            }
+            self.track = merged
         }
         SystemMusicSyncService.shared.startListening(into: store)
 
@@ -155,7 +177,7 @@ public final class MusicPluginState: Sendable {
                 }
             }
         }
-        if self.track.lyrics == nil {
+        if self.track.lyrics == nil && self.track.syncedLyrics == nil {
             Task { [weak self] in
                 if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
                     await MainActor.run {
@@ -264,12 +286,9 @@ public final class MusicPluginState: Sendable {
             return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
         }()
 
-        let existingLyrics: String? = {
-            if isSameTrack && self.track.lyrics != nil {
-                return self.track.lyrics
-            }
-            return nil
-        }()
+        let cachedLyr = SystemMusicSyncService.shared.cachedLyrics(for: title, artist: artist)
+        let existingLyrics: String? = (isSameTrack ? self.track.lyrics : nil) ?? cachedLyr?.plainLyrics
+        let existingSyncedLyrics: String? = (isSameTrack ? self.track.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
 
         self.track = MusicTrackInfo(
             title: title,
@@ -284,6 +303,7 @@ public final class MusicPluginState: Sendable {
             waveformSamples: samples,
             artworkData: existingArtwork,
             lyrics: existingLyrics,
+            syncedLyrics: existingSyncedLyrics,
             sourceApp: "Apple Music",
             sourceBundleId: "com.apple.Music"
         )
@@ -308,7 +328,7 @@ public final class MusicPluginState: Sendable {
         }
 
         // Fetch online lyrics
-        if existingLyrics == nil {
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
             Task { [weak self] in
                 if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
@@ -365,12 +385,9 @@ public final class MusicPluginState: Sendable {
             return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
         }()
 
-        let existingLyrics: String? = {
-            if isSameTrack && self.track.lyrics != nil {
-                return self.track.lyrics
-            }
-            return nil
-        }()
+        let cachedLyr = SystemMusicSyncService.shared.cachedLyrics(for: title, artist: artist)
+        let existingLyrics: String? = (isSameTrack ? self.track.lyrics : nil) ?? cachedLyr?.plainLyrics
+        let existingSyncedLyrics: String? = (isSameTrack ? self.track.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
 
         self.track = MusicTrackInfo(
             title: title,
@@ -385,6 +402,7 @@ public final class MusicPluginState: Sendable {
             waveformSamples: samples,
             artworkData: existingArtwork,
             lyrics: existingLyrics,
+            syncedLyrics: existingSyncedLyrics,
             sourceApp: "Spotify",
             sourceBundleId: "com.spotify.client"
         )
@@ -407,7 +425,7 @@ public final class MusicPluginState: Sendable {
             }
         }
 
-        if existingLyrics == nil {
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
             Task { [weak self] in
                 if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {

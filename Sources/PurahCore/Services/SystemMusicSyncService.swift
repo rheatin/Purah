@@ -232,7 +232,10 @@ public final class SystemMusicSyncService {
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
 
-        let existingArtwork = (cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil
+        let existingArtwork = (isSameTrack ? store?._musicTrack.artworkData : nil) ?? ((cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil)
+        let cachedLyr = cachedLyrics(for: title, artist: artist)
+        let existingLyrics = (isSameTrack ? store?._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
+        let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
 
         if let store = store {
             store._musicTrack = MusicTrackInfo(
@@ -247,6 +250,8 @@ public final class SystemMusicSyncService {
                 playbackRate: isPlaying ? 1.0 : 0.0,
                 waveformSamples: samples,
                 artworkData: existingArtwork,
+                lyrics: existingLyrics,
+                syncedLyrics: existingSyncedLyrics,
                 sourceApp: "Apple Music",
                 sourceBundleId: "com.apple.Music"
             )
@@ -258,8 +263,23 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
-                        if store?._musicTrack.title == title {
-                            store?._musicTrack.artworkData = art
+                        if let store = store, store._musicTrack.title == title {
+                            store._musicTrack.artworkData = art
+                            self?.onTrackChanged?(store._musicTrack)
+                        }
+                    }
+                }
+            }
+        }
+
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
+            Task { [weak self, weak store] in
+                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
+                    await MainActor.run {
+                        if let store = store, store._musicTrack.title == title {
+                            store._musicTrack.lyrics = lyr.plainLyrics
+                            store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                            self?.onTrackChanged?(store._musicTrack)
                         }
                     }
                 }
@@ -305,7 +325,10 @@ public final class SystemMusicSyncService {
             isPlaying ? Double.random(in: 0.25...0.95) : 0.15
         }
 
-        let existingArtwork = (cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil
+        let existingArtwork = (isSameTrack ? store?._musicTrack.artworkData : nil) ?? ((cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil)
+        let cachedLyr = cachedLyrics(for: title, artist: artist)
+        let existingLyrics = (isSameTrack ? store?._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
+        let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
 
         if let store = store {
             store._musicTrack = MusicTrackInfo(
@@ -320,6 +343,8 @@ public final class SystemMusicSyncService {
                 playbackRate: isPlaying ? 1.0 : 0.0,
                 waveformSamples: samples,
                 artworkData: existingArtwork,
+                lyrics: existingLyrics,
+                syncedLyrics: existingSyncedLyrics,
                 sourceApp: "Spotify",
                 sourceBundleId: "com.spotify.client"
             )
@@ -331,8 +356,23 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
-                        if store?._musicTrack.title == title {
-                            store?._musicTrack.artworkData = art
+                        if let store = store, store._musicTrack.title == title {
+                            store._musicTrack.artworkData = art
+                            self?.onTrackChanged?(store._musicTrack)
+                        }
+                    }
+                }
+            }
+        }
+
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
+            Task { [weak self, weak store] in
+                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
+                    await MainActor.run {
+                        if let store = store, store._musicTrack.title == title {
+                            store._musicTrack.lyrics = lyr.plainLyrics
+                            store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                            self?.onTrackChanged?(store._musicTrack)
                         }
                     }
                 }
@@ -390,7 +430,8 @@ public final class SystemMusicSyncService {
             return Date()
         }()
 
-        let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
+        let resolvedArtist = artist.isEmpty ? appName : artist
+        let isSameTrack = (store?._musicTrack.title == title && (store?._musicTrack.artist == artist || store?._musicTrack.artist == resolvedArtist))
         let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
         let currentPosSec: Double = {
             if !isPlaying && elapsed == 0.0 && isSameTrack && existingPos > 1.0 {
@@ -400,12 +441,15 @@ public final class SystemMusicSyncService {
         }()
         let progress = min(max(currentPosSec / totalSec, 0.0), 1.0)
 
-        let existingArtwork = artworkData ?? ((cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil)
+        let existingArtwork = artworkData ?? (isSameTrack ? store?._musicTrack.artworkData : nil) ?? ((cachedArtworkKey == "\(title)|\(resolvedArtist)" || cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil)
+        let cachedLyr = cachedLyrics(for: title, artist: resolvedArtist) ?? cachedLyrics(for: title, artist: artist)
+        let existingLyrics = (isSameTrack ? store?._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
+        let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
 
         if let store = store {
             store._musicTrack = MusicTrackInfo(
                 title: title,
-                artist: artist.isEmpty ? appName : artist,
+                artist: resolvedArtist,
                 album: album,
                 isPlaying: isPlaying,
                 playbackProgress: progress,
@@ -415,11 +459,40 @@ public final class SystemMusicSyncService {
                 playbackRate: isPlaying ? 1.0 : 0.0,
                 waveformSamples: [0.3, 0.6, 0.4, 0.7, 0.5],
                 artworkData: existingArtwork,
+                lyrics: existingLyrics,
+                syncedLyrics: existingSyncedLyrics,
                 sourceApp: appName,
                 sourceBundleId: bundleId
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
             onTrackChanged?(store._musicTrack)
+        }
+
+        if existingArtwork == nil {
+            Task { [weak self, weak store] in
+                if let art = await self?.fetchArtwork(title: title, artist: resolvedArtist, album: album) {
+                    await MainActor.run {
+                        if let store = store, store._musicTrack.title == title {
+                            store._musicTrack.artworkData = art
+                            self?.onTrackChanged?(store._musicTrack)
+                        }
+                    }
+                }
+            }
+        }
+
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
+            Task { [weak self, weak store] in
+                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: resolvedArtist) {
+                    await MainActor.run {
+                        if let store = store, store._musicTrack.title == title {
+                            store._musicTrack.lyrics = lyr.plainLyrics
+                            store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                            self?.onTrackChanged?(store._musicTrack)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -455,8 +528,20 @@ public final class SystemMusicSyncService {
         let dur = descriptor.atIndex(6)?.doubleValue ?? 180.0
         let progress = dur > 0 ? min(max(pos / dur, 0.0), 1.0) : 0.0
 
+        var needsLyricsFetch = false
+        var needsArtworkFetch = false
+
         await MainActor.run {
             guard let store = store else { return }
+            let isSameTrack = (store._musicTrack.title == title && store._musicTrack.artist == artist)
+            let existingArtwork = (isSameTrack ? store._musicTrack.artworkData : nil) ?? cachedArtwork(for: title, artist: artist)
+            let cachedLyr = cachedLyrics(for: title, artist: artist)
+            let existingLyrics = (isSameTrack ? store._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
+            let existingSyncedLyrics = (isSameTrack ? store._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
+
+            needsArtworkFetch = (existingArtwork == nil)
+            needsLyricsFetch = (existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track")
+
             store._musicTrack = MusicTrackInfo(
                 title: title,
                 artist: artist,
@@ -467,6 +552,9 @@ public final class SystemMusicSyncService {
                 durationSeconds: dur,
                 lastUpdated: queryStartTime,
                 playbackRate: isPlaying ? 1.0 : 0.0,
+                artworkData: existingArtwork,
+                lyrics: existingLyrics,
+                syncedLyrics: existingSyncedLyrics,
                 sourceApp: "Apple Music",
                 sourceBundleId: "com.apple.Music"
             )
@@ -474,10 +562,21 @@ public final class SystemMusicSyncService {
             onTrackChanged?(store._musicTrack)
         }
 
-        if let art = await fetchArtwork(title: title, artist: artist, album: album) {
+        if needsArtworkFetch, let art = await fetchArtwork(title: title, artist: artist, album: album) {
             await MainActor.run {
-                if store?._musicTrack.title == title {
-                    store?._musicTrack.artworkData = art
+                if let store = store, store._musicTrack.title == title {
+                    store._musicTrack.artworkData = art
+                    onTrackChanged?(store._musicTrack)
+                }
+            }
+        }
+
+        if needsLyricsFetch, let lyr = await fetchOnlineLyrics(title: title, artist: artist) {
+            await MainActor.run {
+                if let store = store, store._musicTrack.title == title {
+                    store._musicTrack.lyrics = lyr.plainLyrics
+                    store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                    onTrackChanged?(store._musicTrack)
                 }
             }
         }
@@ -526,10 +625,12 @@ public final class SystemMusicSyncService {
     // MARK: - Online Lyrics Fetching Engine (LRCLIB + NetEase Open APIs)
     public func cachedLyrics(for title: String, artist: String) -> OnlineLyricsResult? {
         let key = "\(title)|\(artist)"
-        if key == cachedLyricsKey {
-            return cachedLyricsResult
-        }
-        return nil
+        return cachedLyricsKey == key ? cachedLyricsResult : nil
+    }
+
+    public func cacheLyrics(for title: String, artist: String, result: OnlineLyricsResult) {
+        cachedLyricsKey = "\(title)|\(artist)"
+        cachedLyricsResult = result
     }
 
     public func fetchOnlineLyrics(title: String, artist: String) async -> OnlineLyricsResult? {
@@ -538,6 +639,7 @@ public final class SystemMusicSyncService {
         if key == cachedLyricsKey, let cached = cachedLyricsResult {
             return cached
         }
+        guard !Self.isTestingEnvironment else { return nil }
 
         // 1. First attempt: LRCLIB open-source REST API
         let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
