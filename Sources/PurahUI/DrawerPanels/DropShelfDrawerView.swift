@@ -345,7 +345,6 @@ public struct DropShelfDrawerView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .contentShape(Rectangle())
                 }
-                .coordinateSpace(name: "dropShelfList")
                 .onPreferenceChange(ShelfRowFramesPreferenceKey.self) { frames in
                     rowFrames = frames
                 }
@@ -363,7 +362,7 @@ public struct DropShelfDrawerView: View {
                             finishMarquee()
                         }
                 )
-                .overlay(
+                .overlay(alignment: .topLeading) {
                     ZStack(alignment: .topLeading) {
                         if let rect = currentMarqueeRect {
                             RoundedRectangle(cornerRadius: 4)
@@ -392,10 +391,13 @@ public struct DropShelfDrawerView: View {
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 }
                             }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .allowsHitTesting(false)
                         }
                     }
-                )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+                .coordinateSpace(name: "dropShelfList")
                 .onDrop(
                     of: Self.supportedStashDropTypes,
                     delegate: ShelfStashDropDelegate(
@@ -1005,8 +1007,14 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
                 didStartDrag = true
                 let localStart = convert(start, from: nil)
                 let localCurrent = convert(current, from: nil)
-                let flippedStart = CGPoint(x: localStart.x, y: isFlipped ? localStart.y : (bounds.height - localStart.y))
-                let flippedCurrent = CGPoint(x: localCurrent.x, y: isFlipped ? localCurrent.y : (bounds.height - localCurrent.y))
+                let flippedStart = CGPoint(
+                    x: localStart.x + 28,
+                    y: (isFlipped ? localStart.y : (bounds.height - localStart.y)) + 6
+                )
+                let flippedCurrent = CGPoint(
+                    x: localCurrent.x + 28,
+                    y: (isFlipped ? localCurrent.y : (bounds.height - localCurrent.y)) + 6
+                )
                 onMarqueeDragChanged?(flippedStart, flippedCurrent)
             }
             return
