@@ -313,7 +313,7 @@ public struct DropShelfDrawerView: View {
                     )
                 )
 
-                // Dedicated Batch Drag Handle Capsule & Move to Folder Action Bar
+                // Dedicated Batch Drag Handle Capsule
                 HStack(spacing: 6) {
                     BatchShelfDragPillView(
                         state: state,
@@ -321,60 +321,39 @@ public struct DropShelfDrawerView: View {
                         shelfColor: shelfColor,
                         palette: palette
                     )
-
-                    Button {
-                        exportFilesToFolderDialog()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.system(size: 10.5, weight: .semibold))
-                            Text("dropshelf.exportToFolder".localized)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .background(shelfColor.opacity(0.14))
-                        .foregroundColor(palette.style == .native ? .primary : .white)
-                        .cornerRadius(7)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(shelfColor.opacity(0.45), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help("dropshelf.exportToFolderHelp".localized)
                 }
 
                 // Dedicated Instant AirDrop Bar
                 HStack(spacing: 8) {
                     Image(systemName: "airdrop")
-                        .font(.system(size: 14))
+                        .font(.system(size: 18))
+                        .fontWeight(.semibold)
                         .foregroundColor(isAirDropTargeted ? .cyan : .blue)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(isAirDropTargeted ? "dropshelf.releaseToAirDrop".localized : "dropshelf.dragHereToAirDrop".localized)
-                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
                             .foregroundColor(isAirDropTargeted ? .cyan : (palette.style == .native ? .primary : .white))
                         Text(String(format: "dropshelf.orTapToAirDropAll".localized, state.filesForBatchExport().count))
-                            .font(.system(size: 8.5))
+                            .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
 
                     Spacer()
 
                     Image(systemName: "paperplane.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12.5))
                         .foregroundColor(Color.blue.opacity(0.8))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.06))
-                .cornerRadius(8)
+                .cornerRadius(9)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 9)
                         .stroke(
                             isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
-                            style: StrokeStyle(lineWidth: 1.2, dash: [4, 4])
+                            style: StrokeStyle(lineWidth: 1.4, dash: [4, 4])
                         )
                 )
                 .contentShape(Rectangle())
@@ -1143,7 +1122,7 @@ public struct ShelfFileRowView: View {
                 DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
             } label: {
                 Image(systemName: "airdrop")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12.5))
                     .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
             }
             .buttonStyle(.plain)
