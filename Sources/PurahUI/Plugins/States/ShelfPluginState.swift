@@ -9,6 +9,8 @@ import PurahCore
 @MainActor
 public final class ShelfPluginState: Sendable {
     public var files: [ShelfFileItem]
+    public var selectedFileIds: Set<String> = []
+    public var lastSelectedFileId: String? = nil
     public let storage: any PurahPluginStorage
     public let fileStorage: PurahPluginFileStorage
     public var retentionPeriod: PurahRetentionPeriod
@@ -20,6 +22,72 @@ public final class ShelfPluginState: Sendable {
     public var shelfFiles: [ShelfFileItem] {
         get { files }
         set { files = newValue }
+    }
+
+    public var selectedFiles: [ShelfFileItem] {
+        files.filter { selectedFileIds.contains($0.id) }
+    }
+
+    public func isSelected(id: String) -> Bool {
+        selectedFileIds.contains(id)
+    }
+
+    public func toggleSelection(id: String) {
+        if selectedFileIds.contains(id) {
+            selectedFileIds.remove(id)
+        } else if files.contains(where: { $0.id == id }) {
+            selectedFileIds.insert(id)
+        }
+        lastSelectedFileId = id
+    }
+
+    public func selectSingle(id: String) {
+        guard files.contains(where: { $0.id == id }) else { return }
+        selectedFileIds = [id]
+        lastSelectedFileId = id
+    }
+
+    public func selectRange(to id: String) {
+        guard let targetIdx = files.firstIndex(where: { $0.id == id }) else { return }
+        if let anchorId = lastSelectedFileId,
+           let anchorIdx = files.firstIndex(where: { $0.id == anchorId }) {
+            let lower = min(anchorIdx, targetIdx)
+            let upper = max(anchorIdx, targetIdx)
+            for idx in lower...upper {
+                selectedFileIds.insert(files[idx].id)
+            }
+        } else {
+            selectedFileIds.insert(id)
+        }
+        lastSelectedFileId = id
+    }
+
+    public func selectAll() {
+        selectedFileIds = Set(files.map(\.id))
+    }
+
+    public func clearSelection() {
+        selectedFileIds.removeAll()
+        lastSelectedFileId = nil
+    }
+
+    public func updateMarqueeSelection(intersectingIds: Set<String>) {
+        let validIds = Set(files.map(\.id))
+        selectedFileIds = intersectingIds.intersection(validIds)
+    }
+
+    public func filesForDrag(startingFrom primaryFile: ShelfFileItem) -> [ShelfFileItem] {
+        if selectedFileIds.contains(primaryFile.id) && selectedFileIds.count > 1 {
+            return selectedFiles
+        }
+        return [primaryFile]
+    }
+
+    public func filesForBatchExport() -> [ShelfFileItem] {
+        if !selectedFileIds.isEmpty {
+            return selectedFiles
+        }
+        return files
     }
 
     public init(
@@ -149,6 +217,21 @@ public final class ShelfPluginState: Sendable {
         removeFile(id: id)
     }
 
+    /// Removes a batch of items from the shelf after they are dragged out or exported if `autoRemoveOnDrag` is enabled,
+    /// while strictly preserving any starred (`isFavorite == true`) items.
+    public func handleBatchDragOutCompleted(ids: [String]) {
+        guard autoRemoveOnDrag else { return }
+        for id in ids {
+            if let item = files.first(where: { $0.id == id }), !item.isFavorite {
+                removeFile(id: id)
+            }
+            selectedFileIds.remove(id)
+            if lastSelectedFileId == id {
+                lastSelectedFileId = nil
+            }
+        }
+    }
+
     /// Removes any item from the shelf whose referenced file no longer exists on disk.
     public func cleanupInvalidItems() {
         let invalidIds = files.filter { item in
@@ -159,6 +242,12 @@ public final class ShelfPluginState: Sendable {
 
         if !invalidIds.isEmpty {
             files.removeAll { invalidIds.contains($0.id) }
+            for id in invalidIds {
+                selectedFileIds.remove(id)
+                if lastSelectedFileId == id {
+                    lastSelectedFileId = nil
+                }
+            }
             save()
             boundStore?._shelfFiles.removeAll { invalidIds.contains($0.id) }
         }
@@ -180,6 +269,10 @@ public final class ShelfPluginState: Sendable {
             }
         }
         files.removeAll { $0.id == id }
+        selectedFileIds.remove(id)
+        if lastSelectedFileId == id {
+            lastSelectedFileId = nil
+        }
         save()
         boundStore?._shelfFiles.removeAll { $0.id == id }
     }
@@ -191,6 +284,10 @@ public final class ShelfPluginState: Sendable {
         for item in itemsToRemove {
             if let path = item.filePath, path.hasPrefix(fileStorage.baseDirectory.path) {
                 try? FileManager.default.removeItem(atPath: path)
+            }
+            selectedFileIds.remove(item.id)
+            if lastSelectedFileId == item.id {
+                lastSelectedFileId = nil
             }
         }
         files.removeAll { !$0.isFavorite }
@@ -206,6 +303,8 @@ public final class ShelfPluginState: Sendable {
             }
         }
         files.removeAll()
+        selectedFileIds.removeAll()
+        lastSelectedFileId = nil
         save()
         boundStore?._shelfFiles.removeAll()
     }

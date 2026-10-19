@@ -4,11 +4,22 @@ import AppKit
 import UniformTypeIdentifiers
 import PurahCore
 
+public struct ShelfRowFramesPreferenceKey: PreferenceKey {
+    public nonisolated(unsafe) static var defaultValue: [String: CGRect] = [:]
+    public static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 public struct DropShelfDrawerView: View {
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
     @State private var isStashTargeted: Bool = false
     @State private var isAirDropTargeted: Bool = false
+    @State private var isMarqueeModeActive: Bool = false
+    @State private var marqueeStartPoint: CGPoint? = nil
+    @State private var marqueeCurrentPoint: CGPoint? = nil
+    @State private var rowFrames: [String: CGRect] = [:]
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -28,8 +39,18 @@ public struct DropShelfDrawerView: View {
         self.init(state: pluginState, store: store)
     }
 
+    private var currentMarqueeRect: CGRect? {
+        guard let start = marqueeStartPoint, let current = marqueeCurrentPoint else { return nil }
+        return CGRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(current.x - start.x),
+            height: abs(current.y - start.y)
+        )
+    }
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             if state.files.isEmpty {
                 // Two dedicated spacious drop zones: Stash & Direct AirDrop
                 GeometryReader { proxy in
@@ -114,6 +135,74 @@ public struct DropShelfDrawerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
+                // Top Selection & Marquee Mini-Toolbar
+                HStack(spacing: 6) {
+                    Text(
+                        state.selectedFileIds.isEmpty
+                            ? String(format: "dropshelf.itemsStashed".localized, state.files.count)
+                            : String(format: "dropshelf.selectedCount".localized, state.selectedFileIds.count, state.files.count)
+                    )
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(state.selectedFileIds.isEmpty ? .secondary : shelfColor)
+
+                    Spacer()
+
+                    Button {
+                        isMarqueeModeActive.toggle()
+                        store.triggerControlHaptic(.alignment)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "selection.pin.in.out")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text("dropshelf.marquee".localized)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(isMarqueeModeActive ? shelfColor.opacity(0.28) : Color.secondary.opacity(0.12))
+                        .foregroundColor(isMarqueeModeActive ? shelfColor : .secondary)
+                        .cornerRadius(4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isMarqueeModeActive ? shelfColor : Color.clear, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("dropshelf.marqueeHelp".localized)
+
+                    let allSelected = !state.files.isEmpty && state.selectedFileIds.count == state.files.count
+                    Button {
+                        if allSelected {
+                            state.clearSelection()
+                        } else {
+                            state.selectAll()
+                        }
+                        store.triggerControlHaptic(.alignment)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: allSelected ? "xmark.circle" : "checkmark.circle.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text(allSelected ? "dropshelf.deselectAll".localized : "dropshelf.selectAll".localized)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(allSelected ? shelfColor.opacity(0.22) : Color.secondary.opacity(0.12))
+                        .foregroundColor(allSelected ? shelfColor : .secondary)
+                        .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button("dropshelf.clearAll".localized) {
+                        state.clear()
+                        store._shelfFiles = state.files
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(palette.dangerAccent)
+                }
+
+                // File List with Rubber-Band Marquee Selection
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 6) {
                         ForEach(state.files) { file in
@@ -140,12 +229,61 @@ public struct DropShelfDrawerView: View {
                                     store.triggerControlHaptic(.alignment)
                                 }
                             )
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: ShelfRowFramesPreferenceKey.self,
+                                        value: [file.id: geo.frame(in: .named("dropShelfList"))]
+                                    )
+                                }
+                            )
                         }
                     }
                     .padding(.vertical, 2)
                 }
+                .coordinateSpace(name: "dropShelfList")
+                .onPreferenceChange(ShelfRowFramesPreferenceKey.self) { frames in
+                    rowFrames = frames
+                }
                 .overlay(
-                    Group {
+                    ZStack(alignment: .topLeading) {
+                        if isMarqueeModeActive {
+                            Color.white.opacity(0.001)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 2, coordinateSpace: .named("dropShelfList"))
+                                        .onChanged { value in
+                                            if marqueeStartPoint == nil {
+                                                marqueeStartPoint = value.startLocation
+                                            }
+                                            marqueeCurrentPoint = value.location
+                                            if let rect = currentMarqueeRect {
+                                                let matched = Set(rowFrames.compactMap { id, frame in
+                                                    frame.intersects(rect) ? id : nil
+                                                })
+                                                state.updateMarqueeSelection(intersectingIds: matched)
+                                            }
+                                        }
+                                        .onEnded { _ in
+                                            marqueeStartPoint = nil
+                                            marqueeCurrentPoint = nil
+                                            store.triggerControlHaptic(.alignment)
+                                        }
+                                )
+                        }
+
+                        if let rect = currentMarqueeRect {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(shelfColor.opacity(0.20))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(shelfColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 2]))
+                                )
+                                .frame(width: max(2, rect.width), height: max(2, rect.height))
+                                .offset(x: rect.minX, y: rect.minY)
+                                .allowsHitTesting(false)
+                        }
+
                         if isStashTargeted {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 8)
@@ -175,6 +313,38 @@ public struct DropShelfDrawerView: View {
                     )
                 )
 
+                // Dedicated Batch Drag Handle Capsule & Move to Folder Action Bar
+                HStack(spacing: 6) {
+                    BatchShelfDragPillView(
+                        state: state,
+                        store: store,
+                        shelfColor: shelfColor,
+                        palette: palette
+                    )
+
+                    Button {
+                        exportFilesToFolderDialog()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 10.5, weight: .semibold))
+                            Text("dropshelf.exportToFolder".localized)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(shelfColor.opacity(0.14))
+                        .foregroundColor(palette.style == .native ? .primary : .white)
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(shelfColor.opacity(0.45), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("dropshelf.exportToFolderHelp".localized)
+                }
+
                 // Dedicated Instant AirDrop Bar
                 HStack(spacing: 8) {
                     Image(systemName: "airdrop")
@@ -183,10 +353,10 @@ public struct DropShelfDrawerView: View {
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(isAirDropTargeted ? "dropshelf.releaseToAirDrop".localized : "dropshelf.dragHereToAirDrop".localized)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(isAirDropTargeted ? .cyan : (palette.style == .native ? .primary : .white))
-                        Text(String(format: "dropshelf.orTapToAirDropAll".localized, state.files.count))
-                            .font(.system(size: 9))
+                        Text(String(format: "dropshelf.orTapToAirDropAll".localized, state.filesForBatchExport().count))
+                            .font(.system(size: 8.5))
                             .foregroundColor(.secondary)
                     }
 
@@ -197,7 +367,7 @@ public struct DropShelfDrawerView: View {
                         .foregroundColor(Color.blue.opacity(0.8))
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.vertical, 6)
                 .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.06))
                 .cornerRadius(8)
                 .overlay(
@@ -217,27 +387,78 @@ public struct DropShelfDrawerView: View {
                     )
                 )
                 .onTapGesture {
-                    let urls = state.files.map { Self.ensureDragURL(for: $0) }
+                    let urls = state.filesForBatchExport().map { Self.ensureDragURL(for: $0) }
                     DropShelfDrawerView.shareViaAirDrop(urls: urls)
                 }
-
-                HStack {
-                    Text(String(format: "dropshelf.itemsStashed".localized, state.files.count))
-                        .font(.system(size: 9.5))
-                        .foregroundColor(.gray)
-                    Spacer()
-
-                    Button("dropshelf.clearAll".localized) {
-                        state.clear()
-                        store._shelfFiles.removeAll()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 9.5))
-                    .foregroundColor(palette.dangerAccent)
-                }
-                .padding(.top, 2)
             }
         }
+    }
+
+    private func exportFilesToFolderDialog() {
+        let itemsToExport = state.filesForBatchExport()
+        guard !itemsToExport.isEmpty else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "dropshelf.exportToFolder".localized
+
+        if panel.runModal() == .OK, let folderURL = panel.url {
+            _ = Self.exportFiles(itemsToExport, toFolder: folderURL, state: state, store: store)
+        }
+    }
+
+    @discardableResult
+    public static func exportFiles(
+        _ items: [ShelfFileItem],
+        toFolder destinationFolder: URL,
+        state: ShelfPluginState,
+        store: PurahWorkspaceStore
+    ) -> [URL] {
+        guard !items.isEmpty else { return [] }
+        try? FileManager.default.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+
+        var exportedURLs: [URL] = []
+        var exportedIds: [String] = []
+
+        for item in items {
+            let sourceURL = ensureDragURL(for: item)
+            let baseName = (item.name as NSString).deletingPathExtension
+            let ext = (item.name as NSString).pathExtension
+            var destURL = destinationFolder.appendingPathComponent(item.name)
+
+            if sourceURL.standardizedFileURL == destURL.standardizedFileURL {
+                exportedURLs.append(destURL)
+                exportedIds.append(item.id)
+                continue
+            }
+
+            var collisionIndex = 1
+            while FileManager.default.fileExists(atPath: destURL.path) {
+                let candidateName = ext.isEmpty
+                    ? "\(baseName) (\(collisionIndex))"
+                    : "\(baseName) (\(collisionIndex)).\(ext)"
+                destURL = destinationFolder.appendingPathComponent(candidateName)
+                collisionIndex += 1
+            }
+
+            if (try? FileManager.default.copyItem(at: sourceURL, to: destURL)) != nil {
+                exportedURLs.append(destURL)
+                exportedIds.append(item.id)
+            }
+        }
+
+        if !exportedIds.isEmpty {
+            state.handleBatchDragOutCompleted(ids: exportedIds)
+            store._shelfFiles = state.files
+            store.triggerControlHaptic(.alignment)
+            let toastMsg = String(format: "dropshelf.exportedToast".localized, exportedURLs.count, destinationFolder.lastPathComponent)
+            store.onCapacityWarningToast?(toastMsg)
+        }
+
+        return exportedURLs
     }
 
     public static func ensureDragURL(for file: ShelfFileItem) -> URL {
@@ -441,29 +662,42 @@ public struct ShelfAirDropDelegate: DropDelegate {
 public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     public var file: ShelfFileItem
     public var iconImage: NSImage?
+    public var filesToDragProvider: (() -> [ShelfFileItem])?
     public var onOpen: (() -> Void)?
+    public var onToggleSelect: (() -> Void)?
+    public var onSelectRange: (() -> Void)?
     public var onHover: ((Bool) -> Void)?
     public var onDragStarted: (() -> Void)?
     public var onDragCompleted: ((Bool) -> Void)?
+    public var onBatchDragCompleted: (([String], Bool) -> Void)?
 
     private var mouseDownEvent: NSEvent?
     private var didStartDrag = false
+    private var activeDraggedIds: [String] = []
     private var trackingArea: NSTrackingArea?
 
     public init(
         file: ShelfFileItem,
         iconImage: NSImage? = nil,
+        filesToDragProvider: (() -> [ShelfFileItem])? = nil,
         onOpen: (() -> Void)? = nil,
+        onToggleSelect: (() -> Void)? = nil,
+        onSelectRange: (() -> Void)? = nil,
         onHover: ((Bool) -> Void)? = nil,
         onDragStarted: (() -> Void)? = nil,
-        onDragCompleted: ((Bool) -> Void)? = nil
+        onDragCompleted: ((Bool) -> Void)? = nil,
+        onBatchDragCompleted: (([String], Bool) -> Void)? = nil
     ) {
         self.file = file
         self.iconImage = iconImage
+        self.filesToDragProvider = filesToDragProvider
         self.onOpen = onOpen
+        self.onToggleSelect = onToggleSelect
+        self.onSelectRange = onSelectRange
         self.onHover = onHover
         self.onDragStarted = onDragStarted
         self.onDragCompleted = onDragCompleted
+        self.onBatchDragCompleted = onBatchDragCompleted
         super.init(frame: .zero)
     }
 
@@ -504,11 +738,56 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     }
 
     override public func mouseUp(with event: NSEvent) {
-        if !didStartDrag && event.clickCount == 2 {
-            onOpen?()
+        if !didStartDrag {
+            if event.clickCount == 2 {
+                onOpen?()
+            } else if event.clickCount == 1 {
+                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                if flags.contains(.shift) {
+                    onSelectRange?()
+                } else {
+                    onToggleSelect?()
+                }
+            }
         }
         mouseDownEvent = nil
         didStartDrag = false
+    }
+
+    public static func makeDragPreviewImage(for itemFile: ShelfFileItem, totalCount: Int, isPrimary: Bool) -> NSImage {
+        let targetURL = DropShelfDrawerView.ensureDragURL(for: itemFile)
+        let baseIcon = NSWorkspace.shared.icon(forFile: targetURL.path)
+        let canvasSize = NSSize(width: 36, height: 36)
+        let image = NSImage(size: canvasSize)
+        image.lockFocus()
+        baseIcon.draw(in: NSRect(x: 2, y: 2, width: 30, height: 30))
+
+        if isPrimary && totalCount > 1 {
+            let badgeText = "\(totalCount)" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 9.5, weight: .bold),
+                .foregroundColor: NSColor.white
+            ]
+            let textSize = badgeText.size(withAttributes: attrs)
+            let badgeW = max(16, textSize.width + 7)
+            let badgeH: CGFloat = 15
+            let badgeRect = NSRect(x: canvasSize.width - badgeW - 1, y: canvasSize.height - badgeH - 1, width: badgeW, height: badgeH)
+
+            let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: badgeH / 2, yRadius: badgeH / 2)
+            NSColor.systemPurple.setFill()
+            badgePath.fill()
+            NSColor.white.withAlphaComponent(0.9).setStroke()
+            badgePath.lineWidth = 1.0
+            badgePath.stroke()
+
+            let textOrigin = NSPoint(
+                x: badgeRect.midX - textSize.width / 2,
+                y: badgeRect.midY - textSize.height / 2
+            )
+            badgeText.draw(at: textOrigin, withAttributes: attrs)
+        }
+        image.unlockFocus()
+        return image
     }
 
     override public func mouseDragged(with event: NSEvent) {
@@ -518,18 +797,31 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
             didStartDrag = true
             onDragStarted?()
 
-            let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
-            let draggingItem = NSDraggingItem(pasteboardWriter: targetURL as NSURL)
-            let img = iconImage ?? NSWorkspace.shared.icon(forFile: targetURL.path)
-            img.size = NSSize(width: 32, height: 32)
+            let rawBatch = filesToDragProvider?() ?? [file]
+            let batchFiles = rawBatch.isEmpty ? [file] : rawBatch
+            activeDraggedIds = batchFiles.map(\.id)
 
             let localPoint = convert(event.locationInWindow, from: nil)
-            draggingItem.setDraggingFrame(
-                NSRect(x: localPoint.x - 16, y: localPoint.y - 16, width: 32, height: 32),
-                contents: img
-            )
+            var draggingItems: [NSDraggingItem] = []
 
-            beginDraggingSession(with: [draggingItem], event: mouseDownEvent ?? event, source: self)
+            for (idx, itemFile) in batchFiles.enumerated() {
+                let targetURL = DropShelfDrawerView.ensureDragURL(for: itemFile)
+                let draggingItem = NSDraggingItem(pasteboardWriter: targetURL as NSURL)
+                let img = Self.makeDragPreviewImage(for: itemFile, totalCount: batchFiles.count, isPrimary: idx == 0)
+                let offset = CGFloat(min(idx, 3)) * 3.0
+                draggingItem.setDraggingFrame(
+                    NSRect(
+                        x: localPoint.x - 18 + offset,
+                        y: localPoint.y - 18 - offset,
+                        width: img.size.width,
+                        height: img.size.height
+                    ),
+                    contents: img
+                )
+                draggingItems.append(draggingItem)
+            }
+
+            beginDraggingSession(with: draggingItems, event: mouseDownEvent ?? event, source: self)
         }
     }
 
@@ -541,52 +833,174 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
 
     public func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         let succeeded = !operation.isEmpty && operation != .delete
-        onDragCompleted?(succeeded)
+        let draggedIds = activeDraggedIds.isEmpty ? [file.id] : activeDraggedIds
+        activeDraggedIds = []
+        if let onBatchDragCompleted {
+            onBatchDragCompleted(draggedIds, succeeded)
+        } else {
+            onDragCompleted?(succeeded)
+        }
     }
 }
 
 public struct ShelfItemDragSourceView: NSViewRepresentable {
     public let file: ShelfFileItem
     public var iconImage: NSImage? = nil
+    public var filesToDragProvider: (() -> [ShelfFileItem])? = nil
     public var onOpen: (() -> Void)? = nil
+    public var onToggleSelect: (() -> Void)? = nil
+    public var onSelectRange: (() -> Void)? = nil
     public var onHover: ((Bool) -> Void)? = nil
     public var onDragStarted: (() -> Void)? = nil
     public var onDragCompleted: ((Bool) -> Void)? = nil
+    public var onBatchDragCompleted: (([String], Bool) -> Void)? = nil
 
     public init(
         file: ShelfFileItem,
         iconImage: NSImage? = nil,
+        filesToDragProvider: (() -> [ShelfFileItem])? = nil,
         onOpen: (() -> Void)? = nil,
+        onToggleSelect: (() -> Void)? = nil,
+        onSelectRange: (() -> Void)? = nil,
         onHover: ((Bool) -> Void)? = nil,
         onDragStarted: (() -> Void)? = nil,
-        onDragCompleted: ((Bool) -> Void)? = nil
+        onDragCompleted: ((Bool) -> Void)? = nil,
+        onBatchDragCompleted: (([String], Bool) -> Void)? = nil
     ) {
         self.file = file
         self.iconImage = iconImage
+        self.filesToDragProvider = filesToDragProvider
         self.onOpen = onOpen
+        self.onToggleSelect = onToggleSelect
+        self.onSelectRange = onSelectRange
         self.onHover = onHover
         self.onDragStarted = onDragStarted
         self.onDragCompleted = onDragCompleted
+        self.onBatchDragCompleted = onBatchDragCompleted
     }
 
     public func makeNSView(context: Context) -> DraggableShelfItemNSView {
         DraggableShelfItemNSView(
             file: file,
             iconImage: iconImage,
+            filesToDragProvider: filesToDragProvider,
             onOpen: onOpen,
+            onToggleSelect: onToggleSelect,
+            onSelectRange: onSelectRange,
             onHover: onHover,
             onDragStarted: onDragStarted,
-            onDragCompleted: onDragCompleted
+            onDragCompleted: onDragCompleted,
+            onBatchDragCompleted: onBatchDragCompleted
         )
     }
 
     public func updateNSView(_ nsView: DraggableShelfItemNSView, context: Context) {
         nsView.file = file
         nsView.iconImage = iconImage
+        nsView.filesToDragProvider = filesToDragProvider
         nsView.onOpen = onOpen
+        nsView.onToggleSelect = onToggleSelect
+        nsView.onSelectRange = onSelectRange
         nsView.onHover = onHover
         nsView.onDragStarted = onDragStarted
         nsView.onDragCompleted = onDragCompleted
+        nsView.onBatchDragCompleted = onBatchDragCompleted
+    }
+}
+
+// MARK: - Batch Drag Pill View
+
+public struct BatchShelfDragPillView: View {
+    public let state: ShelfPluginState
+    public let store: PurahWorkspaceStore
+    public let shelfColor: Color
+    public let palette: ThemePalette
+
+    @State private var isHovered: Bool = false
+    @State private var isDragging: Bool = false
+
+    public init(
+        state: ShelfPluginState,
+        store: PurahWorkspaceStore,
+        shelfColor: Color,
+        palette: ThemePalette
+    ) {
+        self.state = state
+        self.store = store
+        self.shelfColor = shelfColor
+        self.palette = palette
+    }
+
+    private var batchFiles: [ShelfFileItem] {
+        state.filesForBatchExport()
+    }
+
+    public var body: some View {
+        let hasSelection = !state.selectedFileIds.isEmpty
+        let count = batchFiles.count
+        let representativeFile = batchFiles.first ?? ShelfFileItem(name: "Batch", sizeDescription: "", fileExtension: "")
+
+        HStack(spacing: 6) {
+            Image(systemName: "shippingbox.and.arrow.backward.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(shelfColor)
+
+            Text(
+                hasSelection
+                    ? String(format: "dropshelf.dragSelected".localized, count)
+                    : String(format: "dropshelf.dragAll".localized, count)
+            )
+            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+            .foregroundColor(palette.style == .native ? .primary : .white)
+            .lineLimit(1)
+
+            Spacer(minLength: 2)
+
+            Image(systemName: "arrow.up.right.square")
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundColor(shelfColor.opacity(0.85))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(isHovered || hasSelection ? shelfColor.opacity(0.22) : shelfColor.opacity(0.12))
+        .cornerRadius(7)
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(shelfColor.opacity(isHovered || hasSelection ? 0.85 : 0.45), lineWidth: 1.2)
+        )
+        .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.01 : 1.0))
+        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isHovered)
+        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isDragging)
+        .overlay(
+            ShelfItemDragSourceView(
+                file: representativeFile,
+                filesToDragProvider: { state.filesForBatchExport() },
+                onToggleSelect: {
+                    if state.selectedFileIds.count == state.files.count {
+                        state.clearSelection()
+                    } else {
+                        state.selectAll()
+                    }
+                    store.triggerControlHaptic(.alignment)
+                },
+                onHover: { isHovered = $0 },
+                onDragStarted: {
+                    isDragging = true
+                    store.isDraggingFromDrawer = true
+                    store.triggerControlHaptic(.alignment)
+                },
+                onBatchDragCompleted: { ids, succeeded in
+                    isDragging = false
+                    store.isDraggingFromDrawer = false
+                    if succeeded {
+                        state.handleBatchDragOutCompleted(ids: ids)
+                        store._shelfFiles = state.files
+                    }
+                }
+            )
+        )
+        .help("dropshelf.dragBatchHelp".localized)
     }
 }
 
@@ -628,15 +1042,25 @@ public struct ShelfFileRowView: View {
         self.onToggleFavorite = onToggleFavorite
     }
 
+    private var isSelected: Bool {
+        state?.isSelected(id: file.id) ?? false
+    }
+
     public var body: some View {
         HStack(spacing: 8) {
-            // Drag grip indicator + File Icon & Title/Size wrapped with native AppKit Drag Source overlay
-            HStack(spacing: 8) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 8))
-                    .foregroundColor(.secondary.opacity(isHovered ? 0.8 : 0.3))
-                    .frame(width: 8)
+            // Leading interactive selection checkbox circle button
+            Button {
+                state?.toggleSelection(id: file.id)
+                store.triggerControlHaptic(.alignment)
+            } label: {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(isSelected ? shelfColor : .secondary.opacity(isHovered ? 0.85 : 0.45))
+            }
+            .buttonStyle(.plain)
 
+            // File Icon & Title/Size wrapped with native AppKit Drag Source overlay
+            HStack(spacing: 8) {
                 Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
                     .font(.system(size: 14))
                     .foregroundColor(shelfColor)
@@ -657,7 +1081,18 @@ public struct ShelfFileRowView: View {
             .overlay(
                 ShelfItemDragSourceView(
                     file: file,
+                    filesToDragProvider: {
+                        state?.filesForDrag(startingFrom: file) ?? [file]
+                    },
                     onOpen: onOpen,
+                    onToggleSelect: {
+                        state?.toggleSelection(id: file.id)
+                        store.triggerControlHaptic(.alignment)
+                    },
+                    onSelectRange: {
+                        state?.selectRange(to: file.id)
+                        store.triggerControlHaptic(.alignment)
+                    },
                     onHover: { isHovered = $0 },
                     onDragStarted: {
                         isDragging = true
@@ -669,6 +1104,19 @@ public struct ShelfFileRowView: View {
                         store.isDraggingFromDrawer = false
                         if succeeded {
                             state?.handleDragOutCompleted(id: file.id)
+                            if let state {
+                                store._shelfFiles = state.files
+                            }
+                        }
+                    },
+                    onBatchDragCompleted: { ids, succeeded in
+                        isDragging = false
+                        store.isDraggingFromDrawer = false
+                        if succeeded {
+                            state?.handleBatchDragOutCompleted(ids: ids)
+                            if let state {
+                                store._shelfFiles = state.files
+                            }
                         }
                     }
                 )
@@ -719,13 +1167,24 @@ public struct ShelfFileRowView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? shelfColor.opacity(0.18) : Color.clear)
+        )
         .liquidCardBackground(
             cornerRadius: 6,
-            strokeColor: isHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4)
+            strokeColor: isSelected
+                ? shelfColor
+                : (isHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isSelected ? shelfColor : Color.clear, lineWidth: 1.5)
         )
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))
         .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isHovered)
         .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isDragging)
+        .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }
     }

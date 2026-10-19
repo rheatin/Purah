@@ -762,4 +762,130 @@ struct QuickNotesTests {
         let font2 = storage.attribute(.font, at: hr2Loc, effectiveRange: nil) as? NSFont
         #expect(font2?.pointSize == 0.01)
     }
+
+    @Test("QuickNotesMarkdownHelper computes content-proportional default column ratios and resizes columns safely")
+    @MainActor
+    func testTableColumnRatiosAndResize() {
+        let md = """
+        | ID | Comprehensive Architectural Description | Status |
+        | --- | --- | --- |
+        | 1 | Magnetic Edge Rail Kernel & Ergonomic Solver | Active |
+        """
+        let parsed = QuickNotesMarkdownHelper.parseBlocks(in: md, selectedRange: nil)
+        #expect(parsed.tables.count == 1)
+        let table = parsed.tables[0]
+
+        let ratios = QuickNotesMarkdownHelper.defaultColumnRatios(for: table)
+        #expect(ratios.count == 3)
+        let total = ratios.reduce(0, +)
+        #expect(abs(total - 1.0) < 0.001)
+        // Middle column has much longer text than column 0 or column 2
+        #expect(ratios[1] > ratios[0])
+        #expect(ratios[1] > ratios[2])
+        #expect(ratios[0] >= 0.12 - 0.001)
+
+        // Verify resolveColumnGeometry
+        let tableRect = NSRect(x: 10, y: 20, width: 300, height: 60)
+        let (xOrigins, widths) = QuickNotesMarkdownHelper.resolveColumnGeometry(
+            ratios: ratios,
+            tableRect: tableRect,
+            columnCount: 3
+        )
+        #expect(xOrigins.count == 3)
+        #expect(widths.count == 3)
+        #expect(abs(xOrigins[0] - 10.0) < 0.001)
+        #expect(abs(widths.reduce(0, +) - 300.0) < 0.001)
+
+        // Verify resizeTableColumns widens left column and narrows right column while preserving total ratio 1.0
+        let resized = QuickNotesMarkdownHelper.resizeTableColumns(
+            ratios: ratios,
+            dividerIndex: 1,
+            deltaRatio: 0.10,
+            minColumnRatio: 0.08
+        )
+        #expect(resized.count == 3)
+        #expect(abs(resized.reduce(0, +) - 1.0) < 0.001)
+        #expect(resized[0] > ratios[0])
+        #expect(resized[1] < ratios[1])
+        #expect(abs(resized[2] - ratios[2]) < 0.0001)
+
+        // Verify extreme drag respects minColumnRatio floor
+        let clamped = QuickNotesMarkdownHelper.resizeTableColumns(
+            ratios: ratios,
+            dividerIndex: 1,
+            deltaRatio: -0.95,
+            minColumnRatio: 0.10
+        )
+        #expect(clamped[0] >= 0.10 - 0.0001)
+        #expect(abs(clamped.reduce(0, +) - 1.0) < 0.001)
+    }
+
+    @Test("ShelfPluginState supports multi-selection, marquee selection, batch drag-out, and folder export with star immunity")
+    @MainActor
+    func testDropShelfMultiSelectAndBatchExport() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_shelf_multiselect_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "test-shelf-\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "test-shelf", customBaseDirectory: tempDir)
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+        state.clearAllIncludingFavorites()
+        state.autoRemoveOnDrag = true
+
+        let item1 = ShelfFileItem(id: "f1", name: "Spec.pdf", sizeDescription: "1 MB", fileExtension: "pdf", isFavorite: false)
+        let item2 = ShelfFileItem(id: "f2", name: "StarredDesign.png", sizeDescription: "2 MB", fileExtension: "png", isFavorite: true)
+        let item3 = ShelfFileItem(id: "f3", name: "Archive.zip", sizeDescription: "4 MB", fileExtension: "zip", isFavorite: false)
+        let item4 = ShelfFileItem(id: "f4", name: "Notes.md", sizeDescription: "8 KB", fileExtension: "md", isFavorite: false)
+
+        state.addFileItem(item4)
+        state.addFileItem(item3)
+        state.addFileItem(item2)
+        state.addFileItem(item1)
+        #expect(state.files.map(\.id) == ["f1", "f2", "f3", "f4"])
+
+        // 1. Toggle selection & range selection
+        state.toggleSelection(id: "f1")
+        #expect(state.isSelected(id: "f1"))
+        state.selectRange(to: "f3")
+        #expect(state.selectedFileIds == ["f1", "f2", "f3"])
+
+        // 2. filesForDrag returns all selected files when dragging a selected item, or single item when unselected
+        let dragFromSelected = state.filesForDrag(startingFrom: item2)
+        #expect(dragFromSelected.map(\.id) == ["f1", "f2", "f3"])
+        let dragFromUnselected = state.filesForDrag(startingFrom: item4)
+        #expect(dragFromUnselected.map(\.id) == ["f4"])
+
+        // 3. Marquee selection updates selection set
+        state.updateMarqueeSelection(intersectingIds: ["f2", "f4"])
+        #expect(state.selectedFileIds == ["f2", "f4"])
+        #expect(state.filesForBatchExport().map(\.id) == ["f2", "f4"])
+
+        // 4. Select All and Clear Selection
+        state.selectAll()
+        #expect(state.selectedFileIds.count == 4)
+        state.clearSelection()
+        #expect(state.selectedFileIds.isEmpty)
+        #expect(state.filesForBatchExport().count == 4)
+
+        // 5. Batch export to destination folder copies files and removes non-starred items while preserving starred item2
+        let destFolder = tempDir.appendingPathComponent("ExportedFolder", isDirectory: true)
+        let store = PurahWorkspaceStore()
+        state.updateMarqueeSelection(intersectingIds: ["f1", "f2", "f3"])
+        let exported = DropShelfDrawerView.exportFiles(
+            state.filesForBatchExport(),
+            toFolder: destFolder,
+            state: state,
+            store: store
+        )
+        #expect(exported.count == 3)
+        #expect(FileManager.default.fileExists(atPath: destFolder.appendingPathComponent("Spec.pdf").path))
+        #expect(FileManager.default.fileExists(atPath: destFolder.appendingPathComponent("StarredDesign.png").path))
+        #expect(FileManager.default.fileExists(atPath: destFolder.appendingPathComponent("Archive.zip").path))
+
+        // f1 and f3 were unstarred and removed; f2 is starred so it remains; f4 was not in the batch so it remains
+        #expect(state.files.map(\.id) == ["f2", "f4"])
+        #expect(state.selectedFileIds.isEmpty)
+    }
 }

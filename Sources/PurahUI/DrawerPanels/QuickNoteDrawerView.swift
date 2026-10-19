@@ -817,6 +817,105 @@ public struct QuickNotesMarkdownHelper: Sendable {
         return ParsedMarkdownBlocks(codeBlocks: codeBlocks, tables: tables, horizontalRules: horizontalRules)
     }
 
+    /// Computes content-proportional default column width ratios (summing to 1.0) for a Markdown table.
+    public static func defaultColumnRatios(for table: TableBlock) -> [CGFloat] {
+        let colCount = max(1, table.columnCount)
+        guard colCount > 1 else { return [1.0] }
+
+        var weights: [CGFloat] = Array(repeating: 4.0, count: colCount)
+        for (rIdx, row) in table.rowsCells.enumerated() where !table.separatorRowIndices.contains(rIdx) {
+            for cIdx in 0..<min(colCount, row.count) {
+                let len = CGFloat(row[cIdx].trimmingCharacters(in: .whitespaces).count)
+                if len > weights[cIdx] {
+                    weights[cIdx] = len
+                }
+            }
+        }
+        weights = weights.map { min(max($0, 4.0), 40.0) }
+        let totalWeight = max(weights.reduce(0, +), 1.0)
+        var ratios = weights.map { $0 / totalWeight }
+
+        let minFloor = min(0.12, 1.0 / CGFloat(colCount))
+        var deficit: CGFloat = 0
+        var aboveIndices: [Int] = []
+        for i in 0..<colCount {
+            if ratios[i] < minFloor {
+                deficit += (minFloor - ratios[i])
+                ratios[i] = minFloor
+            } else if ratios[i] > minFloor {
+                aboveIndices.append(i)
+            }
+        }
+        if deficit > 0, !aboveIndices.isEmpty {
+            let expandableTotal = aboveIndices.reduce(CGFloat(0)) { $0 + (ratios[$1] - minFloor) }
+            if expandableTotal > 0 {
+                for idx in aboveIndices {
+                    let share = (ratios[idx] - minFloor) / expandableTotal
+                    ratios[idx] -= deficit * share
+                }
+            }
+        }
+        let sum = ratios.reduce(0, +)
+        if sum > 0 {
+            ratios = ratios.map { $0 / sum }
+        }
+        return ratios
+    }
+
+    /// Resolves horizontal column X origins and pixel widths across `tableRect` from column ratios.
+    public static func resolveColumnGeometry(
+        ratios: [CGFloat],
+        tableRect: NSRect,
+        columnCount: Int
+    ) -> (xOrigins: [CGFloat], widths: [CGFloat]) {
+        let colCount = max(1, columnCount)
+        let effectiveRatios: [CGFloat]
+        let sum = ratios.reduce(0, +)
+        if ratios.count == colCount && sum > 0 {
+            effectiveRatios = ratios.map { $0 / sum }
+        } else {
+            effectiveRatios = Array(repeating: 1.0 / CGFloat(colCount), count: colCount)
+        }
+
+        var xOrigins: [CGFloat] = []
+        var widths: [CGFloat] = []
+        var currentX = tableRect.minX
+        for i in 0..<colCount {
+            xOrigins.append(currentX)
+            let w: CGFloat
+            if i == colCount - 1 {
+                w = max(0, tableRect.maxX - currentX)
+            } else {
+                w = max(0, tableRect.width * effectiveRatios[i])
+            }
+            widths.append(w)
+            currentX += w
+        }
+        return (xOrigins, widths)
+    }
+
+    /// Resizes two adjacent columns (`dividerIndex - 1` and `dividerIndex`) by `deltaRatio` while preserving their combined ratio and enforcing `minColumnRatio`.
+    public static func resizeTableColumns(
+        ratios: [CGFloat],
+        dividerIndex: Int,
+        deltaRatio: CGFloat,
+        minColumnRatio: CGFloat = 0.08
+    ) -> [CGFloat] {
+        guard dividerIndex >= 1 && dividerIndex < ratios.count else {
+            return ratios
+        }
+        var updated = ratios
+        let leftIdx = dividerIndex - 1
+        let rightIdx = dividerIndex
+        let pairSum = updated[leftIdx] + updated[rightIdx]
+        let effectiveMin = min(minColumnRatio, pairSum / 2.0)
+        let newLeft = min(max(updated[leftIdx] + deltaRatio, effectiveMin), max(pairSum - effectiveMin, effectiveMin))
+        let newRight = max(pairSum - newLeft, effectiveMin)
+        updated[leftIdx] = newLeft
+        updated[rightIdx] = newRight
+        return updated
+    }
+
     /// Handles smart line return and list/checklist continuation in Typora block-level live preview.
     public static func applyLineReturn(lines: [String], at index: Int) -> (updatedLines: [String], nextActiveIndex: Int) {
         guard !lines.isEmpty else {
@@ -1358,6 +1457,11 @@ public struct QuickNotesMarkdownHelper: Sendable {
 /// Native AppKit text view subclass specialized for continuous live Markdown editing.
 @MainActor
 public final class PurahNotesNSTextView: NSTextView {
+    public var customTableColumnRatios: [Int: [CGFloat]] = [:]
+    private var hoveredTableDivider: (tableIndex: Int, dividerIndex: Int)? = nil
+    private var activeTableResizeDrag: (tableIndex: Int, dividerIndex: Int, startMouseX: CGFloat, initialRatios: [CGFloat], tableWidth: CGFloat)? = nil
+    private var dividerTrackingArea: NSTrackingArea?
+
     public override init(frame frameRect: NSRect, textContainer: NSTextContainer?) {
         super.init(frame: frameRect, textContainer: textContainer)
         setupProperties()
@@ -1385,12 +1489,121 @@ public final class PurahNotesNSTextView: NSTextView {
         textColor = NSColor.labelColor
     }
 
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = dividerTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        dividerTrackingArea = area
+    }
+
+    public func effectiveColumnRatios(for tableIndex: Int, table: TableBlock) -> [CGFloat] {
+        let colCount = max(1, table.columnCount)
+        if let custom = customTableColumnRatios[tableIndex], custom.count == colCount {
+            return custom
+        }
+        return QuickNotesMarkdownHelper.defaultColumnRatios(for: table)
+    }
+
+    private func hitTestTableDivider(at viewPoint: NSPoint) -> (tableIndex: Int, dividerIndex: Int, table: TableBlock, tableRect: NSRect)? {
+        guard let layoutManager = self.layoutManager, let textContainer = self.textContainer else { return nil }
+        let isFocused = (self.window != nil) ? (self.window?.firstResponder === self) : true
+        let parsedBlocks = QuickNotesMarkdownHelper.parseBlocks(in: self.string, selectedRange: isFocused ? selectedRange() : nil)
+
+        for (tIdx, table) in parsedBlocks.tables.enumerated() where table.columnCount > 1 && !table.rowRanges.isEmpty {
+            let firstRowRange = table.rowRanges[0]
+            let lastRowRange = table.rowRanges[table.rowRanges.count - 1]
+            let firstGlyph = layoutManager.glyphRange(forCharacterRange: firstRowRange, actualCharacterRange: nil)
+            let lastGlyph = layoutManager.glyphRange(forCharacterRange: lastRowRange, actualCharacterRange: nil)
+            guard firstGlyph.length > 0, lastGlyph.length > 0 else { continue }
+
+            let firstLineRect = layoutManager.boundingRect(forGlyphRange: firstGlyph, in: textContainer)
+            let lastLineRect = layoutManager.boundingRect(forGlyphRange: lastGlyph, in: textContainer)
+
+            let x = textContainerOrigin.x + 2
+            let width = max(120, bounds.width - (textContainerOrigin.x * 2) - 4)
+            let y = firstLineRect.minY + textContainerOrigin.y
+            let maxY = lastLineRect.maxY + textContainerOrigin.y
+            let height = max(24, maxY - y)
+            let tableRect = NSRect(x: x, y: y, width: width, height: height)
+
+            guard viewPoint.y >= tableRect.minY - 2 && viewPoint.y <= tableRect.maxY + 2 else { continue }
+
+            let colCount = max(1, table.columnCount)
+            let ratios = effectiveColumnRatios(for: tIdx, table: table)
+            let (colXOrigins, _) = QuickNotesMarkdownHelper.resolveColumnGeometry(
+                ratios: ratios,
+                tableRect: tableRect,
+                columnCount: colCount
+            )
+            for c in 1..<colCount {
+                if abs(viewPoint.x - colXOrigins[c]) <= 6.0 {
+                    return (tIdx, c, table, tableRect)
+                }
+            }
+        }
+        return nil
+    }
+
+    public override func mouseMoved(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        if let hit = hitTestTableDivider(at: pt) {
+            hoveredTableDivider = (hit.tableIndex, hit.dividerIndex)
+            NSCursor.resizeLeftRight.set()
+            needsDisplay = true
+        } else {
+            if hoveredTableDivider != nil {
+                hoveredTableDivider = nil
+                NSCursor.iBeam.set()
+                needsDisplay = true
+            }
+            super.mouseMoved(with: event)
+        }
+    }
+
+    public override func mouseExited(with event: NSEvent) {
+        if hoveredTableDivider != nil && activeTableResizeDrag == nil {
+            hoveredTableDivider = nil
+            needsDisplay = true
+        }
+        super.mouseExited(with: event)
+    }
+
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }
 
     public override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+
+        if let hit = hitTestTableDivider(at: point) {
+            if event.clickCount == 2 {
+                customTableColumnRatios.removeValue(forKey: hit.tableIndex)
+                SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                needsDisplay = true
+                return
+            }
+            let initial = effectiveColumnRatios(for: hit.tableIndex, table: hit.table)
+            activeTableResizeDrag = (
+                tableIndex: hit.tableIndex,
+                dividerIndex: hit.dividerIndex,
+                startMouseX: point.x,
+                initialRatios: initial,
+                tableWidth: hit.tableRect.width
+            )
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+            NSCursor.resizeLeftRight.set()
+            needsDisplay = true
+            return
+        }
+
         let containerPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
 
         if let layoutManager = self.layoutManager, let textContainer = self.textContainer {
@@ -1472,6 +1685,35 @@ public final class PurahNotesNSTextView: NSTextView {
         }
 
         super.mouseDown(with: event)
+    }
+
+    public override func mouseDragged(with event: NSEvent) {
+        if let drag = activeTableResizeDrag {
+            let pt = convert(event.locationInWindow, from: nil)
+            let deltaRatio = (pt.x - drag.startMouseX) / max(drag.tableWidth, 100.0)
+            let minRatio = max(28.0 / max(drag.tableWidth, 100.0), 0.08)
+            let updated = QuickNotesMarkdownHelper.resizeTableColumns(
+                ratios: drag.initialRatios,
+                dividerIndex: drag.dividerIndex,
+                deltaRatio: deltaRatio,
+                minColumnRatio: minRatio
+            )
+            customTableColumnRatios[drag.tableIndex] = updated
+            NSCursor.resizeLeftRight.set()
+            needsDisplay = true
+            return
+        }
+        super.mouseDragged(with: event)
+    }
+
+    public override func mouseUp(with event: NSEvent) {
+        if activeTableResizeDrag != nil {
+            activeTableResizeDrag = nil
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+            needsDisplay = true
+            return
+        }
+        super.mouseUp(with: event)
     }
 
     public override func insertNewline(_ sender: Any?) {
@@ -1649,7 +1891,7 @@ public final class PurahNotesNSTextView: NSTextView {
             }
         }
 
-        for table in parsedBlocks.tables {
+        for (tIdx, table) in parsedBlocks.tables.enumerated() {
             guard !table.rowRanges.isEmpty else { continue }
             let firstRowRange = table.rowRanges[0]
             let lastRowRange = table.rowRanges[table.rowRanges.count - 1]
@@ -1674,7 +1916,12 @@ public final class PurahNotesNSTextView: NSTextView {
 
             let firstSep = table.separatorRowIndices.min()
             let colCount = max(1, table.columnCount)
-            let colWidth = tableRect.width / CGFloat(colCount)
+            let ratios = effectiveColumnRatios(for: tIdx, table: table)
+            let (colXOrigins, colWidths) = QuickNotesMarkdownHelper.resolveColumnGeometry(
+                ratios: ratios,
+                tableRect: tableRect,
+                columnCount: colCount
+            )
 
             NSGraphicsContext.saveGraphicsState()
             outerPath.addClip()
@@ -1702,12 +1949,14 @@ public final class PurahNotesNSTextView: NSTextView {
 
                         if colCount > 1 {
                             for c in 1..<colCount {
-                                let colX = tableRect.minX + CGFloat(c) * colWidth
+                                let colX = colXOrigins[c]
+                                let isHighlighted = (activeTableResizeDrag?.tableIndex == tIdx && activeTableResizeDrag?.dividerIndex == c) ||
+                                    (hoveredTableDivider?.tableIndex == tIdx && hoveredTableDivider?.dividerIndex == c)
                                 let vLine = NSBezierPath()
                                 vLine.move(to: NSPoint(x: colX, y: rowY))
                                 vLine.line(to: NSPoint(x: colX, y: rowY + rowH))
-                                vLine.lineWidth = 1.0
-                                accentColor.withAlphaComponent(0.28).setStroke()
+                                vLine.lineWidth = isHighlighted ? 2.0 : 1.0
+                                accentColor.withAlphaComponent(isHighlighted ? 0.95 : 0.28).setStroke()
                                 vLine.stroke()
                             }
                         }
@@ -1726,12 +1975,14 @@ public final class PurahNotesNSTextView: NSTextView {
 
                     if colCount > 1 {
                         for c in 1..<colCount {
-                            let colX = tableRect.minX + CGFloat(c) * colWidth
+                            let colX = colXOrigins[c]
+                            let isHighlighted = (activeTableResizeDrag?.tableIndex == tIdx && activeTableResizeDrag?.dividerIndex == c) ||
+                                (hoveredTableDivider?.tableIndex == tIdx && hoveredTableDivider?.dividerIndex == c)
                             let vLine = NSBezierPath()
                             vLine.move(to: NSPoint(x: colX, y: rowY))
                             vLine.line(to: NSPoint(x: colX, y: rowY + rowH))
-                            vLine.lineWidth = 1.0
-                            accentColor.withAlphaComponent(0.28).setStroke()
+                            vLine.lineWidth = isHighlighted ? 2.0 : 1.0
+                            accentColor.withAlphaComponent(isHighlighted ? 0.95 : 0.28).setStroke()
                             vLine.stroke()
                         }
                     }
@@ -1752,9 +2003,9 @@ public final class PurahNotesNSTextView: NSTextView {
                             let textSize = attrCell.size()
                             let textY = rowY + max(0, (rowH - textSize.height) / 2.0)
                             let cellRect = NSRect(
-                                x: tableRect.minX + CGFloat(cIdx) * colWidth + 6,
+                                x: colXOrigins[cIdx] + 6,
                                 y: textY,
-                                width: max(0, colWidth - 12),
+                                width: max(0, colWidths[cIdx] - 12),
                                 height: textSize.height
                             )
                             attrCell.draw(with: cellRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
