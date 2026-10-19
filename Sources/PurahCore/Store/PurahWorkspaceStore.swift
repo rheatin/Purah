@@ -1283,6 +1283,13 @@ public final class PurahWorkspaceStore {
         return 120.0
     }
 
+    public func standaloneMinimumRailHeight(for podId: String) -> Double {
+        if isPodDecomposed(podId), let provider = capabilityProvider(for: podId) {
+            return max(Double(provider.decomposedPolicy(store: self).minChipHeight) * 1.5, 72.0)
+        }
+        return Double(minimumDrawerHeight(for: podId))
+    }
+
     public func preferredDrawerHeight(for podId: String) -> CGFloat {
         let minH = minimumDrawerHeight(for: podId)
         if let pod = pods.first(where: { $0.id == podId }),
@@ -1397,7 +1404,8 @@ public final class PurahWorkspaceStore {
     }
 
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
-        let podHeight = max(pod.range.length * totalHeight, 48.0)
+        let minStandalone = CGFloat(standaloneMinimumRailHeight(for: pod.id))
+        let podHeight = max(pod.range.length * totalHeight, minStandalone)
         if isLiveRailEditingMode || pod.minLength <= 0.06 {
             return podHeight
         }
@@ -1874,7 +1882,7 @@ public final class PurahWorkspaceStore {
             if grp.count == 1 {
                 let pod = grp[0]
                 let minFloor = (isLiveRailEditingMode || pod.minLength <= 0.06)
-                    ? 48.0
+                    ? standaloneMinimumRailHeight(for: pod.id)
                     : Double(minimumDrawerHeight(for: pod.id))
                 return max(pod.range.length * totalHeight, minFloor)
             } else {
@@ -1900,13 +1908,17 @@ public final class PurahWorkspaceStore {
                 let scale = remainingMajorAvailable / scalableSum
                 majorSpans = clusters.enumerated().map { idx, grp in
                     if lockedClusterMask[idx] { return majorSpans[idx] }
-                    let floorH = grp.count >= 2 ? 150.0 : 48.0
+                    let floorH = grp.count >= 2
+                        ? max(grp.map { standaloneMinimumRailHeight(for: $0.id) }.max() ?? 150.0, 150.0)
+                        : standaloneMinimumRailHeight(for: grp[0].id)
                     return max(majorSpans[idx] * scale, floorH)
                 }
             } else {
                 let scale = netMajorAvailable / sumMajorSpans
                 majorSpans = clusters.enumerated().map { idx, grp in
-                    let floorH = grp.count >= 2 ? 150.0 : 48.0
+                    let floorH = grp.count >= 2
+                        ? max(grp.map { standaloneMinimumRailHeight(for: $0.id) }.max() ?? 150.0, 150.0)
+                        : standaloneMinimumRailHeight(for: grp[0].id)
                     return max(majorSpans[idx] * scale, floorH)
                 }
             }
@@ -2026,7 +2038,7 @@ public final class PurahWorkspaceStore {
 
         let minSpans: [Double] = pagePods.map { pod in
             if isLiveRailEditingMode || pod.minLength <= 0.06 {
-                return 48.0
+                return standaloneMinimumRailHeight(for: pod.id)
             }
             return Double(minimumDrawerHeight(for: pod.id))
         }
@@ -2765,7 +2777,6 @@ public final class PurahWorkspaceStore {
     public func updatePodRange(id: String, newRange: NormalizedRange) {
         guard let pod = pods.first(where: { $0.id == id }) else { return }
         let screenH = max(Double(availableScreenHeight(for: pod.edge)), 600.0)
-        let minManualRatio = max(48.0 / screenH, 0.05)
         let edgeStrategy = overflowStrategy(for: pod.edge)
         let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
         if edgeStrategy == .pagedSpaces {
@@ -2775,8 +2786,9 @@ public final class PurahWorkspaceStore {
                 newRange: newRange,
                 allPods: pagePods,
                 on: pod.edge,
-                minRatioProvider: { _ in
-                    minManualRatio
+                minRatioProvider: { p in
+                    let minH = self.standaloneMinimumRailHeight(for: p.id)
+                    return max(minH / screenH, 0.05)
                 }
             )
             var resolvedMap = Dictionary(uniqueKeysWithValues: resolvedPagePods.map { ($0.id, $0) })
@@ -2791,11 +2803,12 @@ public final class PurahWorkspaceStore {
                 newRange: newRange,
                 allPods: pods,
                 on: pod.edge,
-                minRatioProvider: { _ in
-                    if isDynamicAccordion {
-                        return min(28.0 / screenH, minManualRatio)
+                minRatioProvider: { p in
+                    if isDynamicAccordion || (edgeStrategy == .decomposedMajorPod && p.majorGroupId != nil) {
+                        return max(28.0 / screenH, 0.035)
                     }
-                    return minManualRatio
+                    let minH = self.standaloneMinimumRailHeight(for: p.id)
+                    return max(minH / screenH, 0.05)
                 }
             )
             if let idx = resolved.firstIndex(where: { $0.id == id }) {

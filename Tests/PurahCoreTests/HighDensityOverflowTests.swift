@@ -957,4 +957,60 @@ struct HighDensityOverflowTests {
         #expect(store.alertingPageIndices(for: .right, totalHeight: totalHeight).isEmpty)
         #expect(store.firstOffPageAlertingPod(for: .right, totalHeight: totalHeight) == nil)
     }
+
+    @Test("Standalone Composite Pod vs Stacked Sub-Pod Minimum Height Rule: standalone Music outside a Stack enforces >= 110pt (minimumDrawerHeight) while stacked Music inside a Stack allows compact sub-bar < 110pt with drawerSpanH >= 150pt")
+    func testStandaloneCompositePodVsStackedSubPodMinimumHeight() throws {
+        let suiteName = "test_standalone_vs_stacked_music_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
+        store.resetMajorGroups(for: .right)
+
+        let totalHeight = 900.0
+        let musicMinH = Double(store.minimumDrawerHeight(for: "music"))
+        #expect(musicMinH >= 110.0)
+        #expect(store.standaloneMinimumRailHeight(for: "music") == musicMinH)
+
+        // 1. Standalone "music" outside any Stack (majorGroupId == nil):
+        // Attempting to resize "music" to a tiny length (0.04) still enforces spanH >= 110.0
+        #expect(store.pods.first(where: { $0.id == "music" })?.majorGroupId == nil)
+        store.updatePodRange(id: "music", newRange: NormalizedRange(start: 0.78, length: 0.04))
+
+        let standaloneLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let standaloneMusic = try #require(standaloneLayout.first(where: { $0.pod.id == "music" }))
+        #expect(standaloneMusic.majorGroupId == nil)
+        #expect(
+            standaloneMusic.spanH >= musicMinH - 0.5,
+            "Standalone composite 'music' pod outside a Stack must enforce spanH >= \(musicMinH)pt (got \(standaloneMusic.spanH)pt)"
+        )
+        #expect(abs(standaloneMusic.drawerSpanH - standaloneMusic.spanH) < 0.01)
+
+        // 2. Stack "music" with "calendar" and "todo" into a Shared Major Pod (majorGroupId != nil):
+        // Its sub-bar spanH can be compact (< 110.0) while its shared drawerSpanH >= 150.0
+        store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
+        store.addPodToMajorGroup(podId: "music", targetPodId: "calendar")
+
+        if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
+            store.pods[calIdx].range = NormalizedRange(start: 0.10, length: 0.10)
+        }
+        if let todoIdx = store.pods.firstIndex(where: { $0.id == "todo" }) {
+            store.pods[todoIdx].range = NormalizedRange(start: 0.21, length: 0.08)
+        }
+        if let musicIdx = store.pods.firstIndex(where: { $0.id == "music" }) {
+            store.pods[musicIdx].range = NormalizedRange(start: 0.30, length: 0.04)
+        }
+        store.invalidateLayoutCache()
+
+        let stackedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
+        let stackedMusic = try #require(stackedLayout.first(where: { $0.pod.id == "music" }))
+        #expect(stackedMusic.majorGroupId != nil)
+        #expect(
+            stackedMusic.spanH < musicMinH,
+            "Stacked 'music' sub-bar inside a Shared Major Pod can be compact (< \(musicMinH)pt, got \(stackedMusic.spanH)pt)"
+        )
+        #expect(
+            stackedMusic.drawerSpanH >= 150.0,
+            "Stacked 'music' inside a Shared Major Pod shares the full Major Stack drawer (drawerSpanH >= 150pt, got \(stackedMusic.drawerSpanH)pt)"
+        )
+    }
 }
