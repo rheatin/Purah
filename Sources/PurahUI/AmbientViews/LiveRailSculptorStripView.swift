@@ -52,10 +52,7 @@ public struct LiveRailSculptorStripView: View {
         self.totalHeight = totalHeight
     }
 
-    private func buildClusters(from layoutItems: [ResolvedPodLayoutItem], strategy: RailOverflowStrategy) -> [SculptRailCluster] {
-        guard strategy == .decomposedMajorPod else {
-            return layoutItems.map { SculptRailCluster(id: $0.id, groupId: nil, items: [$0]) }
-        }
+    private func buildClusters(from layoutItems: [ResolvedPodLayoutItem]) -> [SculptRailCluster] {
         var clusters: [SculptRailCluster] = []
         var currentGroup: String? = nil
         var currentItems: [ResolvedPodLayoutItem] = []
@@ -94,17 +91,16 @@ public struct LiveRailSculptorStripView: View {
     private func detectStackTargetPodId(
         draggedItem: ResolvedPodLayoutItem,
         currentCenterY: Double,
-        allItems: [ResolvedPodLayoutItem],
-        edgeStrategy: RailOverflowStrategy
+        allItems: [ResolvedPodLayoutItem]
     ) -> String? {
-        let draggedGroupId = (edgeStrategy == .decomposedMajorPod) ? draggedItem.majorGroupId : nil
+        let draggedGroupId = draggedItem.majorGroupId
         for otherItem in allItems where otherItem.pod.id != draggedItem.pod.id {
-            let otherGroupId = (edgeStrategy == .decomposedMajorPod) ? otherItem.majorGroupId : nil
+            let otherGroupId = otherItem.majorGroupId
             if let g1 = draggedGroupId, let g2 = otherGroupId, g1 == g2 {
                 continue
             }
-            let rawTopY = (edgeStrategy == .decomposedMajorPod) ? otherItem.drawerStartY : otherItem.startY
-            let rawSpan = (edgeStrategy == .decomposedMajorPod) ? otherItem.drawerSpanH : otherItem.spanH
+            let rawTopY = otherItem.drawerStartY
+            let rawSpan = otherItem.drawerSpanH
             let rawBottomY = rawTopY + rawSpan
             let inset = rawSpan * 0.12
             let topY = rawTopY + inset
@@ -132,9 +128,6 @@ public struct LiveRailSculptorStripView: View {
                   !didAutoMergeDuringDrag else { return }
             didAutoMergeDuringDrag = true
             hoveredStackTargetPodId = nil
-            if store.overflowStrategy(for: edge) != .decomposedMajorPod {
-                store.setOverflowStrategy(.decomposedMajorPod, for: edge)
-            }
             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                 store.addPodToMajorGroup(podId: draggedPodId, targetPodId: targetId)
                 store.triggerControlHaptic(.levelChange)
@@ -145,8 +138,7 @@ public struct LiveRailSculptorStripView: View {
     private func handlePodDragChanged(
         item: ResolvedPodLayoutItem,
         translationY: CGFloat,
-        allItems: [ResolvedPodLayoutItem],
-        edgeStrategy: RailOverflowStrategy
+        allItems: [ResolvedPodLayoutItem]
     ) {
         if draggingPodId != item.pod.id {
             draggingPodId = item.pod.id
@@ -178,8 +170,7 @@ public struct LiveRailSculptorStripView: View {
         let matchedTarget = detectStackTargetPodId(
             draggedItem: item,
             currentCenterY: currentCenterY,
-            allItems: allItems,
-            edgeStrategy: edgeStrategy
+            allItems: allItems
         )
         if matchedTarget != hoveredStackTargetPodId {
             scheduleHoverMerge(draggedPodId: item.pod.id, targetPodId: matchedTarget)
@@ -227,9 +218,6 @@ public struct LiveRailSculptorStripView: View {
 
         // 2. Release-to-Merge onto hovered target pod / Major Stack
         if let targetId = currentTargetId {
-            if store.overflowStrategy(for: edge) != .decomposedMajorPod {
-                store.setOverflowStrategy(.decomposedMajorPod, for: edge)
-            }
             withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                 store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
                 store.triggerControlHaptic(.levelChange)
@@ -285,12 +273,9 @@ public struct LiveRailSculptorStripView: View {
 
     public var body: some View {
         let safeHeight = max(Double(totalHeight), 400.0)
-        let edgeStrategy = store.overflowStrategy(for: edge)
         let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: safeHeight)
-        let clusters = buildClusters(from: layoutItems, strategy: edgeStrategy)
-        let pages = (edgeStrategy == .pagedSpaces)
-            ? store.paginatedPods(for: edge, totalHeight: safeHeight)
-            : []
+        let clusters = buildClusters(from: layoutItems)
+        let pages = store.paginatedPods(for: edge, totalHeight: safeHeight)
         let pageCount = max(pages.count, 1)
         let currentPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
         let isExternalDropEdge = (store.externalDragTargetEdge == edge)
@@ -321,13 +306,11 @@ public struct LiveRailSculptorStripView: View {
             )
             .frame(width: 210, height: totalHeight)
 
-            // Section A: Prominent Multi-Page Deck Header (when in Paged Spaces mode)
-            if edgeStrategy == .pagedSpaces {
-                pageDeckHeader(pages: pages, currentPage: currentPage)
-                    .frame(width: 200, height: 58)
-                    .offset(y: 8)
-                    .zIndex(250)
-            }
+            // Section A: Prominent Multi-Page Deck Header
+            pageDeckHeader(pages: pages, currentPage: currentPage)
+                .frame(width: 200, height: 58)
+                .offset(y: 8)
+                .zIndex(250)
 
             // Section B: 1:1 Physical Sculpting Capsules & Unified Shared Major Pod Outer Boxes
             if layoutItems.isEmpty {
@@ -361,8 +344,7 @@ public struct LiveRailSculptorStripView: View {
                                 handlePodDragChanged(
                                     item: subItem,
                                     translationY: translationY,
-                                    allItems: layoutItems,
-                                    edgeStrategy: edgeStrategy
+                                    allItems: layoutItems
                                 )
                             },
                             onSubPodDragEnded: { subItem, translationY in
@@ -385,7 +367,6 @@ public struct LiveRailSculptorStripView: View {
                         LiveSculptPodCapsuleView(
                             item: item,
                             edge: edge,
-                            edgeStrategy: edgeStrategy,
                             pageCount: pageCount,
                             totalHeight: totalHeight,
                             store: store,
@@ -395,8 +376,7 @@ public struct LiveRailSculptorStripView: View {
                                 handlePodDragChanged(
                                     item: item,
                                     translationY: translationY,
-                                    allItems: layoutItems,
-                                    edgeStrategy: edgeStrategy
+                                    allItems: layoutItems
                                 )
                             },
                             onDragMoveEnded: { translationY, baseStart in
@@ -1097,7 +1077,6 @@ public struct LiveSculptMajorClusterBoxView: View {
 public struct LiveSculptPodCapsuleView: View {
     public let item: ResolvedPodLayoutItem
     public let edge: MountEdge
-    public let edgeStrategy: RailOverflowStrategy
     public let pageCount: Int
     public let totalHeight: CGFloat
     public let store: PurahWorkspaceStore
@@ -1130,7 +1109,6 @@ public struct LiveSculptPodCapsuleView: View {
     public init(
         item: ResolvedPodLayoutItem,
         edge: MountEdge,
-        edgeStrategy: RailOverflowStrategy,
         pageCount: Int,
         totalHeight: CGFloat,
         store: PurahWorkspaceStore,
@@ -1141,7 +1119,6 @@ public struct LiveSculptPodCapsuleView: View {
     ) {
         self.item = item
         self.edge = edge
-        self.edgeStrategy = edgeStrategy
         self.pageCount = pageCount
         self.totalHeight = totalHeight
         self.store = store
@@ -1154,7 +1131,7 @@ public struct LiveSculptPodCapsuleView: View {
     public var body: some View {
         let spanH = max(CGFloat(item.spanH), 22.0)
         let safeTotalH = max(Double(totalHeight), 400.0)
-        let isSharedStacked = (edgeStrategy == .decomposedMajorPod && pod.majorGroupId != nil)
+        let isSharedStacked = (pod.majorGroupId != nil && store.isInSharedMajorPod(podId: pod.id))
         let activelyDragging = isDraggingThis || moveInitialStart != nil
 
         ZStack {
@@ -1275,78 +1252,74 @@ public struct LiveSculptPodCapsuleView: View {
                             .buttonStyle(.tactile)
                             .help("Expand to fill available rail space")
 
-                            // Paged Spaces: Page Assignment Menu
-                            if edgeStrategy == .pagedSpaces {
-                                let maxPage = max(pageCount, pod.pageIndex + 1)
-                                Menu {
-                                    ForEach(0..<maxPage, id: \.self) { pIdx in
-                                        Button("Page \(pIdx + 1)\(pod.pageIndex == pIdx ? " ✓" : "")") {
-                                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                                store.setPodPage(id: pod.id, pageIndex: pIdx)
-                                                store.triggerControlHaptic(.alignment)
-                                            }
-                                        }
-                                    }
-                                    Divider()
-                                    Button("+ New Page (P\(maxPage + 1))") {
+                            // Page Assignment Menu
+                            let maxPage = max(pageCount, pod.pageIndex + 1)
+                            Menu {
+                                ForEach(0..<maxPage, id: \.self) { pIdx in
+                                    Button("Page \(pIdx + 1)\(pod.pageIndex == pIdx ? " ✓" : "")") {
                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.setPodPage(id: pod.id, pageIndex: maxPage)
+                                            store.setPodPage(id: pod.id, pageIndex: pIdx)
                                             store.triggerControlHaptic(.alignment)
                                         }
                                     }
+                                }
+                                Divider()
+                                Button("+ New Page (P\(maxPage + 1))") {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.setPodPage(id: pod.id, pageIndex: maxPage)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
+                                }
+                            } label: {
+                                Text("P\(pod.pageIndex + 1) ▾")
+                                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
+                                    .padding(.horizontal, 4)
+                                    .frame(height: 17)
+                                    .background(palette.primaryAccent.opacity(0.18))
+                                    .cornerRadius(4)
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                            .help("Move pod to another page")
+
+                            // Split / Stack buttons
+                            if pod.majorGroupId != nil {
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.splitPodFromMajorGroup(id: pod.id)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
                                 } label: {
-                                    Text("P\(pod.pageIndex + 1) ▾")
-                                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                    Text("✂️ Split")
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 4)
+                                        .frame(height: 17)
+                                        .background(Color.orange.opacity(0.20))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                                .help("Split from Shared Major Pod")
+                            }
+
+                            if store.canMergePodWithNext(id: pod.id) {
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.mergePodWithNext(id: pod.id)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
+                                } label: {
+                                    Text("🔗 Stack")
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
                                         .foregroundColor(palette.primaryAccent)
                                         .padding(.horizontal, 4)
                                         .frame(height: 17)
                                         .background(palette.primaryAccent.opacity(0.18))
                                         .cornerRadius(4)
                                 }
-                                .menuStyle(.borderlessButton)
-                                .fixedSize()
-                                .help("Move pod to another page")
-                            }
-
-                            // Decomposed Major Pod: Split / Stack buttons
-                            if edgeStrategy == .decomposedMajorPod {
-                                if pod.majorGroupId != nil {
-                                    Button {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.splitPodFromMajorGroup(id: pod.id)
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                    } label: {
-                                        Text("✂️ Split")
-                                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                                            .foregroundColor(.orange)
-                                            .padding(.horizontal, 4)
-                                            .frame(height: 17)
-                                            .background(Color.orange.opacity(0.20))
-                                            .cornerRadius(4)
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("Split from Shared Major Pod")
-                                }
-
-                                if store.canMergePodWithNext(id: pod.id) {
-                                    Button {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.mergePodWithNext(id: pod.id)
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                    } label: {
-                                        Text("🔗 Stack")
-                                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                                            .foregroundColor(palette.primaryAccent)
-                                            .padding(.horizontal, 4)
-                                            .frame(height: 17)
-                                            .background(palette.primaryAccent.opacity(0.18))
-                                            .cornerRadius(4)
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("Stack with pod below into a Shared Major Pod")
-                                }
+                                .buttonStyle(.tactile)
+                                .help("Stack with pod below into a Shared Major Pod")
                             }
 
                             Spacer(minLength: 0)

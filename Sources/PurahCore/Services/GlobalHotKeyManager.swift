@@ -3,6 +3,7 @@ import Carbon
 
 private struct CarbonRefs: @unchecked Sendable {
     var hotKeyRef: EventHotKeyRef?
+    var sculptorHotKeyRef: EventHotKeyRef?
     var eventHandlerRef: EventHandlerRef?
 }
 
@@ -13,6 +14,8 @@ public final class GlobalHotKeyManager: Sendable {
     private var refs = CarbonRefs()
     private var triggerAction: (@MainActor () -> Void)?
     public private(set) var currentShortcut: HotKeyShortcut?
+    private var sculptorTriggerAction: (@MainActor () -> Void)?
+    public private(set) var currentSculptorShortcut: HotKeyShortcut?
 
     public static var isTestingEnvironment: Bool {
         NSClassFromString("XCTest") != nil ||
@@ -60,20 +63,77 @@ public final class GlobalHotKeyManager: Sendable {
         currentShortcut = nil
     }
 
+    public func registerSculptor(shortcut: HotKeyShortcut, onTrigger: (@MainActor () -> Void)? = nil) {
+        let action = onTrigger ?? self.sculptorTriggerAction
+        unregisterSculptor()
+        self.sculptorTriggerAction = action
+        self.currentSculptorShortcut = shortcut
+
+        guard !Self.isTestingEnvironment else { return }
+
+        let hotKeyID = EventHotKeyID(signature: OSType(0x50555248), id: 2) // 'PURH', ID 2
+        var gMyHotKeyRef: EventHotKeyRef?
+
+        let status = RegisterEventHotKey(
+            shortcut.keyCode,
+            shortcut.modifiers,
+            hotKeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &gMyHotKeyRef
+        )
+
+        if status == noErr {
+            self.refs.sculptorHotKeyRef = gMyHotKeyRef
+        }
+    }
+
+    public func unregisterSculptor() {
+        if let ref = refs.sculptorHotKeyRef {
+            UnregisterEventHotKey(ref)
+            refs.sculptorHotKeyRef = nil
+        }
+        sculptorTriggerAction = nil
+        currentSculptorShortcut = nil
+    }
+
     private func installCarbonEventHandler() {
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: OSType(kEventHotKeyPressed))
 
         let callback: EventHandlerUPP = { _, inEvent, inUserData -> OSStatus in
             guard let inUserData = inUserData else { return noErr }
             let manager = Unmanaged<GlobalHotKeyManager>.fromOpaque(inUserData).takeUnretainedValue()
+
+            var hotKeyID = EventHotKeyID(signature: 0, id: 0)
+            if let event = inEvent {
+                GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+            }
+
+            let hotKeyIdNum = hotKeyID.id
             if Thread.isMainThread {
                 MainActor.assumeIsolated {
-                    manager.triggerAction?()
+                    if hotKeyIdNum == 2 {
+                        manager.sculptorTriggerAction?()
+                    } else {
+                        manager.triggerAction?()
+                    }
                 }
             } else {
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        manager.triggerAction?()
+                        if hotKeyIdNum == 2 {
+                            manager.sculptorTriggerAction?()
+                        } else {
+                            manager.triggerAction?()
+                        }
                     }
                 }
             }
@@ -93,6 +153,9 @@ public final class GlobalHotKeyManager: Sendable {
 
     deinit {
         if let ref = refs.hotKeyRef {
+            UnregisterEventHotKey(ref)
+        }
+        if let ref = refs.sculptorHotKeyRef {
             UnregisterEventHotKey(ref)
         }
         if let handler = refs.eventHandlerRef {

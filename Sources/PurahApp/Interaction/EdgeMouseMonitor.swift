@@ -291,8 +291,8 @@ public final class EdgeMouseMonitor {
     }
 
     public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
-        let edgeStrategy = store.overflowStrategy(for: item.pod.edge)
-        let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+        let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
+        let isDynamicAccordion = store.isBreathingActive(for: item.pod.edge)
         if !isSharedMajorSubBar,
            store.isPodDecomposed(item.pod.id),
            let provider = store.capabilityProvider(for: item.pod.id) {
@@ -301,7 +301,6 @@ public final class EdgeMouseMonitor {
             let minChipH = policy.minChipHeight
             let maxChipH = policy.maxChipHeight
             let spacing = policy.spacing
-            let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
             let maxAllowed = isDynamicAccordion
                 ? max(policy.maxRailItems, 1)
                 : max(min(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -353,7 +352,7 @@ public final class EdgeMouseMonitor {
         let nearEdge: MountEdge? = isInVerticalBounds
             ? ((point.x <= visibleRect.minX + 70.0) ? .left : ((point.x >= visibleRect.maxX - 70.0) ? .right : nil))
             : nil
-        if let nearEdge, store.overflowStrategy(for: nearEdge) == .pagedSpaces {
+        if let nearEdge, store.paginatedPods(for: nearEdge, totalHeight: Double(visibleRect.height)).count > 1 {
             let winY = visibleRect.maxY - point.y
             let isNearTop = (winY >= 0 && winY <= 110.0)
             let isNearBottom = (winY >= (visibleRect.height - 110.0) && winY <= visibleRect.height)
@@ -472,27 +471,23 @@ public final class EdgeMouseMonitor {
         let edge: MountEdge = isAtLeftEdge ? .left : .right
         let currentWindowY = visibleRect.maxY - point.y
 
-        // Top & Bottom Page Portals for Paged Spaces (avoiding 20pt macOS Hot Corners)
-        if store.overflowStrategy(for: edge) == .pagedSpaces {
-            let pages = store.paginatedPods(for: edge, totalHeight: Double(visibleRect.height))
-            if pages.count > 1 {
-                let isTopPortal = (currentWindowY >= 20.0 && currentWindowY <= 44.0)
-                let isBottomPortal = (currentWindowY >= (visibleRect.height - 44.0) && currentWindowY <= (visibleRect.height - 20.0))
-                if isTopPortal || isBottomPortal {
-                    let delta = isTopPortal ? -1 : 1
-                    cancelInitialDwell()
-                    lastCandidatePodId = nil
-                    candidateHoverStartTime = nil
-                    if store.activeDrawerPodId != nil || store.activeDrawerItemId != nil || store.hoveredPodId != nil {
-                        withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
-                            store.dismissActiveDrawer()
-                        }
+        // Top & Bottom Page Portals when multiple pages exist (avoiding 20pt macOS Hot Corners)
+        let pages = store.paginatedPods(for: edge, totalHeight: Double(visibleRect.height))
+        if pages.count > 1 {
+            let isTopPortal = (currentWindowY >= 20.0 && currentWindowY <= 44.0)
+            let isBottomPortal = (currentWindowY >= (visibleRect.height - 44.0) && currentWindowY <= (visibleRect.height - 20.0))
+            if isTopPortal || isBottomPortal {
+                let delta = isTopPortal ? -1 : 1
+                cancelInitialDwell()
+                lastCandidatePodId = nil
+                candidateHoverStartTime = nil
+                if store.activeDrawerPodId != nil || store.activeDrawerItemId != nil || store.hoveredPodId != nil {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                        store.dismissActiveDrawer()
                     }
-                    startPortalHoverIfNeeded(edge: edge, delta: delta)
-                    return
-                } else {
-                    cancelPortalHover()
                 }
+                startPortalHoverIfNeeded(edge: edge, delta: delta)
+                return
             } else {
                 cancelPortalHover()
             }
@@ -725,8 +720,8 @@ public final class EdgeMouseMonitor {
         coordinator?.setInteractive(true, for: edge)
 
         let wasDocked = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
-        let edgeStrategy = store.overflowStrategy(for: edge)
-        let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(matched.drawerSpanH - matched.spanH) > 1.0)
+        let isSharedMajorSubBar = (matched.majorGroupId != nil && abs(matched.drawerSpanH - matched.spanH) > 1.0)
+        let isDynamicAccordion = store.isBreathingActive(for: edge)
 
         if !isSharedMajorSubBar,
            let provider = store.capabilityProvider(for: candidate.id),
@@ -736,7 +731,6 @@ public final class EdgeMouseMonitor {
             let minChipH = policy.minChipHeight
             let maxChipH = policy.maxChipHeight
             let spacing = policy.spacing
-            let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
             let maxAllowed = isDynamicAccordion
                 ? max(policy.maxRailItems, 1)
                 : max(min(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)

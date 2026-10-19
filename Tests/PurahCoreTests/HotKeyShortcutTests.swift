@@ -12,6 +12,14 @@ struct HotKeyShortcutTests {
         #expect(shortcut.displayString.contains("⌥") && (shortcut.displayString.contains("Tab") || shortcut.displayString.contains("⇥")))
     }
 
+    @Test("Default sculptor shortcut formats as Control-Option-E")
+    func testDefaultSculptorShortcutFormat() {
+        let shortcut = HotKeyShortcut.defaultSculptorShortcut
+        #expect(shortcut.keyCode == 14) // E keycode
+        #expect(shortcut.modifiers == 0x1800) // Control (0x1000) + Option (0x0800)
+        #expect(shortcut.displayString == "⌃⌥E")
+    }
+
     @Test("WorkspaceStore toggles freeze state and persists")
     @MainActor
     func testWorkspaceStoreFreezeToggle() {
@@ -38,6 +46,48 @@ struct HotKeyShortcutTests {
         // Reset
         store.hotKeyShortcut = .defaultShortcut
         store.savePersistentState()
+    }
+
+    @Test("Sculptor HotKeyShortcut persistence in PurahWorkspaceStore")
+    @MainActor
+    func testSculptorHotKeyPersistence() {
+        let store = PurahWorkspaceStore()
+        #expect(store.sculptorHotKeyShortcut == .defaultSculptorShortcut)
+
+        let custom = HotKeyShortcut(keyCode: 12, modifiers: 0x1000 | 0x0100) // ⌃⌘Q
+        store.sculptorHotKeyShortcut = custom
+        store.savePersistentState()
+
+        let store2 = PurahWorkspaceStore()
+        store2.loadPersistentState()
+        #expect(store2.sculptorHotKeyShortcut == custom)
+
+        // Reset
+        store.sculptorHotKeyShortcut = .defaultSculptorShortcut
+        store.savePersistentState()
+    }
+
+    @Test("GlobalHotKeyManager dual registration supports both freeze and sculptor shortcuts independently")
+    @MainActor
+    func testDualGlobalHotKeyRegistration() {
+        let manager = GlobalHotKeyManager.shared
+        let freezeShortcut = HotKeyShortcut(keyCode: 48, modifiers: 0x0800) // ⌥⇥
+        let sculptorShortcut = HotKeyShortcut(keyCode: 14, modifiers: 0x1800) // ⌃⌥E
+
+        manager.register(shortcut: freezeShortcut)
+        manager.registerSculptor(shortcut: sculptorShortcut)
+
+        #expect(manager.currentShortcut == freezeShortcut)
+        #expect(manager.currentSculptorShortcut == sculptorShortcut)
+
+        // Unregister freeze should not clear sculptor
+        manager.unregister()
+        #expect(manager.currentShortcut == nil)
+        #expect(manager.currentSculptorShortcut == sculptorShortcut)
+
+        // Unregister sculptor
+        manager.unregisterSculptor()
+        #expect(manager.currentSculptorShortcut == nil)
     }
 
     @Test("HotKeyShortcut display string formatting with modifiers")

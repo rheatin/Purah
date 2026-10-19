@@ -58,7 +58,7 @@ public struct TodoItemDrawerView: View {
                 .fill(listColor.opacity(isDone ? 0.35 : 0.9))
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
                 .transaction { t in
-                    if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                    if !store.isBreathingActive(for: edge) {
                         t.animation = nil
                     }
                 }
@@ -282,7 +282,7 @@ public struct CalendarItemDrawerView: View {
                     }
                 )
                 .transaction { t in
-                    if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                    if !store.isBreathingActive(for: edge) {
                         t.animation = nil
                     }
                 }
@@ -946,7 +946,7 @@ public struct VitalsItemDrawerView: View {
             }
             .frame(width: barW, height: cardH)
             .transaction { t in
-                if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                if !store.isBreathingActive(for: edge) {
                     t.animation = nil
                 }
             }
@@ -1143,7 +1143,7 @@ public struct ScriptItemDrawerView: View {
             .scaleEffect(isHovered ? 1.02 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
             .transaction { t in
-                if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                if !store.isBreathingActive(for: edge) {
                     t.animation = nil
                 }
             }

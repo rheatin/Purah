@@ -79,16 +79,16 @@ public struct DiagnosticReportView: View {
                         title: "Left Rail Capacity",
                         icon: "sidebar.left",
                         status: "\(Int(store.capacityRatio(for: .left) * 100))% Used",
-                        color: store.isRailOverloaded(edge: .left) ? Color.red : Color.green,
-                        detail: store.isRailOverloaded(edge: .left) ? "⚠️ Over capacity! Bottom chips may clip." : "Safe vertical bounds."
+                        color: store.capacityRatio(for: .left) > 1.0 ? Color.red : Color.green,
+                        detail: store.capacityRatio(for: .left) > 1.0 ? "⚠️ Over capacity! Bottom chips may clip." : "Safe vertical bounds."
                     )
 
                     healthCard(
                         title: "Right Rail Capacity",
                         icon: "sidebar.right",
                         status: "\(Int(store.capacityRatio(for: .right) * 100))% Used",
-                        color: store.isRailOverloaded(edge: .right) ? Color.red : Color.green,
-                        detail: store.isRailOverloaded(edge: .right) ? "⚠️ Over capacity! Bottom chips may clip." : "Safe vertical bounds."
+                        color: store.capacityRatio(for: .right) > 1.0 ? Color.red : Color.green,
+                        detail: store.capacityRatio(for: .right) > 1.0 ? "⚠️ Over capacity! Bottom chips may clip." : "Safe vertical bounds."
                     )
                 }
 

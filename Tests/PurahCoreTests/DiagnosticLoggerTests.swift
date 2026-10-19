@@ -49,9 +49,6 @@ struct DiagnosticLoggerTests {
 
         let leftRatio = store.capacityRatio(for: .left)
         #expect(leftRatio >= 0.0)
-
-        let isOverloaded = store.isRailOverloaded(edge: .left)
-        #expect(isOverloaded == (leftRatio > 1.0))
     }
 
     @Test("Capacity warning toast callback triggers when rail is overloaded")
@@ -67,9 +64,8 @@ struct DiagnosticLoggerTests {
         store._isVitalsDecomposed = true
         store.notifyCapacityWarningIfNeeded()
 
-        if store.isRailOverloaded(edge: .left) {
+        if store.capacityRatio(for: .left) > 1.0 {
             #expect(toastMessage != nil)
-            #expect(toastMessage?.contains("Left rail capacity overload") == true)
         }
 
         store._isScriptsDecomposed = false

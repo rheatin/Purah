@@ -43,7 +43,7 @@ public struct SteppedRailContainerView: View {
         let minChipH: CGFloat = policy.minChipHeight
         let maxChipH: CGFloat = policy.maxChipHeight
         let spacing: CGFloat = policy.spacing
-        let isDynamicAccordion = (store.overflowStrategy(for: edge) == .dynamicAccordion)
+        let isDynamicAccordion = store.isBreathingActive(for: edge)
         let maxAllowedItems = isDynamicAccordion
             ? max(policy.maxRailItems, 1)
             : max(min(Int((totalHeight + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -206,7 +206,7 @@ public struct SteppedRailContainerView: View {
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)
                 .transaction { t in
-                    if store.overflowStrategy(for: edge) != .dynamicAccordion {
+                    if !store.isBreathingActive(for: edge) {
                         t.animation = nil
                     }
                 }

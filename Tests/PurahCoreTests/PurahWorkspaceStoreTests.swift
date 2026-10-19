@@ -47,8 +47,8 @@ struct PurahWorkspaceStoreTests {
 
         for preset in PodPreset.allCases {
             store.applyPreset(preset)
-            #expect(!store.isRailOverloaded(edge: .left), "Preset \(preset.rawValue) overloaded left rail")
-            #expect(!store.isRailOverloaded(edge: .right), "Preset \(preset.rawValue) overloaded right rail")
+            #expect(store.capacityRatio(for: .left) <= 1.0, "Preset \(preset.rawValue) overloaded left rail")
+            #expect(store.capacityRatio(for: .right) <= 1.0, "Preset \(preset.rawValue) overloaded right rail")
         }
     }
 

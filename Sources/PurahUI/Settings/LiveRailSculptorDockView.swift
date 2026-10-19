@@ -32,9 +32,29 @@ public struct LiveRailSculptorDockView: View {
 
                 Spacer(minLength: 4)
 
-                // Quick Strategy Pickers for Left Rail and Right Rail
-                strategyMenu(edge: .left, labelPrefix: "Left")
-                strategyMenu(edge: .right, labelPrefix: "Right")
+                // Quick Dynamic Breathing Toggle
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.setDynamicBreathingEnabled(!store.isDynamicBreathingEnabled)
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: store.isDynamicBreathingEnabled ? "lungs.fill" : "lungs")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("overflow.breathing.toggleTitle".localized)
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .foregroundColor(store.isDynamicBreathingEnabled ? palette.primaryAccent : .secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(store.isDynamicBreathingEnabled ? palette.primaryAccent.opacity(0.18) : Color.white.opacity(0.08))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.tactile)
+                .help("overflow.breathing.toggleSubtitle".localized)
 
                 // Auto-Layout Button
                 Button {
@@ -235,35 +255,5 @@ public struct LiveRailSculptorDockView: View {
                 .stroke(palette.primaryAccent.opacity(0.65), lineWidth: 1.4)
         )
         .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: 6)
-    }
-
-    @ViewBuilder
-    private func strategyMenu(edge: MountEdge, labelPrefix: String) -> some View {
-        let currentStrategy = store.overflowStrategy(for: edge)
-        Menu {
-            ForEach(RailOverflowStrategy.allCases) { strategy in
-                Button("\(strategy.localizedDisplayName)\(currentStrategy == strategy ? " ✓" : "")") {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        store.setOverflowStrategy(strategy, for: edge)
-                        store.triggerControlHaptic(.alignment)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text("\(labelPrefix): \(currentStrategy.localizedDisplayName)")
-                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                    .foregroundColor(palette.primaryAccent)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(palette.primaryAccent.opacity(0.15))
-            .cornerRadius(6)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize(horizontal: true, vertical: false)
     }
 }

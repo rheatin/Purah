@@ -28,14 +28,13 @@ public struct ScreenSimulationCanvas: View {
         draggedItem: ResolvedPodLayoutItem,
         dragOffsetY: CGFloat,
         scale: Double,
-        allItems: [ResolvedPodLayoutItem],
-        strategy: RailOverflowStrategy
+        allItems: [ResolvedPodLayoutItem]
     ) -> String? {
         guard abs(dragOffsetY) > 6 else { return nil }
         let currentCenterY = (draggedItem.startY + draggedItem.spanH * 0.5) * scale + Double(dragOffsetY)
-        let draggedGroupId = (strategy == .decomposedMajorPod) ? draggedItem.majorGroupId : nil
+        let draggedGroupId = draggedItem.majorGroupId
         for otherItem in allItems where otherItem.pod.id != draggedItem.pod.id {
-            let otherGroupId = (strategy == .decomposedMajorPod) ? otherItem.majorGroupId : nil
+            let otherGroupId = otherItem.majorGroupId
             if let g1 = draggedGroupId, let g2 = otherGroupId, g1 == g2 {
                 continue
             }
@@ -119,13 +118,10 @@ public struct ScreenSimulationCanvas: View {
 
                         let realScreenH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
                         let leftScale = workableHeight / realScreenH
-                        let leftStrategy = store.overflowStrategy(for: .left)
                         let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: realScreenH)
-                        let leftPages = (leftStrategy == .pagedSpaces)
-                            ? store.paginatedPods(for: .left, totalHeight: realScreenH)
-                            : []
+                        let leftPages = store.paginatedPods(for: .left, totalHeight: realScreenH)
 
-                        if leftStrategy == .pagedSpaces && leftPages.count > 1 {
+                        if leftPages.count > 1 {
                             simulatorPagePortal(edge: .left, direction: .previous, pages: leftPages)
                                 .offset(x: 4, y: 4)
                                 .zIndex(50)
@@ -184,8 +180,7 @@ public struct ScreenSimulationCanvas: View {
                                             draggedItem: item,
                                             dragOffsetY: offsetY,
                                             scale: leftScale,
-                                            allItems: leftLayout,
-                                            strategy: leftStrategy
+                                            allItems: leftLayout
                                         )
                                         if matched != hoveredStackTargetPodId {
                                             hoveredStackTargetPodId = matched
@@ -198,9 +193,6 @@ public struct ScreenSimulationCanvas: View {
                                 onDropOntoStackTarget: {
                                     guard let targetId = hoveredStackTargetPodId else { return false }
                                     hoveredStackTargetPodId = nil
-                                    if store.overflowStrategy(for: .left) != .decomposedMajorPod {
-                                        store.setOverflowStrategy(.decomposedMajorPod, for: .left)
-                                    }
                                     withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                         store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
                                         store.triggerControlHaptic(.levelChange)
@@ -224,13 +216,10 @@ public struct ScreenSimulationCanvas: View {
 
                         let realScreenRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
                         let rightScale = workableHeight / realScreenRightH
-                        let rightStrategy = store.overflowStrategy(for: .right)
                         let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: realScreenRightH)
-                        let rightPages = (rightStrategy == .pagedSpaces)
-                            ? store.paginatedPods(for: .right, totalHeight: realScreenRightH)
-                            : []
+                        let rightPages = store.paginatedPods(for: .right, totalHeight: realScreenRightH)
 
-                        if rightStrategy == .pagedSpaces && rightPages.count > 1 {
+                        if rightPages.count > 1 {
                             simulatorPagePortal(edge: .right, direction: .previous, pages: rightPages)
                                 .offset(x: -4, y: 4)
                                 .zIndex(50)
@@ -289,8 +278,7 @@ public struct ScreenSimulationCanvas: View {
                                             draggedItem: item,
                                             dragOffsetY: offsetY,
                                             scale: rightScale,
-                                            allItems: rightLayout,
-                                            strategy: rightStrategy
+                                            allItems: rightLayout
                                         )
                                         if matched != hoveredStackTargetPodId {
                                             hoveredStackTargetPodId = matched
@@ -303,9 +291,6 @@ public struct ScreenSimulationCanvas: View {
                                 onDropOntoStackTarget: {
                                     guard let targetId = hoveredStackTargetPodId else { return false }
                                     hoveredStackTargetPodId = nil
-                                    if store.overflowStrategy(for: .right) != .decomposedMajorPod {
-                                        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
-                                    }
                                     withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
                                         store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
                                         store.triggerControlHaptic(.levelChange)

@@ -822,6 +822,26 @@ struct DrawerInteractionUITests {
         view.resetToDefault()
     }
 
+    @Test("KeyboardShortcutRecorderView with sculptor target applies and resets sculptor hotkey")
+    @MainActor
+    func testSculptorShortcutRecorderApplyAndReset() {
+        let store = PurahWorkspaceStore()
+        let view = KeyboardShortcutRecorderView(store: store, target: .sculptor)
+
+        let custom = HotKeyShortcut(keyCode: 14, modifiers: 0x1000 | 0x0800) // ⌃⌥E
+        view.applyShortcut(custom)
+        #expect(store.sculptorHotKeyShortcut == custom)
+        #expect(GlobalHotKeyManager.shared.currentSculptorShortcut == custom)
+
+        view.resetToDefault()
+        #expect(store.sculptorHotKeyShortcut == .defaultSculptorShortcut)
+        #expect(GlobalHotKeyManager.shared.currentSculptorShortcut == .defaultSculptorShortcut)
+
+        // Test SculptorShortcutRecorderView wrapper
+        let wrapperView = SculptorShortcutRecorderView(store: store)
+        #expect(wrapperView.store === store)
+    }
+
     @Test("KeyboardShortcutRecorderView cancels recording on Escape without modifying shortcut")
     @MainActor
     func testKeyboardShortcutRecorderEscapeCancels() {

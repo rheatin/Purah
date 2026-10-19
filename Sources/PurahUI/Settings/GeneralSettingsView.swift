@@ -92,12 +92,16 @@ public struct GeneralSettingsView: View {
 
                 // 3. Global Hotkeys & Freeze Mode Card
                 settingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill") {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 14) {
                         Text("interaction.hotkeys.description".localized)
                             .font(.caption)
                             .foregroundColor(.secondary)
 
                         KeyboardShortcutRecorderView(store: store)
+
+                        Divider()
+
+                        KeyboardShortcutRecorderView(store: store, target: .sculptor)
                     }
                 }
             }

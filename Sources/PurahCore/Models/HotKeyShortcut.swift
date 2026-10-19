@@ -8,6 +8,7 @@ public struct HotKeyShortcut: Codable, Equatable, Sendable {
     // Carbon modifier constants:
     // cmdKey = 0x0100 (256), shiftKey = 0x0200 (512), optionKey = 0x0800 (2048), controlKey = 0x1000 (4096)
     public static let defaultShortcut = HotKeyShortcut(keyCode: 48, modifiers: 0x0800) // ⌥⇥ (Option + Tab)
+    public static let defaultSculptorShortcut = HotKeyShortcut(keyCode: 14, modifiers: 0x1800) // ⌃⌥E (Control + Option + E)
 
     public init(keyCode: UInt32, modifiers: UInt32) {
         self.keyCode = keyCode

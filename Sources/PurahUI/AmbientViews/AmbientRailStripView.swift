@@ -23,11 +23,8 @@ public struct AmbientRailStripView: View {
     public var body: some View {
         GeometryReader { geo in
             let totalHeight = geo.size.height
-            let edgeStrategy = store.overflowStrategy(for: edge)
             let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(totalHeight))
-            let pages = (edgeStrategy == .pagedSpaces)
-                ? store.paginatedPods(for: edge, totalHeight: Double(totalHeight))
-                : []
+            let pages = store.paginatedPods(for: edge, totalHeight: Double(totalHeight))
             let pageCount = pages.count
             let currentPage = min(max(store.currentRailPage(for: edge), 0), max(pageCount - 1, 0))
 
@@ -35,8 +32,8 @@ public struct AmbientRailStripView: View {
                 LiveRailSculptorStripView(edge: edge, store: store, totalHeight: totalHeight)
             } else {
                 ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
-                // Top & Bottom Hover Portals for Paged Spaces when multiple pages exist (avoiding 20pt macOS Hot Corners)
-                if edgeStrategy == .pagedSpaces && pageCount > 1 {
+                // Top & Bottom Hover Portals when multiple pages exist (avoiding 20pt macOS Hot Corners)
+                if pageCount > 1 {
                     let alertingPages = store.alertingPageIndices(for: edge, totalHeight: Double(totalHeight))
                     let offPageAlert = store.firstOffPageAlertingPod(for: edge, totalHeight: Double(totalHeight))
                     let offPageAlertColor = offPageAlert.map { palette.podColor(for: $0.pod.id, store: store) }
@@ -95,10 +92,11 @@ public struct AmbientRailStripView: View {
                     let startY = CGFloat(item.startY)
                     let drawerStartY = CGFloat(item.drawerStartY)
                     let drawerSpanH = CGFloat(item.drawerSpanH)
-                    let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(drawerSpanH - spanH) > 1.0)
+                    let isSharedMajorSubBar = (item.majorGroupId != nil && abs(drawerSpanH - spanH) > 1.0)
                     let shouldShowDrawer = store.shouldRenderDrawer(for: item, in: layoutItems)
                     let isThisPodActive = shouldShowDrawer || (store.hoveredPodId == pod.id || store.activePod?.id == pod.id || store.isItemPinned(id: pod.id) || store.capabilityProvider(for: pod.id)?.hasPinnedChild(store: store) == true)
-                    let activeBarW: CGFloat = (edgeStrategy == .dynamicAccordion && isThisPodActive) ? (barW + 2.5) : barW
+                    let isBreathing = store.isBreathingActive(for: edge, totalHeight: Double(totalHeight))
+                    let activeBarW: CGFloat = (isBreathing && isThisPodActive) ? (barW + 2.5) : barW
 
                     let isPinned = store.isItemPinned(id: pod.id)
                     let isActive = shouldShowDrawer
@@ -134,7 +132,7 @@ public struct AmbientRailStripView: View {
                         }
                     }
                     .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
-                    .opacity(edgeStrategy == .dynamicAccordion && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
+                    .opacity(isBreathing && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
                     .offset(y: startY)
                     .zIndex(shouldShowDrawer ? 120 : (isThisPodActive ? 100 : 1))
                     .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: spanH)

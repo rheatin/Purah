@@ -15,7 +15,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         var activeDrawerItemId: String? = nil
         var activeDrawerPodId: String? = nil
         var pinnedItemIds: Set<String> = []
-        var overflowStrategy: RailOverflowStrategy = .dynamicAccordion
+        var isDynamicBreathingEnabled: Bool = true
+        var isAlwaysCompactBreathing: Bool = false
         var currentRailPage: Int = 0
         var cachedCardFrames: [CGRect] = []
         var cachedLayoutItems: [ResolvedPodLayoutItem] = []
@@ -64,7 +65,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let activeItemId = store.activeDrawerItemId
         let activePodId = store.activeDrawerPodId
         let pinned = store.pinnedDrawerItemIds
-        let strategy = store.overflowStrategy(for: edge)
+        let isBreathing = store.isDynamicBreathingEnabled
+        let isAlwaysCompact = store.isAlwaysCompactBreathing
         let page = store.currentRailPage(for: edge)
 
         // If bounds and active/pinned state are unchanged, throttle layout re-evaluation to 35ms (approx 30Hz)
@@ -73,7 +75,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
            cache.activeDrawerItemId == activeItemId,
            cache.activeDrawerPodId == activePodId,
            cache.pinnedItemIds == pinned,
-           cache.overflowStrategy == strategy,
+           cache.isDynamicBreathingEnabled == isBreathing,
+           cache.isAlwaysCompactBreathing == isAlwaysCompact,
            cache.currentRailPage == page,
            (now - cache.timestamp) < 0.035 {
             return
@@ -90,7 +93,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             activeDrawerItemId: activeItemId,
             activeDrawerPodId: activePodId,
             pinnedItemIds: pinned,
-            overflowStrategy: strategy,
+            isDynamicBreathingEnabled: isBreathing,
+            isAlwaysCompactBreathing: isAlwaysCompact,
             currentRailPage: page,
             cachedCardFrames: frames,
             cachedLayoutItems: layout,
@@ -236,9 +240,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let totalH = Double(bounds.height)
         let currentWindowY = totalH - Double(point.y)
 
-        let edgeStrategy = store.overflowStrategy(for: edge)
-        if edgeStrategy == .pagedSpaces,
-           (currentWindowY >= 20.0 && currentWindowY <= 44.0) || (currentWindowY >= (totalH - 44.0) && currentWindowY <= (totalH - 20.0)),
+        if ((currentWindowY >= 20.0 && currentWindowY <= 44.0) || (currentWindowY >= (totalH - 44.0) && currentWindowY <= (totalH - 20.0))),
            store.paginatedPods(for: edge, totalHeight: totalH).count > 1 {
             let portalHitW: CGFloat = max(barW + 8.0, 16.0)
             let isOverPortal = (edge == .right) ? (point.x >= bounds.maxX - portalHitW) : (point.x <= bounds.minX + barW + 8.0)
@@ -254,7 +256,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             let isOverPod = cache.cachedLayoutItems.contains(where: { item in
                 let topY = item.startY
                 let actualSpan: Double
-                let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+                let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
                 if !isSharedMajorSubBar,
                    store.isPodDecomposed(item.pod.id),
                    let provider = store.capabilityProvider(for: item.pod.id) {
@@ -263,7 +265,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let minChipH = Double(policy.minChipHeight)
                     let maxChipH = Double(policy.maxChipHeight)
                     let spacing = Double(policy.spacing)
-                    let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+                    let isDynamicAccordion = store.isBreathingActive(for: edge, totalHeight: totalH)
                     let maxAllowed = isDynamicAccordion
                         ? max(policy.maxRailItems, 1)
                         : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)

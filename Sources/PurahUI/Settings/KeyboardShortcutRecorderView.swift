@@ -4,14 +4,22 @@ import AppKit
 import Carbon
 import PurahCore
 
+public enum HotKeyTarget: Sendable {
+    case freeze
+    case sculptor
+}
+
 @MainActor
 @Observable
 public final class ShortcutRecorderState {
     public var isRecording: Bool = false
     public var pulseOutline: Bool = false
+    public var target: HotKeyTarget
     private var localMonitor: Any? = nil
 
-    public init() {}
+    public init(target: HotKeyTarget = .freeze) {
+        self.target = target
+    }
 
     public func startRecording(store: PurahWorkspaceStore) {
         isRecording = true
@@ -63,22 +71,35 @@ public final class ShortcutRecorderState {
     }
 
     public func applyShortcut(_ shortcut: HotKeyShortcut, store: PurahWorkspaceStore) {
-        store.hotKeyShortcut = shortcut
-        store.savePersistentState()
-        GlobalHotKeyManager.shared.register(shortcut: shortcut)
+        switch target {
+        case .freeze:
+            store.hotKeyShortcut = shortcut
+            store.savePersistentState()
+            GlobalHotKeyManager.shared.register(shortcut: shortcut)
+        case .sculptor:
+            store.sculptorHotKeyShortcut = shortcut
+            store.savePersistentState()
+            GlobalHotKeyManager.shared.registerSculptor(shortcut: shortcut)
+        }
     }
 
     public func resetToDefault(store: PurahWorkspaceStore) {
         if isRecording {
             stopRecording()
         }
-        applyShortcut(.defaultShortcut, store: store)
+        switch target {
+        case .freeze:
+            applyShortcut(.defaultShortcut, store: store)
+        case .sculptor:
+            applyShortcut(.defaultSculptorShortcut, store: store)
+        }
     }
 }
 
 @MainActor
 public struct KeyboardShortcutRecorderView: View {
     public let store: PurahWorkspaceStore
+    public let target: HotKeyTarget
     @State public var state: ShortcutRecorderState
 
     public var isRecording: Bool {
@@ -89,19 +110,74 @@ public struct KeyboardShortcutRecorderView: View {
         ThemeManager.shared.palette
     }
 
+    private var currentShortcut: HotKeyShortcut {
+        switch target {
+        case .freeze:
+            return store.hotKeyShortcut
+        case .sculptor:
+            return store.sculptorHotKeyShortcut
+        }
+    }
+
+    private var defaultShortcut: HotKeyShortcut {
+        switch target {
+        case .freeze:
+            return .defaultShortcut
+        case .sculptor:
+            return .defaultSculptorShortcut
+        }
+    }
+
+    private var titleText: String {
+        switch target {
+        case .freeze:
+            return "interaction.hotkeys.freeze.title".localized
+        case .sculptor:
+            return "interaction.hotkeys.sculptor.title".localized
+        }
+    }
+
+    private var subtitleText: String {
+        if state.isRecording {
+            return "interaction.hotkeys.recordingSubtitle".localized
+        }
+        switch target {
+        case .freeze:
+            return "interaction.hotkeys.freeze.subtitle".localized
+        case .sculptor:
+            return "interaction.hotkeys.sculptor.subtitle".localized
+        }
+    }
+
+    private var iconName: String {
+        switch target {
+        case .freeze:
+            return "command"
+        case .sculptor:
+            return "viewfinder.rectangular"
+        }
+    }
+
     public init(store: PurahWorkspaceStore, state: ShortcutRecorderState = ShortcutRecorderState()) {
         self.store = store
+        self.target = state.target
         self._state = State(initialValue: state)
+    }
+
+    public init(store: PurahWorkspaceStore, target: HotKeyTarget) {
+        self.store = store
+        self.target = target
+        self._state = State(initialValue: ShortcutRecorderState(target: target))
     }
 
     public var body: some View {
         HStack(spacing: 14) {
             // Hotkey label and state description
             VStack(alignment: .leading, spacing: 2) {
-                Text("Global Freeze Hotkey")
+                Text(titleText)
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
-                Text(state.isRecording ? "Press shortcut on keyboard (Esc to cancel)..." : "Click badge to record new shortcut")
+                Text(subtitleText)
                     .font(.caption2)
                     .foregroundColor(state.isRecording ? palette.primaryAccent : .secondary)
             }
@@ -122,14 +198,14 @@ public struct KeyboardShortcutRecorderView: View {
                             .fill(palette.primaryAccent)
                             .frame(width: 8, height: 8)
                             .opacity(state.pulseOutline ? 1.0 : 0.2)
-                        Text("Type shortcut...")
+                        Text("interaction.hotkeys.recordingPrompt".localized)
                             .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                             .foregroundColor(palette.primaryAccent)
                     } else {
-                        Image(systemName: "command")
+                        Image(systemName: iconName)
                             .font(.caption)
                             .foregroundColor(palette.primaryAccent)
-                        Text(store.hotKeyShortcut.displayString)
+                        Text(currentShortcut.displayString)
                             .font(.system(.subheadline, design: .monospaced).weight(.bold))
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
                     }
@@ -156,14 +232,14 @@ public struct KeyboardShortcutRecorderView: View {
             .buttonStyle(.tactile)
 
             // Reset to Default button
-            if store.hotKeyShortcut != .defaultShortcut {
+            if currentShortcut != defaultShortcut {
                 Button {
                     resetToDefault()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.caption2)
-                        Text("Reset to Default (⌥⇥)")
+                        Text("\("interaction.hotkeys.resetToDefault".localized) (\(defaultShortcut.displayString))")
                             .font(.caption.weight(.medium))
                     }
                     .foregroundColor(.secondary)
@@ -236,5 +312,18 @@ public struct KeyboardShortcutRecorderView: View {
             122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111
         ]
         return functionKeyCodes.contains(keyCode)
+    }
+}
+
+@MainActor
+public struct SculptorShortcutRecorderView: View {
+    public let store: PurahWorkspaceStore
+
+    public init(store: PurahWorkspaceStore) {
+        self.store = store
+    }
+
+    public var body: some View {
+        KeyboardShortcutRecorderView(store: store, target: .sculptor)
     }
 }

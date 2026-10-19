@@ -257,7 +257,7 @@ public struct PluginCenterSettingsView: View {
 
                         // Capacity Overload Alert
                         let currentEdge = store.pods.first(where: { $0.id == podId })?.edge ?? activePlugin.manifest.defaultEdge
-                        if store.isRailOverloaded(edge: currentEdge) {
+                        if store.capacityRatio(for: currentEdge) > 1.0 {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)

@@ -36,15 +36,22 @@ public final class PurahWorkspaceStore {
     public var pinnedDrawerItemIds: Set<String> = []
     public var isDraggingFromDrawer: Bool = false
     public var currentPreset: PodPreset = .balanced
-    public var leftRailOverflowStrategy: RailOverflowStrategy = .dynamicAccordion
-    public var rightRailOverflowStrategy: RailOverflowStrategy = .dynamicAccordion
+    public var isDynamicBreathingEnabled: Bool = true
+    public var isAlwaysCompactBreathing: Bool = false
 
-    public var railOverflowStrategy: RailOverflowStrategy {
-        get { leftRailOverflowStrategy }
-        set {
-            setOverflowStrategy(newValue, for: .left)
-            setOverflowStrategy(newValue, for: .right)
-        }
+    public func setDynamicBreathingEnabled(_ enabled: Bool) {
+        isDynamicBreathingEnabled = enabled
+        invalidateLayoutCache()
+        savePersistentState()
+        notifyCapacityWarningIfNeeded()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func setAlwaysCompactBreathing(_ enabled: Bool) {
+        isAlwaysCompactBreathing = enabled
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
     }
 
     public var leftRailPage: Int = 0
@@ -60,6 +67,7 @@ public final class PurahWorkspaceStore {
     public var externalDragTargetEdge: MountEdge? = nil
     public var externalDragTargetPodId: String? = nil
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
+    public var sculptorHotKeyShortcut: HotKeyShortcut = .defaultSculptorShortcut
 
     @ObservationIgnored
     public var onLiveRailEditingChanged: (@MainActor (Bool) -> Void)?
@@ -153,39 +161,35 @@ public final class PurahWorkspaceStore {
         }
 
         if let targetPodId = targetPodId, targetPodId != podId {
-            if overflowStrategy(for: targetEdge) != .decomposedMajorPod {
-                setOverflowStrategy(.decomposedMajorPod, for: targetEdge)
-            }
             addPodToMajorGroup(podId: podId, targetPodId: targetPodId)
             triggerControlHaptic(.levelChange)
         } else {
             triggerControlHaptic(.alignment)
+        }
+
+        let screenH = max(Double(availableScreenHeight(for: targetEdge)), 600.0)
+        let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
+        if pages.count > 1 {
+            setRailPage(pages.count - 1, for: targetEdge)
+            onCapacityWarningToast?("layout.toast.pageOverflow".localized)
+        } else if isBreathingActive(for: targetEdge, totalHeight: screenH) {
+            if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
+                lastCapacityAlertTime = Date()
+                onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+            }
         }
     }
 
     public func mountPod(id: String, to edge: MountEdge) {
         guard let idx = pods.firstIndex(where: { $0.id == id }) else { return }
         pods[idx].edge = edge
-        if overflowStrategy(for: edge) == .pagedSpaces {
-            pods[idx].pageIndex = max(0, currentRailPage(for: edge))
-        } else {
-            pods[idx].pageIndex = 0
-        }
+        pods[idx].pageIndex = max(0, currentRailPage(for: edge))
         if !pods[idx].isEnabled {
             togglePodEnabled(id: id)
         } else {
             invalidateLayoutCache()
             savePersistentState()
             onWindowsRebuildNeeded?()
-        }
-        if overflowStrategy(for: edge) == .decomposedMajorPod {
-            let enabledOnEdge = pods.filter { $0.edge == edge && $0.isEnabled }
-            if enabledOnEdge.allSatisfy({ $0.majorGroupId == nil }),
-               !userDefaults.bool(forKey: "purah.didSeedMajorGroups.\(edge.rawValue)") {
-                seedDefaultMajorGroupsIfNeeded(for: edge)
-                invalidateLayoutCache()
-                savePersistentState()
-            }
         }
     }
 
@@ -209,32 +213,6 @@ public final class PurahWorkspaceStore {
         if isRightBottomPortalRevealed != rightBottom { isRightBottomPortalRevealed = rightBottom }
     }
 
-    public func overflowStrategy(for edge: MountEdge) -> RailOverflowStrategy {
-        edge == .left ? leftRailOverflowStrategy : rightRailOverflowStrategy
-    }
-
-    public func setOverflowStrategy(_ strategy: RailOverflowStrategy, for edge: MountEdge) {
-        if edge == .left {
-            leftRailOverflowStrategy = strategy
-        } else {
-            rightRailOverflowStrategy = strategy
-        }
-        if strategy != .pagedSpaces {
-            setRailPage(0, for: edge)
-            for i in pods.indices where pods[i].edge == edge {
-                pods[i].pageIndex = 0
-            }
-        }
-        if strategy == .decomposedMajorPod {
-            seedDefaultMajorGroupsIfNeeded(for: edge)
-        } else if strategy == .pagedSpaces {
-            seedDefaultPagesIfNeeded(for: edge)
-        }
-        invalidateLayoutCache()
-        savePersistentState()
-        onWindowsRebuildNeeded?()
-    }
-
     public func currentRailPage(for edge: MountEdge) -> Int {
         edge == .left ? leftRailPage : rightRailPage
     }
@@ -254,38 +232,14 @@ public final class PurahWorkspaceStore {
         let clamped = max(0, pageIndex)
         let edge = pods[idx].edge
         pods[idx].pageIndex = clamped
+        let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
+        let minPt = Double(minimumDrawerHeight(for: id))
+        pods[idx].range.length = max(minPt / screenH, 0.10)
         normalizePageRanges(for: edge)
         setRailPage(clamped, for: edge)
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
-    }
-
-    public func seedDefaultPagesIfNeeded(for edge: MountEdge) {
-        let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
-            .sorted { pods[$0].range.start < pods[$1].range.start }
-        guard !enabledIndices.isEmpty else { return }
-        let allZero = enabledIndices.allSatisfy { pods[$0].pageIndex == 0 }
-        guard allZero else { return }
-
-        let screenH = Double(availableScreenHeight(for: edge))
-        let pageBudget = max(screenH - 96.0, 260.0)
-        let totalRequired = enabledIndices.reduce(0.0) { $0 + Double(minimumDrawerHeight(for: pods[$1].id)) + 12.0 }
-        guard totalRequired > pageBudget else { return }
-
-        var curPage = 0
-        var curHeight = 0.0
-        for idx in enabledIndices {
-            let podNeeded = Double(minimumDrawerHeight(for: pods[idx].id)) + 12.0
-            if curHeight > 0 && (curHeight + podNeeded) > pageBudget {
-                curPage += 1
-                curHeight = podNeeded
-            } else {
-                curHeight += podNeeded
-            }
-            pods[idx].pageIndex = curPage
-        }
-        normalizePageRanges(for: edge)
     }
 
     private func normalizePageRanges(for edge: MountEdge) {
@@ -300,7 +254,12 @@ public final class PurahWorkspaceStore {
             guard !sortedIndices.isEmpty else { continue }
             let totalGaps = Double(max(sortedIndices.count - 1, 0)) * gap
             let usableSpan = max(safeTotalSpan - totalGaps, Double(sortedIndices.count) * 0.08)
-            let weights = sortedIndices.map { max(pods[$0].range.length, pods[$0].minLength, 0.08) }
+            let avgShare = usableSpan / Double(sortedIndices.count)
+            let weights = sortedIndices.map { idx in
+                let curLen = pods[idx].range.length
+                let effectiveLen = (sortedIndices.count >= 2 && curLen > avgShare * 1.6) ? avgShare : curLen
+                return max(effectiveLen, pods[idx].minLength, 0.08)
+            }
             let weightSum = max(weights.reduce(0.0, +), 0.0001)
             var curStart = safeStart
             for (offset, idx) in sortedIndices.enumerated() {
@@ -705,31 +664,9 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
-    public func seedDefaultMajorGroupsIfNeeded(for edge: MountEdge) {
-        let seedKey = "purah.didSeedMajorGroups.\(edge.rawValue)"
-        guard !userDefaults.bool(forKey: seedKey) else { return }
-        let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
-            .sorted { pods[$0].range.start < pods[$1].range.start }
-        guard enabledIndices.count >= 2 else { return }
-        let allNil = enabledIndices.allSatisfy { pods[$0].majorGroupId == nil }
-        guard allNil else { return }
-
-        var groupCounter = 0
-        var i = 0
-        while i + 1 < enabledIndices.count {
-            let gid = "major_\(edge.rawValue)_\(groupCounter)"
-            pods[enabledIndices[i]].majorGroupId = gid
-            pods[enabledIndices[i + 1]].majorGroupId = gid
-            groupCounter += 1
-            i += 2
-        }
-    }
-
-    public func majorPodClusters(for edge: MountEdge) -> [[SlotPod]] {
-        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
-            .sorted { $0.range.start < $1.range.start }
+    public func clusterPods(_ pods: [SlotPod]) -> [[SlotPod]] {
         var clusters: [[SlotPod]] = []
-        for pod in railPods {
+        for pod in pods {
             if let gid = pod.majorGroupId {
                 if let last = clusters.last, last.first?.majorGroupId == gid {
                     clusters[clusters.count - 1].append(pod)
@@ -743,9 +680,14 @@ public final class PurahWorkspaceStore {
         return clusters
     }
 
+    public func majorPodClusters(for edge: MountEdge) -> [[SlotPod]] {
+        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        return clusterPods(railPods)
+    }
+
     public func isInSharedMajorPod(podId: String) -> Bool {
         guard let pod = pods.first(where: { $0.id == podId && $0.isEnabled }) else { return false }
-        guard overflowStrategy(for: pod.edge) == .decomposedMajorPod else { return false }
         if let gid = pod.majorGroupId {
             let peers = pods.filter { $0.edge == pod.edge && $0.isEnabled && $0.majorGroupId == gid }
             if peers.count >= 2 { return true }
@@ -856,7 +798,7 @@ public final class PurahWorkspaceStore {
             // Frame 1 (~16ms): Now that NSPanel is 580pt wide and anchored at final screen coordinates:
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.pendingHoverPodId == podId else { return }
-                if self.overflowStrategy(for: targetEdge) == .dynamicAccordion {
+                if self.isBreathingActive(for: targetEdge) {
                     // Stage 1: Stretch rail bar in-place under cursor
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
                         self.hoveredPodId = podId
@@ -1347,9 +1289,38 @@ public final class PurahWorkspaceStore {
         return Double(required / avail)
     }
 
-    public func isRailOverloaded(edge: MountEdge) -> Bool {
-        guard overflowStrategy(for: edge) == .strictCeiling else { return false }
-        return capacityRatio(for: edge) > 1.0
+    public func isBreathingActive(for edge: MountEdge, totalHeight: Double? = nil) -> Bool {
+        guard isDynamicBreathingEnabled else { return false }
+        if isAlwaysCompactBreathing { return true }
+        let refH = totalHeight ?? lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
+        let pages = paginatedPods(for: edge, totalHeight: refH)
+        guard !pages.isEmpty else { return false }
+        let curPage = min(max(currentRailPage(for: edge), 0), pages.count - 1)
+        let pagePods = pages[curPage]
+        let clusters = clusterPods(pagePods)
+        let safeTop = pages.count > 1 ? 48.0 : 16.0
+        let safeBottom = pages.count > 1 ? (refH - 48.0) : (refH - 16.0)
+        let availableH = max(safeBottom - safeTop, 160.0)
+        let clusterGap = 8.0
+        let totalClusterGaps = Double(max(clusters.count - 1, 0)) * clusterGap
+        let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
+
+        let sumStandard = clusters.reduce(0.0) { acc, cluster in
+            if cluster.count >= 2 {
+                let subGap = 3.0
+                let totalSubGaps = Double(cluster.count - 1) * subGap
+                let sumSubLengths = cluster.reduce(0.0) { $0 + max($1.range.length * refH, 22.0) } + totalSubGaps
+                let hasManual = isLiveRailEditingMode || cluster.contains(where: { $0.minLength <= 0.06 })
+                let minFloor = hasManual ? max(96.0, Double(cluster.count) * 24.0) : 155.0
+                return acc + max(sumSubLengths, minFloor)
+            } else {
+                let pod = cluster[0]
+                let minFloor = (isLiveRailEditingMode || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                let maxVis = maxVisualHeight(for: pod.id, totalHeight: refH)
+                return acc + min(max(pod.range.length * refH, minFloor), max(maxVis, minFloor))
+            }
+        }
+        return sumStandard > netAvailable
     }
 
     public var onCapacityWarningToast: ((String) -> Void)?
@@ -1364,16 +1335,18 @@ public final class PurahWorkspaceStore {
         if let last = lastCapacityAlertTime, now.timeIntervalSince(last) < 6.0 {
             return
         }
-        if isRailOverloaded(edge: .left) {
-            lastCapacityAlertTime = now
-            let req = Int(totalRequiredHeight(for: .left))
-            let avail = Int(availableScreenHeight(for: .left))
-            onCapacityWarningToast?("⚠️ Left rail capacity overload (\(req)pt / \(avail)pt available). Consider moving pods to the right rail.")
-        } else if isRailOverloaded(edge: .right) {
-            lastCapacityAlertTime = now
-            let req = Int(totalRequiredHeight(for: .right))
-            let avail = Int(availableScreenHeight(for: .right))
-            onCapacityWarningToast?("⚠️ Right rail capacity overload (\(req)pt / \(avail)pt available). Consider moving pods to the left rail.")
+        for edge in [MountEdge.left, MountEdge.right] {
+            let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
+            let pages = paginatedPods(for: edge, totalHeight: screenH)
+            if pages.count > 1 {
+                lastCapacityAlertTime = now
+                onCapacityWarningToast?("layout.toast.pageOverflow".localized)
+                return
+            } else if isBreathingActive(for: edge, totalHeight: screenH) {
+                lastCapacityAlertTime = now
+                onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+                return
+            }
         }
     }
 
@@ -1433,7 +1406,7 @@ public final class PurahWorkspaceStore {
 
         guard isHoveredActive || isPinned else { return false }
 
-        if overflowStrategy(for: item.pod.edge) == .decomposedMajorPod, let groupId = item.majorGroupId {
+        if let groupId = item.majorGroupId {
             let groupPeers = allItems.filter { $0.majorGroupId == groupId }
             if groupPeers.count > 1 {
                 if let hoveredPeer = groupPeers.first(where: { peer in
@@ -1456,40 +1429,73 @@ public final class PurahWorkspaceStore {
 
     public func paginatedPods(for edge: MountEdge, totalHeight: Double) -> [[SlotPod]] {
         lastKnownTotalHeight[edge] = totalHeight
-        let allEdgePods = pods.filter { $0.edge == edge && $0.isEnabled }
-            .sorted { $0.range.start < $1.range.start }
+        var allEdgePods = pods.filter { $0.edge == edge && $0.isEnabled }
+            .sorted { (max(0, $0.pageIndex), $0.range.start) < (max(0, $1.pageIndex), $1.range.start) }
         guard !allEdgePods.isEmpty else { return [] }
 
-        let hasExplicitPages = allEdgePods.contains { $0.pageIndex > 0 }
-        if hasExplicitPages {
-            let grouped = Dictionary(grouping: allEdgePods, by: { max(0, $0.pageIndex) })
-            let sortedPageKeys = grouped.keys.sorted()
-            return sortedPageKeys.compactMap { key in
-                let pagePods = (grouped[key] ?? []).sorted { $0.range.start < $1.range.start }
-                return pagePods.isEmpty ? nil : pagePods
+        // Ensure pods sharing the same majorGroupId have the same pageIndex (using first member's pageIndex)
+        var groupPageMap: [String: Int] = [:]
+        for pod in allEdgePods {
+            if let gid = pod.majorGroupId, groupPageMap[gid] == nil {
+                groupPageMap[gid] = max(0, pod.pageIndex)
             }
         }
+        for i in allEdgePods.indices {
+            if let gid = allEdgePods[i].majorGroupId, let pIdx = groupPageMap[gid] {
+                allEdgePods[i].pageIndex = pIdx
+            }
+        }
+        allEdgePods.sort { (max(0, $0.pageIndex), $0.range.start) < (max(0, $1.pageIndex), $1.range.start) }
+
+        let explicitGroups = Dictionary(grouping: allEdgePods, by: { max(0, $0.pageIndex) })
+        let sortedPageKeys = explicitGroups.keys.sorted()
 
         let pageBudget = max(totalHeight - 96.0, 260.0)
         var pages: [[SlotPod]] = []
-        var currentPage: [SlotPod] = []
-        var currentHeight: Double = 0.0
 
-        for pod in allEdgePods {
-            let minH = Double(minimumDrawerHeight(for: pod.id))
-            let podNeeded = minH + 12.0
-            if !currentPage.isEmpty && (currentHeight + podNeeded) > pageBudget {
+        for pageKey in sortedPageKeys {
+            guard let rawPagePods = explicitGroups[pageKey], !rawPagePods.isEmpty else { continue }
+            let pagePods = rawPagePods.sorted { $0.range.start < $1.range.start }
+            let clusters = clusterPods(pagePods)
+
+            var currentPage: [SlotPod] = []
+            var currentHeight: Double = 0.0
+
+            for cluster in clusters {
+                let clusterNeeded: Double
+                if !isDynamicBreathingEnabled {
+                    if cluster.count >= 2 {
+                        let sumSub = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 24.0) }
+                        let gaps = Double(cluster.count - 1) * 3.0
+                        clusterNeeded = max(sumSub + gaps, 155.0)
+                    } else {
+                        let pod = cluster[0]
+                        clusterNeeded = max(pod.range.length * totalHeight, Double(minimumDrawerHeight(for: pod.id)))
+                    }
+                } else {
+                    if cluster.count >= 2 {
+                        clusterNeeded = Double(cluster.count) * 26.0
+                    } else {
+                        clusterNeeded = 42.0
+                    }
+                }
+
+                let addition = currentPage.isEmpty ? clusterNeeded : (clusterNeeded + 8.0)
+                if !currentPage.isEmpty && (currentHeight + addition) > (pageBudget + 0.5) {
+                    pages.append(currentPage)
+                    currentPage = cluster
+                    currentHeight = clusterNeeded
+                } else {
+                    currentPage.append(contentsOf: cluster)
+                    currentHeight += addition
+                }
+            }
+
+            if !currentPage.isEmpty {
                 pages.append(currentPage)
-                currentPage = [pod]
-                currentHeight = podNeeded
-            } else {
-                currentPage.append(pod)
-                currentHeight += podNeeded
             }
         }
-        if !currentPage.isEmpty {
-            pages.append(currentPage)
-        }
+
         return pages
     }
 
@@ -1497,7 +1503,8 @@ public final class PurahWorkspaceStore {
         let height: Double
         let podsCount: Int
         let enabledSignature: String
-        let strategy: RailOverflowStrategy
+        let isDynamicBreathingEnabled: Bool
+        let isAlwaysCompactBreathing: Bool
         let hoveredPodId: String?
         let activePodId: String?
         let activeItemId: String?
@@ -1525,13 +1532,13 @@ public final class PurahWorkspaceStore {
             "\($0.id):\($0.range.start):\($0.range.length):\($0.pageIndex):\($0.majorGroupId ?? ""):\($0.preferredExpandedHeight ?? 0)"
         }.joined(separator: "|")
         let curPage = currentRailPage(for: edge)
-        let edgeStrategy = overflowStrategy(for: edge)
 
         if let cached = cachedResolvedLayouts[edge],
            abs(cached.height - totalHeight) < 0.5,
            cached.podsCount == allEdgePods.count,
            cached.enabledSignature == signature,
-           cached.strategy == edgeStrategy,
+           cached.isDynamicBreathingEnabled == isDynamicBreathingEnabled,
+           cached.isAlwaysCompactBreathing == isAlwaysCompactBreathing,
            cached.hoveredPodId == hoveredPodId,
            cached.activePodId == activeDrawerPodId,
            cached.activeItemId == activeDrawerItemId,
@@ -1541,430 +1548,357 @@ public final class PurahWorkspaceStore {
             return cached.items
         }
 
-        let items: [ResolvedPodLayoutItem]
-        switch edgeStrategy {
-        case .dynamicAccordion:
-            items = solveDynamicAccordionLayout(edgePods: allEdgePods, edge: edge, totalHeight: totalHeight)
-        case .decomposedMajorPod:
-            items = solveDecomposedMajorPodLayout(edgePods: allEdgePods, edge: edge, totalHeight: totalHeight)
-        case .pagedSpaces:
-            items = solvePagedSpacesLayout(edge: edge, totalHeight: totalHeight)
-        case .strictCeiling:
-            items = ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
-                pods: pods,
-                on: edge,
-                totalHeight: totalHeight,
-                gap: 8.0,
-                safeTop: 16.0,
-                safeBottom: totalHeight - 16.0
-            ) { [weak self] pod in
-                guard let self = self else { return max(pod.range.length * totalHeight, 36.0) }
-                return Double(self.effectivePodSpan(for: pod, totalHeight: CGFloat(totalHeight)))
+        let pages = paginatedPods(for: edge, totalHeight: totalHeight)
+        guard !pages.isEmpty else { return [] }
+
+        let pageIdx = min(max(curPage, 0), pages.count - 1)
+        let pagePods = pages[pageIdx]
+        guard !pagePods.isEmpty else { return [] }
+
+        let safeTop = isLiveRailEditingMode ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
+        let safeBottom = pages.count > 1 ? (totalHeight - 48.0) : (totalHeight - 16.0)
+        let availableH = max(safeBottom - safeTop, 160.0)
+
+        let clusters = clusterPods(pagePods)
+        guard !clusters.isEmpty else { return [] }
+
+        var standardSpans: [Double] = []
+        var clusterMaxVisuals: [Double] = []
+
+        for (_, cluster) in clusters.enumerated() {
+            if cluster.count == 1 {
+                let pod = cluster[0]
+                let minFloor = (isLiveRailEditingMode || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                let maxVis = maxVisualHeight(for: pod.id, totalHeight: totalHeight)
+                let span = min(max(pod.range.length * totalHeight, minFloor), max(maxVis, minFloor))
+                standardSpans.append(span)
+                clusterMaxVisuals.append(max(maxVis, minFloor))
+            } else {
+                let subGap = 3.0
+                let totalSubGaps = Double(cluster.count - 1) * subGap
+                let sumSubLengths = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 22.0) } + totalSubGaps
+                let hasManualResize = isLiveRailEditingMode || cluster.contains(where: { $0.minLength <= 0.06 })
+                let clusterMinFloor = hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
+                let span = max(sumSubLengths, clusterMinFloor)
+                standardSpans.append(span)
+                let maxVis = max(cluster.reduce(0.0) { $0 + maxVisualHeight(for: $1.id, totalHeight: totalHeight) } + totalSubGaps, span)
+                clusterMaxVisuals.append(maxVis)
             }
         }
 
-        cachedResolvedLayouts[edge] = LayoutCacheEntry(
-            height: totalHeight,
-            podsCount: allEdgePods.count,
-            enabledSignature: signature,
-            strategy: edgeStrategy,
-            hoveredPodId: hoveredPodId,
-            activePodId: activeDrawerPodId,
-            activeItemId: activeDrawerItemId,
-            pinnedIds: pinnedDrawerItemIds,
-            page: curPage,
-            items: items,
-            timestamp: now
-        )
-        return items
-    }
+        let clusterGap = 8.0
+        let totalClusterGaps = Double(max(clusters.count - 1, 0)) * clusterGap
+        let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
+        let sumStandard = standardSpans.reduce(0.0, +)
+        let isBreathingActiveOnPage = !isLiveRailEditingMode && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumStandard > netAvailable)
 
-    private func solveDynamicAccordionLayout(edgePods: [SlotPod], edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
-        let safeTop = 16.0
-        let safeBottom = totalHeight - 16.0
-        let availableH = max(safeBottom - safeTop, 120.0)
-        let gap = 8.0
-        let totalGaps = Double(max(edgePods.count - 1, 0)) * gap
+        let clusterWeights = clusters.map { cl in cl.reduce(0.0) { $0 + max($1.range.length, 0.035) } }
 
-        // High-density accordion solver: compute idleSpans directly from user-configured pod.range.length without forced fillScale inflation
-        let netAvailable = max(availableH - totalGaps, Double(edgePods.count) * 20.0)
-        let minIdleBaseBarH = min(28.0, netAvailable / Double(edgePods.count))
-        let weights = edgePods.map { pod in
-            max(pod.range.length, 0.035)
-        }
-        let maxVisuals = edgePods.map { maxVisualHeight(for: $0.id, totalHeight: totalHeight) }
-        var idleSpans = edgePods.enumerated().map { idx, pod in
-            min(max(pod.range.length * totalHeight, minIdleBaseBarH), maxVisuals[idx])
-        }
-        let sumIdleSpans = idleSpans.reduce(0.0, +)
-        if sumIdleSpans > netAvailable && sumIdleSpans > 0 {
-            let avgSlotH = netAvailable / Double(max(edgePods.count, 1))
-            let lockedMask = edgePods.indices.map { i in
-                edgePods[i].minLength <= 0.06 && idleSpans[i] <= avgSlotH
+        var clusterSpans = Array(repeating: 0.0, count: clusters.count)
+        var clusterStartYs = Array(repeating: 0.0, count: clusters.count)
+
+        let expandedFlags = clusters.map { cl in cl.contains(where: { isPodExpanded($0) }) }
+        let expandedCount = expandedFlags.filter { $0 }.count
+
+        var preferredExpandedSpans: [Double] = []
+        for (cIdx, cluster) in clusters.enumerated() {
+            if cluster.count == 1 {
+                let pod = cluster[0]
+                let pref = Double(preferredDrawerHeight(for: pod.id))
+                preferredExpandedSpans.append(min(pref, clusterMaxVisuals[cIdx]))
+            } else {
+                let activeSub = cluster.first(where: { isPodExpanded($0) }) ?? cluster[0]
+                let pref = Double(preferredDrawerHeight(for: activeSub.id))
+                preferredExpandedSpans.append(max(pref, 180.0))
             }
-            let lockedSum = edgePods.indices.reduce(0.0) { acc, i in
-                acc + (lockedMask[i] ? idleSpans[i] : 0.0)
-            }
-            let scalableSum = sumIdleSpans - lockedSum
-            let remainingAvailable = max(netAvailable - lockedSum, 20.0)
-            if scalableSum > remainingAvailable && scalableSum > 0 {
-                let scale = remainingAvailable / scalableSum
-                idleSpans = idleSpans.enumerated().map { i, val in
-                    lockedMask[i] ? val : max(val * scale, 20.0)
+        }
+
+        let hasExpandingCluster = clusters.indices.contains(where: { idx in
+            expandedFlags[idx] && preferredExpandedSpans[idx] > standardSpans[idx]
+        })
+
+        if isBreathingActiveOnPage || (isDynamicBreathingEnabled && !isLiveRailEditingMode && hasExpandingCluster) {
+            var idleClusterSpans: [Double]
+            if isAlwaysCompactBreathing {
+                idleClusterSpans = clusters.indices.map { cIdx in
+                    min(standardSpans[cIdx], max(42.0, Double(clusters[cIdx].count) * 28.0))
+                }
+                let sumIdle = idleClusterSpans.reduce(0.0, +)
+                if sumIdle > netAvailable && sumIdle > 0 {
+                    let scale = netAvailable / sumIdle
+                    idleClusterSpans = idleClusterSpans.enumerated().map { idx, val in
+                        max(val * scale, max(20.0, Double(clusters[idx].count) * 20.0))
+                    }
+                }
+            } else if sumStandard > netAvailable {
+                let avgSlotH = netAvailable / Double(max(clusters.count, 1))
+                let lockedMask = clusters.indices.map { i in
+                    clusters[i].count == 1 && clusters[i][0].minLength <= 0.06 && standardSpans[i] <= avgSlotH
+                }
+                let lockedSum = clusters.indices.reduce(0.0) { acc, i in
+                    acc + (lockedMask[i] ? standardSpans[i] : 0.0)
+                }
+                let scalableSum = sumStandard - lockedSum
+                let remainingAvailable = max(netAvailable - lockedSum, 20.0)
+                if scalableSum > remainingAvailable && scalableSum > 0 {
+                    let scale = remainingAvailable / scalableSum
+                    idleClusterSpans = clusters.indices.map { i in
+                        if lockedMask[i] { return standardSpans[i] }
+                        let floor = max(20.0, Double(clusters[i].count) * 20.0)
+                        return max(standardSpans[i] * scale, floor)
+                    }
+                } else {
+                    let scale = netAvailable / sumStandard
+                    idleClusterSpans = clusters.indices.map { i in
+                        let floor = max(20.0, Double(clusters[i].count) * 20.0)
+                        return max(standardSpans[i] * scale, floor)
+                    }
                 }
             } else {
-                let scale = netAvailable / sumIdleSpans
-                idleSpans = idleSpans.map { $0 * scale }
+                idleClusterSpans = standardSpans
             }
-        }
 
-        let fullSpans: [Double] = edgePods.enumerated().map { idx, pod in
-            let pref = Double(preferredDrawerHeight(for: pod.id))
-            let cappedPref = min(pref, maxVisuals[idx])
-            return max(idleSpans[idx], cappedPref)
-        }
-
-        var idleStartYs: [Double] = []
-        var curIdleY = safeTop
-        for span in idleSpans {
-            idleStartYs.append(curIdleY)
-            curIdleY += span + gap
-        }
-
-        let expandedFlags = edgePods.map { isPodExpanded($0) }
-        let expandedCount = expandedFlags.filter { $0 }.count
-        let idleCount = edgePods.count - expandedCount
-
-        if expandedCount == 0 {
-            return (0..<edgePods.count).map { idx in
-                ResolvedPodLayoutItem(pod: edgePods[idx], startY: idleStartYs[idx], spanH: idleSpans[idx])
-            }
-        }
-
-        var spans = Array(repeating: 0.0, count: edgePods.count)
-        let minIdleBarH = min(26.0, (netAvailable * 0.45) / Double(max(idleCount, 1)))
-        let idleReserved = Double(idleCount) * minIdleBarH
-        let expandedBudget = max(netAvailable - idleReserved, 160.0)
-
-        let requestedExpanded: [Double] = edgePods.enumerated().map { idx, _ in
-            expandedFlags[idx] ? fullSpans[idx] : 0.0
-        }
-        let totalRequestedExpanded = requestedExpanded.reduce(0.0, +)
-
-        let primaryHoveredId = hoveredPodId ?? activeDrawerPodId ?? activePod?.id
-        let anchorIdx = edgePods.indices.first(where: { edgePods[$0].id == primaryHoveredId && expandedFlags[$0] })
-            ?? expandedFlags.firstIndex(of: true)
-
-        if expandedCount == 1, let anchorIdx = anchorIdx {
-            let aboveCount = anchorIdx
-            let belowCount = edgePods.count - 1 - anchorIdx
-            let minAboveSpace = Double(aboveCount) * (18.0 + gap)
-            let minBelowSpace = Double(belowCount) * (18.0 + gap)
-            let maxSingleSpan = max(availableH - minAboveSpace - minBelowSpace, 160.0)
-            let anchorSpan = min(fullSpans[anchorIdx], maxSingleSpan)
-            spans[anchorIdx] = anchorSpan
-
-            let idleTop = idleStartYs[anchorIdx]
-            let idleBottom = idleTop + idleSpans[anchorIdx]
-            let idleCenter = (idleTop + idleBottom) * 0.5
-
-            var idealAnchorStart = idleCenter - (anchorSpan * 0.5)
-            // Ensure the expanded bar covers the entire idle bar [idleTop, idleBottom] so the cursor never falls outside!
-            if idealAnchorStart > idleTop { idealAnchorStart = idleTop }
-            if idealAnchorStart + anchorSpan < idleBottom { idealAnchorStart = idleBottom - anchorSpan }
-            let minAllowedAnchorStart = safeTop + minAboveSpace
-            let maxAllowedAnchorStart = max(minAllowedAnchorStart, safeBottom - anchorSpan - minBelowSpace)
-            let anchorStartY = min(max(idealAnchorStart, minAllowedAnchorStart), maxAllowedAnchorStart)
-
-            var startYs = Array(repeating: 0.0, count: edgePods.count)
-            startYs[anchorIdx] = anchorStartY
-
-            if aboveCount > 0 {
-                let aboveGaps = Double(max(aboveCount - 1, 0)) * gap
-                let aboveNetSpace = max(anchorStartY - gap - safeTop - aboveGaps, Double(aboveCount) * 18.0)
-                let aboveWeightSum = max((0..<aboveCount).reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                var aboveSpans = (0..<aboveCount).map { i in
-                    min(max(aboveNetSpace * (weights[i] / aboveWeightSum), 18.0), maxVisuals[i])
-                }
-                let aboveSum = aboveSpans.reduce(0.0, +)
-                if aboveSum > aboveNetSpace && aboveSum > 0 {
-                    let scale = aboveNetSpace / aboveSum
-                    aboveSpans = aboveSpans.map { $0 * scale }
-                } else if aboveSum < aboveNetSpace {
-                    let leftover = aboveNetSpace - aboveSum
-                    let uncapped = (0..<aboveCount).filter { aboveSpans[$0] < maxVisuals[$0] - 0.5 }
-                    if !uncapped.isEmpty {
-                        let uncappedWeight = max(uncapped.reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                        for i in uncapped {
-                            aboveSpans[i] = min(aboveSpans[i] + leftover * (weights[i] / uncappedWeight), maxVisuals[i])
-                        }
-                    }
-                    let finalAboveSum = aboveSpans.reduce(0.0, +)
-                    if finalAboveSum < aboveNetSpace && aboveCount > 0 {
-                        let extraEach = (aboveNetSpace - finalAboveSum) / Double(aboveCount)
-                        for i in 0..<aboveCount {
-                            aboveSpans[i] += extraEach
-                        }
-                    }
-                }
+            var idleClusterStartYs: [Double] = []
+            if sumStandard > netAvailable || isAlwaysCompactBreathing {
                 var curY = safeTop
-                for i in 0..<aboveCount {
-                    spans[i] = aboveSpans[i]
-                    startYs[i] = curY
-                    curY += aboveSpans[i] + gap
+                for span in idleClusterSpans {
+                    idleClusterStartYs.append(curY)
+                    curY += span + clusterGap
                 }
-            }
-
-            if belowCount > 0 {
-                let belowStart = anchorStartY + anchorSpan + gap
-                let belowGaps = Double(max(belowCount - 1, 0)) * gap
-                let belowNetSpace = max(safeBottom - belowStart - belowGaps, Double(belowCount) * 18.0)
-                let belowIndices = Array((anchorIdx + 1)..<edgePods.count)
-                let belowWeightSum = max(belowIndices.reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                var belowSpans = belowIndices.map { i in
-                    min(max(belowNetSpace * (weights[i] / belowWeightSum), 18.0), maxVisuals[i])
+            } else {
+                var curY = safeTop
+                for cIdx in 0..<clusters.count {
+                    let desired = clusters[cIdx][0].range.start * totalHeight
+                    let startY = max(desired, curY)
+                    idleClusterStartYs.append(startY)
+                    curY = startY + idleClusterSpans[cIdx] + clusterGap
                 }
-                let belowSum = belowSpans.reduce(0.0, +)
-                if belowSum > belowNetSpace && belowSum > 0 {
-                    let scale = belowNetSpace / belowSum
-                    belowSpans = belowSpans.map { $0 * scale }
-                } else if belowSum < belowNetSpace {
-                    let leftover = belowNetSpace - belowSum
-                    let uncappedOffsets = belowIndices.indices.filter { belowSpans[$0] < maxVisuals[belowIndices[$0]] - 0.5 }
-                    if !uncappedOffsets.isEmpty {
-                        let uncappedWeight = max(uncappedOffsets.reduce(0.0) { $0 + weights[belowIndices[$1]] }, 0.0001)
-                        for offset in uncappedOffsets {
-                            let podIdx = belowIndices[offset]
-                            belowSpans[offset] = min(
-                                belowSpans[offset] + leftover * (weights[podIdx] / uncappedWeight),
-                                maxVisuals[podIdx]
-                            )
-                        }
-                    }
-                    let finalBelowSum = belowSpans.reduce(0.0, +)
-                    if finalBelowSum < belowNetSpace && belowCount > 0 {
-                        let extraEach = (belowNetSpace - finalBelowSum) / Double(belowCount)
-                        for offset in 0..<belowCount {
-                            belowSpans[offset] += extraEach
+                if let lastStart = idleClusterStartYs.last, let lastSpan = idleClusterSpans.last {
+                    let overflow = (lastStart + lastSpan) - safeBottom
+                    if overflow > 0 {
+                        var targetBottom = safeBottom
+                        for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
+                            let maxAllowed = targetBottom - idleClusterSpans[cIdx]
+                            idleClusterStartYs[cIdx] = min(idleClusterStartYs[cIdx], maxAllowed)
+                            targetBottom = idleClusterStartYs[cIdx] - clusterGap
                         }
                     }
                 }
-                var curY = belowStart
-                for (offset, podIdx) in belowIndices.enumerated() {
-                    spans[podIdx] = belowSpans[offset]
-                    startYs[podIdx] = curY
-                    curY += belowSpans[offset] + gap
+                for cIdx in 0..<clusters.count {
+                    if cIdx == 0 {
+                        idleClusterStartYs[cIdx] = max(idleClusterStartYs[cIdx], safeTop)
+                    } else {
+                        idleClusterStartYs[cIdx] = max(idleClusterStartYs[cIdx], idleClusterStartYs[cIdx - 1] + idleClusterSpans[cIdx - 1] + clusterGap)
+                    }
                 }
             }
 
-            return (0..<edgePods.count).map { idx in
-                ResolvedPodLayoutItem(pod: edgePods[idx], startY: startYs[idx], spanH: spans[idx])
-            }
-        }
-
-        // Multi-pod expansion (e.g. 1 Pinned pod + 1 Hovered pod)
-        if totalRequestedExpanded <= expandedBudget {
-            for idx in edgePods.indices where expandedFlags[idx] {
-                spans[idx] = requestedExpanded[idx]
-            }
-        } else {
-            var remainingExpandedBudget = expandedBudget
-            var pinnedExpandedIndices: [Int] = []
-
-            for idx in edgePods.indices where expandedFlags[idx] {
-                if idx == anchorIdx {
-                    let minH = Double(max(minimumDrawerHeight(for: edgePods[idx].id), 120.0))
-                    let granted = min(max(fullSpans[idx], minH), expandedBudget * 0.55)
-                    spans[idx] = max(granted, 110.0)
-                    remainingExpandedBudget = max(expandedBudget - spans[idx], 90.0)
+            let fullClusterSpans: [Double] = clusters.indices.map { cIdx in
+                if clusters[cIdx].count == 1 {
+                    let pod = clusters[cIdx][0]
+                    return max(idleClusterSpans[cIdx], min(Double(preferredDrawerHeight(for: pod.id)), clusterMaxVisuals[cIdx]))
                 } else {
-                    pinnedExpandedIndices.append(idx)
+                    let activeSub = clusters[cIdx].first(where: { isPodExpanded($0) }) ?? clusters[cIdx][0]
+                    return max(idleClusterSpans[cIdx], standardSpans[cIdx], Double(preferredDrawerHeight(for: activeSub.id)), 180.0)
                 }
             }
 
-            if !pinnedExpandedIndices.isEmpty {
-                let share = remainingExpandedBudget / Double(pinnedExpandedIndices.count)
-                for idx in pinnedExpandedIndices {
-                    spans[idx] = max(share, 110.0)
-                }
-            }
-        }
+            if expandedCount == 0 {
+                clusterSpans = idleClusterSpans
+                clusterStartYs = idleClusterStartYs
+            } else {
+                let primaryHoveredId = hoveredPodId ?? activeDrawerPodId ?? activePod?.id
+                let anchorIdx = clusters.indices.first(where: { idx in
+                    expandedFlags[idx] && clusters[idx].contains(where: { $0.id == primaryHoveredId })
+                }) ?? expandedFlags.firstIndex(of: true) ?? 0
 
-        for idx in edgePods.indices where !expandedFlags[idx] {
-            spans[idx] = 18.0
-        }
+                if expandedCount == 1 {
+                    let aboveCount = anchorIdx
+                    let belowCount = clusters.count - 1 - anchorIdx
+                    let minAboveSpace = (0..<aboveCount).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) + clusterGap }
+                    let minBelowSpace = ((anchorIdx + 1)..<clusters.count).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) + clusterGap }
+                    let maxSingleSpan = max(availableH - minAboveSpace - minBelowSpace, 160.0)
+                    let anchorSpan = min(max(fullClusterSpans[anchorIdx], idleClusterSpans[anchorIdx]), maxSingleSpan)
 
-        let minSumSpans = spans.reduce(0.0, +)
-        if minSumSpans > netAvailable && minSumSpans > 0 {
-            let scale = netAvailable / minSumSpans
-            spans = spans.map { $0 * scale }
-        } else if idleCount > 0 {
-            let totalSlack = max(netAvailable - minSumSpans, 0.0)
-            if let anchorIdx = anchorIdx {
-                let aboveIdleIndices = (0..<anchorIdx).filter { !expandedFlags[$0] }
-                let belowIdleIndices = ((anchorIdx + 1)..<edgePods.count).filter { !expandedFlags[$0] }
+                    clusterSpans[anchorIdx] = anchorSpan
 
-                if !aboveIdleIndices.isEmpty && !belowIdleIndices.isEmpty {
-                    let minAnchorY = safeTop + (0..<anchorIdx).reduce(0.0) { $0 + spans[$1] + gap }
-                    let anchorSpan = spans[anchorIdx]
-                    let idleTop = idleStartYs[anchorIdx]
-                    let idleBottom = idleTop + idleSpans[anchorIdx]
+                    let idleTop = idleClusterStartYs[anchorIdx]
+                    let idleBottom = idleTop + idleClusterSpans[anchorIdx]
                     let idleCenter = (idleTop + idleBottom) * 0.5
                     var idealAnchorStart = idleCenter - (anchorSpan * 0.5)
                     if idealAnchorStart > idleTop { idealAnchorStart = idleTop }
                     if idealAnchorStart + anchorSpan < idleBottom { idealAnchorStart = idleBottom - anchorSpan }
+                    let minAllowedAnchorStart = safeTop + minAboveSpace
+                    let maxAllowedAnchorStart = max(minAllowedAnchorStart, safeBottom - anchorSpan - minBelowSpace)
+                    let anchorStartY = min(max(idealAnchorStart, minAllowedAnchorStart), maxAllowedAnchorStart)
 
-                    let slackBefore = min(max(idealAnchorStart - minAnchorY, 0.0), totalSlack)
-                    let slackAfter = max(totalSlack - slackBefore, 0.0)
+                    clusterStartYs[anchorIdx] = anchorStartY
 
-                    let aboveWeightSum = max(aboveIdleIndices.reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                    for idx in aboveIdleIndices {
-                        let w = weights[idx]
-                        spans[idx] = spans[idx] + slackBefore * (w / aboveWeightSum)
+                    if aboveCount > 0 {
+                        let aboveGaps = Double(max(aboveCount - 1, 0)) * clusterGap
+                        let minAboveSum = (0..<aboveCount).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
+                        let aboveNetSpace = max(anchorStartY - clusterGap - safeTop - aboveGaps, minAboveSum)
+                        let aboveWeightSum = max((0..<aboveCount).reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
+                        var aboveSpans = (0..<aboveCount).map { i in
+                            let minH = max(18.0, Double(clusters[i].count) * 18.0)
+                            return min(max(aboveNetSpace * (clusterWeights[i] / aboveWeightSum), minH), clusterMaxVisuals[i])
+                        }
+                        let aboveSum = aboveSpans.reduce(0.0, +)
+                        if aboveSum > aboveNetSpace && aboveSum > 0 {
+                            let scale = aboveNetSpace / aboveSum
+                            aboveSpans = aboveSpans.map { $0 * scale }
+                        } else if aboveSum < aboveNetSpace {
+                            let leftover = aboveNetSpace - aboveSum
+                            let uncapped = (0..<aboveCount).filter { aboveSpans[$0] < clusterMaxVisuals[$0] - 0.5 }
+                            if !uncapped.isEmpty {
+                                let uncappedWeight = max(uncapped.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
+                                for i in uncapped {
+                                    aboveSpans[i] = min(aboveSpans[i] + leftover * (clusterWeights[i] / uncappedWeight), clusterMaxVisuals[i])
+                                }
+                            }
+                            let finalAboveSum = aboveSpans.reduce(0.0, +)
+                            if finalAboveSum < aboveNetSpace && aboveCount > 0 {
+                                let extraEach = (aboveNetSpace - finalAboveSum) / Double(aboveCount)
+                                for i in 0..<aboveCount { aboveSpans[i] += extraEach }
+                            }
+                        }
+                        var curY = safeTop
+                        for i in 0..<aboveCount {
+                            clusterSpans[i] = aboveSpans[i]
+                            clusterStartYs[i] = curY
+                            curY += aboveSpans[i] + clusterGap
+                        }
                     }
 
-                    let belowWeightSum = max(belowIdleIndices.reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                    for idx in belowIdleIndices {
-                        let w = weights[idx]
-                        spans[idx] = spans[idx] + slackAfter * (w / belowWeightSum)
+                    if belowCount > 0 {
+                        let belowStart = anchorStartY + anchorSpan + clusterGap
+                        let belowIndices = Array((anchorIdx + 1)..<clusters.count)
+                        let belowGaps = Double(max(belowCount - 1, 0)) * clusterGap
+                        let minBelowSum = belowIndices.reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
+                        let belowNetSpace = max(safeBottom - belowStart - belowGaps, minBelowSum)
+                        let belowWeightSum = max(belowIndices.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
+                        var belowSpans = belowIndices.map { i in
+                            let minH = max(18.0, Double(clusters[i].count) * 18.0)
+                            return min(max(belowNetSpace * (clusterWeights[i] / belowWeightSum), minH), clusterMaxVisuals[i])
+                        }
+                        let belowSum = belowSpans.reduce(0.0, +)
+                        if belowSum > belowNetSpace && belowSum > 0 {
+                            let scale = belowNetSpace / belowSum
+                            belowSpans = belowSpans.map { $0 * scale }
+                        } else if belowSum < belowNetSpace {
+                            let leftover = belowNetSpace - belowSum
+                            let uncappedOffsets = belowIndices.indices.filter { belowSpans[$0] < clusterMaxVisuals[belowIndices[$0]] - 0.5 }
+                            if !uncappedOffsets.isEmpty {
+                                let uncappedWeight = max(uncappedOffsets.reduce(0.0) { $0 + clusterWeights[belowIndices[$1]] }, 0.0001)
+                                for offset in uncappedOffsets {
+                                    let cI = belowIndices[offset]
+                                    belowSpans[offset] = min(belowSpans[offset] + leftover * (clusterWeights[cI] / uncappedWeight), clusterMaxVisuals[cI])
+                                }
+                            }
+                            let finalBelowSum = belowSpans.reduce(0.0, +)
+                            if finalBelowSum < belowNetSpace && belowCount > 0 {
+                                let extraEach = (belowNetSpace - finalBelowSum) / Double(belowCount)
+                                for offset in 0..<belowCount { belowSpans[offset] += extraEach }
+                            }
+                        }
+                        var curY = belowStart
+                        for (offset, cI) in belowIndices.enumerated() {
+                            clusterSpans[cI] = belowSpans[offset]
+                            clusterStartYs[cI] = curY
+                            curY += belowSpans[offset] + clusterGap
+                        }
                     }
                 } else {
-                    let idleIndices = edgePods.indices.filter { !expandedFlags[$0] }
-                    let idleWeightSum = max(idleIndices.reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                    for idx in idleIndices {
-                        let w = weights[idx]
-                        spans[idx] = spans[idx] + totalSlack * (w / idleWeightSum)
+                    let idleReserved = clusters.indices.filter { !expandedFlags[$0] }
+                        .reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
+                    let expandedBudget = max(netAvailable - idleReserved, 160.0)
+                    var remainingExpandedBudget = expandedBudget
+                    var otherExpandedIndices: [Int] = []
+
+                    for idx in clusters.indices where expandedFlags[idx] {
+                        if idx == anchorIdx {
+                            let granted = min(max(fullClusterSpans[idx], 120.0), expandedBudget * 0.55)
+                            clusterSpans[idx] = max(granted, 110.0)
+                            remainingExpandedBudget = max(expandedBudget - clusterSpans[idx], 90.0)
+                        } else {
+                            otherExpandedIndices.append(idx)
+                        }
+                    }
+                    if !otherExpandedIndices.isEmpty {
+                        let share = remainingExpandedBudget / Double(otherExpandedIndices.count)
+                        for idx in otherExpandedIndices {
+                            clusterSpans[idx] = max(share, 110.0)
+                        }
+                    }
+                    for idx in clusters.indices where !expandedFlags[idx] {
+                        clusterSpans[idx] = max(18.0, Double(clusters[idx].count) * 18.0)
+                    }
+                    let minSumSpans = clusterSpans.reduce(0.0, +)
+                    if minSumSpans > netAvailable && minSumSpans > 0 {
+                        let scale = netAvailable / minSumSpans
+                        clusterSpans = clusterSpans.map { $0 * scale }
+                    } else {
+                        let totalSlack = max(netAvailable - minSumSpans, 0.0)
+                        let idleIndices = clusters.indices.filter { !expandedFlags[$0] }
+                        if !idleIndices.isEmpty {
+                            let idleWeightSum = max(idleIndices.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
+                            for idx in idleIndices {
+                                clusterSpans[idx] += totalSlack * (clusterWeights[idx] / idleWeightSum)
+                            }
+                        }
+                    }
+                    var curY = safeTop
+                    for i in 0..<clusters.count {
+                        clusterStartYs[i] = curY
+                        curY += clusterSpans[i] + clusterGap
                     }
                 }
-            } else {
-                let idleIndices = edgePods.indices.filter { !expandedFlags[$0] }
-                let idleWeightSum = max(idleIndices.reduce(0.0) { $0 + weights[$1] }, 0.0001)
-                for idx in idleIndices {
-                    let w = weights[idx]
-                    spans[idx] = spans[idx] + totalSlack * (w / idleWeightSum)
+            }
+        } else {
+            clusterSpans = standardSpans
+            if sumStandard > netAvailable && sumStandard > 0 {
+                let scale = netAvailable / sumStandard
+                clusterSpans = standardSpans.map { $0 * scale }
+            }
+            var curY = safeTop
+            for cIdx in 0..<clusters.count {
+                let desired = clusters[cIdx][0].range.start * totalHeight
+                let startY = max(desired, curY)
+                clusterStartYs[cIdx] = startY
+                curY = startY + clusterSpans[cIdx] + clusterGap
+            }
+            if let lastStart = clusterStartYs.last, let lastSpan = clusterSpans.last {
+                let overflow = (lastStart + lastSpan) - safeBottom
+                if overflow > 0 {
+                    var targetBottom = safeBottom
+                    for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
+                        let maxAllowed = targetBottom - clusterSpans[cIdx]
+                        clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowed)
+                        targetBottom = clusterStartYs[cIdx] - clusterGap
+                    }
                 }
             }
-        }
-
-        var currentY = safeTop
-        var result: [ResolvedPodLayoutItem] = []
-        for (idx, pod) in edgePods.enumerated() {
-            let span = spans[idx]
-            result.append(ResolvedPodLayoutItem(pod: pod, startY: currentY, spanH: span))
-            currentY += span + gap
-        }
-        return result
-    }
-
-    private func solveDecomposedMajorPodLayout(edgePods: [SlotPod], edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
-        let safeTop = 16.0
-        let safeBottom = totalHeight - 16.0
-        let availableH = max(safeBottom - safeTop, 180.0)
-
-        var clusters: [[SlotPod]] = []
-        for pod in edgePods {
-            if let gid = pod.majorGroupId {
-                if let lastCluster = clusters.last, lastCluster.first?.majorGroupId == gid {
-                    clusters[clusters.count - 1].append(pod)
+            for cIdx in 0..<clusters.count {
+                if cIdx == 0 {
+                    clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
                 } else {
-                    clusters.append([pod])
+                    clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + clusterSpans[cIdx - 1] + clusterGap)
                 }
-            } else {
-                clusters.append([pod])
-            }
-        }
-
-        let majorGap = 10.0
-        let totalMajorGaps = Double(max(clusters.count - 1, 0)) * majorGap
-        let netMajorAvailable = max(availableH - totalMajorGaps, 150.0)
-
-        var majorSpans: [Double] = clusters.map { grp in
-            if grp.count == 1 {
-                let pod = grp[0]
-                let minFloor = (isLiveRailEditingMode || pod.minLength <= 0.06)
-                    ? standaloneMinimumRailHeight(for: pod.id)
-                    : Double(minimumDrawerHeight(for: pod.id))
-                return max(pod.range.length * totalHeight, minFloor)
-            } else {
-                let subGap = 3.0
-                let totalSubGaps = Double(max(grp.count - 1, 0)) * subGap
-                let sumSubLengths = grp.reduce(0.0) { $0 + max($1.range.length * totalHeight, 22.0) } + totalSubGaps
-                let hasManualResize = isLiveRailEditingMode || grp.contains(where: { $0.minLength <= 0.06 })
-                let clusterMinFloor = hasManualResize ? max(96.0, Double(grp.count) * 24.0) : 155.0
-                return max(sumSubLengths, clusterMinFloor)
-            }
-        }
-        let sumMajorSpans = majorSpans.reduce(0.0, +)
-        if sumMajorSpans > netMajorAvailable && sumMajorSpans > 0 {
-            let lockedClusterMask = clusters.indices.map { idx in
-                clusters[idx].count == 1 && clusters[idx][0].minLength <= 0.06 && majorSpans[idx] <= 100.0
-            }
-            let lockedSum = clusters.indices.reduce(0.0) { acc, idx in
-                acc + (lockedClusterMask[idx] ? majorSpans[idx] : 0.0)
-            }
-            let scalableSum = sumMajorSpans - lockedSum
-            let remainingMajorAvailable = max(netMajorAvailable - lockedSum, 120.0)
-            if scalableSum > remainingMajorAvailable && scalableSum > 0 {
-                let scale = remainingMajorAvailable / scalableSum
-                majorSpans = clusters.enumerated().map { idx, grp in
-                    if lockedClusterMask[idx] { return majorSpans[idx] }
-                    let floorH = grp.count >= 2
-                        ? max(grp.map { standaloneMinimumRailHeight(for: $0.id) }.max() ?? 150.0, 150.0)
-                        : standaloneMinimumRailHeight(for: grp[0].id)
-                    return max(majorSpans[idx] * scale, floorH)
-                }
-            } else {
-                let scale = netMajorAvailable / sumMajorSpans
-                majorSpans = clusters.enumerated().map { idx, grp in
-                    let floorH = grp.count >= 2
-                        ? max(grp.map { standaloneMinimumRailHeight(for: $0.id) }.max() ?? 150.0, 150.0)
-                        : standaloneMinimumRailHeight(for: grp[0].id)
-                    return max(majorSpans[idx] * scale, floorH)
-                }
-            }
-        }
-
-        var clusterStartYs: [Double] = []
-        var currentY = safeTop
-        for cIdx in 0..<clusters.count {
-            let desiredStart = clusters[cIdx][0].range.start * totalHeight
-            let idealY = max(desiredStart, currentY)
-            clusterStartYs.append(idealY)
-            currentY = idealY + majorSpans[cIdx] + majorGap
-        }
-        if let lastStart = clusterStartYs.last, let lastSpan = majorSpans.last {
-            let overflow = (lastStart + lastSpan) - safeBottom
-            if overflow > 0 {
-                var targetBottom = safeBottom
-                for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
-                    let maxAllowedStart = targetBottom - majorSpans[cIdx]
-                    clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowedStart)
-                    targetBottom = clusterStartYs[cIdx] - majorGap
-                }
-            }
-        }
-        for cIdx in 0..<clusters.count {
-            if cIdx == 0 {
-                clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
-            } else {
-                clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + majorSpans[cIdx - 1] + majorGap)
             }
         }
 
         var result: [ResolvedPodLayoutItem] = []
-
         for (cIdx, cluster) in clusters.enumerated() {
-            let currentMajorY = clusterStartYs[cIdx]
-            let majorSpanH = majorSpans[cIdx]
+            let clusterY = clusterStartYs[cIdx]
+            let clusterSpan = clusterSpans[cIdx]
             if cluster.count == 1 {
-                let pod = cluster[0]
                 result.append(
                     ResolvedPodLayoutItem(
-                        pod: pod,
-                        startY: currentMajorY,
-                        spanH: majorSpanH,
-                        drawerStartY: currentMajorY,
-                        drawerSpanH: majorSpanH,
+                        pod: cluster[0],
+                        startY: clusterY,
+                        spanH: clusterSpan,
+                        drawerStartY: clusterY,
+                        drawerSpanH: clusterSpan,
                         majorGroupId: nil
                     )
                 )
@@ -1973,8 +1907,8 @@ public final class PurahWorkspaceStore {
                 let m = cluster.count
                 let subGap = 3.0
                 let totalSubGaps = Double(max(m - 1, 0)) * subGap
-                let minSubFloor = min(28.0, max((majorSpanH - totalSubGaps) / Double(max(m, 1)), 18.0))
-                let netSubSpan = max(majorSpanH - totalSubGaps, Double(m) * minSubFloor)
+                let minSubFloor = min(28.0, max((clusterSpan - totalSubGaps) / Double(max(m, 1)), 18.0))
+                let netSubSpan = max(clusterSpan - totalSubGaps, Double(m) * minSubFloor)
                 let subWeights = cluster.map { max($0.range.length, 0.025) }
                 let subWeightSum = max(subWeights.reduce(0.0, +), 0.0001)
 
@@ -1997,20 +1931,18 @@ public final class PurahWorkspaceStore {
                     }
                 }
 
-                var curSubY = currentMajorY
+                var curSubY = clusterY
                 for (subIdx, pod) in cluster.enumerated() {
                     let subSpanH = subSpans[subIdx]
                     let subStartY = curSubY
                     curSubY += subSpanH + subGap
-                    let drawerStartY = currentMajorY
-                    let drawerSpanH = majorSpanH
                     result.append(
                         ResolvedPodLayoutItem(
                             pod: pod,
                             startY: subStartY,
                             spanH: subSpanH,
-                            drawerStartY: drawerStartY,
-                            drawerSpanH: drawerSpanH,
+                            drawerStartY: clusterY,
+                            drawerSpanH: clusterSpan,
                             majorGroupId: gid
                         )
                     )
@@ -2018,70 +1950,21 @@ public final class PurahWorkspaceStore {
             }
         }
 
+        cachedResolvedLayouts[edge] = LayoutCacheEntry(
+            height: totalHeight,
+            podsCount: allEdgePods.count,
+            enabledSignature: signature,
+            isDynamicBreathingEnabled: isDynamicBreathingEnabled,
+            isAlwaysCompactBreathing: isAlwaysCompactBreathing,
+            hoveredPodId: hoveredPodId,
+            activePodId: activeDrawerPodId,
+            activeItemId: activeDrawerItemId,
+            pinnedIds: pinnedDrawerItemIds,
+            page: curPage,
+            items: result,
+            timestamp: now
+        )
         return result
-    }
-
-    private func solvePagedSpacesLayout(edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
-        let pages = paginatedPods(for: edge, totalHeight: totalHeight)
-        guard !pages.isEmpty else { return [] }
-
-        let pageIdx = min(max(currentRailPage(for: edge), 0), pages.count - 1)
-        let pagePods = pages[pageIdx]
-        guard !pagePods.isEmpty else { return [] }
-
-        let safeTop = isLiveRailEditingMode ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
-        let safeBottom = pages.count > 1 ? (totalHeight - 48.0) : (totalHeight - 16.0)
-        let gap = 8.0
-        let availableH = max(safeBottom - safeTop, 160.0)
-        let totalGaps = Double(max(pagePods.count - 1, 0)) * gap
-        let netAvailable = max(availableH - totalGaps, 120.0)
-
-        let minSpans: [Double] = pagePods.map { pod in
-            if isLiveRailEditingMode || pod.minLength <= 0.06 {
-                return standaloneMinimumRailHeight(for: pod.id)
-            }
-            return Double(minimumDrawerHeight(for: pod.id))
-        }
-        let maxVisuals: [Double] = pagePods.map { pod in
-            maxVisualHeight(for: pod.id, totalHeight: totalHeight)
-        }
-        var targetSpans = pagePods.enumerated().map { idx, pod in
-            min(max(pod.range.length * totalHeight, minSpans[idx]), max(maxVisuals[idx], minSpans[idx]))
-        }
-
-        let totalTarget = targetSpans.reduce(0.0, +)
-        if totalTarget > netAvailable {
-            let excess = totalTarget - netAvailable
-            let slackSum = targetSpans.enumerated().reduce(0.0) { acc, pair in
-                acc + max(pair.element - minSpans[pair.offset], 0.0)
-            }
-            if slackSum >= excess && slackSum > 0 {
-                for i in targetSpans.indices {
-                    let slack = max(targetSpans[i] - minSpans[i], 0.0)
-                    targetSpans[i] = max(targetSpans[i] - excess * (slack / slackSum), minSpans[i])
-                }
-            } else {
-                let minTotal = minSpans.reduce(0.0, +)
-                if minTotal > netAvailable && minTotal > 0 {
-                    let scale = netAvailable / minTotal
-                    targetSpans = minSpans.map { max($0 * scale, 48.0) }
-                } else {
-                    targetSpans = minSpans
-                }
-            }
-        }
-
-        let spanMap = Dictionary(uniqueKeysWithValues: zip(pagePods.map(\.id), targetSpans))
-        return ErgonomicAutoLayoutEngine.resolvePhysicalRailLayout(
-            pods: pagePods,
-            on: edge,
-            totalHeight: totalHeight,
-            gap: gap,
-            safeTop: safeTop,
-            safeBottom: safeBottom
-        ) { pod in
-            spanMap[pod.id] ?? max(pod.range.length * totalHeight, 48.0)
-        }
     }
 
     public func activeDrawerCardFrames(for edge: MountEdge, totalHeight: Double, windowWidth: Double = 580.0) -> [CGRect] {
@@ -2089,7 +1972,6 @@ public final class PurahWorkspaceStore {
         var frames: [CGRect] = []
         let layoutItems = resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
         let corridor = activeCatchCorridor
-        let edgeStrategy = overflowStrategy(for: edge)
 
         for item in layoutItems {
             let pod = item.pod
@@ -2101,7 +1983,7 @@ public final class PurahWorkspaceStore {
             guard isPodActive || isPodPinned || hasChild else { continue }
 
             // In Shared Major Pod mode, check if this pod is the active drawer owner in its Major Group
-            let isSharedMajorSubBar = (edgeStrategy == .decomposedMajorPod && abs(item.drawerSpanH - item.spanH) > 1.0)
+            let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
             if isSharedMajorSubBar {
                 guard shouldRenderDrawer(for: item, in: layoutItems) else { continue }
                 let topOfPodY = totalHeight - item.drawerStartY
@@ -2121,7 +2003,7 @@ public final class PurahWorkspaceStore {
                 let minChipH = Double(policy.minChipHeight)
                 let maxChipH = Double(policy.maxChipHeight)
                 let spacing = Double(policy.spacing)
-                let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
+                let isDynamicAccordion = isBreathingActive(for: edge, totalHeight: totalHeight)
                 let maxAllowed = isDynamicAccordion
                     ? max(policy.maxRailItems, 1)
                     : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
@@ -2144,46 +2026,29 @@ public final class PurahWorkspaceStore {
                         matchedSubItem = true
                         let itemTop = item.startY + Double(idx) * (itemH + spacing)
                         let itemBottom = itemTop + cardH
-                        let maxAllowedY = totalHeight - 12.0
-                        let shift = itemActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
-                        let effTop = itemTop - shift
+                        let topOfCardY = totalHeight - itemTop
+                        let bottomOfCardY = totalHeight - itemBottom
+                        let minY = max(bottomOfCardY - 6.0, 0.0)
+                        let maxY = min(topOfCardY + 6.0, totalHeight)
 
-                        let appKitTop = totalHeight - effTop
-                        let appKitBottom = appKitTop - cardH
-                        let minY = max(appKitBottom - 10.0, 0.0)
-                        let maxY = min(appKitTop + 10.0, totalHeight)
-
-                        let subTitle = isSmartFoldSlot ? "More" : (provider.subItemTitle(at: idx, store: self) ?? "")
-                        let drawerW = min(effectiveDrawerWidth(for: subTitle, baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
+                        let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
                         let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                         frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
                     }
                 }
-
-                if !matchedSubItem && (isPodActive || isPodPinned || hasChild) {
-                    let topOfPodY = totalHeight - item.drawerStartY
-                    let bottomOfPodY = topOfPodY - item.drawerSpanH
-                    let minY = max(bottomOfPodY - 6.0, 0.0)
-                    let maxY = min(topOfPodY + 6.0, totalHeight)
-                    let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
-                    let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
-                    frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
-                }
-                continue
+                if matchedSubItem { continue }
             }
 
-            // Full-pod Composite Drawers (Music, Shelf, Notes, and custom plugins)
-            if isPodPinned || isPodActive || hasChild {
-                let topOfPodY = totalHeight - item.drawerStartY
-                let bottomOfPodY = topOfPodY - item.drawerSpanH
-                let minY = max(bottomOfPodY - 6.0, 0.0)
-                let maxY = min(topOfPodY + 6.0, totalHeight)
+            let topOfPodY = totalHeight - item.startY
+            let bottomOfPodY = topOfPodY - item.spanH
+            let minY = max(bottomOfPodY - 6.0, 0.0)
+            let maxY = min(topOfPodY + 6.0, totalHeight)
 
-                let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
-                let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
-                frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
-            }
+            let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
+            let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
+            frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
         }
+
         return frames
     }
 
@@ -2376,7 +2241,7 @@ public final class PurahWorkspaceStore {
             for idx in pods.indices {
                 let pod = pods[idx]
                 let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-                if overflowStrategy(for: pod.edge) == .dynamicAccordion {
+                if isDynamicBreathingEnabled {
                     pods[idx].minLength = max(28.0 / screenH, 0.035)
                 } else if pod.minLength > 0.06 {
                     let minPt = Double(minimumDrawerHeight(for: pod.id))
@@ -2488,24 +2353,24 @@ public final class PurahWorkspaceStore {
             self.currentPreset = preset
         }
 
-        if let overflowStr = defaults.string(forKey: "purah.railOverflowStrategy"),
-           let strategy = RailOverflowStrategy(rawValue: overflowStr) {
-            self.leftRailOverflowStrategy = strategy
-            self.rightRailOverflowStrategy = strategy
+        if defaults.object(forKey: "purah.isDynamicBreathingEnabled") != nil {
+            self.isDynamicBreathingEnabled = defaults.bool(forKey: "purah.isDynamicBreathingEnabled")
+        } else {
+            self.isDynamicBreathingEnabled = true
         }
-        if let leftStr = defaults.string(forKey: "purah.leftRailOverflowStrategy"),
-           let leftStrategy = RailOverflowStrategy(rawValue: leftStr) {
-            self.leftRailOverflowStrategy = leftStrategy
-        }
-        if let rightStr = defaults.string(forKey: "purah.rightRailOverflowStrategy"),
-           let rightStrategy = RailOverflowStrategy(rawValue: rightStr) {
-            self.rightRailOverflowStrategy = rightStrategy
+        if defaults.object(forKey: "purah.isAlwaysCompactBreathing") != nil {
+            self.isAlwaysCompactBreathing = defaults.bool(forKey: "purah.isAlwaysCompactBreathing")
         }
 
         if defaults.object(forKey: "purah.hotkey.keyCode") != nil {
             let code = UInt32(defaults.integer(forKey: "purah.hotkey.keyCode"))
             let mods = UInt32(defaults.integer(forKey: "purah.hotkey.modifiers"))
             self.hotKeyShortcut = HotKeyShortcut(keyCode: code, modifiers: mods)
+        }
+        if defaults.object(forKey: "purah.sculptorHotkey.keyCode") != nil {
+            let code = UInt32(defaults.integer(forKey: "purah.sculptorHotkey.keyCode"))
+            let mods = UInt32(defaults.integer(forKey: "purah.sculptorHotkey.modifiers"))
+            self.sculptorHotKeyShortcut = HotKeyShortcut(keyCode: code, modifiers: mods)
         }
 
         if let modeStr = defaults.string(forKey: "purah.edgeTriggerMode"),
@@ -2575,11 +2440,12 @@ public final class PurahWorkspaceStore {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
-        defaults.set(leftRailOverflowStrategy.rawValue, forKey: "purah.railOverflowStrategy")
-        defaults.set(leftRailOverflowStrategy.rawValue, forKey: "purah.leftRailOverflowStrategy")
-        defaults.set(rightRailOverflowStrategy.rawValue, forKey: "purah.rightRailOverflowStrategy")
+        defaults.set(isDynamicBreathingEnabled, forKey: "purah.isDynamicBreathingEnabled")
+        defaults.set(isAlwaysCompactBreathing, forKey: "purah.isAlwaysCompactBreathing")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
+        defaults.set(Int(sculptorHotKeyShortcut.keyCode), forKey: "purah.sculptorHotkey.keyCode")
+        defaults.set(Int(sculptorHotKeyShortcut.modifiers), forKey: "purah.sculptorHotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
         defaults.set(edgeTriggerMode.rawValue, forKey: "purah.edgeTriggerMode")
         defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
@@ -2605,7 +2471,7 @@ public final class PurahWorkspaceStore {
         for idx in pods.indices {
             let pod = pods[idx]
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if overflowStrategy(for: pod.edge) == .dynamicAccordion {
+            if isDynamicBreathingEnabled {
                 pods[idx].minLength = max(28.0 / screenH, 0.035)
             } else {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
@@ -2618,12 +2484,8 @@ public final class PurahWorkspaceStore {
             reassignEdges: false,
             availableHeight: Double(availableScreenHeight(for: .left))
         )
-        if overflowStrategy(for: .left) == .pagedSpaces {
-            normalizePageRanges(for: .left)
-        }
-        if overflowStrategy(for: .right) == .pagedSpaces {
-            normalizePageRanges(for: .right)
-        }
+        normalizePageRanges(for: .left)
+        normalizePageRanges(for: .right)
         invalidateLayoutCache()
         savePersistentState()
         notifyCapacityWarningIfNeeded()
@@ -2633,28 +2495,23 @@ public final class PurahWorkspaceStore {
         guard let index = pods.firstIndex(where: { $0.id == id }) else { return }
         let pod = pods[index]
         if !pod.isEnabled {
-            if overflowStrategy(for: pod.edge) == .strictCeiling {
-                // Guard minimum height: reject enabling if required height overflows screen budget
-                let currentReq = totalRequiredHeight(for: pod.edge)
-                let additional = minimumDrawerHeight(for: pod.id) + 10.0
-                let available = availableScreenHeight(for: pod.edge)
-                if (currentReq + additional) > available {
-                    let reqTotal = Int(currentReq + additional)
-                    let availInt = Int(available)
-                    onCapacityWarningToast?("⚠️ Insufficient rail capacity (\(reqTotal)pt / \(availInt)pt). Cannot mount \(pod.name) without squashing existing pods.")
-                    return
-                }
-            }
             pods[index].isEnabled = true
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if overflowStrategy(for: pod.edge) == .dynamicAccordion {
+            if isDynamicBreathingEnabled {
                 pods[index].minLength = max(28.0 / screenH, 0.035)
             } else {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[index].minLength = max(minPt / screenH, 0.07)
             }
-            if overflowStrategy(for: pod.edge) == .decomposedMajorPod {
-                seedDefaultMajorGroupsIfNeeded(for: pod.edge)
+            let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
+            if pages.count > 1 {
+                setRailPage(pages.count - 1, for: pod.edge)
+                onCapacityWarningToast?("layout.toast.pageOverflow".localized)
+            } else if isBreathingActive(for: pod.edge, totalHeight: screenH) {
+                if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
+                    lastCapacityAlertTime = Date()
+                    onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+                }
             }
             onPodEnabledChanged?(id, true)
         } else {
@@ -2683,7 +2540,9 @@ public final class PurahWorkspaceStore {
     public func fillRail(podId: String) {
         guard let currentPod = pods.first(where: { $0.id == podId && $0.isEnabled }) else { return }
         let edge = currentPod.edge
-        let isPaged = (overflowStrategy(for: edge) == .pagedSpaces)
+        let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
+        let pages = paginatedPods(for: edge, totalHeight: screenH)
+        let isPaged = pages.count > 1
         let railPods = pods.filter {
             $0.edge == edge && $0.isEnabled && (!isPaged || $0.pageIndex == currentPod.pageIndex)
         }.sorted { $0.range.start < $1.range.start }
@@ -2777,9 +2636,9 @@ public final class PurahWorkspaceStore {
     public func updatePodRange(id: String, newRange: NormalizedRange) {
         guard let pod = pods.first(where: { $0.id == id }) else { return }
         let screenH = max(Double(availableScreenHeight(for: pod.edge)), 600.0)
-        let edgeStrategy = overflowStrategy(for: pod.edge)
-        let isDynamicAccordion = (edgeStrategy == .dynamicAccordion)
-        if edgeStrategy == .pagedSpaces {
+        let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
+        let isPaged = pages.count > 1
+        if isPaged {
             let pagePods = pods.filter { $0.edge == pod.edge && $0.isEnabled && $0.pageIndex == pod.pageIndex }
             let resolvedPagePods = SpringConstraintSolver.resolve(
                 draggedPodId: id,
@@ -2804,7 +2663,7 @@ public final class PurahWorkspaceStore {
                 allPods: pods,
                 on: pod.edge,
                 minRatioProvider: { p in
-                    if isDynamicAccordion || (edgeStrategy == .decomposedMajorPod && p.majorGroupId != nil) {
+                    if self.isDynamicBreathingEnabled || p.majorGroupId != nil {
                         return max(28.0 / screenH, 0.035)
                     }
                     let minH = self.standaloneMinimumRailHeight(for: p.id)

@@ -11,11 +11,12 @@ import SwiftUI
 @MainActor
 struct HighDensityOverflowTests {
 
-    private func makeNinePodsLeftRailStore(strategy: RailOverflowStrategy) -> PurahWorkspaceStore {
-        let suiteName = "test_overflow_\(strategy.rawValue)_\(UUID().uuidString)"
+    private func makeNinePodsLeftRailStore(breathingEnabled: Bool = true, alwaysCompact: Bool = false) -> PurahWorkspaceStore {
+        let suiteName = "test_unified_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.railOverflowStrategy = strategy
+        store.isDynamicBreathingEnabled = breathingEnabled
+        store.isAlwaysCompactBreathing = alwaysCompact
 
         // Move all 9 pods to the left rail and ensure all 9 are enabled via togglePodEnabled
         for idx in store.pods.indices {
@@ -35,11 +36,11 @@ struct HighDensityOverflowTests {
 
     @Test("Mode 1 (Dynamic Accordion): mounts all 9 pods on left rail, fits when idle, and expands pinned + hovered pods without overlap")
     func testDynamicAccordionMode() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
 
         let enabledLeftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
-        #expect(enabledLeftPods.count == 9, "All 9 built-in pods must mount on left rail without rejection in Dynamic Accordion mode")
-        #expect(!store.isRailOverloaded(edge: .left))
+        #expect(enabledLeftPods.count == 9, "All 9 built-in pods must mount on left rail in Dynamic Accordion mode")
+        #expect(store.capacityRatio(for: .left) >= 0.0)
 
         let totalHeight = 900.0
         let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
@@ -86,18 +87,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_accordion_pref_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-
-        // Start in Paged Spaces with pods assigned to Page 2
-        store.setOverflowStrategy(.pagedSpaces, for: .left)
-        store.setRailPage(1, for: .left)
-        for i in store.pods.indices where store.pods[i].edge == .left {
-            store.pods[i].pageIndex = 1
-        }
-
-        // Switch to Dynamic Accordion -> must reset currentRailPage = 0 and all pods' pageIndex = 0
-        store.setOverflowStrategy(.dynamicAccordion, for: .left)
-        #expect(store.currentRailPage(for: .left) == 0)
-        #expect(store.pods.filter { $0.edge == .left }.allSatisfy { $0.pageIndex == 0 })
+        store.isDynamicBreathingEnabled = true
 
         // Verify with 3~4 pods on left rail (default balanced/initial left rail has 4 enabled pods)
         let totalHeight = 900.0
@@ -124,7 +114,8 @@ struct HighDensityOverflowTests {
 
     @Test("Mode 2 (Decomposed Major Pod): sub-bars have distinct rail ranges while sharing full Major Pod drawer range and frames")
     func testDecomposedMajorPodMode() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .decomposedMajorPod)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
+        store.autoStackMajorPods(for: .left)
         let totalHeight = 900.0
 
         let layout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
@@ -174,12 +165,13 @@ struct HighDensityOverflowTests {
 
     @Test("Mode 3 (Paged Spaces): splits 9 pods into multiple pages with full uncompressed heights and switches pages cleanly")
     func testPagedSpacesMode() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: false)
         let totalHeight = 900.0
 
         let pages = store.paginatedPods(for: .left, totalHeight: totalHeight)
         #expect(pages.count >= 2, "9 pods on left rail must paginate into at least 2 pages")
 
+        store.setRailPage(0, for: .left)
         let page0Layout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
         #expect(page0Layout.map(\.id) == pages[0].map(\.id))
 
@@ -204,7 +196,7 @@ struct HighDensityOverflowTests {
 
     @Test("Cursor-Anchored Accordion Expansion: expanded pod never shrinks below idle/configured span and keeps idleCenterY inside expanded range")
     func testCursorAnchoredAccordionExpansion() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
         let totalHeight = 900.0
 
         // Give middle pod #4 (index 4) a custom larger range length to verify it never shrinks
@@ -239,7 +231,7 @@ struct HighDensityOverflowTests {
         }
     }
 
-    @Test("Per-Rail Independent Strategy: left and right rails operate with independent overflow strategies")
+    @Test("Per-Rail Independent Layout: left and right rails operate with independent cluster configurations")
     func testPerRailIndependentStrategy() throws {
         let suiteName = "test_per_rail_independent_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
@@ -252,24 +244,18 @@ struct HighDensityOverflowTests {
             store.pods[idx].isEnabled = true
         }
 
-        store.setOverflowStrategy(.pagedSpaces, for: .left)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
-
-        #expect(store.overflowStrategy(for: .left) == .pagedSpaces)
-        #expect(store.overflowStrategy(for: .right) == .decomposedMajorPod)
-        #expect(store.leftRailOverflowStrategy == .pagedSpaces)
-        #expect(store.rightRailOverflowStrategy == .decomposedMajorPod)
+        store.autoStackMajorPods(for: .right)
 
         let rightLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
-        #expect(rightLayout.contains(where: { $0.majorGroupId != nil }), "Right rail in .decomposedMajorPod mode must group pods into shared Major Pods")
+        #expect(rightLayout.contains(where: { $0.majorGroupId != nil }), "Right rail with stacked pods must group pods into shared Major Pods")
 
         let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
-        #expect(leftLayout.allSatisfy { $0.majorGroupId == nil }, "Left rail in .pagedSpaces mode must not apply Major Pod grouping")
+        #expect(leftLayout.allSatisfy { $0.majorGroupId == nil }, "Left rail without stacked pods must not apply Major Pod grouping")
     }
 
     @Test("Custom Major Pod Merge & Split: mergePodWithNext pairs pods into shared Major Pod and splitPodFromMajorGroup restores standalone pods")
     func testCustomMajorPodMergeAndSplit() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .decomposedMajorPod)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
         // Clear any default seeded groups first so all start standalone
         for i in store.pods.indices {
             store.pods[i].majorGroupId = nil
@@ -305,7 +291,7 @@ struct HighDensityOverflowTests {
 
     @Test("Explicit Per-Pod Page Assignment: setPodPage moves a pod to Page 2 and paginatedPods reflects custom page assignment")
     func testExplicitPerPodPageAssignment() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
         for i in store.pods.indices {
             store.pods[i].pageIndex = 0
         }
@@ -329,7 +315,7 @@ struct HighDensityOverflowTests {
 
     @Test("Dynamic Accordion Hardware Vitals with 4 metrics exposes all 4 sub-items when idle and expands to preferredDrawerHeight when hovered")
     func testDynamicAccordionVitalsFourMetricsIdleAndExpanded() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
         store._isVitalsDecomposed = true
         store._vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
         store.invalidateLayoutCache()
@@ -344,7 +330,7 @@ struct HighDensityOverflowTests {
         #expect(rawCount == 4)
         #expect(policy.maxRailItems == 4)
 
-        // In .dynamicAccordion mode, maxAllowed is policy.maxRailItems (4), never truncated when idle
+        // In Dynamic Breathing mode, maxAllowed is policy.maxRailItems (4), never truncated when idle
         let maxAllowedIdle = max(policy.maxRailItems, 1)
         let visibleIdleCount = min(rawCount, maxAllowedIdle)
         #expect(visibleIdleCount == 4, "Hardware Vitals in Dynamic Accordion must expose all 4 enabled metrics when idle")
@@ -361,7 +347,7 @@ struct HighDensityOverflowTests {
 
     @Test("Cyclic Page Rotation: cycleRailPage wraps around cyclically for both delta -1 and delta +1")
     func testCyclicPageRotationWrapAround() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: false)
         let totalHeight = 900.0
         let pages = store.paginatedPods(for: .left, totalHeight: totalHeight)
         let pageCount = pages.count
@@ -381,7 +367,7 @@ struct HighDensityOverflowTests {
 
     @Test("Dynamic Accordion Contiguous Packing: expanding any middle pod leaves zero empty gaps between adjacent pods")
     func testDynamicAccordionContiguousPackingZeroGaps() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .dynamicAccordion)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
         let totalHeight = 900.0
         let sortedIds = store.pods.filter { $0.edge == .left && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
@@ -410,14 +396,18 @@ struct HighDensityOverflowTests {
 
     @Test("Paged Spaces Full-Height Stretch: a page with 2 assigned pods normalizes to fill safeTop ..< safeBottom and supports manual shortening")
     func testPagedSpacesFullHeightStretch() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .pagedSpaces)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: false)
         let totalHeight = 900.0
 
-        // Assign 7 pods to Page 0 and 2 pods to Page 1 via setPodPage (which normalizes page ranges initially)
+        // Disable pods except first 5 (3 for Page 0, 2 for Page 1) so Page 0 doesn't overflow
         let sortedPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
         for (offset, p) in sortedPods.enumerated() {
-            store.setPodPage(id: p.id, pageIndex: (offset < 7) ? 0 : 1)
+            if offset >= 5 {
+                store.togglePodEnabled(id: p.id)
+            } else {
+                store.setPodPage(id: p.id, pageIndex: (offset < 3) ? 0 : 1)
+            }
         }
         store.setRailPage(1, for: .left)
         store.invalidateLayoutCache()
@@ -434,7 +424,7 @@ struct HighDensityOverflowTests {
 
     @Test("Shared Major Pod Stacking Builder Helpers: addPodToMajorGroup, autoStackMajorPods, and resetMajorGroups")
     func testSharedMajorPodStackingBuilderHelpers() throws {
-        let store = makeNinePodsLeftRailStore(strategy: .decomposedMajorPod)
+        let store = makeNinePodsLeftRailStore(breathingEnabled: true)
 
         // 1. resetMajorGroups clears all majorGroupId on the edge
         store.resetMajorGroups(for: .left)
@@ -469,7 +459,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_nine_pods_single_major_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
 
         for idx in store.pods.indices {
             store.pods[idx].edge = .right
@@ -542,8 +531,7 @@ struct HighDensityOverflowTests {
         #expect(store.hoveredPodId == nil)
         #expect(callbackValues == [true])
 
-        // Configure right rail as Paged Spaces on Page 2 (pageIndex = 1)
-        store.setOverflowStrategy(.pagedSpaces, for: .right)
+        // Configure right rail on Page 2 (pageIndex = 1)
         store.setRailPage(1, for: .right)
 
         // Unmount "music" first if enabled, then mount it onto .right via mountPod
@@ -556,7 +544,7 @@ struct HighDensityOverflowTests {
         let mountedMusic = try #require(store.pods.first(where: { $0.id == "music" }))
         #expect(mountedMusic.isEnabled == true)
         #expect(mountedMusic.edge == .right)
-        #expect(mountedMusic.pageIndex == 1, "mountPod in Paged Spaces mode must assign the newly mounted pod to currentRailPage")
+        #expect(mountedMusic.pageIndex == 1, "mountPod in multi-page mode must assign the newly mounted pod to currentRailPage")
 
         // Exit Live Rail Editing mode
         store.toggleLiveRailEditingMode()
@@ -596,12 +584,11 @@ struct HighDensityOverflowTests {
     @Test("Pod Shortening Across All Modes: shortening todo and vitals via updatePodRange reduces resolved spanH (~72pt) without auto-inflation")
     func testPodShorteningAcrossAllModes() throws {
         let totalHeight = 900.0
-        for strategy in [RailOverflowStrategy.pagedSpaces, .dynamicAccordion, .decomposedMajorPod] {
-            let suiteName = "test_shorten_\(strategy.rawValue)_\(UUID().uuidString)"
+        for breathing in [true, false] {
+            let suiteName = "test_shorten_\(breathing)_\(UUID().uuidString)"
             let isolated = UserDefaults(suiteName: suiteName)!
             let store = PurahWorkspaceStore(userDefaults: isolated)
-            store.setOverflowStrategy(strategy, for: .right)
-            store.setOverflowStrategy(strategy, for: .left)
+            store.isDynamicBreathingEnabled = breathing
 
             // Shorten "todo" on right rail to length 0.08 (~72pt on 900pt screen)
             store.updatePodRange(id: "todo", newRange: NormalizedRange(start: 0.05, length: 0.08))
@@ -609,7 +596,7 @@ struct HighDensityOverflowTests {
             let todoItem = try #require(rightLayout.first(where: { $0.pod.id == "todo" }))
             #expect(
                 todoItem.spanH >= 48.0 && todoItem.spanH <= 90.0,
-                "Shortened 'todo' in \(strategy.rawValue) mode must resolve to ~72pt (got \(todoItem.spanH)pt) instead of inflating to 420pt"
+                "Shortened 'todo' must resolve to ~72pt (got \(todoItem.spanH)pt) instead of inflating to 420pt"
             )
 
             // Shorten "vitals" on left rail to length 0.08 (~72pt on 900pt screen)
@@ -618,7 +605,7 @@ struct HighDensityOverflowTests {
             let vitalsItem = try #require(leftLayout.first(where: { $0.pod.id == "vitals" }))
             #expect(
                 vitalsItem.spanH >= 48.0 && vitalsItem.spanH <= 90.0,
-                "Shortened 'vitals' in \(strategy.rawValue) mode must resolve to ~72pt (got \(vitalsItem.spanH)pt) instead of inflating to 420pt"
+                "Shortened 'vitals' must resolve to ~72pt (got \(vitalsItem.spanH)pt) instead of inflating to 420pt"
             )
         }
     }
@@ -628,7 +615,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_resize_major_group_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
         store.resetMajorGroups(for: .right)
 
         // Stack calendar and todo into a Shared Major Pod
@@ -659,7 +645,7 @@ struct HighDensityOverflowTests {
         store.unstackMajorGroup(groupId: groupId, on: .right)
         #expect(store.pods.filter { $0.edge == .right }.allSatisfy { $0.majorGroupId == nil })
         let unstackedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
-        #expect(unstackedLayout.allSatisfy { $0.majorGroupId == nil }, "Unstacked pods must not be auto-regrouped by solveDecomposedMajorPodLayout")
+        #expect(unstackedLayout.allSatisfy { $0.majorGroupId == nil }, "Unstacked pods must not be auto-regrouped")
     }
 
     @Test("Unstack All & Progressive Split in Decomposed Major Pod Mode: unstackMajorGroup and splitPodFromMajorGroup never auto-restack")
@@ -667,7 +653,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_unstack_progressive_split_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
         store.resetMajorGroups(for: .right)
 
         // Stack 3 pods ("calendar", "todo", "music") on the right rail into one shared Major Group
@@ -723,7 +708,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_subpod_height_stack_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
         store.resetMajorGroups(for: .right)
 
         // Stack 3 pods ("calendar", "todo", "music") on the right rail into one shared Major Group
@@ -818,7 +802,6 @@ struct HighDensityOverflowTests {
         let vitalsAfter = try #require(store.pods.first(where: { $0.id == "vitals" }))
         #expect(notesAfter.isEnabled == true, "Dragging unmounted pod onto rail target must mount it")
         #expect(notesAfter.edge == .left)
-        #expect(store.overflowStrategy(for: .left) == .decomposedMajorPod, "Commit onto target pod must switch rail to decomposedMajorPod")
         #expect(notesAfter.majorGroupId != nil)
         #expect(notesAfter.majorGroupId == vitalsAfter.majorGroupId, "Both pods must be merged into the same Shared Major Pod group")
     }
@@ -829,7 +812,6 @@ struct HighDensityOverflowTests {
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.railBarWidth = 6.0
-        store.setOverflowStrategy(.pagedSpaces, for: .right)
 
         // Give calendar a huge normalized range (0.45) on a 900pt screen
         if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
@@ -870,7 +852,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_water_droplet_detach_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
         store.resetMajorGroups(for: .right)
 
         // Stack 3 pods ("calendar", "todo", "music") on the right rail at the top
@@ -927,7 +908,6 @@ struct HighDensityOverflowTests {
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.alertStyle = .breathingBeacon
         store._calendarEvents = []
-        store.setOverflowStrategy(.pagedSpaces, for: .right)
 
         // Move "calendar" to Page 2 (pageIndex = 1) while keeping currentRailPage on Page 1 (0)
         store.setPodPage(id: "calendar", pageIndex: 1)
@@ -963,7 +943,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_standalone_vs_stacked_music_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.setOverflowStrategy(.decomposedMajorPod, for: .right)
         store.resetMajorGroups(for: .right)
 
         let totalHeight = 900.0

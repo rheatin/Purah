@@ -92,6 +92,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             self?.toggleFreezeMode()
         }
 
+        GlobalHotKeyManager.shared.registerSculptor(shortcut: store.sculptorHotKeyShortcut) { [weak self] in
+            self?.toggleLiveRailSculptor()
+        }
+
         setupStatusItem()
 
         // Start hardware audio tap so live ambient rhythm visualizers are instantly responsive
@@ -181,7 +185,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         menu.addItem(prefItem)
 
         // Live Rail Sculptor on Screen
-        let sculptorItem = NSMenuItem(title: "sculptor.menuItem".localized, action: #selector(toggleLiveRailSculptor), keyEquivalent: "e")
+        let sculptorTitle = "\("sculptor.menuItem".localized) (\(store.sculptorHotKeyShortcut.displayString))"
+        let sculptorItem = NSMenuItem(title: sculptorTitle, action: #selector(toggleLiveRailSculptor), keyEquivalent: "")
         sculptorItem.target = self
         sculptorItem.state = store.isLiveRailEditingMode ? .on : .off
         menu.addItem(sculptorItem)
