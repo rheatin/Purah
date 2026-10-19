@@ -209,6 +209,145 @@ public final class ShelfPluginState: Sendable {
         boundStore?._shelfFiles.insert(item, at: 0)
     }
 
+    private func uniqueAssetURL(for fileName: String) -> URL {
+        try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
+        let candidate = fileStorage.assetsDirectory.appendingPathComponent(fileName)
+        if !FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+        let baseName = (fileName as NSString).deletingPathExtension
+        let ext = (fileName as NSString).pathExtension
+        let suffix = UUID().uuidString.prefix(4)
+        let uniqueName = ext.isEmpty ? "\(baseName)_\(suffix)" : "\(baseName)_\(suffix).\(ext)"
+        return fileStorage.assetsDirectory.appendingPathComponent(uniqueName)
+    }
+
+    /// Compresses the specified files (or `filesForBatchExport()` when nil) into a `.zip` archive
+    /// inside `fileStorage.assetsDirectory`, adds the archive to `files`, and selects it.
+    @discardableResult
+    public func compressFilesToZip(filesToZip: [ShelfFileItem]? = nil) -> ShelfFileItem? {
+        let targets = filesToZip ?? filesForBatchExport()
+        guard !targets.isEmpty else { return nil }
+
+        try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
+
+        let zipName = targets.count == 1
+            ? "\(targets[0].name).zip"
+            : "Shelf_Archive_\(Int(Date().timeIntervalSince1970)).zip"
+        let destZipURL = fileStorage.assetsDirectory.appendingPathComponent(zipName)
+        try? FileManager.default.removeItem(at: destZipURL)
+
+        var sourcePaths: [String] = []
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        for item in targets {
+            if let resolved = item.resolvedURL, FileManager.default.fileExists(atPath: resolved.path) {
+                sourcePaths.append(resolved.path)
+            } else {
+                let fallbackURL = tempDir.appendingPathComponent(item.name)
+                if !FileManager.default.fileExists(atPath: fallbackURL.path) {
+                    let placeholder = "Purah DropShelf placeholder file: \(item.name)\nSize: \(item.sizeDescription)\nCreated at: \(item.timestamp)"
+                    try? placeholder.write(to: fallbackURL, atomically: true, encoding: .utf8)
+                }
+                if FileManager.default.fileExists(atPath: fallbackURL.path) {
+                    sourcePaths.append(fallbackURL.path)
+                }
+            }
+        }
+        guard !sourcePaths.isEmpty else { return nil }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.arguments = ["-j", "-q", destZipURL.path] + sourcePaths
+        try? process.run()
+        process.waitUntilExit()
+
+        if !FileManager.default.fileExists(atPath: destZipURL.path) {
+            let fallbackProcess = Process()
+            fallbackProcess.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+            fallbackProcess.arguments = ["-r", "-q", destZipURL.path] + sourcePaths
+            try? fallbackProcess.run()
+            fallbackProcess.waitUntilExit()
+        }
+
+        guard FileManager.default.fileExists(atPath: destZipURL.path) else { return nil }
+
+        addFile(url: destZipURL)
+        let standardizedZipPath = destZipURL.standardizedFileURL.path
+        if let newZipItem = files.first(where: {
+            $0.filePath == standardizedZipPath || $0.name == destZipURL.lastPathComponent
+        }) {
+            selectSingle(id: newZipItem.id)
+            return newZipItem
+        }
+        return nil
+    }
+
+    /// Writes dropped image data to `fileStorage.assetsDirectory` and stashes it on the shelf.
+    @discardableResult
+    public func addDroppedImageData(_ data: Data, suggestedName: String? = nil) -> ShelfFileItem? {
+        guard !data.isEmpty else { return nil }
+        try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
+
+        let baseName: String
+        if let suggestedName, !suggestedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let trimmed = suggestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+            baseName = (trimmed as NSString).pathExtension.isEmpty ? "\(trimmed).png" : trimmed
+        } else {
+            baseName = "Image_\(Int(Date().timeIntervalSince1970)).png"
+        }
+
+        let fileURL = uniqueAssetURL(for: baseName)
+        guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        addFile(url: fileURL)
+        let standardizedPath = fileURL.standardizedFileURL.path
+        return files.first(where: { $0.filePath == standardizedPath })
+    }
+
+    /// Writes a dropped text snippet as a UTF-8 `.txt` file in `fileStorage.assetsDirectory` and stashes it.
+    @discardableResult
+    public func addDroppedTextSnippet(_ text: String) -> ShelfFileItem? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = text.data(using: .utf8) else { return nil }
+        try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
+
+        let baseName = "Snippet_\(Int(Date().timeIntervalSince1970)).txt"
+        let fileURL = uniqueAssetURL(for: baseName)
+        guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        addFile(url: fileURL)
+        let standardizedPath = fileURL.standardizedFileURL.path
+        return files.first(where: { $0.filePath == standardizedPath })
+    }
+
+    /// Writes a dropped web link as a standard macOS `.webloc` plist file in `fileStorage.assetsDirectory` and stashes it.
+    @discardableResult
+    public func addDroppedWebLink(_ url: URL) -> ShelfFileItem? {
+        try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
+
+        let hostPart = (url.host ?? "Link").replacingOccurrences(of: "/", with: "_")
+        let baseName = "\(hostPart)_\(Int(Date().timeIntervalSince1970)).webloc"
+        let fileURL = uniqueAssetURL(for: baseName)
+
+        let escapedURL = url.absoluteString
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let weblocPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+        \t<key>URL</key>
+        \t<string>\(escapedURL)</string>
+        </dict>
+        </plist>
+        """
+        guard let data = weblocPlist.data(using: .utf8),
+              (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        addFile(url: fileURL)
+        let standardizedPath = fileURL.standardizedFileURL.path
+        return files.first(where: { $0.filePath == standardizedPath })
+    }
+
     /// Removes the item from the shelf after it is dragged out if `autoRemoveOnDrag` is enabled
     /// and the item is not starred (`isFavorite == false`). Never deletes the user's original file on disk!
     public func handleDragOutCompleted(id: String) {

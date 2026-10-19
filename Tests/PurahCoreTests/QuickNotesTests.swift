@@ -888,4 +888,94 @@ struct QuickNotesTests {
         #expect(state.files.map(\.id) == ["f2", "f4"])
         #expect(state.selectedFileIds.isEmpty)
     }
+
+    @Test("ShelfPluginState supports 1-click ZIP compression and web/text/image drop ingestion")
+    @MainActor
+    func testDropShelfProPowerSuiteUpgrades() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_shelf_power_suite_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "test-shelf-power-\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "test-shelf-power", customBaseDirectory: tempDir)
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+        state.clearAllIncludingFavorites()
+
+        // 1. Ingest dropped text snippet (.txt)
+        let textItem = state.addDroppedTextSnippet("Hello Purah")
+        #expect(textItem != nil)
+        #expect(textItem?.fileExtension == "txt")
+        #expect(textItem?.name.hasPrefix("Snippet_") == true)
+        if let textPath = textItem?.filePath {
+            #expect(textPath.hasPrefix(fileStorage.assetsDirectory.path))
+            #expect(FileManager.default.fileExists(atPath: textPath))
+            let savedText = try String(contentsOfFile: textPath, encoding: .utf8)
+            #expect(savedText == "Hello Purah")
+        }
+
+        // 2. Ingest dropped web link (.webloc)
+        let webURL = URL(string: "https://apple.com")!
+        let linkItem = state.addDroppedWebLink(webURL)
+        #expect(linkItem != nil)
+        #expect(linkItem?.fileExtension == "webloc")
+        #expect(linkItem?.name.hasPrefix("apple.com_") == true)
+        if let linkPath = linkItem?.filePath {
+            #expect(linkPath.hasPrefix(fileStorage.assetsDirectory.path))
+            #expect(FileManager.default.fileExists(atPath: linkPath))
+            let savedWebloc = try String(contentsOfFile: linkPath, encoding: .utf8)
+            #expect(savedWebloc.contains("<key>URL</key>"))
+            #expect(savedWebloc.contains("<string>https://apple.com</string>"))
+        }
+
+        // 3. Ingest dropped raw image data (.png)
+        let dummyPNGData = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let imageItem = state.addDroppedImageData(dummyPNGData)
+        #expect(imageItem != nil)
+        #expect(imageItem?.fileExtension == "png")
+        #expect(imageItem?.name.hasPrefix("Image_") == true)
+        if let imagePath = imageItem?.filePath {
+            #expect(imagePath.hasPrefix(fileStorage.assetsDirectory.path))
+            #expect(FileManager.default.fileExists(atPath: imagePath))
+            let savedBytes = try Data(contentsOf: URL(fileURLWithPath: imagePath))
+            #expect(savedBytes == dummyPNGData)
+        }
+
+        #expect(state.files.count == 3)
+
+        // 4. Compress multiple stashed files into a real .zip archive and select it
+        state.clearSelection()
+        let zipArchiveItem = state.compressFilesToZip()
+        #expect(zipArchiveItem != nil)
+        #expect(zipArchiveItem?.fileExtension == "zip")
+        #expect(zipArchiveItem?.name.hasPrefix("Shelf_Archive_") == true)
+        if let zipItem = zipArchiveItem, let zipPath = zipItem.filePath {
+            #expect(zipPath.hasPrefix(fileStorage.assetsDirectory.path))
+            #expect(FileManager.default.fileExists(atPath: zipPath))
+            let zipSize = (try? FileManager.default.attributesOfItem(atPath: zipPath)[.size] as? Int64) ?? 0
+            #expect(zipSize > 0)
+            #expect(state.selectedFileIds == [zipItem.id])
+            #expect(state.files.first?.id == zipItem.id)
+        }
+
+        // 5. Compress a single selected file into <filename>.zip
+        if let singleTarget = textItem {
+            state.selectSingle(id: singleTarget.id)
+            let singleZip = state.compressFilesToZip()
+            #expect(singleZip != nil)
+            #expect(singleZip?.name == "\(singleTarget.name).zip")
+            if let singleZip, let singleZipPath = singleZip.filePath {
+                #expect(FileManager.default.fileExists(atPath: singleZipPath))
+                #expect(state.selectedFileIds == [singleZip.id])
+            }
+        }
+
+        // 6. Verify QuickLook controller preview items
+        if let url = textItem?.resolvedURL {
+            ShelfQuickLookController.shared.previewURLs = [url]
+            #expect(ShelfQuickLookController.shared.numberOfPreviewItems(in: nil) == 1)
+            let previewItem = ShelfQuickLookController.shared.previewPanel(nil, previewItemAt: 0) as? NSURL
+            #expect((previewItem as URL?)?.standardizedFileURL == url.standardizedFileURL)
+        }
+    }
 }

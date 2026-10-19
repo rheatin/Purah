@@ -2,7 +2,71 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import QuickLookThumbnailing
+import Quartz
 import PurahCore
+
+// MARK: - Real File Thumbnail Cache (QLThumbnailGenerator)
+
+@MainActor
+public final class ShelfThumbnailCache {
+    public static let shared = ShelfThumbnailCache()
+    private var cache: [String: NSImage] = [:]
+
+    public init() {}
+
+    public func cachedThumbnail(for path: String) -> NSImage? {
+        cache[path]
+    }
+
+    @MainActor
+    public func loadThumbnail(
+        for url: URL,
+        size: CGSize = CGSize(width: 28, height: 28),
+        completion: @escaping (NSImage?) -> Void
+    ) {
+        let path = url.standardizedFileURL.path
+        if let existing = cache[path] {
+            completion(existing)
+            return
+        }
+        guard FileManager.default.fileExists(atPath: path) else {
+            completion(nil)
+            return
+        }
+        let request = QLThumbnailGenerator.Request(
+            fileAt: url,
+            size: size,
+            scale: 2.0,
+            representationTypes: .all
+        )
+        Task { @MainActor in
+            let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
+            let image = representation?.nsImage
+            if let image {
+                self.cache[path] = image
+            }
+            completion(image)
+        }
+    }
+}
+
+// MARK: - Quick Look Preview Controller (QLPreviewPanel)
+
+@MainActor
+public final class ShelfQuickLookController: NSObject, @preconcurrency QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    public static let shared = ShelfQuickLookController()
+    public var previewURLs: [URL] = []
+
+    public func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        previewURLs.count
+    }
+
+    public func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        guard index >= 0 && index < previewURLs.count else { return nil }
+        return previewURLs[index] as NSURL
+    }
+}
 
 public struct ShelfRowFramesPreferenceKey: PreferenceKey {
     public nonisolated(unsafe) static var defaultValue: [String: CGRect] = [:]
@@ -12,11 +76,14 @@ public struct ShelfRowFramesPreferenceKey: PreferenceKey {
 }
 
 public struct DropShelfDrawerView: View {
+    public static let supportedStashDropTypes: [UTType] = [
+        .fileURL, .image, .png, .tiff, .url, .utf8PlainText, .plainText
+    ]
+
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
     @State private var isStashTargeted: Bool = false
     @State private var isAirDropTargeted: Bool = false
-    @State private var isMarqueeModeActive: Bool = false
     @State private var marqueeStartPoint: CGPoint? = nil
     @State private var marqueeCurrentPoint: CGPoint? = nil
     @State private var rowFrames: [String: CGRect] = [:]
@@ -47,6 +114,23 @@ public struct DropShelfDrawerView: View {
             width: abs(current.x - start.x),
             height: abs(current.y - start.y)
         )
+    }
+
+    private func updateMarquee(start: CGPoint, current: CGPoint) {
+        marqueeStartPoint = start
+        marqueeCurrentPoint = current
+        if let rect = currentMarqueeRect {
+            let matched = Set(rowFrames.compactMap { id, frame in
+                frame.intersects(rect) ? id : nil
+            })
+            state.updateMarqueeSelection(intersectingIds: matched)
+        }
+    }
+
+    private func finishMarquee() {
+        marqueeStartPoint = nil
+        marqueeCurrentPoint = nil
+        store.triggerControlHaptic(.alignment)
     }
 
     public var body: some View {
@@ -86,7 +170,7 @@ public struct DropShelfDrawerView: View {
                         )
                         .contentShape(Rectangle())
                         .onDrop(
-                            of: [.fileURL, .url],
+                            of: Self.supportedStashDropTypes,
                             delegate: ShelfStashDropDelegate(
                                 isTargeted: $isStashTargeted,
                                 state: state,
@@ -135,7 +219,17 @@ public struct DropShelfDrawerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
-                // Top Selection & Marquee Mini-Toolbar
+                // Hidden Spacebar shortcut for Quick Look preview
+                Button("") {
+                    let urls = state.filesForBatchExport().map { Self.ensureDragURL(for: $0) }
+                    Self.quickLookFiles(urls: urls)
+                }
+                .keyboardShortcut(.space, modifiers: [])
+                .buttonStyle(.plain)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+
+                // Top Selection & ZIP Mini-Toolbar
                 HStack(spacing: 6) {
                     Text(
                         state.selectedFileIds.isEmpty
@@ -148,27 +242,26 @@ public struct DropShelfDrawerView: View {
                     Spacer()
 
                     Button {
-                        isMarqueeModeActive.toggle()
-                        store.triggerControlHaptic(.alignment)
+                        if let zipItem = state.compressFilesToZip() {
+                            store._shelfFiles = state.files
+                            store.triggerControlHaptic(.levelChange)
+                            store.onCapacityWarningToast?("Created \(zipItem.name)")
+                        }
                     } label: {
                         HStack(spacing: 3) {
-                            Image(systemName: "selection.pin.in.out")
+                            Image(systemName: "archivebox.fill")
                                 .font(.system(size: 8.5, weight: .bold))
-                            Text("dropshelf.marquee".localized)
+                            Text("ZIP")
                                 .font(.system(size: 9, weight: .semibold, design: .rounded))
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
-                        .background(isMarqueeModeActive ? shelfColor.opacity(0.28) : Color.secondary.opacity(0.12))
-                        .foregroundColor(isMarqueeModeActive ? shelfColor : .secondary)
+                        .background(shelfColor.opacity(0.16))
+                        .foregroundColor(shelfColor)
                         .cornerRadius(4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(isMarqueeModeActive ? shelfColor : Color.clear, lineWidth: 1)
-                        )
                     }
                     .buttonStyle(.plain)
-                    .help("dropshelf.marqueeHelp".localized)
+                    .help("dropshelf.zipHelp".localized)
 
                     let allSelected = !state.files.isEmpty && state.selectedFileIds.count == state.files.count
                     Button {
@@ -202,7 +295,7 @@ public struct DropShelfDrawerView: View {
                     .foregroundColor(palette.dangerAccent)
                 }
 
-                // File List with Rubber-Band Marquee Selection
+                // File List with Automatic Direct Left-Click Drag Marquee Selection
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 6) {
                         ForEach(state.files) { file in
@@ -227,6 +320,15 @@ public struct DropShelfDrawerView: View {
                                 onToggleFavorite: {
                                     state.toggleFavorite(id: file.id)
                                     store.triggerControlHaptic(.alignment)
+                                },
+                                onMarqueeDragChanged: { startOffset, currentOffset in
+                                    let rowOrigin = rowFrames[file.id]?.origin ?? .zero
+                                    let startPt = CGPoint(x: rowOrigin.x + startOffset.x, y: rowOrigin.y + startOffset.y)
+                                    let currentPt = CGPoint(x: rowOrigin.x + currentOffset.x, y: rowOrigin.y + currentOffset.y)
+                                    updateMarquee(start: startPt, current: currentPt)
+                                },
+                                onMarqueeDragEnded: {
+                                    finishMarquee()
                                 }
                             )
                             .background(
@@ -240,38 +342,29 @@ public struct DropShelfDrawerView: View {
                         }
                     }
                     .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .contentShape(Rectangle())
                 }
                 .coordinateSpace(name: "dropShelfList")
                 .onPreferenceChange(ShelfRowFramesPreferenceKey.self) { frames in
                     rowFrames = frames
                 }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    state.clearSelection()
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 6, coordinateSpace: .named("dropShelfList"))
+                        .onChanged { value in
+                            let start = marqueeStartPoint ?? value.startLocation
+                            updateMarquee(start: start, current: value.location)
+                        }
+                        .onEnded { _ in
+                            finishMarquee()
+                        }
+                )
                 .overlay(
                     ZStack(alignment: .topLeading) {
-                        if isMarqueeModeActive {
-                            Color.white.opacity(0.001)
-                                .contentShape(Rectangle())
-                                .gesture(
-                                    DragGesture(minimumDistance: 2, coordinateSpace: .named("dropShelfList"))
-                                        .onChanged { value in
-                                            if marqueeStartPoint == nil {
-                                                marqueeStartPoint = value.startLocation
-                                            }
-                                            marqueeCurrentPoint = value.location
-                                            if let rect = currentMarqueeRect {
-                                                let matched = Set(rowFrames.compactMap { id, frame in
-                                                    frame.intersects(rect) ? id : nil
-                                                })
-                                                state.updateMarqueeSelection(intersectingIds: matched)
-                                            }
-                                        }
-                                        .onEnded { _ in
-                                            marqueeStartPoint = nil
-                                            marqueeCurrentPoint = nil
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                )
-                        }
-
                         if let rect = currentMarqueeRect {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(shelfColor.opacity(0.20))
@@ -303,9 +396,8 @@ public struct DropShelfDrawerView: View {
                         }
                     }
                 )
-                .contentShape(Rectangle())
                 .onDrop(
-                    of: [.fileURL, .url],
+                    of: Self.supportedStashDropTypes,
                     delegate: ShelfStashDropDelegate(
                         isTargeted: $isStashTargeted,
                         state: state,
@@ -370,6 +462,23 @@ public struct DropShelfDrawerView: View {
                     DropShelfDrawerView.shareViaAirDrop(urls: urls)
                 }
             }
+        }
+    }
+
+    @MainActor
+    public static func quickLookFiles(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let controller = ShelfQuickLookController.shared
+        controller.previewURLs = urls
+        if QLPreviewPanel.sharedPreviewPanelExists(),
+           let panel = QLPreviewPanel.shared(),
+           panel.isVisible {
+            panel.orderOut(nil)
+        } else if let panel = QLPreviewPanel.shared() {
+            panel.dataSource = controller
+            panel.delegate = controller
+            panel.reloadData()
+            panel.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -459,12 +568,13 @@ public struct DropShelfDrawerView: View {
 
     public static func iconForExtension(_ ext: String) -> String {
         switch ext.lowercased() {
-        case "pdf": return "doc.text.fill"
-        case "png", "jpg", "jpeg", "heic": return "photo.fill"
+        case "pdf", "txt", "md", "rtf": return "doc.text.fill"
+        case "png", "jpg", "jpeg", "heic", "tiff", "gif", "webp": return "photo.fill"
         case "zip", "tar", "gz": return "archivebox.fill"
         case "swift", "js", "ts", "py", "rs", "go", "c", "cpp", "h", "sh": return "chevron.left.forwardslash.chevron.right"
         case "mp3", "m4a", "wav", "flac": return "music.note"
         case "mp4", "mov", "mkv": return "film.fill"
+        case "webloc", "url": return "globe"
         default: return "doc.fill"
         }
     }
@@ -510,22 +620,94 @@ public struct ShelfStashDropDelegate: DropDelegate {
     }
 
     public func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.fileURL, .url]) ||
-        (NSPasteboard(name: .drag).canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]))
+        let pasteboard = NSPasteboard(name: .drag)
+        return info.hasItemsConforming(to: DropShelfDrawerView.supportedStashDropTypes) ||
+            pasteboard.canReadObject(forClasses: [NSURL.self], options: nil) ||
+            pasteboard.data(forType: .png) != nil ||
+            pasteboard.data(forType: .tiff) != nil ||
+            pasteboard.string(forType: .string) != nil
+    }
+
+    @MainActor
+    @discardableResult
+    public static func ingestPasteboard(
+        _ pasteboard: NSPasteboard,
+        state: ShelfPluginState,
+        store: PurahWorkspaceStore? = nil
+    ) -> Bool {
+        // 1. Check for file URLs first
+        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !fileURLs.isEmpty {
+            for url in fileURLs {
+                state.addFile(url: url)
+            }
+            store?._shelfFiles = state.files
+            store?.triggerControlHaptic(.alignment)
+            return true
+        }
+
+        // 2. Check for raw image data (.png or .tiff) when no file URL is present
+        if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+            if state.addDroppedImageData(pngData) != nil {
+                store?._shelfFiles = state.files
+                store?.triggerControlHaptic(.alignment)
+                return true
+            }
+        }
+        if let tiffData = pasteboard.data(forType: .tiff), !tiffData.isEmpty {
+            let pngConverted = NSBitmapImageRep(data: tiffData)?.representation(using: .png, properties: [:]) ?? tiffData
+            if state.addDroppedImageData(pngConverted) != nil {
+                store?._shelfFiles = state.files
+                store?.triggerControlHaptic(.alignment)
+                return true
+            }
+        }
+
+        // 3. Check for web http/https URL
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           let webURL = urls.first(where: {
+               let scheme = $0.scheme?.lowercased()
+               return scheme == "http" || scheme == "https"
+           }) {
+            if state.addDroppedWebLink(webURL) != nil {
+                store?._shelfFiles = state.files
+                store?.triggerControlHaptic(.alignment)
+                return true
+            }
+        }
+        if let urlString = pasteboard.string(forType: .URL) ?? pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           let candidateURL = URL(string: urlString),
+           let scheme = candidateURL.scheme?.lowercased(),
+           (scheme == "http" || scheme == "https"),
+           candidateURL.host != nil {
+            if state.addDroppedWebLink(candidateURL) != nil {
+                store?._shelfFiles = state.files
+                store?.triggerControlHaptic(.alignment)
+                return true
+            }
+        }
+
+        // 4. Check for plain text string snippet
+        if let str = pasteboard.string(forType: .string),
+           !str.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if state.addDroppedTextSnippet(str) != nil {
+                store?._shelfFiles = state.files
+                store?.triggerControlHaptic(.alignment)
+                return true
+            }
+        }
+
+        return false
     }
 
     public func performDrop(info: DropInfo) -> Bool {
         isTargeted = false
         let pasteboard = NSPasteboard(name: .drag)
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            for url in urls {
-                state.addFile(url: url)
-            }
-            store.triggerControlHaptic(.alignment)
+        if Self.ingestPasteboard(pasteboard, state: state, store: store) {
             return true
         }
 
-        let providers = info.itemProviders(for: [.fileURL, .url])
+        let providers = info.itemProviders(for: DropShelfDrawerView.supportedStashDropTypes)
         guard !providers.isEmpty else { return false }
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -541,15 +723,41 @@ public struct ShelfStashDropDelegate: DropDelegate {
                     if let fileURL = url {
                         Task { @MainActor in
                             state.addFile(url: fileURL)
+                            store._shelfFiles = state.files
                             store.triggerControlHaptic(.alignment)
                         }
                     }
                 }
-            } else {
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    if let url = url {
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    if let data, !data.isEmpty {
                         Task { @MainActor in
-                            state.addFile(url: url)
+                            _ = state.addDroppedImageData(data)
+                            store._shelfFiles = state.files
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    if let url {
+                        Task { @MainActor in
+                            if let scheme = url.scheme?.lowercased(), (scheme == "http" || scheme == "https") {
+                                _ = state.addDroppedWebLink(url)
+                            } else {
+                                state.addFile(url: url)
+                            }
+                            store._shelfFiles = state.files
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Task { @MainActor in
+                            _ = state.addDroppedTextSnippet(text)
+                            store._shelfFiles = state.files
                             store.triggerControlHaptic(.alignment)
                         }
                     }
@@ -649,9 +857,12 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     public var onDragStarted: (() -> Void)?
     public var onDragCompleted: ((Bool) -> Void)?
     public var onBatchDragCompleted: (([String], Bool) -> Void)?
+    public var onMarqueeDragChanged: ((CGPoint, CGPoint) -> Void)?
+    public var onMarqueeDragEnded: (() -> Void)?
 
     private var mouseDownEvent: NSEvent?
     private var didStartDrag = false
+    private var isMarqueeDragging = false
     private var activeDraggedIds: [String] = []
     private var trackingArea: NSTrackingArea?
 
@@ -665,7 +876,9 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
         onHover: ((Bool) -> Void)? = nil,
         onDragStarted: (() -> Void)? = nil,
         onDragCompleted: ((Bool) -> Void)? = nil,
-        onBatchDragCompleted: (([String], Bool) -> Void)? = nil
+        onBatchDragCompleted: (([String], Bool) -> Void)? = nil,
+        onMarqueeDragChanged: ((CGPoint, CGPoint) -> Void)? = nil,
+        onMarqueeDragEnded: (() -> Void)? = nil
     ) {
         self.file = file
         self.iconImage = iconImage
@@ -677,6 +890,8 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
         self.onDragStarted = onDragStarted
         self.onDragCompleted = onDragCompleted
         self.onBatchDragCompleted = onBatchDragCompleted
+        self.onMarqueeDragChanged = onMarqueeDragChanged
+        self.onMarqueeDragEnded = onMarqueeDragEnded
         super.init(frame: .zero)
     }
 
@@ -714,10 +929,14 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     override public func mouseDown(with event: NSEvent) {
         mouseDownEvent = event
         didStartDrag = false
+        isMarqueeDragging = false
     }
 
     override public func mouseUp(with event: NSEvent) {
-        if !didStartDrag {
+        if isMarqueeDragging {
+            isMarqueeDragging = false
+            onMarqueeDragEnded?()
+        } else if !didStartDrag {
             if event.clickCount == 2 {
                 onOpen?()
             } else if event.clickCount == 1 {
@@ -735,7 +954,8 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
 
     public static func makeDragPreviewImage(for itemFile: ShelfFileItem, totalCount: Int, isPrimary: Bool) -> NSImage {
         let targetURL = DropShelfDrawerView.ensureDragURL(for: itemFile)
-        let baseIcon = NSWorkspace.shared.icon(forFile: targetURL.path)
+        let baseIcon = ShelfThumbnailCache.shared.cachedThumbnail(for: targetURL.standardizedFileURL.path)
+            ?? NSWorkspace.shared.icon(forFile: targetURL.path)
         let canvasSize = NSSize(width: 36, height: 36)
         let image = NSImage(size: canvasSize)
         image.lockFocus()
@@ -770,8 +990,28 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     }
 
     override public func mouseDragged(with event: NSEvent) {
-        guard let start = mouseDownEvent?.locationInWindow else { return }
-        let distance = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
+        guard let downEvent = mouseDownEvent else { return }
+        let start = downEvent.locationInWindow
+        let current = event.locationInWindow
+        let distance = hypot(current.x - start.x, current.y - start.y)
+
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let downFlags = downEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let wantsMarquee = flags.contains(.option) || flags.contains(.shift) || downFlags.contains(.option) || downFlags.contains(.shift)
+
+        if (wantsMarquee || isMarqueeDragging) && onMarqueeDragChanged != nil {
+            if distance >= 6.0 || isMarqueeDragging {
+                isMarqueeDragging = true
+                didStartDrag = true
+                let localStart = convert(start, from: nil)
+                let localCurrent = convert(current, from: nil)
+                let flippedStart = CGPoint(x: localStart.x, y: isFlipped ? localStart.y : (bounds.height - localStart.y))
+                let flippedCurrent = CGPoint(x: localCurrent.x, y: isFlipped ? localCurrent.y : (bounds.height - localCurrent.y))
+                onMarqueeDragChanged?(flippedStart, flippedCurrent)
+            }
+            return
+        }
+
         if distance > 3.0 && !didStartDrag {
             didStartDrag = true
             onDragStarted?()
@@ -780,7 +1020,7 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
             let batchFiles = rawBatch.isEmpty ? [file] : rawBatch
             activeDraggedIds = batchFiles.map(\.id)
 
-            let localPoint = convert(event.locationInWindow, from: nil)
+            let localPoint = convert(current, from: nil)
             var draggingItems: [NSDraggingItem] = []
 
             for (idx, itemFile) in batchFiles.enumerated() {
@@ -800,7 +1040,7 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
                 draggingItems.append(draggingItem)
             }
 
-            beginDraggingSession(with: draggingItems, event: mouseDownEvent ?? event, source: self)
+            beginDraggingSession(with: draggingItems, event: downEvent, source: self)
         }
     }
 
@@ -833,6 +1073,8 @@ public struct ShelfItemDragSourceView: NSViewRepresentable {
     public var onDragStarted: (() -> Void)? = nil
     public var onDragCompleted: ((Bool) -> Void)? = nil
     public var onBatchDragCompleted: (([String], Bool) -> Void)? = nil
+    public var onMarqueeDragChanged: ((CGPoint, CGPoint) -> Void)? = nil
+    public var onMarqueeDragEnded: (() -> Void)? = nil
 
     public init(
         file: ShelfFileItem,
@@ -844,7 +1086,9 @@ public struct ShelfItemDragSourceView: NSViewRepresentable {
         onHover: ((Bool) -> Void)? = nil,
         onDragStarted: (() -> Void)? = nil,
         onDragCompleted: ((Bool) -> Void)? = nil,
-        onBatchDragCompleted: (([String], Bool) -> Void)? = nil
+        onBatchDragCompleted: (([String], Bool) -> Void)? = nil,
+        onMarqueeDragChanged: ((CGPoint, CGPoint) -> Void)? = nil,
+        onMarqueeDragEnded: (() -> Void)? = nil
     ) {
         self.file = file
         self.iconImage = iconImage
@@ -856,6 +1100,8 @@ public struct ShelfItemDragSourceView: NSViewRepresentable {
         self.onDragStarted = onDragStarted
         self.onDragCompleted = onDragCompleted
         self.onBatchDragCompleted = onBatchDragCompleted
+        self.onMarqueeDragChanged = onMarqueeDragChanged
+        self.onMarqueeDragEnded = onMarqueeDragEnded
     }
 
     public func makeNSView(context: Context) -> DraggableShelfItemNSView {
@@ -869,7 +1115,9 @@ public struct ShelfItemDragSourceView: NSViewRepresentable {
             onHover: onHover,
             onDragStarted: onDragStarted,
             onDragCompleted: onDragCompleted,
-            onBatchDragCompleted: onBatchDragCompleted
+            onBatchDragCompleted: onBatchDragCompleted,
+            onMarqueeDragChanged: onMarqueeDragChanged,
+            onMarqueeDragEnded: onMarqueeDragEnded
         )
     }
 
@@ -884,6 +1132,8 @@ public struct ShelfItemDragSourceView: NSViewRepresentable {
         nsView.onDragStarted = onDragStarted
         nsView.onDragCompleted = onDragCompleted
         nsView.onBatchDragCompleted = onBatchDragCompleted
+        nsView.onMarqueeDragChanged = onMarqueeDragChanged
+        nsView.onMarqueeDragEnded = onMarqueeDragEnded
     }
 }
 
@@ -995,9 +1245,12 @@ public struct ShelfFileRowView: View {
     public let onReveal: () -> Void
     public let onRemove: () -> Void
     public let onToggleFavorite: (() -> Void)?
+    public let onMarqueeDragChanged: ((CGPoint, CGPoint) -> Void)?
+    public let onMarqueeDragEnded: (() -> Void)?
 
     @State private var isHovered: Bool = false
     @State private var isDragging: Bool = false
+    @State private var thumbnailImage: NSImage? = nil
 
     public init(
         file: ShelfFileItem,
@@ -1008,7 +1261,9 @@ public struct ShelfFileRowView: View {
         onOpen: @escaping () -> Void,
         onReveal: @escaping () -> Void,
         onRemove: @escaping () -> Void,
-        onToggleFavorite: (() -> Void)? = nil
+        onToggleFavorite: (() -> Void)? = nil,
+        onMarqueeDragChanged: ((CGPoint, CGPoint) -> Void)? = nil,
+        onMarqueeDragEnded: (() -> Void)? = nil
     ) {
         self.file = file
         self.shelfColor = shelfColor
@@ -1019,10 +1274,22 @@ public struct ShelfFileRowView: View {
         self.onReveal = onReveal
         self.onRemove = onRemove
         self.onToggleFavorite = onToggleFavorite
+        self.onMarqueeDragChanged = onMarqueeDragChanged
+        self.onMarqueeDragEnded = onMarqueeDragEnded
     }
 
     private var isSelected: Bool {
         state?.isSelected(id: file.id) ?? false
+    }
+
+    private func refreshThumbnail() {
+        if let url = file.resolvedURL {
+            ShelfThumbnailCache.shared.loadThumbnail(for: url) { img in
+                self.thumbnailImage = img
+            }
+        } else {
+            thumbnailImage = nil
+        }
     }
 
     public var body: some View {
@@ -1038,11 +1305,20 @@ public struct ShelfFileRowView: View {
             }
             .buttonStyle(.plain)
 
-            // File Icon & Title/Size wrapped with native AppKit Drag Source overlay
+            // File Icon/Thumbnail + File Name/Size pill scoped strictly to the left side
             HStack(spacing: 8) {
-                Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
-                    .font(.system(size: 14))
-                    .foregroundColor(shelfColor)
+                if let thumb = thumbnailImage {
+                    Image(nsImage: thumb)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 26, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                } else {
+                    Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
+                        .font(.system(size: 14))
+                        .foregroundColor(shelfColor)
+                        .frame(width: 26, height: 26)
+                }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(file.name)
@@ -1053,13 +1329,13 @@ public struct ShelfFileRowView: View {
                         .purahCaption(size: 8)
                         .foregroundColor(.gray)
                 }
-
-                Spacer()
             }
+            .frame(maxWidth: 155, alignment: .leading)
             .contentShape(Rectangle())
             .overlay(
                 ShelfItemDragSourceView(
                     file: file,
+                    iconImage: thumbnailImage,
                     filesToDragProvider: {
                         state?.filesForDrag(startingFrom: file) ?? [file]
                     },
@@ -1097,11 +1373,27 @@ public struct ShelfFileRowView: View {
                                 store._shelfFiles = state.files
                             }
                         }
-                    }
+                    },
+                    onMarqueeDragChanged: onMarqueeDragChanged,
+                    onMarqueeDragEnded: onMarqueeDragEnded
                 )
             )
 
-            // Trailing action buttons (remains directly clickable)
+            // Open middle space of the row passes drags directly to list marquee selection
+            Spacer(minLength: 8)
+
+            // Trailing action buttons (remain directly clickable)
+            Button {
+                let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
+                DropShelfDrawerView.quickLookFiles(urls: [targetURL])
+            } label: {
+                Image(systemName: "eye")
+                    .font(.system(size: 10))
+                    .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.55))
+            }
+            .buttonStyle(.plain)
+            .help("dropshelf.quickLook".localized)
+
             Button {
                 if let onToggleFavorite {
                     onToggleFavorite()
@@ -1166,5 +1458,11 @@ public struct ShelfFileRowView: View {
         .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }
+        .onAppear {
+            refreshThumbnail()
+        }
+        .onChange(of: file.filePath) { _, _ in
+            refreshThumbnail()
+        }
     }
 }

@@ -56,15 +56,15 @@ public struct DropShelfPlugin: PurahPodPlugin {
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 360.0 }
 
-    public var supportedDropTypes: [UTType] { [.fileURL, .url] }
+    public var supportedDropTypes: [UTType] {
+        [.fileURL, .image, .png, .tiff, .url, .utf8PlainText, .plainText]
+    }
 
     public func onDrop(providers: [NSItemProvider], context: PurahPluginContext) -> Bool {
         let pasteboard = NSPasteboard(name: .drag)
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            for url in urls {
-                state.addFile(url: url)
-                context.performHaptic(.alignment)
-                context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+        if ShelfStashDropDelegate.ingestPasteboard(pasteboard, state: state, store: context.store) {
+            if let latest = state.files.first {
+                context.showToast("Stashed \(latest.name)", "tray.and.arrow.down.fill")
             }
             return true
         }
@@ -87,13 +87,42 @@ public struct DropShelfPlugin: PurahPodPlugin {
                         }
                     }
                 }
-            } else {
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    if let data, !data.isEmpty {
+                        Task { @MainActor in
+                            if let item = state.addDroppedImageData(data) {
+                                context.performHaptic(.alignment)
+                                context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
+                            }
+                        }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     if let url = url {
                         Task { @MainActor in
-                            state.addFile(url: url)
-                            context.performHaptic(.alignment)
-                            context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+                            if let scheme = url.scheme?.lowercased(), (scheme == "http" || scheme == "https") {
+                                if let item = state.addDroppedWebLink(url) {
+                                    context.performHaptic(.alignment)
+                                    context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
+                                }
+                            } else {
+                                state.addFile(url: url)
+                                context.performHaptic(.alignment)
+                                context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+                            }
+                        }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Task { @MainActor in
+                            if let item = state.addDroppedTextSnippet(text) {
+                                context.performHaptic(.alignment)
+                                context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
+                            }
                         }
                     }
                 }
