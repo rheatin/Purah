@@ -390,6 +390,23 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             category: .lightweight,
             permissions: [.pasteboard, .fileSystem],
             tags: ["clipboard", "history", "colors", "snippets"]
+        ),
+        PurahPluginManifest(
+            id: "ai",
+            displayName: "AI Assistant",
+            systemIcon: "sparkles",
+            author: "Project Purah",
+            version: "0.1.0",
+            description: "Intelligent bezel AI sidecar for quick actions, chat, and text transformations",
+            defaultEdge: .right,
+            preferredZone: .goldenAction,
+            ergonomicWeight: 38.0,
+            minLengthRatio: 0.18,
+            defaultColorHex: "#A855F7",
+            defaultDrawerWidth: 400.0,
+            category: .systemService,
+            permissions: [.pasteboard, .fileSystem],
+            tags: ["ai", "assistant", "chat", "translate", "rewrite"]
         )
     ]
 

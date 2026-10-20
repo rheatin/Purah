@@ -192,6 +192,62 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
 }
 
 @MainActor
+struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
+    let podId: String = "ai"
+    var isDecomposed: Bool { true }
+    var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: 4,
+            minChipHeight: 42.0,
+            maxChipHeight: 185.0,
+            spacing: 2.5,
+            overflowStrategy: .truncate
+        )
+    }
+
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        store._isAIDecomposed
+    }
+
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "ai") {
+            return 400.0
+        }
+        return 340.0
+    }
+
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if store._isAIDecomposed {
+            let count = max(store._aiEnabledActions.count, 1)
+            return CGFloat(count) * 42.0 + CGFloat(count - 1) * 2.5
+        }
+        return 220.0
+    }
+
+    func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        store._aiEnabledActions.contains { store.isItemPinned(id: "ai-\($0.rawValue)") }
+    }
+
+    func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        itemId.hasPrefix("ai-")
+    }
+
+    func subItemCount(store: PurahWorkspaceStore) -> Int {
+        store._isAIDecomposed ? store._aiEnabledActions.count : 0
+    }
+
+    func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        guard store._isAIDecomposed, store._aiEnabledActions.indices.contains(index) else { return nil }
+        return "ai-\(store._aiEnabledActions[index].rawValue)"
+    }
+
+    func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        guard store._isAIDecomposed, store._aiEnabledActions.indices.contains(index) else { return nil }
+        return store._aiEnabledActions[index].title
+    }
+}
+
+@MainActor
 struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String
     let minHeight: CGFloat

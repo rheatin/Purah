@@ -11,7 +11,7 @@ struct PurahWorkspaceStoreTests {
     func testDefaultPods() {
         let isolated = UserDefaults(suiteName: "test_default_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        #expect(store.pods.count == 9)
+        #expect(store.pods.count == 10)
         #expect(store.pods.contains(where: { $0.id == "calendar" }))
         #expect(store.pods.contains(where: { $0.id == "todo" }))
         #expect(store.pods.contains(where: { $0.id == "music" }))
@@ -21,6 +21,7 @@ struct PurahWorkspaceStoreTests {
         #expect(store.pods.contains(where: { $0.id == "scripts" }))
         #expect(store.pods.contains(where: { $0.id == "terminal" }))
         #expect(store.pods.contains(where: { $0.id == "clipboard" }))
+        #expect(store.pods.contains(where: { $0.id == "ai" }))
     }
 
     @Test("Applies Sprint Productivity preset properly")

@@ -943,6 +943,10 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public func triggerAlert(id: String) {
+        setPluginAlert(id: id, isAlerting: true)
+    }
+
     public func isPodAlerting(podId: String) -> Bool {
         if activePluginAlertIds.contains(podId) && !isAlertAcknowledged(id: podId) {
             return true
@@ -1246,6 +1250,8 @@ public final class PurahWorkspaceStore {
             return 280.0
         case "clipboard":
             return 280.0
+        case "ai":
+            return 340.0
         case "calendar":
             return max(minH, 260.0)
         case "todo":
@@ -2160,6 +2166,43 @@ public final class PurahWorkspaceStore {
             storage.setCodable(newValue, forKey: "enabledActionIds")
         }
     }
+    public var _isAIDecomposed: Bool {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            if storage.string(forKey: "isDecomposed") != nil {
+                return storage.bool(forKey: "isDecomposed")
+            }
+            if userDefaults.object(forKey: "purah.ai.isDecomposed") != nil {
+                return userDefaults.bool(forKey: "purah.ai.isDecomposed")
+            }
+            return false
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.set(newValue, forKey: "isDecomposed")
+        }
+    }
+    public var _aiEnabledActions: [AIQuickActionType] {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            if let actions = storage.codable(forKey: "enabledActions", as: [AIQuickActionType].self) {
+                return actions
+            }
+            if let arr = userDefaults.stringArray(forKey: "purah.ai.enabledActions") {
+                let parsed = arr.compactMap { AIQuickActionType(rawValue: $0) }
+                if !parsed.isEmpty { return parsed }
+            }
+            return [.ask, .translate, .polish, .explainCode]
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "enabledActions")
+        }
+    }
     package var _terminalFontFamily: String {
         get {
             _ = _pluginStorageRevision
@@ -2257,6 +2300,7 @@ public final class PurahWorkspaceStore {
         registerCapabilityProvider(DefaultTodoCapabilityProvider())
         registerCapabilityProvider(DefaultVitalsCapabilityProvider())
         registerCapabilityProvider(DefaultScriptsCapabilityProvider())
+        registerCapabilityProvider(DefaultAICapabilityProvider())
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0, adaptiveWidth: 360.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0))
@@ -2834,6 +2878,7 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "calendar", name: "Calendar Timeline", systemIcon: "calendar", edge: .right, range: .init(start: 0.15, length: 0.35), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.15, defaultColorHex: "#FF5A60"),
             SlotPod(id: "todo", name: "Todo Checklist", systemIcon: "checklist", edge: .right, range: .init(start: 0.52, length: 0.25), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.15, defaultColorHex: "#FF9E0A"),
             SlotPod(id: "music", name: "Music Waveform", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.14), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.12, defaultColorHex: "#FF2D55"),
+            SlotPod(id: "ai", name: "AI Assistant", systemIcon: "sparkles", edge: .right, range: .init(start: 0.85, length: 0.12), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 38, minLength: 0.14, isEnabled: true, drawerWidth: 400, defaultColorHex: "#A855F7"),
             SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.08, length: 0.22), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35, minLength: 0.18, defaultColorHex: "#00E5A3"),
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.32, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16, defaultColorHex: "#2ED573"),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.54, length: 0.14), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.12, isEnabled: false, defaultColorHex: "#FFD166"),
