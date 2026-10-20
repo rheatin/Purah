@@ -328,6 +328,10 @@ public struct CalendarPluginSettingsView: View {
     public let state: CalendarPluginState
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: CalendarPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -338,8 +342,15 @@ public struct CalendarPluginSettingsView: View {
         self.init(state: pluginState, store: store)
     }
 
+    private func iconForStrategy(_ strategy: CalendarOverflowStrategy) -> String {
+        switch strategy {
+        case .smartFold: return "rectangle.stack.fill"
+        case .continuousStream: return "scroll.fill"
+        }
+    }
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             // 0. Sample Calendar Notice (if not connected)
             if !state.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
                 HStack(spacing: 8) {
@@ -348,9 +359,9 @@ public struct CalendarPluginSettingsView: View {
                         .font(.subheadline)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Currently Displaying Sample Calendar")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
                         Text("Connect Apple Calendar for live events")
-                            .font(.caption2)
+                            .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
@@ -371,145 +382,301 @@ public struct CalendarPluginSettingsView: View {
                 .cornerRadius(8)
             }
 
-            // 1. Calendar Scope
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Calendar Scope")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Picker("", selection: Binding(
-                    get: { state.scope },
-                    set: { newScope in
-                        state.scope = newScope
-                        state.save()
-                        store.calendarScope = newScope
-                        state.syncEvents(into: store)
-                    }
-                )) {
-                    ForEach(CalendarTimeScope.allCases) { scope in
-                        Text(scope.title).tag(scope)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
+            // Card 1: Timeline Overflow & Rail Capacity
+            PurahPluginSettingsCard(
+                title: "Timeline Overflow & Rail Capacity",
+                subtitle: "Display density, time window, and overflow strategy",
+                icon: "calendar",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Calendar Scope
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Calendar Scope")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text(state.scope.title)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                        }
 
-            Divider()
-                .background(Color.primary.opacity(0.08))
-
-            // 2. Overflow & Rail Density Strategy
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Overflow Strategy & Density")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                PurahThemedSegmentedPicker(
-                    options: CalendarOverflowStrategy.allCases,
-                    selection: Binding(
-                        get: { state.overflowStrategy },
-                        set: { newStrategy in
-                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                state.overflowStrategy = newStrategy
-                                state.save()
+                        HStack(spacing: 6) {
+                            ForEach(CalendarTimeScope.allCases) { scope in
+                                let isSelected = state.scope == scope
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        state.scope = scope
+                                        state.save()
+                                        store.calendarScope = scope
+                                        state.syncEvents(into: store)
+                                    }
+                                } label: {
+                                    Text(scope.title)
+                                        .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                        .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.6)
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                    ),
-                    titleForOption: { $0.displayName }
-                )
+                    }
 
-                Text(state.overflowStrategy.subtitle)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    // 3-Tile Strategy Selector
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Overflow Strategy & Density")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
 
-                if state.overflowStrategy == .smartFold {
-                    PurahThemedSliderRow(
-                        title: "Max Rail Events",
-                        subtitle: "Primary events shown on bezel before folding into +N More capsule",
-                        value: Binding(
-                            get: { Double(state.maxRailEvents) },
+                        HStack(spacing: 8) {
+                            ForEach(CalendarOverflowStrategy.allCases) { strategy in
+                                let isSelected = state.overflowStrategy == strategy
+                                Button {
+                                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                                        state.overflowStrategy = strategy
+                                        state.save()
+                                    }
+                                } label: {
+                                    VStack(spacing: 5) {
+                                        Image(systemName: iconForStrategy(strategy))
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+                                        Text(strategy.displayName)
+                                            .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                            .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 9)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .fill(isSelected ? palette.primaryAccent.opacity(0.12) : Color.primary.opacity(0.03))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.4 : 0.8)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        Text(state.overflowStrategy.subtitle)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if state.overflowStrategy == .smartFold {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Max Rail Events")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("\(state.maxRailEvents) items")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
+                            }
+
+                            Slider(
+                                value: Binding(
+                                    get: { Double(state.maxRailEvents) },
+                                    set: {
+                                        state.maxRailEvents = Int($0)
+                                        state.save()
+                                        store.calendarMaxRailEvents = Int($0)
+                                        store.savePersistentState()
+                                        store.invalidateLayoutCache()
+                                        store.onWindowsRebuildNeeded?()
+                                    }
+                                ),
+                                in: 2...6,
+                                step: 1
+                            )
+
+                            Text("Primary events shown on bezel before folding into +N More capsule")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
+                    }
+                }
+            }
+
+            // Card 2: Event Alerts & Advance Notice
+            PurahPluginSettingsCard(
+                title: "Event Alerts & Advance Notice",
+                subtitle: "Visual glow indicators, sound notifications, and lead time",
+                icon: "bell.badge.fill",
+                iconColor: Color(hex: "#FF9F0A")
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Attention Alert Style Pills
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Attention Alert Dynamic")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text(state.alertStyle.displayName)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                        }
+
+                        HStack(spacing: 6) {
+                            ForEach(PluginAlertStyle.allCases) { style in
+                                let isSelected = state.alertStyle == style
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        state.alertStyle = style
+                                        state.isEventGlowAlertEnabled = (style != .off)
+                                        state.save()
+                                        store.alertStyle = style
+                                        store.isEventGlowAlertEnabled = (style != .off)
+                                        store.savePersistentState()
+                                    }
+                                } label: {
+                                    Text(style.displayName)
+                                        .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                        .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.6)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    // Hover dismiss switch row
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Dismiss dynamic animation on mouse hover")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Immediately quiet alert animations when touching the rail")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.dismissAlertOnHover },
                             set: {
-                                state.maxRailEvents = Int($0)
+                                state.dismissAlertOnHover = $0
                                 state.save()
-                                store.calendarMaxRailEvents = Int($0)
+                                store.dismissAlertOnHover = $0
                                 store.savePersistentState()
-                                store.invalidateLayoutCache()
-                                store.onWindowsRebuildNeeded?()
                             }
-                        ),
-                        range: 2...6,
-                        step: 1,
-                        valueBadgeText: "\(state.maxRailEvents) items"
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                    }
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
                     )
-                }
-            }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
 
-            Divider()
-                .background(Color.primary.opacity(0.08))
-
-            // 3. Attention Alert Dynamics
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Attention Alert Dynamic")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                PurahThemedSegmentedPicker(
-                    options: PluginAlertStyle.allCases,
-                    selection: Binding(
-                        get: { state.alertStyle },
-                        set: {
-                            state.alertStyle = $0
-                            state.isEventGlowAlertEnabled = ($0 != .off)
-                            state.save()
-                            store.alertStyle = $0
-                            store.isEventGlowAlertEnabled = ($0 != .off)
-                            store.savePersistentState()
+                    // Event toast switch row
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Show Toast notification when events start")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Display transient HUD capsule notification at start time")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
                         }
-                    ),
-                    titleForOption: { $0.displayName }
-                )
-
-                Toggle("Dismiss dynamic animation on mouse hover", isOn: Binding(
-                    get: { state.dismissAlertOnHover },
-                    set: {
-                        state.dismissAlertOnHover = $0
-                        state.save()
-                        store.dismissAlertOnHover = $0
-                        store.savePersistentState()
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.isEventToastAlertEnabled },
+                            set: {
+                                state.isEventToastAlertEnabled = $0
+                                state.save()
+                                store.isEventToastAlertEnabled = $0
+                                store.savePersistentState()
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
                     }
-                ))
-                .font(.caption)
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
 
-                Toggle("Show Toast notification when events start", isOn: Binding(
-                    get: { state.isEventToastAlertEnabled },
-                    set: {
-                        state.isEventToastAlertEnabled = $0
-                        state.save()
-                        store.isEventToastAlertEnabled = $0
-                        store.savePersistentState()
-                    }
-                ))
-                .font(.caption)
-
-                Divider()
-                    .background(Color.primary.opacity(0.06))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("calendar.alert.advanceNotice".localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Picker("", selection: Binding(
-                        get: { state.alertLeadTime },
-                        set: { newLead in
-                            state.alertLeadTime = newLead
-                            state.save()
-                            state.checkUpcomingAlerts(store: store)
+                    // Advance Notice horizontal pill selector
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("calendar.alert.advanceNotice".localized)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text(state.alertLeadTime.localizedDisplayName)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
                         }
-                    )) {
-                        ForEach(CalendarAlertLeadTime.allCases) { lead in
-                            Text(lead.localizedDisplayName).tag(lead)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 5) {
+                                ForEach(CalendarAlertLeadTime.allCases) { lead in
+                                    let isSelected = state.alertLeadTime == lead
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            state.alertLeadTime = lead
+                                            state.save()
+                                            state.checkUpcomingAlerts(store: store)
+                                        }
+                                    } label: {
+                                        Text(lead.localizedDisplayName)
+                                            .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                            .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                    .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                    .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.6)
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 2)
                         }
                     }
-                    .pickerStyle(.menu)
                 }
             }
         }

@@ -228,6 +228,10 @@ public struct VitalsPluginSettingsView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -240,293 +244,386 @@ public struct VitalsPluginSettingsView: View {
 
     public var body: some View {
         let vitals = state.metrics
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle("Decompose into Stepped Metric Rail Chips", isOn: Binding(
-                get: { state.isDecomposed },
-                set: {
-                    state.isDecomposed = $0
-                    state.save()
-                    store._isVitalsDecomposed = $0
-                    store.invalidateLayoutCache()
-                    store.savePersistentState()
-                    store.onWindowsRebuildNeeded?()
-                }
-            ))
-            .font(.subheadline.weight(.semibold))
-
-            Text("Splits hardware monitoring into individual rail chips (CPU, GPU, RAM, Power, Network, Disk) like Calendar and Todo.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            if state.isDecomposed {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Visible Sub-Metrics")
-                        .font(.caption.weight(.bold))
-
-                    ForEach(VitalsMetricType.allCases) { metric in
-                        let isIncluded = state.enabledMetrics.contains(metric)
-                        Button {
-                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                if isIncluded {
-                                    if state.enabledMetrics.count > 1 {
-                                        state.enabledMetrics.removeAll { $0 == metric }
-                                    }
-                                } else {
-                                    state.enabledMetrics.append(metric)
-                                }
+        VStack(alignment: .leading, spacing: 14) {
+            // Card 1: Stepped Rail Chips & Active Metrics
+            PurahPluginSettingsCard(
+                title: "Stepped Rail Chips & Active Metrics",
+                subtitle: "Configure individual hardware monitor chips on the rail bezel",
+                icon: "waveform.path.ecg",
+                iconColor: Color(hex: "#34C759")
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Switch sub-card for decomposition
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Decompose into Stepped Metric Rail Chips")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Splits hardware monitoring into individual rail chips (CPU, GPU, RAM, Power, Network, Disk)")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.isDecomposed },
+                            set: {
+                                state.isDecomposed = $0
                                 state.save()
-                                store._vitalsEnabledMetrics = state.enabledMetrics
+                                store._isVitalsDecomposed = $0
+                                store.invalidateLayoutCache()
                                 store.savePersistentState()
+                                store.onWindowsRebuildNeeded?()
                             }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: isIncluded ? "checkmark.square.fill" : "square")
-                                    .foregroundColor(isIncluded ? .accentColor : .secondary)
-                                Image(systemName: metric.systemIcon)
-                                    .font(.caption)
-                                    .frame(width: 16)
-                                Text(metric.displayName)
-                                    .font(.caption)
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                    }
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
+
+                    if state.isDecomposed {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Visible Sub-Metrics")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundColor(.primary)
                                 Spacer()
+                                Text("\(state.enabledMetrics.count) Active")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
                             }
+
+                            let columns = [
+                                GridItem(.flexible(), spacing: 8),
+                                GridItem(.flexible(), spacing: 8),
+                                GridItem(.flexible(), spacing: 8)
+                            ]
+
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                ForEach(VitalsMetricType.allCases) { metric in
+                                    let isIncluded = state.enabledMetrics.contains(metric)
+                                    Button {
+                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                            if isIncluded {
+                                                if state.enabledMetrics.count > 1 {
+                                                    state.enabledMetrics.removeAll { $0 == metric }
+                                                }
+                                            } else {
+                                                state.enabledMetrics.append(metric)
+                                            }
+                                            state.save()
+                                            store._vitalsEnabledMetrics = state.enabledMetrics
+                                            store.savePersistentState()
+                                        }
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack {
+                                                Image(systemName: metric.systemIcon)
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(isIncluded ? palette.primaryAccent : .secondary)
+                                                Spacer()
+                                                Image(systemName: isIncluded ? "checkmark.circle.fill" : "circle")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundColor(isIncluded ? palette.primaryAccent : palette.borderColor.opacity(0.4))
+                                            }
+
+                                            Text(metric.displayName)
+                                                .font(.system(size: 10, weight: isIncluded ? .bold : .medium, design: .rounded))
+                                                .foregroundColor(isIncluded ? .primary : .secondary)
+                                                .lineLimit(1)
+                                        }
+                                        .padding(8)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                .fill(isIncluded ? palette.primaryAccent.opacity(0.12) : Color.primary.opacity(0.03))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                .stroke(isIncluded ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isIncluded ? 1.4 : 0.8)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Card 2: Dynamic Telemetry Color Thresholds
+            PurahPluginSettingsCard(
+                title: "Dynamic Telemetry Color Thresholds",
+                subtitle: "Real-time green / amber / red boundary calibration",
+                icon: "slider.horizontal.3",
+                iconColor: Color(hex: "#FF9F0A"),
+                trailing: Button {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                        state.resetThresholds()
+                        store._vitalsThresholds = state.thresholds
+                        store.savePersistentState()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("Reset Defaults")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.05))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.plain)
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Visual 3-color legend/preview bar
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Color Progression (CPU Baseline)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("0% → \(Int(state.thresholds.cpuWarning * 100))% → \(Int(state.thresholds.cpuDanger * 100))% → 100%")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        GeometryReader { geo in
+                            let totalWidth = geo.size.width
+                            let warnRatio = max(min(CGFloat(state.thresholds.cpuWarning), 1.0), 0.0)
+                            let dangerRatio = max(min(CGFloat(state.thresholds.cpuDanger), 1.0), warnRatio)
+                            let wGreen = warnRatio * totalWidth
+                            let wAmber = max((dangerRatio - warnRatio) * totalWidth, 0)
+                            let wRed = max(totalWidth - wGreen - wAmber, 0)
+
+                            HStack(spacing: 0) {
+                                Rectangle()
+                                    .fill(VitalsColorResolver.healthyGreen)
+                                    .frame(width: wGreen)
+                                Rectangle()
+                                    .fill(VitalsColorResolver.warningYellow)
+                                    .frame(width: wAmber)
+                                Rectangle()
+                                    .fill(VitalsColorResolver.dangerRed)
+                                    .frame(width: wRed)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        .frame(height: 10)
+
+                        HStack {
+                            HStack(spacing: 4) {
+                                Circle().fill(VitalsColorResolver.healthyGreen).frame(width: 8, height: 8)
+                                Text("Green (< \(Int(state.thresholds.cpuWarning * 100))%)")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Circle().fill(VitalsColorResolver.warningYellow).frame(width: 8, height: 8)
+                                Text("Amber (\(Int(state.thresholds.cpuWarning * 100))% ~ \(Int(state.thresholds.cpuDanger * 100))%)")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Circle().fill(VitalsColorResolver.dangerRed).frame(width: 8, height: 8)
+                                Text("Red (> \(Int(state.thresholds.cpuDanger * 100))%)")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.primary.opacity(0.03))
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
+
+                    // Sliders in styled sub-cards
+                    VStack(spacing: 8) {
+                        thresholdRow(
+                            title: "CPU Load",
+                            warningLabel: "\(Int(state.thresholds.cpuWarning * 100))%",
+                            warningValue: percentageBinding(for: \.cpuWarning, cappedBy: \.cpuDanger, isWarning: true),
+                            warningRange: 10...90,
+                            dangerLabel: "\(Int(state.thresholds.cpuDanger * 100))%",
+                            dangerValue: percentageBinding(for: \.cpuDanger, cappedBy: \.cpuWarning, isWarning: false),
+                            dangerRange: 50...99
+                        )
+
+                        thresholdRow(
+                            title: "GPU Activity",
+                            warningLabel: "\(Int(state.thresholds.gpuWarning * 100))%",
+                            warningValue: percentageBinding(for: \.gpuWarning, cappedBy: \.gpuDanger, isWarning: true),
+                            warningRange: 10...90,
+                            dangerLabel: "\(Int(state.thresholds.gpuDanger * 100))%",
+                            dangerValue: percentageBinding(for: \.gpuDanger, cappedBy: \.gpuWarning, isWarning: false),
+                            dangerRange: 50...99
+                        )
+
+                        thresholdRow(
+                            title: "Memory (RAM)",
+                            warningLabel: "\(Int(state.thresholds.ramWarning * 100))%",
+                            warningValue: percentageBinding(for: \.ramWarning, cappedBy: \.ramDanger, isWarning: true),
+                            warningRange: 20...90,
+                            dangerLabel: "\(Int(state.thresholds.ramDanger * 100))%",
+                            dangerValue: percentageBinding(for: \.ramDanger, cappedBy: \.ramWarning, isWarning: false),
+                            dangerRange: 60...99
+                        )
+
+                        // Battery Low Warning %
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Battery Low Warning")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("\(Int(state.thresholds.batteryLow * 100))%")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(VitalsColorResolver.warningYellow)
+                            }
+
+                            HStack(spacing: 8) {
+                                Text("Level")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 32, alignment: .leading)
+                                Slider(
+                                    value: Binding(
+                                        get: { state.thresholds.batteryLow * 100.0 },
+                                        set: {
+                                            state.thresholds.batteryLow = $0 / 100.0
+                                            state.save()
+                                            store._vitalsThresholds.batteryLow = state.thresholds.batteryLow
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    in: 5...50,
+                                    step: 1
+                                )
+                            }
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
+
+                        // Network Warning MB/s
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Network Throughput")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("Warn: \(Int(state.thresholds.networkWarningMB)) MB/s")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(VitalsColorResolver.warningYellow)
+                                Text("•")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text("Danger: \(Int(state.thresholds.networkDangerMB)) MB/s")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(VitalsColorResolver.dangerRed)
+                            }
+
+                            HStack(spacing: 8) {
+                                Text("Warn")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 32, alignment: .leading)
+                                Slider(
+                                    value: Binding(
+                                        get: { state.thresholds.networkWarningMB },
+                                        set: {
+                                            state.thresholds.networkWarningMB = min($0, state.thresholds.networkDangerMB - 1.0)
+                                            state.save()
+                                            store._vitalsThresholds.networkWarningMB = state.thresholds.networkWarningMB
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    in: 1...100,
+                                    step: 1
+                                )
+
+                                Text("Danger")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 42, alignment: .leading)
+                                Slider(
+                                    value: Binding(
+                                        get: { state.thresholds.networkDangerMB },
+                                        set: {
+                                            state.thresholds.networkDangerMB = max($0, state.thresholds.networkWarningMB + 1.0)
+                                            state.save()
+                                            store._vitalsThresholds.networkDangerMB = state.thresholds.networkDangerMB
+                                            store.savePersistentState()
+                                        }
+                                    ),
+                                    in: 10...200,
+                                    step: 1
+                                )
+                            }
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
+                    }
+
+                    // Live stats footer row
+                    HStack(spacing: 10) {
+                        Text("CPU: \(Int(vitals.cpuUsage * 100))%")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Text("RAM: \(Int(vitals.memoryUsage * 100))%")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Text("Disk: \(Int(vitals.diskFreeGB))GB Free")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Spacer()
+                        Button {
+                            state.refreshMetrics(includeProcesses: true)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 9))
+                                Text("Refresh")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundColor(palette.primaryAccent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(palette.primaryAccent.opacity(0.08))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.primaryAccent.opacity(0.25), lineWidth: 0.8)
+                            )
                         }
                         .buttonStyle(.plain)
                     }
-                }
-                .padding(10)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(8)
-            }
-
-            Divider()
-
-            // Dynamic Usage Color Thresholds Customization Section
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Dynamic Usage Color Thresholds")
-                        .font(.caption.weight(.bold))
-                    Spacer()
-                    Button("Reset Thresholds to Defaults") {
-                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                            state.resetThresholds()
-                            store._vitalsThresholds = state.thresholds
-                            store.savePersistentState()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
                     .foregroundColor(.secondary)
+                    .padding(.top, 4)
                 }
-
-                // Visual 3-color legend/preview bar
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Color Progression (CPU Baseline)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("0% → \(Int(state.thresholds.cpuWarning * 100))% → \(Int(state.thresholds.cpuDanger * 100))% → 100%")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-
-                    GeometryReader { geo in
-                        let totalWidth = geo.size.width
-                        let warnRatio = max(min(CGFloat(state.thresholds.cpuWarning), 1.0), 0.0)
-                        let dangerRatio = max(min(CGFloat(state.thresholds.cpuDanger), 1.0), warnRatio)
-                        let wGreen = warnRatio * totalWidth
-                        let wAmber = max((dangerRatio - warnRatio) * totalWidth, 0)
-                        let wRed = max(totalWidth - wGreen - wAmber, 0)
-
-                        HStack(spacing: 0) {
-                            Rectangle()
-                                .fill(VitalsColorResolver.healthyGreen)
-                                .frame(width: wGreen)
-                            Rectangle()
-                                .fill(VitalsColorResolver.warningYellow)
-                                .frame(width: wAmber)
-                            Rectangle()
-                                .fill(VitalsColorResolver.dangerRed)
-                                .frame(width: wRed)
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    .frame(height: 10)
-
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle().fill(VitalsColorResolver.healthyGreen).frame(width: 8, height: 8)
-                            Text("Green (< \(Int(state.thresholds.cpuWarning * 100))%)")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Circle().fill(VitalsColorResolver.warningYellow).frame(width: 8, height: 8)
-                            Text("Amber (\(Int(state.thresholds.cpuWarning * 100))% ~ \(Int(state.thresholds.cpuDanger * 100))%)")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Circle().fill(VitalsColorResolver.dangerRed).frame(width: 8, height: 8)
-                            Text("Red (> \(Int(state.thresholds.cpuDanger * 100))%)")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .padding(8)
-                .background(Color.primary.opacity(0.03))
-                .cornerRadius(6)
-
-                // Sliders
-                VStack(spacing: 8) {
-                    // CPU Warning % (10% ~ 90%) & Danger % (50% ~ 99%)
-                    thresholdRow(
-                        title: "CPU Load",
-                        warningLabel: "\(Int(state.thresholds.cpuWarning * 100))%",
-                        warningValue: percentageBinding(for: \.cpuWarning, cappedBy: \.cpuDanger, isWarning: true),
-                        warningRange: 10...90,
-                        dangerLabel: "\(Int(state.thresholds.cpuDanger * 100))%",
-                        dangerValue: percentageBinding(for: \.cpuDanger, cappedBy: \.cpuWarning, isWarning: false),
-                        dangerRange: 50...99
-                    )
-
-                    // GPU Warning % (10% ~ 90%) & Danger % (50% ~ 99%)
-                    thresholdRow(
-                        title: "GPU Activity",
-                        warningLabel: "\(Int(state.thresholds.gpuWarning * 100))%",
-                        warningValue: percentageBinding(for: \.gpuWarning, cappedBy: \.gpuDanger, isWarning: true),
-                        warningRange: 10...90,
-                        dangerLabel: "\(Int(state.thresholds.gpuDanger * 100))%",
-                        dangerValue: percentageBinding(for: \.gpuDanger, cappedBy: \.gpuWarning, isWarning: false),
-                        dangerRange: 50...99
-                    )
-
-                    // RAM Warning % (20% ~ 90%) & Danger % (60% ~ 99%)
-                    thresholdRow(
-                        title: "Memory (RAM)",
-                        warningLabel: "\(Int(state.thresholds.ramWarning * 100))%",
-                        warningValue: percentageBinding(for: \.ramWarning, cappedBy: \.ramDanger, isWarning: true),
-                        warningRange: 20...90,
-                        dangerLabel: "\(Int(state.thresholds.ramDanger * 100))%",
-                        dangerValue: percentageBinding(for: \.ramDanger, cappedBy: \.ramWarning, isWarning: false),
-                        dangerRange: 60...99
-                    )
-
-                    // Battery Low Warning % (5% ~ 50%)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Battery Low Warning")
-                                .font(.caption.weight(.medium))
-                            Spacer()
-                            Text("\(Int(state.thresholds.batteryLow * 100))%")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(VitalsColorResolver.warningYellow)
-                        }
-
-                        HStack(spacing: 8) {
-                            Text("Level")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                                .frame(width: 32, alignment: .leading)
-                            Slider(
-                                value: Binding(
-                                    get: { state.thresholds.batteryLow * 100.0 },
-                                    set: {
-                                        state.thresholds.batteryLow = $0 / 100.0
-                                        state.save()
-                                        store._vitalsThresholds.batteryLow = state.thresholds.batteryLow
-                                        store.savePersistentState()
-                                    }
-                                ),
-                                in: 5...50,
-                                step: 1
-                            )
-                        }
-                    }
-
-                    // Network Warning MB/s (1 ~ 100 MB/s)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Network Throughput")
-                                .font(.caption.weight(.medium))
-                            Spacer()
-                            Text("Warn: \(Int(state.thresholds.networkWarningMB)) MB/s")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(VitalsColorResolver.warningYellow)
-                            Text("•")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                            Text("Danger: \(Int(state.thresholds.networkDangerMB)) MB/s")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(VitalsColorResolver.dangerRed)
-                        }
-
-                        HStack(spacing: 8) {
-                            Text("Warn")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                                .frame(width: 32, alignment: .leading)
-                            Slider(
-                                value: Binding(
-                                    get: { state.thresholds.networkWarningMB },
-                                    set: {
-                                        state.thresholds.networkWarningMB = min($0, state.thresholds.networkDangerMB - 1.0)
-                                        state.save()
-                                        store._vitalsThresholds.networkWarningMB = state.thresholds.networkWarningMB
-                                        store.savePersistentState()
-                                    }
-                                ),
-                                in: 1...100,
-                                step: 1
-                            )
-
-                            Text("Danger")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                                .frame(width: 42, alignment: .leading)
-                            Slider(
-                                value: Binding(
-                                    get: { state.thresholds.networkDangerMB },
-                                    set: {
-                                        state.thresholds.networkDangerMB = max($0, state.thresholds.networkWarningMB + 1.0)
-                                        state.save()
-                                        store._vitalsThresholds.networkDangerMB = state.thresholds.networkDangerMB
-                                        store.savePersistentState()
-                                    }
-                                ),
-                                in: 10...200,
-                                step: 1
-                            )
-                        }
-                    }
-                }
-                .padding(10)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(8)
             }
-
-            Divider()
-
-            HStack(spacing: 12) {
-                Text("CPU: \(Int(vitals.cpuUsage * 100))%")
-                    .font(.caption.monospaced())
-                Text("RAM: \(Int(vitals.memoryUsage * 100))%")
-                    .font(.caption.monospaced())
-                Text("Disk: \(Int(vitals.diskFreeGB))GB Free")
-                    .font(.caption.monospaced())
-                Spacer()
-                Button("Refresh") {
-                    state.refreshMetrics(includeProcesses: true)
-                }
-                .buttonStyle(.tactile)
-                .font(.caption.weight(.medium))
-                .foregroundColor(.accentColor)
-            }
-            .foregroundColor(.secondary)
         }
     }
 

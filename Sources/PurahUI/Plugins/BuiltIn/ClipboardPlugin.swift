@@ -1047,6 +1047,10 @@ public struct ClipboardPluginSettingsView: View {
     public let state: ClipboardPluginState
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: ClipboardPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -1054,51 +1058,78 @@ public struct ClipboardPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Clipboard Sidecar Settings")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Decomposed Rail Chips", isOn: Binding(
-                    get: { state.isDecomposed },
-                    set: {
-                        state.isDecomposed = $0
-                        state.save()
+            // Card 1: Clipboard Sidecar & Rail Chips
+            PurahPluginSettingsCard(
+                title: "Clipboard Sidecar & Rail Chips",
+                subtitle: "Manage physical rail chip decomposition and capacity",
+                icon: "doc.on.clipboard.fill",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Decomposed Rail Chips")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Display recent copies as discrete tactile chips along the screen edge")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.isDecomposed },
+                            set: {
+                                state.isDecomposed = $0
+                                state.save()
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
                     }
-                ))
-                .toggleStyle(.switch)
-                Text("When enabled, recent items are displayed as discrete physical chips along the rail edge for zero-drawer switching.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
 
-                Divider()
-                    .opacity(0.3)
-                    .padding(.vertical, 2)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("Max In-Rail Items")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text("\(store.clipboardMaxRailItems) Chips")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(hex: "#FF9F0A"))
+                        }
 
-                HStack {
-                    Text("Max In-Rail Items")
-                        .font(.subheadline)
-                    Spacer()
-                    Text("\(store.clipboardMaxRailItems) Chips")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(hex: "#FF9F0A"))
+                        Slider(value: Binding(
+                            get: { Double(store.clipboardMaxRailItems) },
+                            set: {
+                                store.clipboardMaxRailItems = Int($0)
+                                store.savePersistentState()
+                            }
+                        ), in: 2...8, step: 1)
+
+                        Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(9)
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                    )
                 }
-
-                Slider(value: Binding(
-                    get: { Double(store.clipboardMaxRailItems) },
-                    set: {
-                        store.clipboardMaxRailItems = Int($0)
-                        store.savePersistentState()
-                    }
-                ), in: 2...8, step: 1)
-
-                Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
 
+            // Card 2: Storage Policy Section
             PurahStoragePolicySection(
                 retention: Binding(
                     get: { state.retentionPeriod },
@@ -1136,7 +1167,6 @@ public struct ClipboardPluginSettingsView: View {
                 }
             )
         }
-        .padding()
     }
 }
 

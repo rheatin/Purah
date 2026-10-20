@@ -89,6 +89,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                 .cornerRadius(4)
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: true, vertical: false)
         )
     }
 
@@ -118,6 +120,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                         .foregroundColor(.secondary)
                 }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize(horizontal: true, vertical: false)
                 .help("Chat History")
 
                 // Favorite Toggle
@@ -821,6 +825,8 @@ public struct AIAssistantPluginSettingsView: View {
                     .foregroundColor(.primary)
                 }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize(horizontal: true, vertical: false)
                 .help("Select Model from detected list")
 
                 Button {

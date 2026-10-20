@@ -787,4 +787,51 @@ struct AIAssistantPluginTests {
         )
         #expect(inlinePrompt == ["--prompt=Inline test", "--verbose"])
     }
+
+    @Test("AIAssistantService resolves OpenAI, Ollama, and Anthropic endpoint URLs properly")
+    func testEndpointURLResolution() {
+        // 1. OpenAI with /v1
+        let url1 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "http://192.168.1.100:3425/v1", provider: .httpOpenAI)
+        #expect(url1?.absoluteString == "http://192.168.1.100:3425/v1/chat/completions")
+
+        // 2. Ollama default port with base URL
+        let url2 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "http://localhost:11434", provider: .httpOllama)
+        #expect(url2?.absoluteString == "http://localhost:11434/v1/chat/completions")
+
+        // 3. Already contains /chat/completions
+        let url3 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "https://api.openai.com/v1/chat/completions", provider: .httpOpenAI)
+        #expect(url3?.absoluteString == "https://api.openai.com/v1/chat/completions")
+
+        // 4. Trailing slash trimming
+        let url4 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "http://192.168.1.100:3425/v1/", provider: .httpOpenAI)
+        #expect(url4?.absoluteString == "http://192.168.1.100:3425/v1/chat/completions")
+
+        // 5. Nil/empty OpenAI defaults to https://api.openai.com/v1/chat/completions
+        let url5 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: nil, provider: .httpOpenAI)
+        #expect(url5?.absoluteString == "https://api.openai.com/v1/chat/completions")
+
+        // 6. Nil/empty Ollama defaults to http://localhost:11434/v1/chat/completions
+        let url6 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "", provider: .httpOllama)
+        #expect(url6?.absoluteString == "http://localhost:11434/v1/chat/completions")
+
+        // 7. Special endpoint paths: /v1beta/openai, /v4, /v3
+        let url7 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", provider: .httpOpenAI)
+        #expect(url7?.absoluteString == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+
+        let url8 = AIAssistantService.resolveOpenAIChatCompletionsURL(baseURL: "https://api.zhipu.ai/api/paas/v4", provider: .httpOpenAI)
+        #expect(url8?.absoluteString == "https://api.zhipu.ai/api/paas/v4/chat/completions")
+
+        // 8. Anthropic URLs
+        let anthropic1 = AIAssistantService.resolveAnthropicMessagesURL(baseURL: nil)
+        #expect(anthropic1?.absoluteString == "https://api.anthropic.com/v1/messages")
+
+        let anthropic2 = AIAssistantService.resolveAnthropicMessagesURL(baseURL: "https://api.anthropic.com/v1")
+        #expect(anthropic2?.absoluteString == "https://api.anthropic.com/v1/messages")
+
+        let anthropic3 = AIAssistantService.resolveAnthropicMessagesURL(baseURL: "https://custom-proxy.internal")
+        #expect(anthropic3?.absoluteString == "https://custom-proxy.internal/v1/messages")
+
+        let anthropic4 = AIAssistantService.resolveAnthropicMessagesURL(baseURL: "https://custom-proxy.internal/messages/")
+        #expect(anthropic4?.absoluteString == "https://custom-proxy.internal/messages")
+    }
 }

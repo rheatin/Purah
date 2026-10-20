@@ -233,6 +233,43 @@ public final class AIAssistantService {
         )
     }
 
+    // MARK: - Endpoint URL Resolution
+    public nonisolated static func resolveOpenAIChatCompletionsURL(baseURL: String?, provider: AIProviderKind) -> URL? {
+        var trimmed = (baseURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            trimmed = provider == .httpOllama ? "http://localhost:11434" : "https://api.openai.com/v1"
+        }
+        while trimmed.hasSuffix("/") {
+            trimmed.removeLast()
+        }
+
+        if trimmed.hasSuffix("/chat/completions") {
+            return URL(string: trimmed)
+        } else if trimmed.hasSuffix("/v1") || trimmed.hasSuffix("/v1beta/openai") || trimmed.hasSuffix("/v4") || trimmed.hasSuffix("/v3") {
+            return URL(string: "\(trimmed)/chat/completions")
+        } else {
+            return URL(string: "\(trimmed)/v1/chat/completions")
+        }
+    }
+
+    public nonisolated static func resolveAnthropicMessagesURL(baseURL: String?) -> URL? {
+        var trimmed = (baseURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            trimmed = "https://api.anthropic.com/v1/messages"
+        }
+        while trimmed.hasSuffix("/") {
+            trimmed.removeLast()
+        }
+
+        if trimmed.hasSuffix("/messages") {
+            return URL(string: trimmed)
+        } else if trimmed.hasSuffix("/v1") {
+            return URL(string: "\(trimmed)/messages")
+        } else {
+            return URL(string: "\(trimmed)/v1/messages")
+        }
+    }
+
     // MARK: - Multi-Provider Streaming
     @discardableResult
     public func streamChat(
@@ -337,12 +374,7 @@ public final class AIAssistantService {
         systemPromptOverride: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
-        let defaultEndpoint = provider == .httpOllama
-            ? "http://localhost:11434/v1/chat/completions"
-            : "https://api.openai.com/v1/chat/completions"
-        let urlString = endpoint?.isEmpty == false ? endpoint! : defaultEndpoint
-
-        guard let url = URL(string: urlString) else {
+        guard let url = Self.resolveOpenAIChatCompletionsURL(baseURL: endpoint, provider: provider) else {
             throw AIAssistantError.invalidEndpoint
         }
 
@@ -365,6 +397,10 @@ public final class AIAssistantService {
         }
 
         for msg in messages {
+            let trimmedContent = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedContent.isEmpty || (msg.role == .assistant && msg.content.hasPrefix("⚠️")) {
+                continue
+            }
             formattedMessages.append([
                 "role": msg.role.rawValue,
                 "content": msg.content
@@ -385,30 +421,66 @@ public final class AIAssistantService {
         }
 
         var fullAccumulated = ""
+        var rawJSONFallbackBuffer = ""
+
         for try await line in bytes.lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.hasPrefix("data:") else { continue }
+            guard trimmed.hasPrefix("data:") else {
+                if !trimmed.isEmpty {
+                    rawJSONFallbackBuffer.append(line + "\n")
+                }
+                continue
+            }
             let payload = trimmed.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
             if payload == "[DONE]" { break }
 
             guard let data = payload.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
-                  let firstChoice = choices.first,
-                  let delta = firstChoice["delta"] as? [String: Any] else {
+                  let firstChoice = choices.first else {
                 continue
             }
 
+            let delta = (firstChoice["delta"] as? [String: Any]) ?? (firstChoice["message"] as? [String: Any]) ?? [:]
+
             var chunkText = ""
-            if let reasoning = delta["reasoning_content"] as? String, !reasoning.isEmpty {
-                chunkText = "<think>\(reasoning)</think>"
-            } else if let content = delta["content"] as? String {
-                chunkText = content
+            let reasoning = (delta["reasoning_content"] as? String) ?? (delta["reasoning"] as? String)
+            if let reasoning = reasoning, !reasoning.isEmpty {
+                chunkText.append("<think>\(reasoning)</think>")
+            }
+            if let content = delta["content"] as? String, !content.isEmpty {
+                chunkText.append(content)
             }
 
             if !chunkText.isEmpty {
                 fullAccumulated.append(chunkText)
                 onChunk?(chunkText)
+            }
+        }
+
+        // Fallback for non-SSE JSON responses (e.g. servers returning standard choices array instead of event stream)
+        if fullAccumulated.isEmpty, !rawJSONFallbackBuffer.isEmpty {
+            if let data = rawJSONFallbackBuffer.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let choices = json["choices"] as? [[String: Any]],
+               let firstChoice = choices.first {
+                var fallbackText = ""
+                if let message = firstChoice["message"] as? [String: Any] {
+                    let reasoning = (message["reasoning_content"] as? String) ?? (message["reasoning"] as? String)
+                    if let reasoning = reasoning, !reasoning.isEmpty {
+                        fallbackText.append("<think>\(reasoning)</think>")
+                    }
+                    if let content = message["content"] as? String, !content.isEmpty {
+                        fallbackText.append(content)
+                    }
+                } else if let text = firstChoice["text"] as? String, !text.isEmpty {
+                    fallbackText.append(text)
+                }
+
+                if !fallbackText.isEmpty {
+                    fullAccumulated = fallbackText
+                    onChunk?(fallbackText)
+                }
             }
         }
 
@@ -425,8 +497,7 @@ public final class AIAssistantService {
         systemPromptOverride: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
-        let urlString = endpoint?.isEmpty == false ? endpoint! : "https://api.anthropic.com/v1/messages"
-        guard let url = URL(string: urlString) else {
+        guard let url = Self.resolveAnthropicMessagesURL(baseURL: endpoint) else {
             throw AIAssistantError.invalidEndpoint
         }
 
@@ -445,6 +516,10 @@ public final class AIAssistantService {
 
         var formattedMessages: [[String: Any]] = []
         for msg in messages where msg.role != .system {
+            let trimmedContent = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedContent.isEmpty || (msg.role == .assistant && msg.content.hasPrefix("⚠️")) {
+                continue
+            }
             formattedMessages.append([
                 "role": msg.role == .assistant ? "assistant" : "user",
                 "content": msg.content

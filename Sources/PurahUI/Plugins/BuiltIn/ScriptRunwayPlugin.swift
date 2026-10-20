@@ -223,6 +223,10 @@ public struct ScriptsPluginSettingsView: View {
     public let store: PurahWorkspaceStore
     private var runway: ScriptRunwayService { ScriptRunwayService.shared }
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     @State private var newActionName: String = ""
     @State private var newCommandType: ScriptCommandType = .shortcut
     @State private var newScriptContent: String = ""
@@ -256,332 +260,477 @@ public struct ScriptsPluginSettingsView: View {
         return state.enabledActionIds
     }
 
+    @ViewBuilder
+    private func customInputCapsule<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.primary.opacity(0.05))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+            )
+    }
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle("Decompose into Stepped Script Rail Chips", isOn: Binding(
-                get: { state.isDecomposed },
-                set: {
-                    state.isDecomposed = $0
-                    state.save()
-                    store._isScriptsDecomposed = $0
-                    store.savePersistentState()
-                }
-            ))
-            .font(.subheadline.weight(.semibold))
-
-            Text("Splits script runway into individual interactive rail chips for rapid one-click execution.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            if state.isDecomposed {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Visible Stepped Action Chips")
-                        .font(.caption.weight(.bold))
-
-                    let currentEnabled = effectiveEnabledActionIds
-
-                    ForEach(state.actions) { action in
-                        let isIncluded = currentEnabled.contains(action.id)
-                        Button {
-                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                var updated = currentEnabled
-                                if isIncluded {
-                                    if updated.count > 1 {
-                                        updated.removeAll { $0 == action.id }
-                                        state.enabledActionIds = updated
-                                        state.save()
-                                        store._scriptsEnabledActionIds = updated
-                                        store.savePersistentState()
-                                    }
-                                } else {
-                                    updated.append(action.id)
-                                    state.enabledActionIds = updated
-                                    state.save()
-                                    store._scriptsEnabledActionIds = updated
-                                    store.savePersistentState()
-                                }
+        VStack(alignment: .leading, spacing: 14) {
+            // Card 1: Rail Mode & Stepped Action Chips
+            PurahPluginSettingsCard(
+                title: "Rail Mode & Stepped Action Chips",
+                subtitle: "Configure individual script execution chips along the screen edge",
+                icon: "rectangle.split.1x2.fill",
+                iconColor: Color(hex: "#FF9F0A")
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Switch sub-card for decomposition
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Decompose into Stepped Script Rail Chips")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Splits script runway into individual interactive rail chips for rapid one-click execution")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.isDecomposed },
+                            set: {
+                                state.isDecomposed = $0
+                                state.save()
+                                store._isScriptsDecomposed = $0
+                                store.savePersistentState()
                             }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: isIncluded ? "checkmark.square.fill" : "square")
-                                    .foregroundColor(isIncluded ? .accentColor : .secondary)
-                                Image(systemName: action.systemIcon)
-                                    .font(.caption)
-                                    .frame(width: 16)
-                                Text(action.name)
-                                    .font(.caption)
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                    }
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
+
+                    if state.isDecomposed {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Visible Stepped Action Chips")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundColor(.primary)
                                 Spacer()
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(10)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(8)
-            }
-
-            Divider()
-
-            HStack {
-                Text("Actions & Shortcuts (\(state.actions.count))")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
-                        isAddingAction.toggle()
-                        if isAddingAction {
-                            editingActionId = nil
-                        }
-                    }
-                } label: {
-                    Label(isAddingAction ? "Cancel" : "Add Action", systemImage: isAddingAction ? "xmark" : "plus")
-                        .font(.caption.weight(.medium))
-                }
-                .buttonStyle(.tactile)
-
-                Button("Reset Defaults") {
-                    withAnimation {
-                        state.resetToDefaults()
-                        editingActionId = nil
-                        store._scriptsEnabledActionIds = state.enabledActionIds
-                        store.savePersistentState()
-                    }
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-
-            if isAddingAction {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Add New Action or Shortcut")
-                        .font(.caption.weight(.bold))
-
-                    HStack(spacing: 8) {
-                        TextField("Action Name (e.g. Meeting Mode)", text: $newActionName)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.caption)
-
-                        Picker("Type", selection: $newCommandType) {
-                            Text("Shortcuts").tag(ScriptCommandType.shortcut)
-                            Text("Shell (Zsh)").tag(ScriptCommandType.shell)
-                            Text("AppleScript").tag(ScriptCommandType.appleScript)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 220)
-                    }
-
-                    TextField(newCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $newScriptContent)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption.monospaced())
-
-                    HStack(spacing: 8) {
-                        TextField("SF Symbol (e.g. bolt.fill, terminal.fill)", text: $newSystemIcon)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.caption)
-                            .frame(width: 200)
-
-                        TextField("Short Description", text: $newDescription)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.caption)
-
-                        Toggle("Toast", isOn: $newShowNotification)
-                            .font(.caption)
-                            .help("Show HUD Toast notification upon script completion")
-
-                        Spacer()
-
-                        Button("Save") {
-                            guard !newActionName.trimmingCharacters(in: .whitespaces).isEmpty,
-                                  !newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                            let item = ScriptActionItem(
-                                id: UUID().uuidString,
-                                name: newActionName.trimmingCharacters(in: .whitespaces),
-                                systemIcon: newSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : newSystemIcon.trimmingCharacters(in: .whitespaces),
-                                commandType: newCommandType,
-                                scriptContent: newScriptContent.trimmingCharacters(in: .whitespaces),
-                                description: newDescription.trimmingCharacters(in: .whitespaces),
-                                showNotification: newShowNotification
-                            )
-                            withAnimation {
-                                state.addAction(item)
-                                store._scriptsEnabledActionIds = state.enabledActionIds
-                                store.savePersistentState()
-                                newActionName = ""
-                                newScriptContent = ""
-                                newDescription = ""
-                                newShowNotification = true
-                                isAddingAction = false
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .font(.caption)
-                        .disabled(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                }
-                .padding(10)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(8)
-            }
-
-            VStack(spacing: 6) {
-                ForEach(state.actions) { action in
-                    VStack(spacing: 0) {
-                        HStack(spacing: 8) {
-                            Image(systemName: action.systemIcon)
-                                .font(.caption)
-                                .foregroundColor(.accentColor)
-                                .frame(width: 16)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(action.name)
-                                    .font(.caption.weight(.semibold))
-                                Text(action.scriptContent)
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
+                                Text("\(effectiveEnabledActionIds.count) Active")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
                             }
 
-                            Spacer()
+                            let currentEnabled = effectiveEnabledActionIds
 
-                            Text(typeBadge(action.commandType))
-                                .font(.system(size: 8, weight: .bold))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color.primary.opacity(0.08))
-                                .cornerRadius(4)
-
-                            Image(systemName: action.showNotification ? "bell.fill" : "bell.slash")
-                                .font(.system(size: 9))
-                                .foregroundColor(action.showNotification ? .secondary : .secondary.opacity(0.35))
-                                .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
-
-                            Button {
-                                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
-                                    if editingActionId == action.id {
-                                        editingActionId = nil
-                                    } else {
-                                        editingActionId = action.id
-                                        editActionName = action.name
-                                        editCommandType = action.commandType
-                                        editScriptContent = action.scriptContent
-                                        editSystemIcon = action.systemIcon
-                                        editDescription = action.description
-                                        editShowNotification = action.showNotification
-                                        isAddingAction = false
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "pencil")
-                                    .font(.caption2)
-                                    .foregroundColor(editingActionId == action.id ? .accentColor : .secondary)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                withAnimation {
-                                    if editingActionId == action.id {
-                                        editingActionId = nil
-                                    }
-                                    state.removeAction(id: action.id)
-                                    store._scriptsEnabledActionIds = state.enabledActionIds
-                                    store.savePersistentState()
-                                }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(8)
-
-                        if editingActionId == action.id {
-                            Divider()
-                                .padding(.horizontal, 8)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Edit Action")
-                                    .font(.caption.weight(.bold))
-
-                                HStack(spacing: 8) {
-                                    TextField("Action Name", text: $editActionName)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.caption)
-
-                                    Picker("Type", selection: $editCommandType) {
-                                        Text("Shortcuts").tag(ScriptCommandType.shortcut)
-                                        Text("Shell (Zsh)").tag(ScriptCommandType.shell)
-                                        Text("AppleScript").tag(ScriptCommandType.appleScript)
-                                    }
-                                    .pickerStyle(.segmented)
-                                    .frame(width: 220)
-                                }
-
-                                TextField(editCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $editScriptContent)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.caption.monospaced())
-
-                                HStack(spacing: 8) {
-                                    TextField("SF Symbol (e.g. bolt.fill)", text: $editSystemIcon)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.caption)
-                                        .frame(width: 160)
-
-                                    TextField("Description", text: $editDescription)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.caption)
-
-                                    Toggle("Toast", isOn: $editShowNotification)
-                                        .font(.caption)
-                                        .help("Show HUD Toast notification upon script completion")
-                                }
-
-                                HStack {
-                                    Spacer()
-
-                                    Button("Cancel") {
+                            VStack(spacing: 6) {
+                                ForEach(state.actions) { action in
+                                    let isIncluded = currentEnabled.contains(action.id)
+                                    Button {
                                         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                            editingActionId = nil
+                                            var updated = currentEnabled
+                                            if isIncluded {
+                                                if updated.count > 1 {
+                                                    updated.removeAll { $0 == action.id }
+                                                    state.enabledActionIds = updated
+                                                    state.save()
+                                                    store._scriptsEnabledActionIds = updated
+                                                    store.savePersistentState()
+                                                }
+                                            } else {
+                                                updated.append(action.id)
+                                                state.enabledActionIds = updated
+                                                state.save()
+                                                store._scriptsEnabledActionIds = updated
+                                                store.savePersistentState()
+                                            }
                                         }
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: isIncluded ? "checkmark.circle.fill" : "circle")
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(isIncluded ? palette.primaryAccent : palette.borderColor.opacity(0.4))
+                                            Image(systemName: action.systemIcon)
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(isIncluded ? palette.primaryAccent : .secondary)
+                                                .frame(width: 16)
+                                            Text(action.name)
+                                                .font(.system(size: 10, weight: isIncluded ? .bold : .medium, design: .rounded))
+                                                .foregroundColor(isIncluded ? .primary : .secondary)
+                                            Spacer()
+                                            Text(typeBadge(action.commandType))
+                                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(Color.primary.opacity(0.06))
+                                                .cornerRadius(4)
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 7)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                .fill(isIncluded ? palette.primaryAccent.opacity(0.10) : Color.primary.opacity(0.025))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                .stroke(isIncluded ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isIncluded ? 1.2 : 0.8)
+                                        )
                                     }
                                     .buttonStyle(.plain)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-
-                                    Button("Save Changes") {
-                                        let trimmedName = editActionName.trimmingCharacters(in: .whitespaces)
-                                        let trimmedContent = editScriptContent.trimmingCharacters(in: .whitespaces)
-                                        guard !trimmedName.isEmpty, !trimmedContent.isEmpty else { return }
-
-                                        let updated = ScriptActionItem(
-                                            id: action.id,
-                                            name: trimmedName,
-                                            systemIcon: editSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : editSystemIcon.trimmingCharacters(in: .whitespaces),
-                                            commandType: editCommandType,
-                                            scriptContent: trimmedContent,
-                                            description: editDescription.trimmingCharacters(in: .whitespaces),
-                                            showNotification: editShowNotification
-                                        )
-                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                            state.updateAction(updated)
-                                            editingActionId = nil
-                                        }
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .font(.caption)
-                                    .disabled(editActionName.trimmingCharacters(in: .whitespaces).isEmpty || editScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
                                 }
                             }
-                            .padding(10)
-                            .background(Color.primary.opacity(0.02))
                         }
                     }
-                    .background(Color.primary.opacity(0.03))
-                    .cornerRadius(6)
+                }
+            }
+
+            // Card 2: Script Runway Actions
+            PurahPluginSettingsCard(
+                title: "Script Runway Actions",
+                subtitle: "\(state.actions.count) configured commands & Shortcuts",
+                icon: "terminal.fill",
+                iconColor: palette.primaryAccent,
+                trailing: HStack(spacing: 6) {
+                    Button {
+                        withAnimation {
+                            state.resetToDefaults()
+                            editingActionId = nil
+                            store._scriptsEnabledActionIds = state.enabledActionIds
+                            store.savePersistentState()
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 9))
+                            Text("Reset")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                            isAddingAction.toggle()
+                            if isAddingAction {
+                                editingActionId = nil
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isAddingAction ? "xmark" : "plus")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(isAddingAction ? "Cancel" : "Add Action")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(isAddingAction ? .secondary : palette.primaryAccent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(isAddingAction ? Color.primary.opacity(0.05) : palette.primaryAccent.opacity(0.12))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(isAddingAction ? palette.borderColor.opacity(0.3) : palette.primaryAccent.opacity(0.35), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Add Action Form Panel
+                    if isAddingAction {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Add New Action or Shortcut")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+
+                            HStack(spacing: 8) {
+                                customInputCapsule {
+                                    TextField("Action Name (e.g. Meeting Mode)", text: $newActionName)
+                                        .textFieldStyle(.plain)
+                                        .font(.system(size: 11))
+                                }
+
+                                Picker("Type", selection: $newCommandType) {
+                                    Text("Shortcuts").tag(ScriptCommandType.shortcut)
+                                    Text("Shell (Zsh)").tag(ScriptCommandType.shell)
+                                    Text("AppleScript").tag(ScriptCommandType.appleScript)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 210)
+                            }
+
+                            customInputCapsule {
+                                TextField(newCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $newScriptContent)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11, design: .monospaced))
+                            }
+
+                            HStack(spacing: 8) {
+                                customInputCapsule {
+                                    TextField("Icon (e.g. bolt.fill)", text: $newSystemIcon)
+                                        .textFieldStyle(.plain)
+                                        .font(.system(size: 11))
+                                }
+                                .frame(width: 140)
+
+                                customInputCapsule {
+                                    TextField("Short Description", text: $newDescription)
+                                        .textFieldStyle(.plain)
+                                        .font(.system(size: 11))
+                                }
+
+                                Toggle("Toast", isOn: $newShowNotification)
+                                    .font(.system(size: 10))
+                                    .help("Show HUD Toast notification upon script completion")
+
+                                Spacer()
+
+                                Button {
+                                    guard !newActionName.trimmingCharacters(in: .whitespaces).isEmpty,
+                                          !newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                                    let item = ScriptActionItem(
+                                        id: UUID().uuidString,
+                                        name: newActionName.trimmingCharacters(in: .whitespaces),
+                                        systemIcon: newSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : newSystemIcon.trimmingCharacters(in: .whitespaces),
+                                        commandType: newCommandType,
+                                        scriptContent: newScriptContent.trimmingCharacters(in: .whitespaces),
+                                        description: newDescription.trimmingCharacters(in: .whitespaces),
+                                        showNotification: newShowNotification
+                                    )
+                                    withAnimation {
+                                        state.addAction(item)
+                                        store._scriptsEnabledActionIds = state.enabledActionIds
+                                        store.savePersistentState()
+                                        newActionName = ""
+                                        newScriptContent = ""
+                                        newDescription = ""
+                                        newShowNotification = true
+                                        isAddingAction = false
+                                    }
+                                } label: {
+                                    Text("Save")
+                                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        .foregroundColor(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty ? .secondary : .white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty ? Color.primary.opacity(0.1) : palette.primaryAccent)
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                        )
+                    }
+
+                    // Action rows list
+                    VStack(spacing: 6) {
+                        ForEach(state.actions) { action in
+                            VStack(spacing: 0) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: action.systemIcon)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(palette.primaryAccent)
+                                        .frame(width: 18)
+
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(action.name)
+                                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        Text(action.scriptContent)
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
+
+                                    Spacer()
+
+                                    Text(typeBadge(action.commandType))
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color.primary.opacity(0.08))
+                                        .cornerRadius(4)
+
+                                    Image(systemName: action.showNotification ? "bell.fill" : "bell.slash")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(action.showNotification ? .secondary : .secondary.opacity(0.35))
+                                        .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
+
+                                    Button {
+                                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                                            if editingActionId == action.id {
+                                                editingActionId = nil
+                                            } else {
+                                                editingActionId = action.id
+                                                editActionName = action.name
+                                                editCommandType = action.commandType
+                                                editScriptContent = action.scriptContent
+                                                editSystemIcon = action.systemIcon
+                                                editDescription = action.description
+                                                editShowNotification = action.showNotification
+                                                isAddingAction = false
+                                            }
+                                        }
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(editingActionId == action.id ? palette.primaryAccent : .secondary)
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        withAnimation {
+                                            if editingActionId == action.id {
+                                                editingActionId = nil
+                                            }
+                                            state.removeAction(id: action.id)
+                                            store._scriptsEnabledActionIds = state.enabledActionIds
+                                            store.savePersistentState()
+                                        }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(8)
+
+                                if editingActionId == action.id {
+                                    Divider()
+                                        .padding(.horizontal, 8)
+
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Edit Action")
+                                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+
+                                        HStack(spacing: 8) {
+                                            customInputCapsule {
+                                                TextField("Action Name", text: $editActionName)
+                                                    .textFieldStyle(.plain)
+                                                    .font(.system(size: 11))
+                                            }
+
+                                            Picker("Type", selection: $editCommandType) {
+                                                Text("Shortcuts").tag(ScriptCommandType.shortcut)
+                                                Text("Shell (Zsh)").tag(ScriptCommandType.shell)
+                                                Text("AppleScript").tag(ScriptCommandType.appleScript)
+                                            }
+                                            .pickerStyle(.segmented)
+                                            .frame(width: 210)
+                                        }
+
+                                        customInputCapsule {
+                                            TextField(editCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $editScriptContent)
+                                                .textFieldStyle(.plain)
+                                                .font(.system(size: 11, design: .monospaced))
+                                        }
+
+                                        HStack(spacing: 8) {
+                                            customInputCapsule {
+                                                TextField("Icon (e.g. bolt.fill)", text: $editSystemIcon)
+                                                    .textFieldStyle(.plain)
+                                                    .font(.system(size: 11))
+                                            }
+                                            .frame(width: 140)
+
+                                            customInputCapsule {
+                                                TextField("Description", text: $editDescription)
+                                                    .textFieldStyle(.plain)
+                                                    .font(.system(size: 11))
+                                            }
+
+                                            Toggle("Toast", isOn: $editShowNotification)
+                                                .font(.system(size: 10))
+                                                .help("Show HUD Toast notification upon script completion")
+                                        }
+
+                                        HStack {
+                                            Spacer()
+
+                                            Button {
+                                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                                    editingActionId = nil
+                                                }
+                                            } label: {
+                                                Text("Cancel")
+                                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                                    .foregroundColor(.secondary)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(Color.primary.opacity(0.04))
+                                                    .cornerRadius(6)
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            Button {
+                                                let trimmedName = editActionName.trimmingCharacters(in: .whitespaces)
+                                                let trimmedContent = editScriptContent.trimmingCharacters(in: .whitespaces)
+                                                guard !trimmedName.isEmpty, !trimmedContent.isEmpty else { return }
+
+                                                let updated = ScriptActionItem(
+                                                    id: action.id,
+                                                    name: trimmedName,
+                                                    systemIcon: editSystemIcon.trimmingCharacters(in: .whitespaces).isEmpty ? "bolt.fill" : editSystemIcon.trimmingCharacters(in: .whitespaces),
+                                                    commandType: editCommandType,
+                                                    scriptContent: trimmedContent,
+                                                    description: editDescription.trimmingCharacters(in: .whitespaces),
+                                                    showNotification: editShowNotification
+                                                )
+                                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                                    state.updateAction(updated)
+                                                    editingActionId = nil
+                                                }
+                                            } label: {
+                                                Text("Save Changes")
+                                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 9)
+                                                    .padding(.vertical, 4)
+                                                    .background(palette.primaryAccent)
+                                                    .cornerRadius(6)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(editActionName.trimmingCharacters(in: .whitespaces).isEmpty || editScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
+                                        }
+                                    }
+                                    .padding(8)
+                                    .background(Color.primary.opacity(0.02))
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Color.primary.opacity(0.025))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                            )
+                        }
+                    }
                 }
             }
         }
