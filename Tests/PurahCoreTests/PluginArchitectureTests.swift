@@ -41,11 +41,11 @@ struct PluginArchitectureTests {
         let terminalPod = terminalManifest.makeDefaultSlotPod()
         #expect(terminalPod.drawerWidth == 520.0)
 
-        // Verify AI assistant manifest defaults to 400 width
+        // Verify AI assistant manifest defaults to 420 width
         let aiManifest = try #require(PurahPluginManifest.builtInCatalog.first { $0.id == "ai" })
-        #expect(aiManifest.defaultDrawerWidth == 400.0)
+        #expect(aiManifest.defaultDrawerWidth == 420.0)
         let aiPod = aiManifest.makeDefaultSlotPod()
-        #expect(aiPod.drawerWidth == 400.0)
+        #expect(aiPod.drawerWidth == 420.0)
 
         // Verify other built-in manifests default to 260 width
         for item in PurahPluginManifest.builtInCatalog where item.id != "terminal" && item.id != "ai" {

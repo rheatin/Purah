@@ -221,7 +221,7 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        370.0
+        store._isAIDecomposed ? 390.0 : 420.0
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -230,7 +230,7 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
             let count = max(enabledRoles.count, 1)
             return CGFloat(count) * 52.0 + CGFloat(count - 1) * 2.5
         }
-        return 220.0
+        return 260.0
     }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {

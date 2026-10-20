@@ -93,7 +93,8 @@ public struct SteppedRailContainerView: View {
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                         // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
-                        let cardH = (pod.id == "ai") ? max(itemH, 195.0) : max(itemH, 48.0)
+                        let minExpandedH: CGFloat = (pod.id == "ai") ? 245.0 : 48.0
+                        let cardH = max(itemH, minExpandedH)
                         let effectiveChipH = isActive ? cardH : itemH
                         let itemTop = startY + CGFloat(idx) * (itemH + spacing)
                         let itemBottom = itemTop + cardH

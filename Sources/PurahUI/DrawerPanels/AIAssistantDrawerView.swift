@@ -59,7 +59,7 @@ public struct AIAssistantSteppedDrawerView: View {
         let isExpanded = context.isExpanded || isPinned
         let barW = CGFloat(context.store.railBarWidth)
         let slotH = context.slotHeight
-        let expandedCardH = max(slotH, 195.0)
+        let expandedCardH = max(slotH, 245.0)
         let drawerW = context.drawerWidth
         let edge = context.edge
         let roleColor = Color(hex: role.colorHex)
@@ -146,7 +146,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         store: PurahWorkspaceStore,
         showRoleSwitcher: Bool = false,
         isPinned: Bool = false,
-        cardHeight: CGFloat = 200.0,
+        cardHeight: CGFloat = 245.0,
         onTogglePin: @escaping () -> Void = {}
     ) {
         self.role = role
@@ -189,7 +189,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             // Top: Role Switcher Pill Bar (Composite Mode)
             if showRoleSwitcher {
                 roleSwitcherPillBar
@@ -197,11 +197,6 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             // Row 1: Role Header Row
             headerRow
-
-            // Tone Selector Row (Polish role when not idle)
-            if role.id == "polish" && (!latestResult.isEmpty || !sourceText.isEmpty || isRoleStreaming) {
-                polishToneRow
-            }
 
             // Body Content Area (3 States)
             bodyContentArea
@@ -212,17 +207,25 @@ public struct AIAssistantRoleWorkbenchView: View {
                 bottomActionRow
             }
         }
-        .padding(12)
-        .frame(height: max(cardHeight, 185.0))
+        .padding(showRoleSwitcher ? 0 : 9)
+        .frame(height: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0))
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(hex: "#181B24").opacity(0.96))
+            Group {
+                if !showRoleSwitcher {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(hex: "#181B24").opacity(0.96))
+                }
+            }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+            Group {
+                if !showRoleSwitcher {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                }
+            }
         )
-        .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
+        .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
         .onAppear {
             if let sel = state.capturedSelection, !sel.isEmpty, latestResult.isEmpty, !isRoleStreaming {
                 state.sendPrompt(sel, role: role, originalSelection: sel)
@@ -233,7 +236,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     // MARK: - Top Role Switcher Pill Bar (Composite Mode)
     private var roleSwitcherPillBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 ForEach(state.enabledRoles) { r in
                     let isSelected = state.selectedRoleId == r.id
                     let pillColor = Color(hex: r.colorHex)
@@ -244,15 +247,15 @@ public struct AIAssistantRoleWorkbenchView: View {
                         }
                     } label: {
                         Text(r.title)
-                            .font(.system(size: 11.5, weight: isSelected ? .bold : .medium, design: .rounded))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4.5)
+                            .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                             .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(isSelected ? pillColor.opacity(0.24) : Color.white.opacity(0.08))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
                             )
                             .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
@@ -264,9 +267,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                     store.openPluginSettings(id: "ai")
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundColor(Color.white.opacity(0.65))
-                        .frame(width: 24, height: 24)
+                        .frame(width: 20, height: 20)
                         .background(
                             Circle().fill(Color.white.opacity(0.08))
                         )
@@ -280,33 +283,38 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     // MARK: - Header Row
     private var headerRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             // Icon Badge
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(roleColor.opacity(0.18))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 20, height: 20)
 
                 Image(systemName: role.systemIcon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(roleColor)
             }
 
             // Role Title
             Text(role.title)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.system(size: 11.5, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
 
             // Language / Context Badge Pill
             let badgeText = AIAssistantService.shared.detectLanguageBadge(for: sourceText, roleId: role.id)
             Text(badgeText)
-                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2.5)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .padding(.horizontal, 5.5)
+                .padding(.vertical, 1.5)
                 .background(
                     Capsule().fill(roleColor.opacity(0.15))
                 )
                 .foregroundColor(roleColor)
+
+            // Inline Polish Tone Selector (Polish role when not idle)
+            if role.id == "polish" && (!latestResult.isEmpty || !sourceText.isEmpty || isRoleStreaming) {
+                inlinePolishTonePills
+            }
 
             Spacer()
 
@@ -315,38 +323,40 @@ public struct AIAssistantRoleWorkbenchView: View {
                 copyResult()
             } label: {
                 Image(systemName: "doc.on.doc")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 9.5))
                     .foregroundColor(Color.white.opacity(0.75))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 22, height: 22)
                     .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(Color.white.opacity(0.06))
                     )
             }
             .buttonStyle(.plain)
             .help("ai.action.copy".localized)
 
-            // Pin Button
-            Button {
-                onTogglePin()
-            } label: {
-                Image(systemName: isPinned ? "pin.fill" : "pin")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                    )
+            // Pin Button (hide in Composite mode)
+            if !showRoleSwitcher {
+                Button {
+                    onTogglePin()
+                } label: {
+                    Image(systemName: isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
+                        .frame(width: 22, height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Pin Drawer")
             }
-            .buttonStyle(.plain)
-            .help("Pin Drawer")
         }
     }
 
-    // MARK: - Polish Tone Row
-    private var polishToneRow: some View {
-        HStack(spacing: 6) {
+    // MARK: - Inline Polish Tone Pills
+    private var inlinePolishTonePills: some View {
+        HStack(spacing: 4) {
             ForEach(AIPolishTone.allCases) { tone in
                 let isSelected = state.selectedPolishTone == tone
                 Button {
@@ -356,24 +366,22 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                 } label: {
                     Text(tone.title)
-                        .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3.5)
+                        .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(isSelected ? roleColor.opacity(0.24) : Color.white.opacity(0.06))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .stroke(isSelected ? roleColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
                         )
                         .foregroundColor(isSelected ? roleColor : Color.white.opacity(0.65))
                 }
                 .buttonStyle(.plain)
             }
-            Spacer()
         }
-        .padding(.top, 1)
     }
 
     // MARK: - Body Content Area (3 States)
@@ -401,17 +409,17 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
                 .foregroundColor(Color.white.opacity(0.16))
 
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Text("ai.idle.dropPromptLine1".localized)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 10.5, weight: .regular))
                     .foregroundColor(Color.white.opacity(0.65))
 
                 Text("ai.idle.dropPromptLine2Prefix".localized + role.localizedVerb)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 10.5, weight: .regular))
                     .foregroundColor(Color.white.opacity(0.65))
             }
             .multilineTextAlignment(.center)
-            .padding(14)
+            .padding(8)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -460,7 +468,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     // MARK: - State 2: Generating State
     private var generatingStateView: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             // Source quote preview
             if !sourceText.isEmpty {
                 sourceQuotePreview
@@ -469,7 +477,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             // 3 Shimmering Skeleton Lines
             AIShimmerSkeletonView(roleColor: roleColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 4)
+                .padding(.top, 2)
 
             Spacer()
 
@@ -477,16 +485,16 @@ public struct AIAssistantRoleWorkbenchView: View {
             Button {
                 state.stopStreaming()
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     ProgressView()
                         .controlSize(.mini)
                     Text("ai.status.generating".localized)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(roleColor.opacity(0.18))
                 )
                 .foregroundColor(roleColor)
@@ -497,14 +505,14 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     // MARK: - State 3: Completed / Streaming View
     private var completedStateView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             if role.isTransform && (role.id == "polish" || role.id == "grammar") && !sourceText.isEmpty {
                 // Inline Diff View (Mockup 3)
                 ScrollView(.vertical, showsIndicators: false) {
                     let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
                     Text(buildDiffAttributedString(tokens: tokens))
-                        .font(.system(size: 13, weight: .medium))
-                        .lineSpacing(4)
+                        .font(.system(size: 11.5, weight: .regular))
+                        .lineSpacing(2.5)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -517,9 +525,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                 // Main Result Text
                 ScrollView(.vertical, showsIndicators: false) {
                     Text(latestResult)
-                        .font(.system(size: 13.5, weight: .medium))
+                        .font(.system(size: 11.5, weight: .regular))
                         .foregroundColor(.white)
-                        .lineSpacing(4)
+                        .lineSpacing(2.5)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -529,13 +537,13 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     // MARK: - Source Quote Preview
     private var sourceQuotePreview: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 6) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color.white.opacity(0.28))
                 .frame(width: 2)
 
             Text(sourceText)
-                .font(.system(size: 12))
+                .font(.system(size: 10))
                 .foregroundColor(Color.white.opacity(0.52))
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -545,13 +553,13 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     // MARK: - Bottom Action Row
     private var bottomActionRow: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 5) {
             if role.id == "ask" || showInlineInput {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     TextField("ai.composer.placeholder".localized, text: $inlineInput)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .padding(6)
+                        .font(.system(size: 10.5))
+                        .padding(5)
                         .background(Color.white.opacity(0.06))
                         .cornerRadius(6)
                         .onSubmit {
@@ -562,7 +570,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         submitInlinePrompt()
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: 15))
                             .foregroundColor(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.white.opacity(0.2) : roleColor)
                     }
                     .buttonStyle(.plain)
@@ -571,17 +579,17 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
 
             if !latestResult.isEmpty {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     // Primary Replace Button
                     Button {
                         replaceSelection()
                     } label: {
                         Text("ai.action.replaceSelection".localized)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4.5)
                             .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(roleColor)
                             )
                             .foregroundColor(Color(hex: "#0F111A"))
@@ -593,11 +601,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                         retryGeneration()
                     } label: {
                         Text("ai.action.retry".localized)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4.5)
                             .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(Color(hex: "#262A36"))
                             )
                             .foregroundColor(.white)
@@ -670,7 +678,7 @@ private struct AIShimmerSkeletonView: View {
             let t = timeline.date.timeIntervalSinceReferenceDate
             let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 skeletonLine(widthFraction: 0.92, phase: phase)
                 skeletonLine(widthFraction: 0.82, phase: phase)
                 skeletonLine(widthFraction: 0.48, phase: phase)
@@ -682,10 +690,10 @@ private struct AIShimmerSkeletonView: View {
         GeometryReader { geo in
             let w = geo.size.width * widthFraction
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                     .fill(Color.white.opacity(0.08))
 
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                     .fill(
                         LinearGradient(
                             stops: [
@@ -700,8 +708,8 @@ private struct AIShimmerSkeletonView: View {
                         )
                     )
             }
-            .frame(width: w, height: 10)
+            .frame(width: w, height: 7)
         }
-        .frame(height: 10)
+        .frame(height: 7)
     }
 }

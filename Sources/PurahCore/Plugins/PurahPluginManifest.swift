@@ -403,7 +403,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             ergonomicWeight: 38.0,
             minLengthRatio: 0.18,
             defaultColorHex: "#A855F7",
-            defaultDrawerWidth: 400.0,
+            defaultDrawerWidth: 420.0,
             category: .systemService,
             permissions: [.pasteboard, .fileSystem],
             tags: ["ai", "assistant", "chat", "translate", "rewrite"]

@@ -278,21 +278,21 @@ struct AIAssistantPluginTests {
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         #expect(store.pods.contains(where: { $0.id == "ai" }))
-        #expect(store.preferredDrawerHeight(for: "ai") == 250.0)
+        #expect(store.preferredDrawerHeight(for: "ai") == 320.0)
 
         #expect(store.capabilityProvider(for: "ai") != nil)
 
         let provider = DefaultAICapabilityProvider()
         #expect(provider.podId == "ai")
-        #expect(provider.adaptiveDrawerWidth(store: store) == 370.0)
-        #expect(provider.minimumDrawerHeight(store: store) == 220.0)
+        #expect(provider.adaptiveDrawerWidth(store: store) == 420.0)
+        #expect(provider.minimumDrawerHeight(store: store) == 260.0)
 
         // Toggle decomposed mode
         #expect(store._isAIDecomposed == false)
         store._isAIDecomposed = true
         #expect(store._isAIDecomposed == true)
         #expect(provider.isDecomposed(store: store) == true)
-        #expect(provider.adaptiveDrawerWidth(store: store) == 370.0)
+        #expect(provider.adaptiveDrawerWidth(store: store) == 390.0)
 
         let actionCount = store._aiEnabledActions.count
         #expect(provider.subItemCount(store: store) == actionCount)
@@ -315,7 +315,7 @@ struct AIAssistantPluginTests {
         #expect(manifest.ergonomicWeight == 38.0)
         #expect(manifest.minLengthRatio == 0.18)
         #expect(manifest.defaultColorHex == "#A855F7")
-        #expect(manifest.defaultDrawerWidth == 400.0)
+        #expect(manifest.defaultDrawerWidth == 420.0)
         #expect(manifest.category == .systemService)
         #expect(manifest.permissions == [.pasteboard, .fileSystem])
         #expect(manifest.tags.contains("ai"))
@@ -362,8 +362,8 @@ struct AIAssistantPluginTests {
 
         let isolated = UserDefaults(suiteName: "test_ai_plugin_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        #expect(plugin.adaptiveDrawerWidth(store: store) == 370.0)
-        #expect(plugin.minimumDrawerHeight(store: store) == 220.0)
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 420.0)
+        #expect(plugin.minimumDrawerHeight(store: store) == 260.0)
 
         // Test Views instantiation
         let dummyPod = SlotPod(id: "ai", name: "AI Assistant", systemIcon: "sparkles", edge: .right, range: .init(start: 0.1, length: 0.2), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 38.0)

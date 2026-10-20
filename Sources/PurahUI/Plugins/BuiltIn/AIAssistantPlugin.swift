@@ -22,7 +22,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             ergonomicWeight: 38.0,
             minLengthRatio: 0.18,
             defaultColorHex: "#A855F7",
-            defaultDrawerWidth: 370.0,
+            defaultDrawerWidth: 420.0,
             category: .systemService,
             permissions: [.pasteboard, .fileSystem],
             tags: ["ai", "assistant", "chat", "translate", "rewrite"]
@@ -201,11 +201,11 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         if isDecomposed(store: store) {
             return decomposedPolicy(store: store).calculateMinimumHeight(activeCount: state.enabledRoles.count)
         }
-        return 220.0
+        return 260.0
     }
 
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        370.0
+        isDecomposed(store: store) ? 390.0 : 420.0
     }
 
     public var isDecomposed: Bool {
