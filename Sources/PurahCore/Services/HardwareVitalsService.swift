@@ -11,12 +11,14 @@ public struct ProcessInfoItem: Identifiable, Sendable {
     public var name: String
     public var cpuPercent: Double
     public var memoryPercent: Double
+    public var memoryMB: Double
 
-    public init(id: Int32, name: String, cpuPercent: Double, memoryPercent: Double) {
+    public init(id: Int32, name: String, cpuPercent: Double, memoryPercent: Double, memoryMB: Double = 0.0) {
         self.id = id
         self.name = name
         self.cpuPercent = cpuPercent
         self.memoryPercent = memoryPercent
+        self.memoryMB = memoryMB
     }
 }
 
@@ -35,6 +37,41 @@ public struct HardwareVitalsInfo: Sendable {
     public var networkUpSpeed: Double // bytes/sec
     public var topProcesses: [ProcessInfoItem]
 
+    // Deep Hardware Telemetry
+    // CPU & System
+    public var cpuUserUsage: Double
+    public var cpuSystemUsage: Double
+    public var cpuIdleUsage: Double
+    public var loadAverage1m: Double
+    public var loadAverage5m: Double
+    public var loadAverage15m: Double
+    public var chipModelName: String
+    public var performanceCoreCount: Int
+    public var efficiencyCoreCount: Int
+    public var thermalStateLabel: String
+
+    // Memory (RAM)
+    public var memoryAppGB: Double
+    public var memoryWiredGB: Double
+    public var memoryCompressedGB: Double
+    public var memorySwapUsedMB: Double
+    public var memoryPressureLevel: String
+
+    // Network
+    public var networkInterfaceName: String
+    public var localIPAddress: String
+    public var networkTotalReceivedGB: Double
+    public var networkTotalSentGB: Double
+
+    // Disk I/O
+    public var diskReadBytesPerSec: Double
+    public var diskWriteBytesPerSec: Double
+
+    // Battery & Thermal
+    public var batteryHealthPercent: Int
+    public var batteryCycleCount: Int
+    public var batteryTemperatureCelsius: Double
+
     public init(
         cpuUsage: Double = 0.15,
         gpuUsage: Double = 0.05,
@@ -48,7 +85,31 @@ public struct HardwareVitalsInfo: Sendable {
         powerSource: String = "AC Power",
         networkDownSpeed: Double = 0.0,
         networkUpSpeed: Double = 0.0,
-        topProcesses: [ProcessInfoItem] = []
+        topProcesses: [ProcessInfoItem] = [],
+        cpuUserUsage: Double = 0.10,
+        cpuSystemUsage: Double = 0.05,
+        cpuIdleUsage: Double = 0.85,
+        loadAverage1m: Double = 1.0,
+        loadAverage5m: Double = 1.0,
+        loadAverage15m: Double = 1.0,
+        chipModelName: String = "Apple Silicon",
+        performanceCoreCount: Int = 0,
+        efficiencyCoreCount: Int = 0,
+        thermalStateLabel: String = "Nominal",
+        memoryAppGB: Double = 4.0,
+        memoryWiredGB: Double = 2.0,
+        memoryCompressedGB: Double = 1.0,
+        memorySwapUsedMB: Double = 0.0,
+        memoryPressureLevel: String = "Normal",
+        networkInterfaceName: String = "en0",
+        localIPAddress: String = "—",
+        networkTotalReceivedGB: Double = 0.0,
+        networkTotalSentGB: Double = 0.0,
+        diskReadBytesPerSec: Double = 0.0,
+        diskWriteBytesPerSec: Double = 0.0,
+        batteryHealthPercent: Int = 100,
+        batteryCycleCount: Int = 0,
+        batteryTemperatureCelsius: Double = 31.0
     ) {
         self.cpuUsage = cpuUsage
         self.gpuUsage = gpuUsage
@@ -63,6 +124,30 @@ public struct HardwareVitalsInfo: Sendable {
         self.networkDownSpeed = networkDownSpeed
         self.networkUpSpeed = networkUpSpeed
         self.topProcesses = topProcesses
+        self.cpuUserUsage = cpuUserUsage
+        self.cpuSystemUsage = cpuSystemUsage
+        self.cpuIdleUsage = cpuIdleUsage
+        self.loadAverage1m = loadAverage1m
+        self.loadAverage5m = loadAverage5m
+        self.loadAverage15m = loadAverage15m
+        self.chipModelName = chipModelName
+        self.performanceCoreCount = performanceCoreCount
+        self.efficiencyCoreCount = efficiencyCoreCount
+        self.thermalStateLabel = thermalStateLabel
+        self.memoryAppGB = memoryAppGB
+        self.memoryWiredGB = memoryWiredGB
+        self.memoryCompressedGB = memoryCompressedGB
+        self.memorySwapUsedMB = memorySwapUsedMB
+        self.memoryPressureLevel = memoryPressureLevel
+        self.networkInterfaceName = networkInterfaceName
+        self.localIPAddress = localIPAddress
+        self.networkTotalReceivedGB = networkTotalReceivedGB
+        self.networkTotalSentGB = networkTotalSentGB
+        self.diskReadBytesPerSec = diskReadBytesPerSec
+        self.diskWriteBytesPerSec = diskWriteBytesPerSec
+        self.batteryHealthPercent = batteryHealthPercent
+        self.batteryCycleCount = batteryCycleCount
+        self.batteryTemperatureCelsius = batteryTemperatureCelsius
     }
 }
 
@@ -72,6 +157,9 @@ private final class CpuTelemetryBuffer: @unchecked Sendable {
     var previousNetworkInBytes: UInt64?
     var previousNetworkOutBytes: UInt64?
     var previousNetworkTimestamp: Date?
+    var previousDiskReadBytes: UInt64?
+    var previousDiskWriteBytes: UInt64?
+    var previousDiskTimestamp: Date?
 
     deinit {
         if let prev = previousCpuInfo {
@@ -117,6 +205,53 @@ public final class HardwareVitalsService {
     public var isMonitoring: Bool {
         monitorTask != nil
     }
+
+    private static let cachedChipModel: String = {
+        var size = 0
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        if size > 0 {
+            var buffer = [CChar](repeating: 0, count: size)
+            if sysctlbyname("machdep.cpu.brand_string", &buffer, &size, nil, 0) == 0 {
+                if let str = buffer.withUnsafeBufferPointer({ ptr -> String? in
+                    guard let base = ptr.baseAddress else { return nil }
+                    return String(validatingCString: base)
+                })?.trimmingCharacters(in: .whitespacesAndNewlines), !str.isEmpty {
+                    return str
+                }
+            }
+        }
+        var modelSize = 0
+        sysctlbyname("hw.model", nil, &modelSize, nil, 0)
+        if modelSize > 0 {
+            var modelBuffer = [CChar](repeating: 0, count: modelSize)
+            if sysctlbyname("hw.model", &modelBuffer, &modelSize, nil, 0) == 0 {
+                if let str = modelBuffer.withUnsafeBufferPointer({ ptr -> String? in
+                    guard let base = ptr.baseAddress else { return nil }
+                    return String(validatingCString: base)
+                })?.trimmingCharacters(in: .whitespacesAndNewlines), !str.isEmpty {
+                    return str
+                }
+            }
+        }
+        return "Apple Silicon"
+    }()
+
+    private static let cachedCoreCounts: (p: Int, e: Int) = {
+        var pCores: Int32 = 0
+        var pSize = MemoryLayout<Int32>.size
+        let pResult = sysctlbyname("hw.perflevel0.physicalcpu", &pCores, &pSize, nil, 0)
+
+        var eCores: Int32 = 0
+        var eSize = MemoryLayout<Int32>.size
+        let eResult = sysctlbyname("hw.perflevel1.physicalcpu", &eCores, &eSize, nil, 0)
+
+        let pCount = pResult == 0 ? Int(pCores) : 0
+        let eCount = eResult == 0 ? Int(eCores) : 0
+        if pCount == 0 && eCount == 0 {
+            return (ProcessInfo.processInfo.activeProcessorCount, 0)
+        }
+        return (pCount, eCount)
+    }()
 
     public init(storageDirectory: URL = defaultStorageDirectory) {
         self.storageDirectory = storageDirectory
@@ -232,16 +367,19 @@ public final class HardwareVitalsService {
     }
 
     public func refreshMetrics(includeProcesses: Bool = true) {
-        let cpu = readCPUUsage()
+        let cpuBreakdown = readCPUBreakdown()
+        let loads = readLoadAverages()
         let gpu = readGPUUsage()
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
+        let diskIO = readDiskIOThroughput()
         let battery = readBatteryInfo()
-        let net = readNetworkThroughput()
+        let net = readNetworkThroughputDetailed()
         let top = includeProcesses ? readTopProcessesNative() : metrics.topProcesses
+        let thermal = readThermalStateLabel()
 
         metrics = HardwareVitalsInfo(
-            cpuUsage: cpu,
+            cpuUsage: cpuBreakdown.totalUsage,
             gpuUsage: gpu,
             memoryUsage: mem.usage,
             memoryUsedGB: mem.usedGB,
@@ -253,11 +391,35 @@ public final class HardwareVitalsService {
             powerSource: battery.source,
             networkDownSpeed: net.down,
             networkUpSpeed: net.up,
-            topProcesses: top
+            topProcesses: top,
+            cpuUserUsage: cpuBreakdown.userUsage,
+            cpuSystemUsage: cpuBreakdown.sysUsage,
+            cpuIdleUsage: cpuBreakdown.idleUsage,
+            loadAverage1m: loads.load1m,
+            loadAverage5m: loads.load5m,
+            loadAverage15m: loads.load15m,
+            chipModelName: Self.cachedChipModel,
+            performanceCoreCount: Self.cachedCoreCounts.p,
+            efficiencyCoreCount: Self.cachedCoreCounts.e,
+            thermalStateLabel: thermal,
+            memoryAppGB: mem.appGB,
+            memoryWiredGB: mem.wiredGB,
+            memoryCompressedGB: mem.compressedGB,
+            memorySwapUsedMB: mem.swapUsedMB,
+            memoryPressureLevel: mem.pressureLevel,
+            networkInterfaceName: net.interfaceName,
+            localIPAddress: net.localIP,
+            networkTotalReceivedGB: net.totalReceivedGB,
+            networkTotalSentGB: net.totalSentGB,
+            diskReadBytesPerSec: diskIO.readBytesPerSec,
+            diskWriteBytesPerSec: diskIO.writeBytesPerSec,
+            batteryHealthPercent: battery.healthPercent,
+            batteryCycleCount: battery.cycleCount,
+            batteryTemperatureCelsius: battery.temperatureCelsius
         )
 
         let now = Date()
-        appendHistory(&cpuHistory, point: VitalsHistoryPoint(timestamp: now, value: cpu))
+        appendHistory(&cpuHistory, point: VitalsHistoryPoint(timestamp: now, value: cpuBreakdown.totalUsage))
         appendHistory(&gpuHistory, point: VitalsHistoryPoint(timestamp: now, value: gpu))
         appendHistory(&ramHistory, point: VitalsHistoryPoint(timestamp: now, value: mem.usage))
         appendHistory(&powerHistory, point: VitalsHistoryPoint(timestamp: now, value: Double(battery.level) / 100.0))
@@ -291,6 +453,23 @@ public final class HardwareVitalsService {
 
     // MARK: - Mach Kernel & System APIs (100% Native C/Darwin, zero overhead)
 
+    public func readLoadAverages() -> (load1m: Double, load5m: Double, load15m: Double) {
+        var loads = [Double](repeating: 0.0, count: 3)
+        let count = getloadavg(&loads, 3)
+        guard count == 3 else { return (1.0, 1.0, 1.0) }
+        return (max(loads[0], 0.0), max(loads[1], 0.0), max(loads[2], 0.0))
+    }
+
+    public func readThermalStateLabel() -> String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: return "Nominal"
+        case .fair: return "Fair"
+        case .serious: return "Serious"
+        case .critical: return "Critical"
+        @unknown default: return "Nominal"
+        }
+    }
+
     private func readDiskSpace() -> (freeGB: Double, totalGB: Double) {
         guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: "/") else {
             return (256.0, 512.0)
@@ -302,24 +481,128 @@ public final class HardwareVitalsService {
         return (freeGB, totalGB)
     }
 
-    private func readBatteryInfo() -> (level: Int, isCharging: Bool, source: String) {
-        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
-            return (100, false, "AC Power")
-        }
-        for source in sources {
-            if let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] {
-                let cap = desc[kIOPSCurrentCapacityKey] as? Int ?? 100
-                let isCharging = desc[kIOPSIsChargingKey] as? Bool ?? false
-                let source = desc[kIOPSPowerSourceStateKey] as? String ?? "AC Power"
-                let sourceName = (source == kIOPSACPowerValue) ? "AC Power" : "Battery"
-                return (cap, isCharging, sourceName)
+    public func readDiskIOThroughput() -> (readBytesPerSec: Double, writeBytesPerSec: Double) {
+        var iterator: io_iterator_t = 0
+        let matchDict = IOServiceMatching("IOBlockStorageDriver")
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator)
+        guard result == kIOReturnSuccess, iterator != 0 else { return (0.0, 0.0) }
+        defer { IOObjectRelease(iterator) }
+
+        var totalRead: UInt64 = 0
+        var totalWrite: UInt64 = 0
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            defer {
+                IOObjectRelease(service)
+                service = IOIteratorNext(iterator)
+            }
+
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == kIOReturnSuccess,
+               let dict = props?.takeRetainedValue() as? [String: Any],
+               let stats = dict["Statistics"] as? [String: Any] {
+                if let r = stats["Bytes (Read)"] as? NSNumber {
+                    totalRead += r.uint64Value
+                }
+                if let w = stats["Bytes (Write)"] as? NSNumber {
+                    totalWrite += w.uint64Value
+                }
             }
         }
-        return (100, false, "AC Power")
+
+        let now = Date()
+        var readSpeed: Double = 0.0
+        var writeSpeed: Double = 0.0
+
+        if let prevRead = buffer.previousDiskReadBytes,
+           let prevWrite = buffer.previousDiskWriteBytes,
+           let prevTime = buffer.previousDiskTimestamp {
+            let elapsed = now.timeIntervalSince(prevTime)
+            if elapsed > 0.05 {
+                let deltaRead = totalRead >= prevRead ? Double(totalRead - prevRead) : 0.0
+                let deltaWrite = totalWrite >= prevWrite ? Double(totalWrite - prevWrite) : 0.0
+                readSpeed = deltaRead / elapsed
+                writeSpeed = deltaWrite / elapsed
+            }
+        }
+
+        buffer.previousDiskReadBytes = totalRead
+        buffer.previousDiskWriteBytes = totalWrite
+        buffer.previousDiskTimestamp = now
+
+        return (max(readSpeed, 0.0), max(writeSpeed, 0.0))
     }
 
-    private func readMemoryBreakdown() -> (usage: Double, usedGB: Double, totalGB: Double) {
+    public func readBatteryInfo() -> (level: Int, isCharging: Bool, source: String, healthPercent: Int, cycleCount: Int, temperatureCelsius: Double) {
+        var level = 100
+        var isCharging = false
+        var sourceName = "AC Power"
+
+        if let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+           let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] {
+            for source in sources {
+                if let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] {
+                    level = desc[kIOPSCurrentCapacityKey] as? Int ?? 100
+                    isCharging = desc[kIOPSIsChargingKey] as? Bool ?? false
+                    let source = desc[kIOPSPowerSourceStateKey] as? String ?? "AC Power"
+                    sourceName = (source == kIOPSACPowerValue) ? "AC Power" : "Battery"
+                    break
+                }
+            }
+        }
+
+        var cycleCount = 0
+        var temperatureCelsius = 31.0
+        var healthPercent = 100
+
+        var iterator: io_iterator_t = 0
+        let matchDict = IOServiceMatching("AppleSmartBattery")
+        let res = IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator)
+        if res == kIOReturnSuccess, iterator != 0 {
+            defer { IOObjectRelease(iterator) }
+            var service = IOIteratorNext(iterator)
+            while service != 0 {
+                defer {
+                    IOObjectRelease(service)
+                    service = IOIteratorNext(iterator)
+                }
+                var props: Unmanaged<CFMutableDictionary>?
+                if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == kIOReturnSuccess,
+                   let dict = props?.takeRetainedValue() as? [String: Any] {
+                    if let cycles = dict["CycleCount"] as? Int {
+                        cycleCount = cycles
+                    } else if let cycles = dict["CycleCount"] as? NSNumber {
+                        cycleCount = cycles.intValue
+                    }
+                    if let rawTemp = dict["Temperature"] as? Double {
+                        temperatureCelsius = rawTemp / 100.0
+                    } else if let rawTemp = dict["Temperature"] as? NSNumber {
+                        temperatureCelsius = rawTemp.doubleValue / 100.0
+                    }
+                    let maxCap = (dict["MaxCapacity"] as? NSNumber)?.doubleValue
+                        ?? (dict["NominalChargeCapacity"] as? NSNumber)?.doubleValue
+                    let designCap = (dict["DesignCapacity"] as? NSNumber)?.doubleValue
+                    if let capVal = maxCap, let designVal = designCap, designVal > 0 {
+                        let calc = Int((capVal / designVal) * 100.0)
+                        healthPercent = Swift.min(Swift.max(calc, 50), 100)
+                    }
+                }
+            }
+        }
+
+        return (level, isCharging, sourceName, healthPercent, cycleCount, temperatureCelsius)
+    }
+
+    public func readMemoryBreakdown() -> (
+        usage: Double,
+        usedGB: Double,
+        totalGB: Double,
+        appGB: Double,
+        wiredGB: Double,
+        compressedGB: Double,
+        swapUsedMB: Double,
+        pressureLevel: String
+    ) {
         var vmStats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
 
@@ -332,7 +615,9 @@ public final class HardwareVitalsService {
         let totalMem = Double(ProcessInfo.processInfo.physicalMemory)
         let totalGB = totalMem / 1_073_741_824.0
 
-        guard result == KERN_SUCCESS else { return (0.45, totalGB * 0.45, totalGB) }
+        guard result == KERN_SUCCESS else {
+            return (0.45, totalGB * 0.45, totalGB, 4.0, 2.0, 1.0, 0.0, "Normal")
+        }
 
         let pageSize = Double(getpagesize())
         let active = Double(vmStats.active_count) * pageSize
@@ -341,10 +626,30 @@ public final class HardwareVitalsService {
         let used = active + wired + compressed
         let usedGB = used / 1_073_741_824.0
         let usage = min(max(used / totalMem, 0.0), 1.0)
-        return (usage, usedGB, totalGB)
+
+        let wiredGB = (Double(vmStats.wire_count) * pageSize) / 1_073_741_824.0
+        let compressedGB = (Double(vmStats.compressor_page_count) * pageSize) / 1_073_741_824.0
+        let internalMinusPurgeable = (Double(max(Int64(vmStats.internal_page_count) - Int64(vmStats.purgeable_count), 0)) * pageSize) / 1_073_741_824.0
+        let activeGB = (Double(vmStats.active_count) * pageSize) / 1_073_741_824.0
+        let appGB = max(internalMinusPurgeable, activeGB)
+
+        var swapUsage = xsw_usage()
+        var swapSize = MemoryLayout<xsw_usage>.size
+        var swapUsedMB: Double = 0.0
+        if sysctlbyname("vm.swapusage", &swapUsage, &swapSize, nil, 0) == 0 {
+            swapUsedMB = Double(swapUsage.xsu_used) / 1_048_576.0
+        }
+
+        let pressureLevel: String = {
+            if usage >= 0.85 { return "Critical" }
+            if usage >= 0.70 { return "Warning" }
+            return "Normal"
+        }()
+
+        return (usage, usedGB, totalGB, appGB, wiredGB, compressedGB, swapUsedMB, pressureLevel)
     }
 
-    private func readCPUUsage() -> Double {
+    public func readCPUBreakdown() -> (totalUsage: Double, userUsage: Double, sysUsage: Double, idleUsage: Double) {
         var numProcessors: natural_t = 0
         var cpuInfo: processor_info_array_t?
         var numCpuInfo: mach_msg_type_number_t = 0
@@ -357,13 +662,20 @@ public final class HardwareVitalsService {
             &numCpuInfo
         )
 
-        guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else { return 0.15 }
+        guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else {
+            return (0.15, 0.10, 0.05, 0.85)
+        }
 
-        var totalUsage: Double = 0.0
+        var totalUsage: Double = 0.15
+        var userUsage: Double = 0.10
+        var sysUsage: Double = 0.05
+        var idleUsage: Double = 0.85
 
         if let prev = buffer.previousCpuInfo, buffer.previousCpuInfoCount == numCpuInfo {
-            var inUse: Int64 = 0
-            var total: Int64 = 0
+            var userTicks: Int64 = 0
+            var sysTicks: Int64 = 0
+            var idleTicks: Int64 = 0
+            var totalTicks: Int64 = 0
 
             for i in 0..<Int(numProcessors) {
                 let userIdx = Int(CPU_STATE_MAX) * i + Int(CPU_STATE_USER)
@@ -376,15 +688,19 @@ public final class HardwareVitalsService {
                 let n = max(Int64(cpuInfo[niceIdx]) - Int64(prev[niceIdx]), 0)
                 let id = max(Int64(cpuInfo[idleIdx]) - Int64(prev[idleIdx]), 0)
 
-                inUse += (u + s + n)
-                total += (u + s + n + id)
+                userTicks += (u + n)
+                sysTicks += s
+                idleTicks += id
+                totalTicks += (u + s + n + id)
             }
 
-            if total > 0 {
-                totalUsage = Double(inUse) / Double(total)
+            if totalTicks > 0 {
+                let totalD = Double(totalTicks)
+                totalUsage = Double(userTicks + sysTicks) / totalD
+                userUsage = Double(userTicks) / totalD
+                sysUsage = Double(sysTicks) / totalD
+                idleUsage = Double(idleTicks) / totalD
             }
-        } else {
-            totalUsage = 0.15
         }
 
         if let prev = buffer.previousCpuInfo {
@@ -395,7 +711,16 @@ public final class HardwareVitalsService {
         buffer.previousCpuInfo = cpuInfo
         buffer.previousCpuInfoCount = numCpuInfo
 
-        return min(max(totalUsage, 0.0), 1.0)
+        return (
+            min(max(totalUsage, 0.0), 1.0),
+            min(max(userUsage, 0.0), 1.0),
+            min(max(sysUsage, 0.0), 1.0),
+            min(max(idleUsage, 0.0), 1.0)
+        )
+    }
+
+    public func readCPUUsage() -> Double {
+        readCPUBreakdown().totalUsage
     }
 
     deinit {
@@ -419,18 +744,20 @@ public final class HardwareVitalsService {
                 let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
                 let cpuTimeMs = Double(taskInfo.pti_total_user + taskInfo.pti_total_system) / 100_000_000.0
                 let cpuPercent = min(max(cpuTimeMs.truncatingRemainder(dividingBy: 100.0), 0.5), 99.0)
+                let memoryMB = memBytes / 1_048_576.0
 
                 items.append(ProcessInfoItem(
                     id: pid,
                     name: name,
                     cpuPercent: cpuPercent,
-                    memoryPercent: memPercent
+                    memoryPercent: memPercent,
+                    memoryMB: memoryMB
                 ))
             }
         }
 
         items.sort { $0.memoryPercent > $1.memoryPercent }
-        return Array(items.prefix(3))
+        return Array(items.prefix(6))
     }
 
     // MARK: - Zero-Overhead GPU & Network Telemetry
@@ -469,30 +796,65 @@ public final class HardwareVitalsService {
         return min(max(maxUsage, 0.0), 1.0)
     }
 
-    public func readNetworkThroughput() -> (down: Double, up: Double) {
+    public func readNetworkThroughputDetailed() -> (
+        down: Double,
+        up: Double,
+        totalReceivedGB: Double,
+        totalSentGB: Double,
+        interfaceName: String,
+        localIP: String
+    ) {
         var ifap: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifap) == 0, let first = ifap else {
-            return (0.0, 0.0)
+            return (0.0, 0.0, 0.0, 0.0, "en0", "—")
         }
         defer { freeifaddrs(ifap) }
 
         var totalIn: UInt64 = 0
         var totalOut: UInt64 = 0
+        var primaryInterface = "en0"
+        var primaryIP = "—"
+        var foundPrimary = false
+
         var ptr: UnsafeMutablePointer<ifaddrs>? = first
 
         while let cur = ptr {
             let flags = cur.pointee.ifa_flags
-            if (flags & UInt32(IFF_UP)) != 0 && (flags & UInt32(IFF_LOOPBACK)) == 0 {
-                if let addr = cur.pointee.ifa_addr,
-                   addr.pointee.sa_family == UInt8(AF_LINK),
-                   let data = cur.pointee.ifa_data {
-                    let ifData = data.assumingMemoryBound(to: if_data.self).pointee
-                    totalIn += UInt64(ifData.ifi_ibytes)
-                    totalOut += UInt64(ifData.ifi_obytes)
+            let isUp = (flags & UInt32(IFF_UP)) != 0
+            let isLoopback = (flags & UInt32(IFF_LOOPBACK)) != 0
+            let name = String(cString: cur.pointee.ifa_name)
+
+            if isUp && !isLoopback {
+                if let addr = cur.pointee.ifa_addr {
+                    if addr.pointee.sa_family == UInt8(AF_LINK), let data = cur.pointee.ifa_data {
+                        let ifData = data.assumingMemoryBound(to: if_data.self).pointee
+                        totalIn += UInt64(ifData.ifi_ibytes)
+                        totalOut += UInt64(ifData.ifi_obytes)
+                    } else if addr.pointee.sa_family == UInt8(AF_INET) {
+                        var addrBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                        let sin = addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
+                        var inAddr = sin.sin_addr
+                        if inet_ntop(AF_INET, &inAddr, &addrBuf, socklen_t(INET_ADDRSTRLEN)) != nil {
+                            let ipStr = addrBuf.withUnsafeBufferPointer { ptr -> String in
+                                guard let base = ptr.baseAddress else { return "—" }
+                                return String(validatingCString: base) ?? "—"
+                            }
+                            if !ipStr.hasPrefix("127.") && !foundPrimary {
+                                primaryInterface = name
+                                primaryIP = ipStr
+                                if name == "en0" {
+                                    foundPrimary = true
+                                }
+                            }
+                        }
+                    }
                 }
             }
             ptr = cur.pointee.ifa_next
         }
+
+        let totalReceivedGB = Double(totalIn) / 1_073_741_824.0
+        let totalSentGB = Double(totalOut) / 1_073_741_824.0
 
         let now = Date()
         var downSpeed: Double = 0.0
@@ -514,6 +876,18 @@ public final class HardwareVitalsService {
         buffer.previousNetworkOutBytes = totalOut
         buffer.previousNetworkTimestamp = now
 
-        return (max(downSpeed, 0.0), max(upSpeed, 0.0))
+        return (
+            max(downSpeed, 0.0),
+            max(upSpeed, 0.0),
+            totalReceivedGB,
+            totalSentGB,
+            primaryInterface,
+            primaryIP
+        )
+    }
+
+    public func readNetworkThroughput() -> (down: Double, up: Double) {
+        let det = readNetworkThroughputDetailed()
+        return (det.down, det.up)
     }
 }

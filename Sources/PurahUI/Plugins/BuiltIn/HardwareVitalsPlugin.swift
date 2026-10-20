@@ -82,7 +82,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        isDecomposed(store: store) ? 320.0 : 390.0
+        336.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {

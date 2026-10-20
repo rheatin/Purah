@@ -600,7 +600,7 @@ public struct VisualLayoutSimulatorView: View {
                         }
 
                         if !availableToStack.isEmpty {
-                            Menu("overflow.majorPod.addPlugin".localized) {
+                            Menu {
                                 ForEach(availableToStack) { candidate in
                                     Button("Stack \(candidate.name) here") {
                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -609,8 +609,28 @@ public struct VisualLayoutSimulatorView: View {
                                         }
                                     }
                                 }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 8.5, weight: .semibold))
+                                    Text("overflow.majorPod.addPlugin".localized)
+                                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                        .lineLimit(1)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.12))
+                                .foregroundColor(.orange)
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.orange.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                                )
                             }
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .menuStyle(.borderlessButton)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.top, 2)
                         }
                     }
@@ -644,8 +664,9 @@ public struct VisualLayoutSimulatorView: View {
         let palette = theme.palette
         let otherPods = railPods.filter { $0.id != pod.id }
 
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
+            // Row 1: Module Identity & Unmount
+            HStack(spacing: 6) {
                 if isStackedInCluster {
                     RoundedRectangle(cornerRadius: 1.5)
                         .fill(Color.orange)
@@ -653,18 +674,35 @@ public struct VisualLayoutSimulatorView: View {
                 }
 
                 Image(systemName: pod.systemIcon)
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundColor(palette.podColor(for: pod.id, store: store))
 
                 Text(pod.name)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
-                Spacer(minLength: 2)
+                Spacer(minLength: 4)
 
-                // Page Assignment Menu (always available)
-                Menu("P\(pod.pageIndex + 1)") {
+                // Unmount button
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        store.togglePodEnabled(id: pod.id)
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.red.opacity(0.85))
+                }
+                .buttonStyle(.tactile)
+                .help("Unmount \(pod.name) from rail")
+            }
+
+            // Row 2: Tactile Action Pill Bar
+            HStack(spacing: 6) {
+                // Page Pill Menu
+                Menu {
                     ForEach(0...max(maxExistingPage, 2), id: \.self) { pageIdx in
                         Button("Page \(pageIdx + 1)\(pod.pageIndex == pageIdx ? " ✓" : "")") {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -678,12 +716,26 @@ public struct VisualLayoutSimulatorView: View {
                             store.setPodPage(id: pod.id, pageIndex: maxExistingPage + 1)
                         }
                     }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 8.5))
+                        Text("Page \(pod.pageIndex + 1)")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7, weight: .bold))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(palette.primaryAccent.opacity(0.12))
+                    .foregroundColor(palette.primaryAccent)
+                    .cornerRadius(5)
                 }
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .frame(width: 44)
+                .menuStyle(.borderlessButton)
+                .fixedSize(horizontal: true, vertical: false)
                 .help("Assign \(pod.name) to a specific rail page")
 
-                // Stack / Unstack buttons (always available)
+                // Stack / Unstack Pill
                 if isStackedInCluster {
                     Button {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -691,19 +743,21 @@ public struct VisualLayoutSimulatorView: View {
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             Image(systemName: "scissors")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 8.5, weight: .bold))
                             Text("overflow.majorPod.unstack".localized)
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .lineLimit(1)
                         }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2.5)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
                         .background(Color.orange.opacity(0.18))
                         .foregroundColor(.orange)
-                        .cornerRadius(4)
+                        .cornerRadius(5)
                     }
                     .buttonStyle(.tactile)
+                    .fixedSize(horizontal: true, vertical: false)
                     .help("Unstack \(pod.name) from its Shared Major Pod")
                 } else if !otherPods.isEmpty {
                     Menu {
@@ -716,17 +770,27 @@ public struct VisualLayoutSimulatorView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "link")
-                                .font(.system(size: 8, weight: .bold))
-                            Text("Stack")
-                                .font(.system(size: 8, weight: .bold))
+                        HStack(spacing: 3) {
+                            Image(systemName: "square.stack.3d.up.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text("Stack With")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 7, weight: .bold))
                         }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.orange.opacity(0.14))
+                        .foregroundColor(.orange)
+                        .cornerRadius(5)
                     }
-                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    .frame(width: 60)
+                    .menuStyle(.borderlessButton)
+                    .fixedSize(horizontal: true, vertical: false)
                     .help("Stack \(pod.name) with another module on this rail")
                 }
+
+                Spacer(minLength: 2)
 
                 // Reorder: Move Up
                 if store.canMovePod(id: pod.id, direction: .up) {
@@ -736,9 +800,9 @@ public struct VisualLayoutSimulatorView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 8.5, weight: .bold))
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 17, height: 17)
+                            .frame(width: 20, height: 20)
                             .background(Color.primary.opacity(0.08))
                             .cornerRadius(4)
                     }
@@ -754,9 +818,9 @@ public struct VisualLayoutSimulatorView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.down")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 8.5, weight: .bold))
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 17, height: 17)
+                            .frame(width: 20, height: 20)
                             .background(Color.primary.opacity(0.08))
                             .cornerRadius(4)
                     }
@@ -764,43 +828,32 @@ public struct VisualLayoutSimulatorView: View {
                     .help("Move \(pod.name) down")
                 }
 
-                // Transfer Edge
+                // Transfer Edge (Switch Rail Button)
                 Button {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                         store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
                     }
                 } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: pod.edge == .left ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
-                            .font(.system(size: 7.5))
-                        Text(pod.edge == .left ? "L" : "R")
+                    HStack(spacing: 3) {
+                        Image(systemName: pod.edge == .left ? "arrow.right" : "arrow.left")
                             .font(.system(size: 8, weight: .bold))
+                        Text(pod.edge == .left ? "To Right" : "To Left")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .lineLimit(1)
                     }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2.5)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                     .background(palette.primaryAccent.opacity(0.15))
                     .foregroundColor(palette.primaryAccent)
-                    .cornerRadius(4)
+                    .cornerRadius(5)
                 }
                 .buttonStyle(.tactile)
+                .fixedSize(horizontal: true, vertical: false)
                 .help("Move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
-
-                // Unmount button
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        store.togglePodEnabled(id: pod.id)
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(Color.red.opacity(0.85))
-                }
-                .buttonStyle(.tactile)
-                .help("Unmount \(pod.name) from rail")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(8)
         .overlay(

@@ -117,7 +117,7 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        isDecomposed(store: store) ? 320.0 : 390.0
+        336.0
     }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {

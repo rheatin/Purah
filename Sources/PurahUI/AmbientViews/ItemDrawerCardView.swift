@@ -931,7 +931,7 @@ public struct VitalsItemDrawerView: View {
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
 
-        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
+        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 316.0)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline bar (micro dynamic telemetry meter level)
@@ -993,7 +993,7 @@ public struct VitalsItemDrawerView: View {
 
     @ViewBuilder
     private func expandedCard(cardH: CGFloat) -> some View {
-        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 280.0)
+        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 316.0)
 
         VStack(alignment: .leading, spacing: 0) {
             VitalsFocusedDrawerView(

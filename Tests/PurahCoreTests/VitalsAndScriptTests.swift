@@ -673,4 +673,90 @@ struct VitalsAndScriptTests {
         #expect(resetReloaded._vitalsThresholds.batteryLow == 0.20)
         #expect(resetReloaded._vitalsThresholds.networkWarningMB == 10.0)
     }
+
+    @Test("Deep Darwin/IOKit hardware telemetry models and service collection")
+    @MainActor
+    func testDeepDarwinIOKitTelemetry() {
+        // 1. ProcessInfoItem backward compatibility and memoryMB
+        let legacyProc = ProcessInfoItem(id: 100, name: "Finder", cpuPercent: 2.5, memoryPercent: 1.2)
+        #expect(legacyProc.memoryMB == 0.0)
+        let deepProc = ProcessInfoItem(id: 101, name: "Xcode", cpuPercent: 45.0, memoryPercent: 8.5, memoryMB: 1360.0)
+        #expect(deepProc.memoryMB == 1360.0)
+
+        // 2. HardwareVitalsInfo default parameters
+        let defaultInfo = HardwareVitalsInfo()
+        #expect(defaultInfo.cpuUserUsage == 0.10)
+        #expect(defaultInfo.cpuSystemUsage == 0.05)
+        #expect(defaultInfo.cpuIdleUsage == 0.85)
+        #expect(defaultInfo.loadAverage1m == 1.0)
+        #expect(defaultInfo.chipModelName == "Apple Silicon")
+        #expect(defaultInfo.thermalStateLabel == "Nominal")
+        #expect(defaultInfo.memoryAppGB == 4.0)
+        #expect(defaultInfo.memoryWiredGB == 2.0)
+        #expect(defaultInfo.memoryCompressedGB == 1.0)
+        #expect(defaultInfo.memorySwapUsedMB == 0.0)
+        #expect(defaultInfo.memoryPressureLevel == "Normal")
+        #expect(defaultInfo.networkInterfaceName == "en0")
+        #expect(defaultInfo.localIPAddress == "—")
+        #expect(defaultInfo.diskReadBytesPerSec == 0.0)
+        #expect(defaultInfo.diskWriteBytesPerSec == 0.0)
+        #expect(defaultInfo.batteryHealthPercent == 100)
+        #expect(defaultInfo.batteryCycleCount == 0)
+        #expect(defaultInfo.batteryTemperatureCelsius == 31.0)
+
+        // 3. HardwareVitalsService native collection methods
+        let service = HardwareVitalsService.shared
+        let cpuBreakdown = service.readCPUBreakdown()
+        #expect(cpuBreakdown.totalUsage >= 0.0 && cpuBreakdown.totalUsage <= 1.0)
+        #expect(cpuBreakdown.userUsage >= 0.0 && cpuBreakdown.userUsage <= 1.0)
+        #expect(cpuBreakdown.sysUsage >= 0.0 && cpuBreakdown.sysUsage <= 1.0)
+        #expect(cpuBreakdown.idleUsage >= 0.0 && cpuBreakdown.idleUsage <= 1.0)
+
+        let loads = service.readLoadAverages()
+        #expect(loads.load1m >= 0.0)
+        #expect(loads.load5m >= 0.0)
+        #expect(loads.load15m >= 0.0)
+
+        let mem = service.readMemoryBreakdown()
+        #expect(mem.totalGB > 0.0)
+        #expect(mem.usedGB >= 0.0)
+        #expect(mem.appGB >= 0.0)
+        #expect(mem.wiredGB >= 0.0)
+        #expect(mem.compressedGB >= 0.0)
+        #expect(mem.swapUsedMB >= 0.0)
+        #expect(!mem.pressureLevel.isEmpty)
+
+        let net = service.readNetworkThroughputDetailed()
+        #expect(net.down >= 0.0)
+        #expect(net.up >= 0.0)
+        #expect(net.totalReceivedGB >= 0.0)
+        #expect(net.totalSentGB >= 0.0)
+        #expect(!net.interfaceName.isEmpty)
+
+        let diskIO = service.readDiskIOThroughput()
+        #expect(diskIO.readBytesPerSec >= 0.0)
+        #expect(diskIO.writeBytesPerSec >= 0.0)
+
+        let bat = service.readBatteryInfo()
+        #expect(bat.level >= 0 && bat.level <= 100)
+        #expect(bat.healthPercent >= 50 && bat.healthPercent <= 100)
+        #expect(bat.temperatureCelsius > 0.0)
+        #expect(!bat.source.isEmpty)
+
+        // 4. HardwareVitalsDrawerView and VitalsFocusedDrawerView across all height tiers
+        let store = PurahWorkspaceStore()
+        let vitalsPluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
+
+        let compositeDrawer = HardwareVitalsDrawerView(state: vitalsPluginState, store: store)
+        #expect(!compositeDrawer.state.enabledMetrics.isEmpty)
+
+        for metric in VitalsMetricType.allCases {
+            let ultraCompact = VitalsFocusedDrawerView(metric: metric, availableHeight: 32.0, state: vitalsPluginState, store: store)
+            #expect(ultraCompact.metric == metric)
+            let standard = VitalsFocusedDrawerView(metric: metric, availableHeight: 60.0, state: vitalsPluginState, store: store)
+            #expect(standard.availableHeight == 60.0)
+            let tall = VitalsFocusedDrawerView(metric: metric, availableHeight: 120.0, state: vitalsPluginState, store: store)
+            #expect(tall.availableHeight == 120.0)
+        }
+    }
 }

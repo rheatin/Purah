@@ -1386,7 +1386,7 @@ struct DrawerInteractionUITests {
         #expect(fittingSize.width <= 16.0, "When docked (isExpanded == false), todo_more_items must render only the 8pt rail bar without expanding the TodoDrawerView card")
     }
 
-    @Test("HardwareVitalsPlugin adaptiveDrawerWidth returns 390pt in composite mode and 320pt in stepped mode")
+    @Test("HardwareVitalsPlugin adaptiveDrawerWidth returns 336pt in both composite and stepped modes")
     @MainActor
     func testHardwareVitalsAdaptiveDrawerWidth() {
         let isolated = UserDefaults(suiteName: "test_vitals_width_\(UUID().uuidString)")!
@@ -1395,12 +1395,12 @@ struct DrawerInteractionUITests {
 
         store._isVitalsDecomposed = true
         plugin.state.isDecomposed = true
-        #expect(plugin.adaptiveDrawerWidth(store: store) == 320.0)
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 336.0)
 
         store._isVitalsDecomposed = false
         plugin.state.isDecomposed = false
-        #expect(plugin.adaptiveDrawerWidth(store: store) == 390.0)
-        #expect(store.effectiveDrawerWidth(podId: "vitals") == 390.0)
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 336.0)
+        #expect(store.effectiveDrawerWidth(podId: "vitals") == 336.0)
     }
 
     @Test("WaveMeterAmbientView barWidth and ScriptRunway/Calendar adaptiveDrawerWidth respect composite and Shared Major Pod modes")
