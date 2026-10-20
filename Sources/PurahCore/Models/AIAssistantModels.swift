@@ -30,6 +30,16 @@ public enum AIProviderKind: String, Codable, CaseIterable, Sendable, Identifiabl
         case .httpOllama: return "desktopcomputer"
         }
     }
+
+    public var shortTitle: String {
+        switch self {
+        case .appleIntelligence: return "Apple Intel"
+        case .localCLI: return "Local CLI"
+        case .httpOpenAI: return "OpenAI"
+        case .httpAnthropic: return "Claude"
+        case .httpOllama: return "Ollama"
+        }
+    }
 }
 
 // MARK: - CLI Executable
@@ -37,7 +47,6 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     case claude = "claude"
     case codex = "codex"
     case ollama = "ollama"
-    case opencode = "opencode"
     case custom = "custom"
 
     public var id: String { rawValue }
@@ -48,8 +57,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return "Claude CLI"
         case .codex: return "Codex CLI"
         case .ollama: return "Ollama CLI"
-        case .opencode: return "OpenCode CLI (opencode)"
-        case .custom: return "Custom CLI Executable"
+        case .custom: return "Custom CLI"
         }
     }
 
@@ -58,7 +66,6 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return ["-p"]
         case .codex: return ["exec"]
         case .ollama: return ["run", "llama3.2"]
-        case .opencode: return ["run", "--thinking", "--format", "json"]
         case .custom: return ["{prompt}"]
         }
     }

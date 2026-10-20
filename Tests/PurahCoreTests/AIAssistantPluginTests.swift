@@ -38,13 +38,16 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.ollama.rawValue == "ollama")
         #expect(AICLIExecutable.ollama.defaultSubcommand == ["run", "llama3.2"])
 
-        #expect(AICLIExecutable.opencode.rawValue == "opencode")
-        #expect(AICLIExecutable.opencode.displayName == "OpenCode CLI (opencode)")
-        #expect(AICLIExecutable.opencode.defaultSubcommand == ["run", "--thinking", "--format", "json"])
-
         #expect(AICLIExecutable.custom.rawValue == "custom")
-        #expect(AICLIExecutable.custom.displayName == "Custom CLI Executable")
+        #expect(AICLIExecutable.custom.displayName == "Custom CLI")
         #expect(AICLIExecutable.custom.defaultSubcommand == ["{prompt}"])
+        #expect(AICLIExecutable.allCases.count == 4)
+
+        #expect(AIProviderKind.appleIntelligence.shortTitle == "Apple Intel")
+        #expect(AIProviderKind.localCLI.shortTitle == "Local CLI")
+        #expect(AIProviderKind.httpOpenAI.shortTitle == "OpenAI")
+        #expect(AIProviderKind.httpAnthropic.shortTitle == "Claude")
+        #expect(AIProviderKind.httpOllama.shortTitle == "Ollama")
     }
 
     @Test("AIQuickActionType system prompts and transformation flags")
@@ -686,24 +689,23 @@ struct AIAssistantPluginTests {
         #expect(parsedMessage.isThinking == false)
     }
 
-    @Test("OpenCode and Custom CLI argument resolution and presets")
-    func testOpenCodeAndCustomCLIArgumentResolution() {
-        // 1. Executable is .opencode with default settings
+    @Test("Custom CLI argument resolution and presets")
+    func testCustomCLIArgumentResolution() {
+        // 1. Executable is .custom with path pointing to opencode/optimus with default settings
         let args1 = AIAssistantService.resolveCLIArguments(
-            executable: .opencode,
+            executable: .custom,
             cliPath: "/opt/homebrew/bin/opencode",
             promptText: "Explain SwiftUI"
         )
         #expect(args1 == ["run", "--thinking", "--format", "json", "Explain SwiftUI"])
 
-        // 2. Executable is .opencode with model override
+        // 2. Executable is .custom with path pointing to optimus
         let args2 = AIAssistantService.resolveCLIArguments(
-            executable: .opencode,
-            cliPath: "/opt/homebrew/bin/opencode",
-            promptText: "Explain SwiftUI",
-            model: "anthropic/claude-3-5-sonnet"
+            executable: .custom,
+            cliPath: "\(NSHomeDirectory())/.optimus/bin/optimus",
+            promptText: "Explain SwiftUI"
         )
-        #expect(args2 == ["run", "--thinking", "--format", "json", "--model", "anthropic/claude-3-5-sonnet", "Explain SwiftUI"])
+        #expect(args2 == ["run", "--thinking", "--format", "json", "Explain SwiftUI"])
 
         // 3. Executable is .custom with path pointing to opencode/optimus and custom template lacking 'run'
         let args3 = AIAssistantService.resolveCLIArguments(

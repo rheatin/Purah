@@ -333,6 +333,10 @@ public struct AIAssistantPluginSettingsView: View {
     @State private var newRolePrompt: String = ""
     @State private var newRoleIsTransform: Bool = false
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: AIAssistantPluginState, store: PurahWorkspaceStore) {
         self.state = state
         self.store = store
@@ -340,306 +344,624 @@ public struct AIAssistantPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Section 1: Default Provider
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Default AI Provider")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            // Card 1: AI Provider & Engine Configuration
+            providerConfigurationCard
 
-                Picker("", selection: $state.selectedProvider) {
-                    ForEach(AIProviderKind.allCases) { provider in
-                        Label(provider.displayName, systemImage: provider.systemIcon)
-                            .tag(provider)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
+            // Card 2: Rail Mode & Role Prompts Manager
+            rolesAndPromptsCard
 
-            // Section 2: Provider Specific Settings
-            switch state.selectedProvider {
-            case .appleIntelligence:
-                HStack(spacing: 6) {
-                    Image(systemName: "apple.intelligence")
-                        .foregroundColor(.purple)
-                    Text("Powered by Apple Intelligence on-device models with zero latency and complete privacy.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary)
-                }
-                .padding(8)
-                .background(Color.purple.opacity(0.08))
-                .cornerRadius(6)
-
-            case .localCLI:
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Local CLI Agent Executable")
-                        .font(.system(size: 10.5, weight: .semibold))
-
-                    Picker("", selection: $state.selectedCLI) {
-                        ForEach(AICLIExecutable.allCases) { cli in
-                            Text(cli.displayName).tag(cli)
-                        }
-                    }
-                    .pickerStyle(.radioGroup)
-
-                    LabeledContent("Executable Path") {
-                        HStack(spacing: 4) {
-                            TextField("Path override or custom binary", text: $state.customCLIPath)
-                                .textFieldStyle(.roundedBorder)
-
-                            Button("Browse...") {
-                                browseForExecutable()
-                            }
-                            .buttonStyle(.tactile)
-                        }
-                    }
-
-                    LabeledContent("Arguments Template") {
-                        TextField("e.g. {prompt} or exec {prompt}", text: $state.customCLIArguments)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Template format: use {prompt} where user input is injected.")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
-
-                        Text("Quick-fill presets:")
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .padding(.top, 1)
-
-                        VStack(spacing: 3) {
-                            cliPresetPill("-p {prompt}", style: "Claude / LLM style")
-                            cliPresetPill("run {prompt}", style: "OpenCode / Ollama style")
-                            cliPresetPill("run --thinking --format json {prompt}", style: "OpenCode JSON + Thinking style")
-                            cliPresetPill("exec {prompt}", style: "Codex style")
-                        }
-                    }
-
-                    let resolvedPath = AIAssistantService.shared.resolveCLIPath(for: state.selectedCLI, customPath: state.customCLIPath)
-                    HStack(spacing: 4) {
-                        Image(systemName: resolvedPath != nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundColor(resolvedPath != nil ? .green : .orange)
-                        Text(resolvedPath ?? "Executable not found. Check path or install binary.")
-                            .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-
-            case .httpOpenAI:
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("OpenAI Compatible Configuration")
-                        .font(.system(size: 10.5, weight: .semibold))
-
-                    LabeledContent("Base URL") {
-                        TextField("https://api.openai.com/v1", text: $state.openAIBaseURL)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    LabeledContent("API Key") {
-                        SecureField("sk-...", text: $state.openAIAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    modelSelectorRow(
-                        title: "Model ID",
-                        text: $state.openAIModel,
-                        provider: .httpOpenAI
-                    )
-                }
-
-            case .httpAnthropic:
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Anthropic Claude Configuration")
-                        .font(.system(size: 10.5, weight: .semibold))
-
-                    LabeledContent("API Key") {
-                        SecureField("sk-ant-...", text: $state.anthropicAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    modelSelectorRow(
-                        title: "Model ID",
-                        text: $state.anthropicModel,
-                        provider: .httpAnthropic
-                    )
-                }
-
-            case .httpOllama:
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Ollama Local Configuration")
-                        .font(.system(size: 10.5, weight: .semibold))
-
-                    LabeledContent("Base URL") {
-                        TextField("http://localhost:11434", text: $state.ollamaBaseURL)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    modelSelectorRow(
-                        title: "Model ID",
-                        text: $state.ollamaModel,
-                        provider: .httpOllama
-                    )
-                }
-            }
-
-            Divider()
-
-            // Section 3: Decomposition Toggle
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Decompose into Quick-Action Rail Chips", isOn: $state.isDecomposed)
-                    .font(.system(size: 11, weight: .semibold))
-
-                Text("When enabled, each active role preset gets an independent in-rail stepped chip.")
-                    .font(.system(size: 9.5))
-                    .foregroundColor(.secondary)
-            }
-
-            Divider()
-
-            // Section 4: AI Roles & System Prompts
-            rolesAndPromptsManagerSection
-
-            Divider()
-
-            // Section 5: Session History & Retention
-            sessionRetentionSection
+            // Card 3: Session History & Retention
+            sessionRetentionCard
         }
         .padding(10)
     }
 
+    // MARK: - Section Card Container Helper
+    @ViewBuilder
+    private func settingsSectionCard<Content: View>(
+        title: String,
+        subtitle: String? = nil,
+        icon: String,
+        iconColor: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        settingsSectionCard(
+            title: title,
+            subtitle: subtitle,
+            icon: icon,
+            iconColor: iconColor,
+            trailing: EmptyView(),
+            content: content
+        )
+    }
+
+    @ViewBuilder
+    private func settingsSectionCard<Trailing: View, Content: View>(
+        title: String,
+        subtitle: String? = nil,
+        icon: String,
+        iconColor: Color? = nil,
+        trailing: Trailing,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let accent = iconColor ?? palette.primaryAccent
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(accent)
+                    .frame(width: 20, height: 20)
+
+                VStack(alignment: .leading, spacing: 1.5) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    if let subtitle = subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                trailing
+            }
+
+            content()
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(palette.surfaceBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1.0)
+        )
+    }
+
+    // MARK: - Custom Input Capsule
+    @ViewBuilder
+    private func customInputCapsule<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.primary.opacity(0.05))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+            )
+    }
+
+    // MARK: - Card 1: AI Provider & Engine Configuration
+    @ViewBuilder
+    private var providerConfigurationCard: some View {
+        settingsSectionCard(
+            title: "AI Provider & Engine Configuration",
+            subtitle: "Select the primary backend and configure local or cloud credentials",
+            icon: "cpu.fill",
+            iconColor: palette.primaryAccent
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                // 5-Tile Provider Bar
+                HStack(spacing: 6) {
+                    ForEach(AIProviderKind.allCases) { provider in
+                        let isSelected = state.selectedProvider == provider
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                state.selectedProvider = provider
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: provider.systemIcon)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+
+                                Text(provider.shortTitle)
+                                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                    .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.03))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.5 : 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Provider Detail Sub-Panel
+                switch state.selectedProvider {
+                case .appleIntelligence:
+                    appleIntelligencePanel
+
+                case .localCLI:
+                    localCLIPanel
+
+                case .httpOpenAI:
+                    openAIPanel
+
+                case .httpAnthropic:
+                    anthropicPanel
+
+                case .httpOllama:
+                    ollamaPanel
+                }
+            }
+        }
+    }
+
+    // MARK: - Apple Intelligence Panel
+    @ViewBuilder
+    private var appleIntelligencePanel: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "apple.intelligence")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.purple)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Apple Intelligence (On-Device)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                Text("Native Apple Foundation Models with zero latency, offline execution, and complete privacy.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(Color.purple.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.purple.opacity(0.2), lineWidth: 0.8))
+    }
+
+    // MARK: - Local CLI Panel
+    @ViewBuilder
+    private var localCLIPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Horizontal 4-Pill CLI Selector
+            HStack(spacing: 6) {
+                ForEach(AICLIExecutable.allCases) { cli in
+                    let isSelected = state.selectedCLI == cli
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            state.selectedCLI = cli
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: cli == .custom ? "gearshape.fill" : "terminal.fill")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(cli.displayName)
+                                .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isSelected ? palette.primaryAccent.opacity(0.15) : Color.primary.opacity(0.03))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.8)
+                        )
+                        .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Executable Path Row
+            HStack(spacing: 8) {
+                Text("Executable Path")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 110, alignment: .leading)
+
+                customInputCapsule {
+                    TextField("Path override or custom binary", text: $state.customCLIPath)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                }
+
+                Button {
+                    browseForExecutable()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 9))
+                        Text("Browse...")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.06))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.tactile)
+                .help("Browse local filesystem for binary executable")
+            }
+
+            // Arguments Template Row
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text("Arguments Template")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 110, alignment: .leading)
+
+                    customInputCapsule {
+                        TextField("e.g. {prompt} or run {prompt}", text: $state.customCLIArguments)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                    }
+                }
+
+                // 2x2 Quick-Fill Preset Chips Grid
+                VStack(spacing: 5) {
+                    HStack(spacing: 6) {
+                        cliPresetPill("-p {prompt}", label: "Claude (-p)")
+                        cliPresetPill("run {prompt}", label: "Runner (run)")
+                    }
+                    HStack(spacing: 6) {
+                        cliPresetPill("run --thinking --format json {prompt}", label: "JSON Stream")
+                        cliPresetPill("exec {prompt}", label: "Codex (exec)")
+                    }
+                }
+                .padding(.leading, 118)
+            }
+
+            // Status Pill Footer
+            let resolvedPath = AIAssistantService.shared.resolveCLIPath(for: state.selectedCLI, customPath: state.customCLIPath)
+            let isFound = resolvedPath != nil
+            HStack(spacing: 6) {
+                Image(systemName: isFound ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(isFound ? .green : .orange)
+
+                Text(resolvedPath ?? "Executable binary not found in search paths")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(isFound ? .primary : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer()
+
+                Text(isFound ? "RESOLVED" : "NOT FOUND")
+                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background((isFound ? Color.green : Color.orange).opacity(0.18))
+                    .foregroundColor(isFound ? .green : .orange)
+                    .cornerRadius(3)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((isFound ? Color.green : Color.orange).opacity(0.10))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke((isFound ? Color.green : Color.orange).opacity(0.25), lineWidth: 0.8)
+            )
+        }
+    }
+
+    // MARK: - HTTP Provider Panels
+    @ViewBuilder
+    private var openAIPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Base URL")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 90, alignment: .leading)
+
+                customInputCapsule {
+                    TextField("https://api.openai.com/v1", text: $state.openAIBaseURL)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text("API Key")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 90, alignment: .leading)
+
+                customInputCapsule {
+                    SecureField("sk-...", text: $state.openAIAPIKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                }
+            }
+
+            modelSelectorRow(
+                title: "Model ID",
+                text: $state.openAIModel,
+                provider: .httpOpenAI
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var anthropicPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("API Key")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 90, alignment: .leading)
+
+                customInputCapsule {
+                    SecureField("sk-ant-...", text: $state.anthropicAPIKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                }
+            }
+
+            modelSelectorRow(
+                title: "Model ID",
+                text: $state.anthropicModel,
+                provider: .httpAnthropic
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var ollamaPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Base URL")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 90, alignment: .leading)
+
+                customInputCapsule {
+                    TextField("http://localhost:11434", text: $state.ollamaBaseURL)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                }
+            }
+
+            modelSelectorRow(
+                title: "Model ID",
+                text: $state.ollamaModel,
+                provider: .httpOllama
+            )
+        }
+    }
+
     // MARK: - CLI Preset Pill
     @ViewBuilder
-    private func cliPresetPill(_ template: String, style: String) -> some View {
+    private func cliPresetPill(_ template: String, label: String) -> some View {
+        let isSelected = state.customCLIArguments == template
         Button {
             state.customCLIArguments = template
             if state.selectedCLI != .custom {
                 state.selectedCLI = .custom
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Text(template)
-                    .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                    .foregroundColor(state.customCLIArguments == template ? .accentColor : .primary)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .lineLimit(1)
-                Spacer(minLength: 4)
-                Text("(\(style))")
-                    .font(.system(size: 8))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                Spacer(minLength: 2)
+                Text(label)
+                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 3.5)
+            .padding(.vertical, 4.5)
+            .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(state.customCLIArguments == template ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.04))
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isSelected ? palette.primaryAccent.opacity(0.12) : Color.primary.opacity(0.035))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(state.customCLIArguments == template ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.1), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(isSelected ? palette.primaryAccent.opacity(0.6) : palette.borderColor.opacity(0.2), lineWidth: 0.8)
             )
+            .foregroundColor(isSelected ? palette.primaryAccent : .primary)
         }
         .buttonStyle(.plain)
-        .help("Quick-fill template: \(template) (\(style))")
+        .help("Quick-fill template: \(template)")
     }
 
     // MARK: - Model Selector Row
     @ViewBuilder
     private func modelSelectorRow(title: String, text: Binding<String>, provider: AIProviderKind) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            LabeledContent(title) {
-                HStack(spacing: 4) {
-                    TextField("Model ID", text: text)
-                        .textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 90, alignment: .leading)
 
-                    Menu {
-                        ForEach(state.availableModels(for: provider), id: \.self) { modelId in
-                            Button(modelId) {
-                                text.wrappedValue = modelId
-                            }
+                customInputCapsule {
+                    TextField("Model identifier", text: text)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                }
+
+                Menu {
+                    ForEach(state.availableModels(for: provider), id: \.self) { modelId in
+                        Button(modelId) {
+                            text.wrappedValue = modelId
                         }
-                    } label: {
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9))
                     }
-                    .menuStyle(.borderlessButton)
-                    .help("Select Model")
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("Models")
+                            .font(.system(size: 10, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7))
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.06))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                    )
+                    .foregroundColor(.primary)
+                }
+                .menuStyle(.borderlessButton)
+                .help("Select Model from detected list")
 
-                    Button {
-                        Task {
-                            await state.fetchModelsForCurrentProvider()
-                        }
-                    } label: {
+                Button {
+                    Task {
+                        await state.fetchModelsForCurrentProvider()
+                    }
+                } label: {
+                    HStack(spacing: 3) {
                         if state.isFetchingModels {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
                             Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 10))
+                                .font(.system(size: 9))
                         }
+                        Text("Fetch")
+                            .font(.system(size: 10, weight: .medium))
                     }
-                    .buttonStyle(.tactile)
-                    .help("Fetch models from API endpoint")
-                    .disabled(state.isFetchingModels)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 5)
+                    .background(palette.primaryAccent.opacity(0.12))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.primaryAccent.opacity(0.3), lineWidth: 0.8)
+                    )
+                    .foregroundColor(palette.primaryAccent)
                 }
+                .buttonStyle(.tactile)
+                .help("Fetch models from API endpoint")
+                .disabled(state.isFetchingModels)
             }
 
             if let statusMsg = state.fetchModelsStatusMessage {
-                Text(statusMsg)
-                    .font(.system(size: 9))
-                    .foregroundColor(statusMsg.hasPrefix("Failed") ? .orange : .secondary)
-                    .padding(.leading, 80)
+                HStack(spacing: 4) {
+                    Image(systemName: statusMsg.hasPrefix("Failed") ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(statusMsg.hasPrefix("Failed") ? .orange : .green)
+                    Text(statusMsg)
+                        .font(.system(size: 9))
+                        .foregroundColor(statusMsg.hasPrefix("Failed") ? .orange : .secondary)
+                }
+                .padding(.leading, 98)
             }
         }
     }
 
-    // MARK: - Roles & System Prompts Section
+    // MARK: - Card 2: Rail Mode & Role Prompts Manager
     @ViewBuilder
-    private var rolesAndPromptsManagerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("AI Roles & System Prompts")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                    Text("Quick Actions & Decomposed Chips (\(state.enabledRoles.count) active)")
-                        .font(.system(size: 9.5))
-                        .foregroundColor(.secondary)
+    private var rolesAndPromptsCard: some View {
+        settingsSectionCard(
+            title: "Rail Mode & Role Prompts",
+            subtitle: "Configure in-rail quick actions and customizable system roles",
+            icon: "wand.and.stars",
+            iconColor: palette.primaryAccent
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Decomposed Toggle Sub-Card
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Decompose into Quick-Action Rail Chips")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        Text("Independent interactive chips along the rail bar for active roles")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $state.isDecomposed)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.025))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                )
+
+                // Header for AI Roles & System Prompts
+                HStack {
+                    HStack(spacing: 6) {
+                        Text("AI Roles & System Prompts")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+
+                        Text("\(state.enabledRoles.count) active")
+                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(palette.primaryAccent.opacity(0.14))
+                            .foregroundColor(palette.primaryAccent)
+                            .cornerRadius(4)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isAddingRole.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isAddingRole ? "minus" : "plus")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text(isAddingRole ? "Cancel" : "Add Custom Role")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4.5)
+                        .background(palette.primaryAccent.opacity(0.14))
+                        .foregroundColor(palette.primaryAccent)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(palette.primaryAccent.opacity(0.3), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.tactile)
                 }
 
-                Spacer()
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isAddingRole.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: isAddingRole ? "minus" : "plus")
-                            .font(.system(size: 8, weight: .bold))
-                        Text(isAddingRole ? "Close" : "Add Role")
-                            .font(.system(size: 9.5, weight: .semibold))
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2.5)
-                    .background(Color.purple.opacity(0.14))
-                    .foregroundColor(.purple)
-                    .cornerRadius(4)
+                // New Role Form
+                if isAddingRole {
+                    newRoleCard
                 }
-                .buttonStyle(.tactile)
-            }
 
-            // New Role Form
-            if isAddingRole {
-                newRoleCard
-            }
-
-            // Role List
-            ForEach(state.rolePresets) { role in
-                roleRowView(role: role)
+                // Role List
+                VStack(spacing: 6) {
+                    ForEach(state.rolePresets) { role in
+                        roleRowView(role: role)
+                    }
+                }
             }
         }
     }
 
     @ViewBuilder
     private func roleRowView(role: AIRolePreset) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
                 Toggle("", isOn: Binding(
                     get: { role.isEnabled },
                     set: { isChecked in
@@ -652,12 +974,12 @@ public struct AIAssistantPluginSettingsView: View {
                 .toggleStyle(.checkbox)
 
                 Image(systemName: role.systemIcon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.purple)
-                    .frame(width: 14)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(palette.primaryAccent)
+                    .frame(width: 16)
 
                 Text(role.title)
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
 
                 Text(role.isBuiltIn ? "BUILT-IN" : "CUSTOM")
                     .font(.system(size: 7.5, weight: .bold, design: .monospaced))
@@ -680,7 +1002,7 @@ public struct AIAssistantPluginSettingsView: View {
                 Spacer()
 
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(.easeInOut(duration: 0.18)) {
                         if expandedRoleId == role.id {
                             expandedRoleId = nil
                         } else {
@@ -688,15 +1010,21 @@ public struct AIAssistantPluginSettingsView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 2) {
-                        Text(expandedRoleId == role.id ? "Hide Prompt" : "View / Edit")
-                            .font(.system(size: 9))
-                        Image(systemName: expandedRoleId == role.id ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 7))
+                    HStack(spacing: 3) {
+                        Text(expandedRoleId == role.id ? "Hide ▴" : "Prompt ▾")
+                            .font(.system(size: 9.5, weight: .medium))
                     }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.05))
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.6)
+                    )
                     .foregroundColor(.secondary)
                 }
-                .buttonStyle(.tactile)
+                .buttonStyle(.plain)
 
                 if role.isBuiltIn {
                     Button {
@@ -725,20 +1053,33 @@ public struct AIAssistantPluginSettingsView: View {
             if expandedRoleId == role.id {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        LabeledContent("Title") {
-                            TextField("Title", text: Binding(
-                                get: { role.title },
-                                set: { var u = role; u.title = $0; state.updateRole(u) }
-                            ))
-                            .textFieldStyle(.roundedBorder)
+                        HStack(spacing: 4) {
+                            Text("Title:")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                            customInputCapsule {
+                                TextField("Title", text: Binding(
+                                    get: { role.title },
+                                    set: { var u = role; u.title = $0; state.updateRole(u) }
+                                ))
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 10))
+                            }
                         }
 
-                        LabeledContent("Icon") {
-                            TextField("SF Symbol", text: Binding(
-                                get: { role.systemIcon },
-                                set: { var u = role; u.systemIcon = $0; state.updateRole(u) }
-                            ))
-                            .textFieldStyle(.roundedBorder)
+                        HStack(spacing: 4) {
+                            Text("Icon:")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                            customInputCapsule {
+                                TextField("SF Symbol", text: Binding(
+                                    get: { role.systemIcon },
+                                    set: { var u = role; u.systemIcon = $0; state.updateRole(u) }
+                                ))
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 10))
+                            }
+                            .frame(width: 90)
                         }
 
                         Toggle("Transform", isOn: Binding(
@@ -758,54 +1099,66 @@ public struct AIAssistantPluginSettingsView: View {
                     ))
                     .font(.system(size: 9.5, design: .monospaced))
                     .frame(minHeight: 80, maxHeight: 150)
-                    .padding(4)
-                    .background(Color.secondary.opacity(0.06))
+                    .padding(6)
+                    .background(Color.primary.opacity(0.04))
                     .cornerRadius(6)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+                            .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
                     )
                 }
                 .padding(8)
-                .background(Color.secondary.opacity(0.04))
+                .background(Color.primary.opacity(0.025))
                 .cornerRadius(6)
             }
         }
-        .padding(.vertical, 3)
+        .padding(8)
+        .background(Color.primary.opacity(0.03))
+        .cornerRadius(7)
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+        )
     }
 
     // MARK: - New Role Card
     @ViewBuilder
     private var newRoleCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Create Custom Role Preset")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10.5, weight: .bold, design: .rounded))
 
             HStack(spacing: 8) {
-                TextField("Role Title (e.g. Code Review)", text: $newRoleTitle)
-                    .textFieldStyle(.roundedBorder)
+                customInputCapsule {
+                    TextField("Role Title (e.g. Code Review)", text: $newRoleTitle)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10.5))
+                }
 
-                TextField("Icon (e.g. hammer.fill)", text: $newRoleIcon)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 140)
+                customInputCapsule {
+                    TextField("Icon (e.g. hammer.fill)", text: $newRoleIcon)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10.5))
+                }
+                .frame(width: 120)
 
                 Toggle("Transform", isOn: $newRoleIsTransform)
                     .font(.system(size: 9.5))
             }
 
             Text("System Prompt:")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 9.5, weight: .medium))
                 .foregroundColor(.secondary)
 
             TextEditor(text: $newRolePrompt)
                 .font(.system(size: 9.5, design: .monospaced))
                 .frame(minHeight: 70, maxHeight: 120)
-                .padding(4)
-                .background(Color.secondary.opacity(0.06))
+                .padding(6)
+                .background(Color.primary.opacity(0.04))
                 .cornerRadius(6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+                        .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
                 )
 
             HStack {
@@ -817,6 +1170,7 @@ public struct AIAssistantPluginSettingsView: View {
                     newRolePrompt = ""
                 }
                 .buttonStyle(.tactile)
+                .font(.system(size: 10))
 
                 Button("Add Role") {
                     guard !newRoleTitle.isEmpty && !newRolePrompt.isEmpty else { return }
@@ -833,53 +1187,111 @@ public struct AIAssistantPluginSettingsView: View {
                     isAddingRole = false
                 }
                 .buttonStyle(.tactile)
+                .font(.system(size: 10))
                 .disabled(newRoleTitle.isEmpty || newRolePrompt.isEmpty)
             }
         }
-        .padding(8)
-        .background(Color.purple.opacity(0.06))
-        .cornerRadius(6)
+        .padding(10)
+        .background(palette.primaryAccent.opacity(0.06))
+        .cornerRadius(8)
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.purple.opacity(0.2), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.primaryAccent.opacity(0.25), lineWidth: 0.8)
         )
     }
 
-    // MARK: - Session Retention Section
+    // MARK: - Card 3: Session History & Retention
     @ViewBuilder
-    private var sessionRetentionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Session History & Retention")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+    private var sessionRetentionCard: some View {
+        settingsSectionCard(
+            title: "Session History & Retention",
+            subtitle: "Manage chat persistence and automated data lifecycle",
+            icon: "clock.arrow.circlepath",
+            iconColor: palette.primaryAccent
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Retention Period Row
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Retention Period")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(.secondary)
 
-            Picker("Session Retention Period", selection: $state.retentionPeriod) {
-                ForEach(PurahRetentionPeriod.allCases) { period in
-                    Text(period.displayName).tag(period)
+                    let periods: [(PurahRetentionPeriod, String)] = [
+                        (.oneHour, "1h"),
+                        (.oneDay, "24h"),
+                        (.sevenDays, "7d"),
+                        (.thirtyDays, "30d"),
+                        (.never, "Forever")
+                    ]
+
+                    HStack(spacing: 6) {
+                        ForEach(periods, id: \.0) { item in
+                            let isSelected = state.retentionPeriod == item.0
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    state.retentionPeriod = item.0
+                                }
+                            } label: {
+                                Text(item.1)
+                                    .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(isSelected ? palette.primaryAccent.opacity(0.15) : Color.primary.opacity(0.035))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.8)
+                                    )
+                                    .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
-            }
-            .pickerStyle(.menu)
 
-            HStack {
-                let starredCount = state.sessions.filter(\.isFavorite).count
-                Text("\(state.sessions.count) sessions (\(starredCount) starred)")
-                    .font(.system(size: 9.5))
-                    .foregroundColor(.secondary)
+                // Stats & Clear Action Row
+                HStack {
+                    let starredCount = state.sessions.filter(\.isFavorite).count
+                    HStack(spacing: 5) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(palette.primaryAccent)
+                        Text("\(state.sessions.count) sessions · \(starredCount) starred")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4.5)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(5)
 
-                Spacer()
+                    Spacer()
 
-                Button("Clear Unstarred") {
-                    state.clearUnstarredSessions()
+                    Button("Clear Unstarred") {
+                        state.clearUnstarredSessions()
+                    }
+                    .buttonStyle(.tactile)
+                    .font(.system(size: 10.5))
                 }
-                .buttonStyle(.tactile)
-            }
 
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "star.fill")
-                    .foregroundColor(.yellow)
-                    .font(.system(size: 10))
-                Text("Starred chat sessions are strictly immune to automatic expiration or quota pruning.")
-                    .font(.system(size: 9.5))
-                    .foregroundColor(.secondary)
+                // Immunity Banner
+                HStack(alignment: .center, spacing: 6) {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.yellow)
+                        .font(.system(size: 10))
+                    Text("Starred chat sessions are strictly immune to automatic expiration or quota pruning.")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.yellow.opacity(0.08))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.yellow.opacity(0.25), lineWidth: 0.8)
+                )
             }
         }
     }

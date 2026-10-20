@@ -113,7 +113,7 @@ public final class AIAssistantService {
         if executable == .custom {
             return nil
         }
-        let namesToTry: [String] = (executable == .opencode) ? ["opencode", "optimus"] : [executable.executableName]
+        let namesToTry: [String] = [executable.executableName]
         let candidateDirs = [
             "\(NSHomeDirectory())/.local/bin",
             "/opt/homebrew/bin",
@@ -517,7 +517,7 @@ public final class AIAssistantService {
         )
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
-        let isOpenCodeFamily = executable == .opencode || filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+        let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
         let isNDJSON = isOpenCodeFamily || (args.contains("json") || args.contains("--format"))
 
         return try await executeCLIProcess(
@@ -551,22 +551,15 @@ public final class AIAssistantService {
             case .ollama:
                 let selectedModel = model?.isEmpty == false ? model! : "llama3.2"
                 args = ["run", selectedModel, promptText]
-            case .opencode:
-                var opencodeArgs = ["run", "--thinking", "--format", "json"]
-                if let model = model, !model.isEmpty {
-                    opencodeArgs.append(contentsOf: ["--model", model])
-                }
-                opencodeArgs.append(promptText)
-                args = opencodeArgs
             case .custom:
                 args = [promptText]
             }
         }
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
-        let isOpenCodeFamily = executable == .opencode || filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+        let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
         if isOpenCodeFamily {
-            if executable == .opencode || !hasCustomTemplate {
+            if !hasCustomTemplate {
                 if args.first != "run" {
                     args = ["run", "--thinking", "--format", "json"] + args
                 }

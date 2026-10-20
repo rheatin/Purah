@@ -3,14 +3,16 @@ import Foundation
 
 /// Retention duration policy for time-stamped history collections.
 public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, Sendable {
-    case never = "never"
+    case oneHour = "1hour"
     case oneDay = "1day"
     case threeDays = "3days"
     case sevenDays = "7days"
     case fourteenDays = "14days"
     case thirtyDays = "30days"
     case ninetyDays = "90days"
+    case never = "never"
 
+    public static var hours1: PurahRetentionPeriod { .oneHour }
     public static var days7: PurahRetentionPeriod { .sevenDays }
     public static var days30: PurahRetentionPeriod { .thirtyDays }
     public static var forever: PurahRetentionPeriod { .never }
@@ -21,6 +23,7 @@ public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, S
 
     public var displayName: String {
         switch self {
+        case .oneHour: return "1 Hour"
         case .never: return "Never (Keep all)"
         case .oneDay: return "1 Day"
         case .threeDays: return "3 Days"
@@ -38,6 +41,7 @@ public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, S
 
     public var expirationSeconds: TimeInterval? {
         switch self {
+        case .oneHour: return 3600
         case .never: return nil
         case .oneDay: return 86400
         case .threeDays: return 86400 * 3
