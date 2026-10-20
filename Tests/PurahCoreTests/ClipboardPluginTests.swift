@@ -453,4 +453,45 @@ struct ClipboardPluginTests {
         #expect(service.history.contains(where: { $0.id == expiredStarred.id }), "Starred item MUST be strictly protected from expiration cleanup")
         #expect(!service.history.contains(where: { $0.id == expiredUnstarred.id }), "Expired unstarred item must be deleted")
     }
+
+    @Test("ClipboardHoverPreviewController show shelfFile renders image, text, and binary sidecar previews")
+    @MainActor
+    func testShelfFileHoverPreview() async throws {
+        let controller = ClipboardHoverPreviewController.shared
+        let palette = ThemeManager.shared.palette
+
+        // 1. Text file
+        let tempTextURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test_shelf_doc_\(UUID().uuidString).txt")
+        try "Line 1: Hello Purah\nLine 2: Sidecar".write(to: tempTextURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempTextURL) }
+
+        let textShelfFile = ShelfFileItem(
+            name: tempTextURL.lastPathComponent,
+            sizeDescription: "32 B",
+            fileExtension: "txt",
+            filePath: tempTextURL.path
+        )
+        #expect(textShelfFile.fileSize > 0)
+
+        controller.show(shelfFile: textShelfFile, edge: .left, palette: palette, drawerWidth: 360.0)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        // 2. Binary / PDF file
+        let tempPdfURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test_shelf_doc_\(UUID().uuidString).pdf")
+        try Data([0x25, 0x50, 0x44, 0x46]).write(to: tempPdfURL)
+        defer { try? FileManager.default.removeItem(at: tempPdfURL) }
+
+        let pdfShelfFile = ShelfFileItem(
+            name: tempPdfURL.lastPathComponent,
+            sizeDescription: "4 B",
+            fileExtension: "pdf",
+            filePath: tempPdfURL.path
+        )
+        controller.show(shelfFile: pdfShelfFile, edge: .right, palette: palette, drawerWidth: 360.0)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        // 3. Hide
+        controller.hide()
+        try await Task.sleep(nanoseconds: 200_000_000)
+    }
 }

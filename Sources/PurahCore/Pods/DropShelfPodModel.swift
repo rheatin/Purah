@@ -16,6 +16,13 @@ public struct ShelfFileItem: Identifiable, Codable, Sendable, Equatable, PurahSt
         set { isFavorite = newValue }
     }
 
+    public var fileSize: Int {
+        let path = resolvedURL?.path ?? filePath
+        guard let path else { return 0 }
+        let attr = try? FileManager.default.attributesOfItem(atPath: path)
+        return (attr?[.size] as? Int) ?? 0
+    }
+
     public var resolvedURL: URL? {
         if let data = bookmarkData {
             var isStale = false
