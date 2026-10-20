@@ -2012,8 +2012,7 @@ public final class PurahWorkspaceStore {
                 let totalSpacing = spacing * Double(safeCount - 1)
                 let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
                 let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
-                let minExpandedH = (pod.id == "vitals") ? 96.0 : 48.0
-                let cardH = max(itemH, minChipH, minExpandedH)
+                let cardH = max(itemH, minChipH, 48.0)
 
                 var matchedSubItem = false
                 for idx in 0..<count {

@@ -5,15 +5,18 @@ import PurahCore
 public struct PurahPinButton: View {
     public let isPinned: Bool
     public let tintColor: Color
+    public let size: CGFloat
     public let action: () -> Void
 
     public init(
         isPinned: Bool,
         tintColor: Color,
+        size: CGFloat = 22,
         action: @escaping () -> Void
     ) {
         self.isPinned = isPinned
         self.tintColor = tintColor
+        self.size = size
         self.action = action
     }
 
@@ -31,18 +34,20 @@ public struct PurahPinButton: View {
             ZStack {
                 Circle()
                     .fill(isPinned ? tintColor.opacity(0.18) : Color.primary.opacity(0.06))
-                    .frame(width: 22, height: 22)
+                    .frame(width: size, height: size)
 
                 Image(systemName: isPinned ? "pin.fill" : "pin")
                     .foregroundColor(isPinned ? tintColor : .secondary)
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .font(.system(size: size < 20 ? 8 : 9.5, weight: .semibold))
                     .rotationEffect(.degrees(isPinned ? -25 : 0))
                     .scaleEffect(isPinned ? 1.15 : 1.0)
                     .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
             }
+            .frame(width: size, height: size)
             .contentShape(Rectangle())
         }
         .buttonStyle(.tactile)
+        .frame(width: size, height: size)
         .help(isPinned ? "Unpin Drawer" : "Pin Drawer")
     }
 }

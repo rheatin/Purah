@@ -700,7 +700,10 @@ struct DrawerInteractionUITests {
     @Test("Physical Co-Planar Rule: drawer card height matches rail bar height exactly")
     @MainActor
     func testPhysicalCoPlanarHeightRule() {
-        let store = PurahWorkspaceStore()
+        let suiteName = "test_coplanar_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let totalH = 1000.0
 
         for pod in store.pods where pod.isEnabled && pod.id != "todo" && pod.id != "calendar" && pod.id != "terminal" {

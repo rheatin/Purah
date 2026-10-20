@@ -927,8 +927,8 @@ public struct VitalsItemDrawerView: View {
 
     public var body: some View {
         let isExpanded = (state == .expandedDrawer)
-        let barH = max(height, 6.0)
-        let cardH = isExpanded ? max(height, 96.0) : barH
+        let cardH = isExpanded ? max(height, 48.0) : max(height, 6.0)
+        let barH = cardH
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
 
@@ -999,14 +999,14 @@ public struct VitalsItemDrawerView: View {
         VStack(alignment: .leading, spacing: 0) {
             VitalsFocusedDrawerView(
                 metric: metric,
-                availableHeight: cardH - 16,
+                availableHeight: cardH - 10,
                 trailingHeader: AnyView(pinButton),
                 store: store
             )
         }
         .padding(.leading, edge == .left ? 12 : 22)
         .padding(.trailing, edge == .left ? 22 : 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 5)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: telemetryColor)
         .contextMenu {
@@ -1049,14 +1049,17 @@ public struct VitalsItemDrawerView: View {
                 store.openPluginSettings(id: "vitals")
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 10))
+                    .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.tactile)
+            .frame(width: 16, height: 16)
             .help("Open Vitals Settings")
 
-            PurahPinButton(isPinned: isPinned, tintColor: telemetryColor, action: onTogglePin)
+            PurahPinButton(isPinned: isPinned, tintColor: telemetryColor, size: 16, action: onTogglePin)
+                .frame(width: 16, height: 16)
         }
+        .frame(height: 16)
     }}
 
 // MARK: - Decomposed Scripts Item Stepped Drawer View
