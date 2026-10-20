@@ -154,7 +154,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     @State private var isDropTargeted: Bool = false
     @State private var inlineInput: String = ""
-    @State private var showInlineInput: Bool = false
+    @State private var isRefiningOutput: Bool = false
     @State private var isEditingSource: Bool = false
     @State private var isReasoningExpanded: Bool = false
     @State private var isDiffMode: Bool = true
@@ -182,24 +182,30 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     private var lastUserMsg: AIChatMessage? {
-        state.latestUserMessage(for: role.id)
+        state.currentViewedUserMessage ?? state.latestUserMessage(for: role.id)
     }
 
     private var lastAssistantMsg: AIChatMessage? {
-        state.latestAssistantMessage(for: role.id)
+        state.currentViewedAssistantMessage ?? state.latestAssistantMessage(for: role.id)
     }
 
     private var sourceText: String {
-        if !state.currentInputText.isEmpty {
+        if isEditingSource {
             return state.currentInputText
         }
         if let sel = lastUserMsg?.originalSelection, !sel.isEmpty {
             return sel
         }
+        if let content = lastUserMsg?.content, !content.isEmpty {
+            return content
+        }
+        if !state.currentInputText.isEmpty {
+            return state.currentInputText
+        }
         if let currentSel = state.capturedSelection, !currentSel.isEmpty {
             return currentSel
         }
-        return lastUserMsg?.content ?? ""
+        return ""
     }
 
     private var latestResult: String {
@@ -211,25 +217,16 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            // Top: Role Switcher Pill Bar (Composite Mode)
-            if showRoleSwitcher {
-                roleSwitcherPillBar
-            }
-
-            // Row 1: Role Header Row
-            headerRow
-
-            // Body Content Area
-            bodyContentArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // Row 3: Bottom Action Row
-            if !latestResult.isEmpty || role.id == "ask" || showInlineInput {
-                bottomActionRow
+        Group {
+            if latestResult.isEmpty && !isRoleStreaming {
+                // Stage 1: Input Stage
+                stage1InputView
+            } else {
+                // Stage 2 & 3: Generating & Output Stage
+                stage2And3OutputView
             }
         }
-        .padding(showRoleSwitcher ? 0 : 9)
+        .padding(showRoleSwitcher ? 0 : 8)
         .frame(height: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0))
         .background(
             Group {
@@ -250,25 +247,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
         .overlay {
             if isDropTargeted {
-                ZStack {
-                    RoundedRectangle(cornerRadius: showRoleSwitcher ? 10 : 14, style: .continuous)
-                        .fill(roleColor.opacity(0.18))
-                    RoundedRectangle(cornerRadius: showRoleSwitcher ? 10 : 14, style: .continuous)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1.8, dash: [6, 4]))
-                        .foregroundColor(roleColor)
-
-                    VStack(spacing: 6) {
-                        Image(systemName: "tray.and.arrow.down.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(roleColor)
-                        Text("ai.drop.activeHint".localized)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                    }
-                }
-                .allowsHitTesting(false)
+                dropOverlayView
             }
         }
         .onDrop(of: [.utf8PlainText, .plainText, .fileURL], isTargeted: $isDropTargeted) { providers in
@@ -287,419 +266,619 @@ public struct AIAssistantRoleWorkbenchView: View {
                     state.currentInputText = sel
                 }
             }
-            if !state.currentInputText.isEmpty, latestResult.isEmpty, !isRoleStreaming {
-                isEditingSource = false
-                state.sendPrompt(state.currentInputText, role: role, originalSelection: state.currentInputText)
+        }
+        .onExitCommand {
+            if isRefiningOutput {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                    isRefiningOutput = false
+                }
+            } else if isEditingSource {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                    isEditingSource = false
+                }
             }
         }
     }
 
-    // MARK: - Top Role Switcher Pill Bar (Composite Mode)
-    private var roleSwitcherPillBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 5) {
-                ForEach(state.enabledRoles) { r in
-                    let isSelected = state.selectedRoleId == r.id
-                    let pillColor = Color(hex: r.colorHex)
+    // MARK: - Drop Target Overlay
+    private var dropOverlayView: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: showRoleSwitcher ? 10 : 14, style: .continuous)
+                .fill(roleColor.opacity(0.18))
+            RoundedRectangle(cornerRadius: showRoleSwitcher ? 10 : 14, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1.8, dash: [6, 4]))
+                .foregroundColor(roleColor)
+
+            VStack(spacing: 6) {
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(roleColor)
+                Text("ai.drop.activeHint".localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - Stage 1: Input Stage (When latestResult.isEmpty && !isRoleStreaming)
+    private var stage1InputView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 1. Top: Interactive Source Content Box
+            ZStack(alignment: .bottomTrailing) {
+                ZStack(alignment: .center) {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.03))
+
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                        .foregroundColor(isDropTargeted ? roleColor : Color.white.opacity(0.18))
+
+                    TextEditor(text: $state.currentInputText)
+                        .font(.system(size: 11.5, weight: .regular))
+                        .foregroundColor(.white)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
+                        .padding(8)
+
+                    if state.currentInputText.isEmpty {
+                        VStack(spacing: 5) {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 15))
+                                .foregroundColor(Color.white.opacity(0.40))
+                            Text("ai.source.dropOrTypeHint".localized)
+                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                .foregroundColor(Color.white.opacity(0.50))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+
+                HStack(spacing: 5) {
+                    if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            state.currentInputText = ""
+                            state.capturedSelection = nil
+                            state.stagedDropText = nil
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 9))
+                                Text("ai.action.clear".localized)
+                                    .font(.system(size: 9.5))
+                            }
+                            .foregroundColor(Color.white.opacity(0.65))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(5)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if !showRoleSwitcher {
+                        Button {
+                            onTogglePin()
+                        } label: {
+                            Image(systemName: isPinned ? "pin.fill" : "pin")
+                                .font(.system(size: 9))
+                                .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
+                                .frame(width: 20, height: 20)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(Color.white.opacity(0.06))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Pin Drawer")
+                    }
+                }
+                .padding(8)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 2. Bottom: Available Roles Bar
+            VStack(alignment: .leading, spacing: 5) {
+                Text("ai.stage1.availableRoles".localized)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.55))
+                    .padding(.horizontal, 1)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        let hasInput = !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ForEach(state.enabledRoles) { r in
+                            let isSelected = state.selectedRoleId == r.id
+                            let pillColor = Color(hex: r.colorHex)
+                            Button {
+                                state.selectedRoleId = r.id
+                                if hasInput {
+                                    state.sendPrompt(state.currentInputText, role: r, originalSelection: state.currentInputText)
+                                }
+                            } label: {
+                                HStack(spacing: 3.5) {
+                                    Image(systemName: r.systemIcon)
+                                        .font(.system(size: 8.5, weight: .semibold))
+                                    Text(r.title)
+                                        .font(.system(size: 10, weight: (hasInput || isSelected) ? .bold : .medium, design: .rounded))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(hasInput ? pillColor.opacity(0.24) : (isSelected ? pillColor.opacity(0.18) : Color.white.opacity(0.06)))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(hasInput ? pillColor.opacity(0.85) : (isSelected ? pillColor.opacity(0.60) : Color.white.opacity(0.12)), lineWidth: hasInput ? 1.2 : 1.0)
+                                )
+                                .foregroundColor(hasInput ? pillColor : (isSelected ? pillColor : Color.white.opacity(0.70)))
+                                .shadow(color: hasInput ? pillColor.opacity(0.35) : .clear, radius: 4, x: 0, y: 1)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button {
+                            store.openPluginSettings(id: "ai")
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color.white.opacity(0.65))
+                                .frame(width: 22, height: 22)
+                                .background(
+                                    Circle().fill(Color.white.opacity(0.08))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("ai.topbar.configureRoles".localized)
+                    }
+                    .padding(.horizontal, 1)
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    // MARK: - Stage 2 & 3: Generating & Output Stage
+    private var stage2And3OutputView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // 1. Top 3-in-1 Compact Status Bar (24pt when collapsed, spring-expands to ~96pt when isEditingSource)
+            topStatusBar
+
+            // 2. Center Main Output Stage (80%+ of vertical height)
+            centerOutputStage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 3. Bottom Action & Spring-Expanding Refine Bar (28pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
+            bottomRefineBar
+        }
+    }
+
+    // MARK: - Top 3-in-1 Status Bar
+    @ViewBuilder
+    private var topStatusBar: some View {
+        if isEditingSource {
+            // Expanded Source Editing Card (~96pt)
+            VStack(alignment: .leading, spacing: 5) {
+                TextEditor(text: $state.currentInputText)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .frame(height: 58)
+                    .padding(4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.black.opacity(0.30))
+                    )
+
+                HStack(spacing: 5) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(state.enabledRoles) { r in
+                                let isSelected = state.selectedRoleId == r.id
+                                let pillColor = Color(hex: r.colorHex)
+                                Button {
+                                    state.selectedRoleId = r.id
+                                    let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !text.isEmpty {
+                                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                            isEditingSource = false
+                                        }
+                                        state.sendPrompt(text, role: r, originalSelection: text)
+                                    }
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: r.systemIcon)
+                                            .font(.system(size: 8))
+                                        Text(r.title)
+                                            .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2.5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .fill(isSelected ? pillColor.opacity(0.25) : Color.white.opacity(0.08))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
+                                    )
+                                    .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Spacer(minLength: 2)
+
                     Button {
-                        state.selectedRoleId = r.id
-                        let textToRun = !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? state.currentInputText : sourceText
-                        if !textToRun.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
                             isEditingSource = false
-                            state.sendPrompt(textToRun, role: r, originalSelection: textToRun)
                         }
                     } label: {
-                        Text(r.title)
-                            .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                        Text("ai.composer.collapse".localized)
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.65))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
                             .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(isSelected ? pillColor.opacity(0.24) : Color.white.opacity(0.08))
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
                             )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
-                            )
-                            .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
                     }
                     .buttonStyle(.plain)
                 }
-
-                Button {
-                    store.openPluginSettings(id: "ai")
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.65))
-                        .frame(width: 20, height: 20)
-                        .background(
-                            Circle().fill(Color.white.opacity(0.08))
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Configure AI Roles")
             }
-            .padding(.horizontal, 1)
-        }
-    }
-
-    // MARK: - Header Row
-    private var headerRow: some View {
-        HStack(spacing: 6) {
-            // Icon Badge
-            ZStack {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(roleColor.opacity(0.18))
-                    .frame(width: 20, height: 20)
-
-                Image(systemName: role.systemIcon)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(roleColor)
-            }
-
-            // Role Title
-            Text(role.title)
-                .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-
-            // Language / Context Badge Pill
-            if role.id == "translate" || role.id == "polish" {
-                let currentTarget = (role.id == "translate") ? state.translateTargetLanguage : state.polishTargetLanguage
-                let badgeLabel = currentTarget.badgeLabel(sourceText: sourceText, roleId: role.id)
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(hex: "#141720"))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(roleColor.opacity(0.40), lineWidth: 1.0)
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+        } else {
+            // Collapsed 3-in-1 Compact Status Bar (height: 24pt)
+            HStack(spacing: 5) {
+                // Role Menu Pill ([🌐 Translate ▾])
                 Menu {
-                    ForEach(AITargetLanguage.allCases) { lang in
+                    ForEach(state.enabledRoles) { r in
                         Button {
-                            if role.id == "translate" {
-                                state.translateTargetLanguage = lang
-                            } else {
-                                state.polishTargetLanguage = lang
-                            }
-                            let textToRun = !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? state.currentInputText : sourceText
-                            if !textToRun.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                state.sendPrompt(textToRun, role: role, originalSelection: textToRun)
+                            state.selectedRoleId = r.id
+                            let textToRun = !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? sourceText : state.currentInputText
+                            if !textToRun.isEmpty {
+                                state.sendPrompt(textToRun, role: r, originalSelection: textToRun)
                             }
                         } label: {
                             HStack {
-                                Text(lang.displayName(for: role.id))
-                                if currentTarget == lang {
+                                Image(systemName: r.systemIcon)
+                                Text(r.title)
+                                if state.selectedRoleId == r.id {
                                     Image(systemName: "checkmark")
                                 }
                             }
                         }
                     }
+                    Divider()
+                    Button {
+                        store.openPluginSettings(id: "ai")
+                    } label: {
+                        Text("ai.topbar.configureRoles".localized)
+                    }
                 } label: {
                     HStack(spacing: 3) {
-                        Text(badgeLabel)
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        Image(systemName: role.systemIcon)
+                            .font(.system(size: 8.5, weight: .semibold))
+                        Text(role.title)
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 6.5, weight: .bold))
+                            .font(.system(size: 6, weight: .bold))
                     }
                     .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 2.5)
                     .background(
-                        Capsule().fill(roleColor.opacity(0.18))
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(roleColor.opacity(0.18))
                     )
                     .foregroundColor(roleColor)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .fixedSize(horizontal: true, vertical: false)
-            } else {
-                let badgeText = AIAssistantService.shared.detectLanguageBadge(for: sourceText, roleId: role.id)
-                Text(badgeText)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 1.5)
+                .fixedSize()
+
+                // Language / Tone Menu Pill
+                if role.id == "translate" || role.id == "polish" {
+                    let currentLang = (role.id == "translate") ? state.translateTargetLanguage : state.polishTargetLanguage
+                    Menu {
+                        ForEach(AITargetLanguage.allCases) { lang in
+                            Button {
+                                if role.id == "translate" {
+                                    state.translateTargetLanguage = lang
+                                } else {
+                                    state.polishTargetLanguage = lang
+                                }
+                                if !sourceText.isEmpty {
+                                    state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(lang.displayName(for: role.id))
+                                    if currentLang == lang {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 2.5) {
+                            Text(currentLang.badgeLabel(sourceText: sourceText, roleId: role.id))
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 6, weight: .bold))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .background(Capsule().fill(roleColor.opacity(0.15)))
+                        .foregroundColor(roleColor)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+
+                if role.id == "polish" {
+                    Menu {
+                        ForEach(AIPolishTone.allCases) { tone in
+                            Button {
+                                state.selectedPolishTone = tone
+                                if !sourceText.isEmpty {
+                                    state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(tone.title)
+                                    if state.selectedPolishTone == tone {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 2.5) {
+                            Text(state.selectedPolishTone.title)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 6, weight: .bold))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .background(Capsule().fill(roleColor.opacity(0.15)))
+                        .foregroundColor(roleColor)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+
+                // Inline Source Preview Pill (| Overall, TDL is... ✏️)
+                if !sourceText.isEmpty {
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                            state.currentInputText = sourceText
+                            isEditingSource = true
+                        }
+                    } label: {
+                        HStack(spacing: 3.5) {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(roleColor.opacity(0.85))
+                                .frame(width: 2, height: 10)
+                            Text(sourceText.replacingOccurrences(of: "\n", with: " "))
+                                .font(.system(size: 8.5))
+                                .foregroundColor(Color.white.opacity(0.70))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Image(systemName: "pencil")
+                                .font(.system(size: 7.5))
+                                .foregroundColor(Color.white.opacity(0.55))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Color.white.opacity(0.06))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("ai.source.editSource".localized)
+                }
+
+                Spacer(minLength: 2)
+
+                // Step Version Switcher (< 1/2 >)
+                if state.totalStepsCount > 1 {
+                    HStack(spacing: 2) {
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                state.stepHistory(by: -1)
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(state.effectiveStepIndex > 0 ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
+                                .frame(width: 15, height: 18)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.effectiveStepIndex <= 0)
+
+                        Text("\(state.effectiveStepIndex + 1)/\(state.totalStepsCount)")
+                            .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.75))
+
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                state.stepHistory(by: 1)
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(state.effectiveStepIndex < state.totalStepsCount - 1 ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
+                                .frame(width: 15, height: 18)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.effectiveStepIndex >= state.totalStepsCount - 1)
+                    }
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 1)
                     .background(
-                        Capsule().fill(roleColor.opacity(0.15))
-                    )
-                    .foregroundColor(roleColor)
-            }
-
-            // Inline Polish Tone Selector (Polish role)
-            if role.id == "polish" && (!latestResult.isEmpty || !sourceText.isEmpty || isRoleStreaming) {
-                inlinePolishTonePills
-            }
-
-            Spacer()
-
-            // Copy Button
-            Button {
-                copyResult()
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 9.5))
-                    .foregroundColor(Color.white.opacity(0.75))
-                    .frame(width: 22, height: 22)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(Color.white.opacity(0.06))
                     )
-            }
-            .buttonStyle(.plain)
-            .help("ai.action.copyResult".localized)
+                }
 
-            // Pin Button (hide in Composite mode)
-            if !showRoleSwitcher {
+                // Copy Button
                 Button {
-                    onTogglePin()
+                    copyResult()
                 } label: {
-                    Image(systemName: isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 9.5))
-                        .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                        .frame(width: 22, height: 22)
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.white.opacity(0.75))
+                        .frame(width: 20, height: 20)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(Color.white.opacity(0.06))
                         )
                 }
                 .buttonStyle(.plain)
-                .help("Pin Drawer")
+                .help("ai.action.copyResult".localized)
+
+                // Pin Button (if !showRoleSwitcher)
+                if !showRoleSwitcher {
+                    Button {
+                        onTogglePin()
+                    } label: {
+                        Image(systemName: isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 9))
+                            .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
+                            .frame(width: 20, height: 20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.white.opacity(0.06))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Pin Drawer")
+                }
             }
+            .frame(height: 24)
         }
     }
 
-    // MARK: - Inline Polish Tone Pills
-    private var inlinePolishTonePills: some View {
-        HStack(spacing: 4) {
-            ForEach(AIPolishTone.allCases) { tone in
-                let isSelected = state.selectedPolishTone == tone
+    // MARK: - Center Main Output Stage
+    @ViewBuilder
+    private var centerOutputStage: some View {
+        if isRoleStreaming && latestResult.isEmpty {
+            // Generating Shimmer Skeleton
+            VStack(alignment: .leading, spacing: 6) {
+                AIShimmerSkeletonView(roleColor: roleColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+
+                Spacer()
+
                 Button {
-                    state.selectedPolishTone = tone
-                    if !sourceText.isEmpty {
-                        state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
-                    }
+                    state.stopStreaming()
                 } label: {
-                    Text(tone.title)
-                        .font(.system(size: 9, weight: isSelected ? .bold : .medium))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(isSelected ? roleColor.opacity(0.24) : Color.white.opacity(0.06))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .stroke(isSelected ? roleColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
-                        )
-                        .foregroundColor(isSelected ? roleColor : Color.white.opacity(0.65))
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text("ai.status.generating".localized)
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(roleColor.opacity(0.18))
+                    )
+                    .foregroundColor(roleColor)
                 }
                 .buttonStyle(.plain)
             }
-        }
-    }
-
-    // MARK: - Body Content Area
-    @ViewBuilder
-    private var bodyContentArea: some View {
-        if isEditingSource || (latestResult.isEmpty && !isRoleStreaming) {
-            // Interactive Source Input Box (Direct typing, pasting, drop)
-            interactiveSourceInputBox
-        } else if isRoleStreaming && latestResult.isEmpty {
-            // State 2: Generating Shimmer Skeleton
-            generatingStateView
         } else {
-            // State 3: Completed / Streaming Content
-            completedStateView
-        }
-    }
-
-    // MARK: - Interactive Source Input Box
-    private var interactiveSourceInputBox: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ZStack(alignment: .center) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.03))
-
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                    .foregroundColor(isDropTargeted ? roleColor : Color.white.opacity(0.18))
-
-                TextEditor(text: $state.currentInputText)
-                    .font(.system(size: 11.5, weight: .regular))
-                    .foregroundColor(.white)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .padding(8)
-
-                if state.currentInputText.isEmpty {
-                    VStack(spacing: 5) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.white.opacity(0.40))
-                        Text("ai.source.dropOrTypeHint".localized)
-                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.50))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                    }
-                    .allowsHitTesting(false)
+            // Output view
+            VStack(alignment: .leading, spacing: 4) {
+                // Collapsible <think> capsule
+                if let reasoning = lastAssistantMsg?.reasoningContent, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    collapsibleReasoningView(reasoning: reasoning)
                 }
-            }
 
-            // Bottom-right pills (Clear & Run)
-            if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HStack(spacing: 6) {
-                    Button {
-                        state.currentInputText = ""
-                        state.capturedSelection = nil
-                        state.stagedDropText = nil
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 9))
-                            Text("ai.action.clear".localized)
-                                .font(.system(size: 9.5))
+                if role.isTransform && (role.id == "polish" || role.id == "grammar") && !sourceText.isEmpty {
+                    // Diff | Markdown toggle pill row
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            Button {
+                                isDiffMode = true
+                            } label: {
+                                Text("ai.diff.toggleDiff".localized)
+                                    .font(.system(size: 8.5, weight: isDiffMode ? .bold : .medium))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(isDiffMode ? roleColor.opacity(0.25) : Color.clear)
+                                    .foregroundColor(isDiffMode ? roleColor : Color.white.opacity(0.6))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                isDiffMode = false
+                            } label: {
+                                Text("ai.diff.toggleMarkdown".localized)
+                                    .font(.system(size: 8.5, weight: !isDiffMode ? .bold : .medium))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(!isDiffMode ? roleColor.opacity(0.25) : Color.clear)
+                                    .foregroundColor(!isDiffMode ? roleColor : Color.white.opacity(0.6))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .foregroundColor(Color.white.opacity(0.65))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.08))
+                        .padding(2)
+                        .background(Color.white.opacity(0.06))
                         .cornerRadius(5)
                     }
-                    .buttonStyle(.plain)
 
-                    Button {
-                        runRoleWithCurrentInput()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(.system(size: 9.5, weight: .bold))
-                            Text("ai.drop.runRolePrefix".localized + role.title + " ↵")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                    if isDiffMode {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
+                            Text(buildDiffAttributedString(tokens: tokens))
+                                .font(.system(size: 11.5, weight: .regular))
+                                .lineSpacing(2.5)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .foregroundColor(Color(hex: "#0F111A"))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(roleColor)
-                        .cornerRadius(5)
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.return, modifiers: [.command])
-                }
-                .padding(8)
-            }
-        }
-    }
-
-    private func runRoleWithCurrentInput() {
-        let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        isEditingSource = false
-        state.sendPrompt(text, role: role, originalSelection: text)
-    }
-
-    // MARK: - State 2: Generating State
-    private var generatingStateView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Source quote preview
-            if !sourceText.isEmpty {
-                sourceQuotePreview
-            }
-
-            // 3 Shimmering Skeleton Lines
-            AIShimmerSkeletonView(roleColor: roleColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 2)
-
-            Spacer()
-
-            // Generating Status Pill
-            Button {
-                state.stopStreaming()
-            } label: {
-                HStack(spacing: 4) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("ai.status.generating".localized)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(roleColor.opacity(0.18))
-                )
-                .foregroundColor(roleColor)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    // MARK: - State 3: Completed / Streaming View
-    @ViewBuilder
-    private var completedStateView: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            // Top Source Quote
-            if !sourceText.isEmpty {
-                sourceQuotePreview
-            }
-
-            // Collapsible <think> capsule
-            if let reasoning = lastAssistantMsg?.reasoningContent, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                collapsibleReasoningView(reasoning: reasoning)
-            }
-
-            if role.isTransform && (role.id == "polish" || role.id == "grammar") && !sourceText.isEmpty {
-                // Diff | Markdown toggle pill row
-                HStack {
-                    Spacer()
-                    HStack(spacing: 2) {
-                        Button {
-                            isDiffMode = true
-                        } label: {
-                            Text("ai.diff.toggleDiff".localized)
-                                .font(.system(size: 9, weight: isDiffMode ? .bold : .medium))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(isDiffMode ? roleColor.opacity(0.25) : Color.clear)
-                                .foregroundColor(isDiffMode ? roleColor : Color.white.opacity(0.6))
-                                .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            isDiffMode = false
-                        } label: {
-                            Text("ai.diff.toggleMarkdown".localized)
-                                .font(.system(size: 9, weight: !isDiffMode ? .bold : .medium))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(!isDiffMode ? roleColor.opacity(0.25) : Color.clear)
-                                .foregroundColor(!isDiffMode ? roleColor : Color.white.opacity(0.6))
-                                .cornerRadius(4)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(2)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(6)
-                }
-
-                if isDiffMode {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
-                        Text(buildDiffAttributedString(tokens: tokens))
-                            .font(.system(size: 11.5, weight: .regular))
-                            .lineSpacing(2.5)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        InteractiveMarkdownPreviewView(
+                            content: .constant(latestResult),
+                            fontSize: 11.5,
+                            accentColor: roleColor
+                        )
                     }
                 } else {
+                    // Rich Markdown Preview
                     InteractiveMarkdownPreviewView(
                         content: .constant(latestResult),
                         fontSize: 11.5,
                         accentColor: roleColor
                     )
                 }
-            } else {
-                // All other roles: Rich Markdown Preview
-                InteractiveMarkdownPreviewView(
-                    content: .constant(latestResult),
-                    fontSize: 11.5,
-                    accentColor: roleColor
-                )
             }
         }
     }
@@ -744,179 +923,217 @@ public struct AIAssistantRoleWorkbenchView: View {
         }
     }
 
-    // MARK: - Source Quote Preview
-    private var sourceQuotePreview: some View {
-        HStack(alignment: .top, spacing: 6) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(roleColor.opacity(0.85))
-                .frame(width: 2.5)
-
-            Text(sourceText)
-                .font(.system(size: 10))
-                .foregroundColor(Color.white.opacity(0.65))
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
-                    state.currentInputText = sourceText
-                    isEditingSource = true
-                }
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 9))
-                    .foregroundColor(Color.white.opacity(0.65))
-                    .padding(3.5)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
-            }
-            .buttonStyle(.plain)
-            .help("Edit source text")
-        }
-        .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.white.opacity(0.03))
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
-                state.currentInputText = sourceText
-                isEditingSource = true
-            }
-        }
-    }
-
-    // MARK: - Bottom Action Row
-    private var bottomActionRow: some View {
-        VStack(spacing: 5) {
-            // Row A: 4 Output Exit Action Pills
-            if !latestResult.isEmpty {
-                HStack(spacing: 6) {
-                    // Exit 1: Primary Replace / Copy Pill
-                    Button {
-                        if state.capturedSelection != nil {
-                            replaceSelection()
-                        } else {
-                            copyResult()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: state.capturedSelection != nil ? "arrow.triangle.2.circlepath" : "doc.on.doc.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text(state.capturedSelection != nil ? "ai.action.replaceSelection".localized : "ai.action.copyResult".localized)
-                                .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(roleColor)
-                        )
-                        .foregroundColor(Color(hex: "#0F111A"))
-                    }
-                    .buttonStyle(.plain)
-
-                    // Exit 2: Set as Source
-                    Button {
-                        state.promoteOutputToSource(latestResult)
-                        isEditingSource = true
-                        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-                    } label: {
-                        HStack(spacing: 3.5) {
-                            Image(systemName: "arrow.up.doc")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text("ai.action.useAsSource".localized)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.08))
-                        )
-                        .foregroundColor(Color.white.opacity(0.85))
-                    }
-                    .buttonStyle(.plain)
-                    .help("ai.action.useAsSource".localized)
-
-                    // Exit 3: Save to Notes
-                    Button {
-                        saveToQuickNotes()
-                    } label: {
-                        HStack(spacing: 3.5) {
-                            Image(systemName: "note.text.badge.plus")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text("ai.action.saveToNotes".localized)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.08))
-                        )
-                        .foregroundColor(Color.white.opacity(0.85))
-                    }
-                    .buttonStyle(.plain)
-                    .help("ai.action.saveToNotes".localized)
-
-                    // Exit 4: Retry
-                    Button {
-                        retryGeneration()
-                    } label: {
-                        HStack(spacing: 3.5) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text("ai.action.retry".localized)
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color(hex: "#262A36"))
-                        )
+    // MARK: - Bottom Action & Spring-Expanding Refine Bar
+    @ViewBuilder
+    private var bottomRefineBar: some View {
+        if isRefiningOutput {
+            // Expanded Refine Box (~78pt)
+            VStack(alignment: .leading, spacing: 4) {
+                // Top row (height: 44pt): TextEditor
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $inlineInput)
+                        .font(.system(size: 11))
                         .foregroundColor(.white)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
+                        .frame(height: 44)
+
+                    if inlineInput.isEmpty {
+                        Text("ai.composer.refinePlaceholder".localized)
+                            .font(.system(size: 10.5))
+                            .foregroundColor(Color.white.opacity(0.35))
+                            .padding(.top, 4)
+                            .padding(.leading, 4)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.black.opacity(0.30))
+                )
+
+                // Bottom row (20pt)
+                HStack(spacing: 5) {
+                    Text("ai.composer.refineHint".localized)
+                        .font(.system(size: 8.5))
+                        .foregroundColor(Color.white.opacity(0.45))
+
+                    Spacer()
+
+                    Button {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                            isRefiningOutput = false
+                        }
+                    } label: {
+                        Text("ai.composer.collapse".localized)
+                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.65))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                            )
                     }
                     .buttonStyle(.plain)
-                    .help("ai.action.retry".localized)
 
-                    Spacer(minLength: 0)
-                }
-            }
-
-            // Row B: Universal Follow-Up Refine Bar
-            HStack(spacing: 5) {
-                TextField("ai.composer.refinePlaceholder".localized, text: $inlineInput)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 10.5))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4.5)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(6)
-                    .onSubmit {
-                        submitInlinePrompt()
+                    Button {
+                        submitRefinement()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text("ai.composer.sendRefinement".localized)
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(Color(hex: "#0F111A"))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(roleColor)
+                        .cornerRadius(4)
                     }
-
+                    .buttonStyle(.plain)
+                    .disabled(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .keyboardShortcut(.return, modifiers: [.command])
+                }
+                .frame(height: 20)
+            }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color(hex: "#141720"))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(roleColor.opacity(0.65), lineWidth: 1.2)
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
+        } else {
+            // Collapsed Single 28pt Row
+            HStack(spacing: 5) {
+                // 1. Primary Pill (Replace Selection / Copy Result)
                 Button {
-                    submitInlinePrompt()
+                    if state.capturedSelection != nil {
+                        replaceSelection()
+                    } else {
+                        copyResult()
+                    }
                 } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundColor(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.white.opacity(0.2) : roleColor)
+                    HStack(spacing: 3) {
+                        Image(systemName: state.capturedSelection != nil ? "arrow.triangle.2.circlepath" : "doc.on.doc.fill")
+                            .font(.system(size: 8.5, weight: .bold))
+                        Text(state.capturedSelection != nil ? "ai.action.replaceSelection".localized : "ai.action.copyResult".localized)
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(roleColor)
+                    )
+                    .foregroundColor(Color(hex: "#0F111A"))
                 }
                 .buttonStyle(.plain)
-                .disabled(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                // 2. Chain Next Role Menu Pill ([→ Process Next ▾])
+                Menu {
+                    ForEach(state.enabledRoles) { r in
+                        Button {
+                            state.chainOutputWithRole(r)
+                        } label: {
+                            HStack {
+                                Image(systemName: r.systemIcon)
+                                Text("→ \(r.title)")
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 2.5) {
+                        Text("ai.action.chainNext".localized)
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 6, weight: .bold))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .foregroundColor(Color.white.opacity(0.85))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+
+                // 3. Save to Quick Notes & Retry
+                Button {
+                    saveToQuickNotes()
+                } label: {
+                    Image(systemName: "note.text.badge.plus")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.white.opacity(0.80))
+                        .frame(width: 22, height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("ai.action.saveToNotes".localized)
+
+                Button {
+                    retryGeneration()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.white.opacity(0.80))
+                        .frame(width: 22, height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("ai.action.retry".localized)
+
+                // 4. Expandable Refine Trigger Pill ([💬 Refine / Follow-up...])
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                        isRefiningOutput = true
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                            .font(.system(size: 8))
+                        Text("ai.composer.refineTrigger".localized)
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .foregroundColor(Color.white.opacity(0.60))
+                }
+                .buttonStyle(.plain)
             }
+            .frame(height: 28)
         }
     }
 
-    private func submitInlinePrompt() {
+    private func submitRefinement() {
         let text = inlineInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty && !state.isStreaming else { return }
+        guard !text.isEmpty, !state.isStreaming else { return }
         inlineInput = ""
-        showInlineInput = false
-        state.sendPrompt(text, role: role, originalSelection: sourceText.isEmpty ? text : sourceText)
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+            isRefiningOutput = false
+        }
+        state.refineCurrentOutput(instruction: text)
     }
 
     private func showToast(_ message: String, icon: String? = nil) {

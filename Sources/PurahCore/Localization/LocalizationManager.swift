@@ -500,7 +500,15 @@ public final class LocalizationManager {
             "ai.diff.toggleMarkdown": "Markdown",
             "ai.thought.process": "Thought Process",
             "ai.toast.savedToNotes": "Saved to Quick Notes",
-            "ai.action.clear": "Clear"
+            "ai.action.clear": "Clear",
+            "ai.action.chainNext": "→ Process Next",
+            "ai.composer.refineTrigger": "Refine / Follow-up...",
+            "ai.composer.sendRefinement": "Send Refinement ↵",
+            "ai.composer.refineHint": "⌘↩ to send · Click to collapse",
+            "ai.composer.collapse": "Collapse",
+            "ai.topbar.configureRoles": "Configure Roles...",
+            "ai.source.editSource": "Edit Source",
+            "ai.stage1.availableRoles": "Available Roles:"
         ],
         .chinese: [
             "app.name": "Purah Pad",
@@ -911,7 +919,15 @@ public final class LocalizationManager {
             "ai.diff.toggleMarkdown": "Markdown",
             "ai.thought.process": "思考过程",
             "ai.toast.savedToNotes": "已存入便签",
-            "ai.action.clear": "清空"
+            "ai.action.clear": "清空",
+            "ai.action.chainNext": "→ 接着加工",
+            "ai.composer.refineTrigger": "追问/微调...",
+            "ai.composer.sendRefinement": "发送微调 ↵",
+            "ai.composer.refineHint": "⌘↩ 发送 · 点击收起",
+            "ai.composer.collapse": "收起",
+            "ai.topbar.configureRoles": "配置指令角色...",
+            "ai.source.editSource": "编辑原文",
+            "ai.stage1.availableRoles": "可用指令角色："
         ],
         .traditionalChinese: [
             "tab.general": "通用",
@@ -1049,7 +1065,15 @@ public final class LocalizationManager {
             "ai.diff.toggleMarkdown": "Markdown",
             "ai.thought.process": "思考過程",
             "ai.toast.savedToNotes": "已存入便箋",
-            "ai.action.clear": "清空"
+            "ai.action.clear": "清空",
+            "ai.action.chainNext": "→ 接著加工",
+            "ai.composer.refineTrigger": "追問/微調...",
+            "ai.composer.sendRefinement": "發送微調 ↵",
+            "ai.composer.refineHint": "⌘↩ 發送 · 點擊收起",
+            "ai.composer.collapse": "收起",
+            "ai.topbar.configureRoles": "配置指令角色...",
+            "ai.source.editSource": "編輯原文",
+            "ai.stage1.availableRoles": "可用指令角色："
         ],
         .japanese: [
             "tab.general": "一般",

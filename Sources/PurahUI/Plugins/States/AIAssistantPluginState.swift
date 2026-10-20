@@ -144,6 +144,7 @@ public final class AIAssistantPluginState: Sendable {
 
     public var currentInputText: String = ""
     public var isShowingHistoryPanel: Bool = false
+    public var viewingStepIndex: Int? = nil
 
     public var selectedRole: AIRolePreset {
         rolePresets.first(where: { $0.id == selectedRoleId }) ?? rolePresets.first ?? AIRolePreset.from(action: .translate)
@@ -156,7 +157,11 @@ public final class AIAssistantPluginState: Sendable {
 
     // MARK: - Live Chat & Streaming State
     public var sessions: [AIChatSession] = []
-    public var activeSessionId: String = ""
+    public var activeSessionId: String = "" {
+        didSet {
+            viewingStepIndex = nil
+        }
+    }
     public var inputText: String = ""
     public var isStreaming: Bool = false
     public var capturedSelection: String? = nil
@@ -184,6 +189,66 @@ public final class AIAssistantPluginState: Sendable {
             return match
         }
         return sessions.first
+    }
+
+    // MARK: - Step Version History Navigation
+    public var assistantSteps: [(user: AIChatMessage?, assistant: AIChatMessage)] {
+        guard let messages = activeSession?.messages else { return [] }
+        var steps: [(user: AIChatMessage?, assistant: AIChatMessage)] = []
+        for (index, msg) in messages.enumerated() where msg.role == .assistant {
+            let precedingUser = messages[..<index].reversed().first(where: { $0.role == .user })
+            steps.append((user: precedingUser, assistant: msg))
+        }
+        return steps
+    }
+
+    public var totalStepsCount: Int {
+        assistantSteps.count
+    }
+
+    public var effectiveStepIndex: Int {
+        guard totalStepsCount > 0 else { return 0 }
+        if let explicit = viewingStepIndex {
+            return min(max(explicit, 0), totalStepsCount - 1)
+        }
+        return max(totalStepsCount - 1, 0)
+    }
+
+    public var currentViewedAssistantMessage: AIChatMessage? {
+        guard totalStepsCount > 0, effectiveStepIndex < assistantSteps.count else { return nil }
+        return assistantSteps[effectiveStepIndex].assistant
+    }
+
+    public var currentViewedUserMessage: AIChatMessage? {
+        guard totalStepsCount > 0, effectiveStepIndex < assistantSteps.count else { return nil }
+        return assistantSteps[effectiveStepIndex].user
+    }
+
+    public func stepHistory(by delta: Int) {
+        guard totalStepsCount > 0 else {
+            viewingStepIndex = 0
+            return
+        }
+        let target = effectiveStepIndex + delta
+        viewingStepIndex = min(max(target, 0), max(totalStepsCount - 1, 0))
+    }
+
+    // MARK: - Role Chaining & Refinement
+    public func chainOutputWithRole(_ nextRole: AIRolePreset) {
+        let prevOutput = currentViewedAssistantMessage?.content ?? ""
+        guard !prevOutput.isEmpty else { return }
+        currentInputText = prevOutput
+        selectedRoleId = nextRole.id
+        sendPrompt(prevOutput, role: nextRole, originalSelection: prevOutput)
+    }
+
+    public func refineCurrentOutput(instruction: String) {
+        let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let prevOutput = currentViewedAssistantMessage?.content ?? ""
+        let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
+        let refinementPrompt = "Previous output:\n\(prevOutput)\n\nUser refinement instruction: \(trimmed)\n\nPlease output the updated result directly following the instruction."
+        sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource)
     }
 
     // MARK: - Initializer
@@ -541,6 +606,7 @@ public final class AIAssistantPluginState: Sendable {
         guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
 
         stopStreaming()
+        viewingStepIndex = nil
 
         if sessions.isEmpty || !sessions.contains(where: { $0.id == activeSessionId }) {
             createNewSession()

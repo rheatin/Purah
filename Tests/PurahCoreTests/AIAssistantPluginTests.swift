@@ -983,4 +983,146 @@ struct AIAssistantPluginTests {
         let untouched = state.sessions.first(where: { $0.id == sessionId })
         #expect(untouched?.title == "My Renamed Session")
     }
+
+    @Test("AIAssistantPluginState step version history navigation, totalStepsCount, and stepHistory")
+    func testStepVersionHistoryAndNavigation() {
+        let isolated = UserDefaults(suiteName: "test_ai_steps_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_steps_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_steps_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_steps_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_steps_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        // Initial empty session
+        #expect(state.totalStepsCount == 0)
+        #expect(state.effectiveStepIndex == 0)
+        #expect(state.currentViewedAssistantMessage == nil)
+        #expect(state.currentViewedUserMessage == nil)
+
+        // Append Step 1
+        let u1 = AIChatMessage(role: .user, content: "Source 1", originalSelection: "Source 1")
+        let a1 = AIChatMessage(role: .assistant, content: "Output 1")
+        if let sIdx = state.sessions.firstIndex(where: { $0.id == state.activeSessionId }) {
+            state.sessions[sIdx].messages.append(contentsOf: [u1, a1])
+        }
+
+        #expect(state.totalStepsCount == 1)
+        #expect(state.effectiveStepIndex == 0)
+        #expect(state.currentViewedAssistantMessage?.content == "Output 1")
+        #expect(state.currentViewedUserMessage?.content == "Source 1")
+
+        // Append Step 2
+        let u2 = AIChatMessage(role: .user, content: "Source 2", originalSelection: "Source 2")
+        let a2 = AIChatMessage(role: .assistant, content: "Output 2")
+        if let sIdx = state.sessions.firstIndex(where: { $0.id == state.activeSessionId }) {
+            state.sessions[sIdx].messages.append(contentsOf: [u2, a2])
+        }
+
+        #expect(state.totalStepsCount == 2)
+        #expect(state.effectiveStepIndex == 1) // Defaults to latest step
+        #expect(state.currentViewedAssistantMessage?.content == "Output 2")
+        #expect(state.currentViewedUserMessage?.content == "Source 2")
+
+        // Append Step 3
+        let u3 = AIChatMessage(role: .user, content: "Source 3", originalSelection: "Source 3")
+        let a3 = AIChatMessage(role: .assistant, content: "Output 3")
+        if let sIdx = state.sessions.firstIndex(where: { $0.id == state.activeSessionId }) {
+            state.sessions[sIdx].messages.append(contentsOf: [u3, a3])
+        }
+
+        #expect(state.totalStepsCount == 3)
+        #expect(state.effectiveStepIndex == 2)
+        #expect(state.currentViewedAssistantMessage?.content == "Output 3")
+
+        // Navigate backwards
+        state.stepHistory(by: -1)
+        #expect(state.effectiveStepIndex == 1)
+        #expect(state.currentViewedAssistantMessage?.content == "Output 2")
+        #expect(state.currentViewedUserMessage?.content == "Source 2")
+
+        state.stepHistory(by: -1)
+        #expect(state.effectiveStepIndex == 0)
+        #expect(state.currentViewedAssistantMessage?.content == "Output 1")
+        #expect(state.currentViewedUserMessage?.content == "Source 1")
+
+        // Clamped at lower bound
+        state.stepHistory(by: -1)
+        #expect(state.effectiveStepIndex == 0)
+
+        // Navigate forward
+        state.stepHistory(by: 1)
+        #expect(state.effectiveStepIndex == 1)
+        #expect(state.currentViewedAssistantMessage?.content == "Output 2")
+
+        // Clamped at upper bound
+        state.stepHistory(by: 5)
+        #expect(state.effectiveStepIndex == 2)
+        #expect(state.currentViewedAssistantMessage?.content == "Output 3")
+
+        // New prompt resets viewingStepIndex
+        state.stepHistory(by: -2)
+        #expect(state.effectiveStepIndex == 0)
+        state.sendPrompt("Step 4 trigger", role: state.selectedRole)
+        #expect(state.viewingStepIndex == nil)
+        // With step 4 initiated, totalStepsCount increases to 4
+        #expect(state.totalStepsCount == 4)
+        #expect(state.effectiveStepIndex == 3)
+
+        // Creating new session resets viewingStepIndex
+        state.stepHistory(by: -1)
+        state.createNewSession()
+        #expect(state.viewingStepIndex == nil)
+        #expect(state.totalStepsCount == 0)
+    }
+
+    @Test("AIAssistantPluginState chainOutputWithRole and refineCurrentOutput")
+    func testRoleChainingAndRefinement() {
+        let isolated = UserDefaults(suiteName: "test_ai_chain_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_chain_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_chain_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_chain_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_chain_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        // Setup an initial output
+        let u1 = AIChatMessage(role: .user, content: "Initial Prompt", originalSelection: "Original Selected Text")
+        let a1 = AIChatMessage(role: .assistant, content: "Initial Output Content")
+        if let sIdx = state.sessions.firstIndex(where: { $0.id == state.activeSessionId }) {
+            state.sessions[sIdx].messages.append(contentsOf: [u1, a1])
+        }
+
+        #expect(state.currentViewedAssistantMessage?.content == "Initial Output Content")
+
+        // 1. Test chainOutputWithRole
+        let polishRole = AIRolePreset.from(action: .polish)
+        state.chainOutputWithRole(polishRole)
+
+        #expect(state.currentInputText == "Initial Output Content")
+        #expect(state.selectedRoleId == polishRole.id)
+
+        // Verify newly added user message uses the chained previous output
+        let chainedUserMsg = state.activeSession?.messages.last(where: { $0.role == .user })
+        #expect(chainedUserMsg?.content == "Initial Output Content")
+        #expect(chainedUserMsg?.originalSelection == "Initial Output Content")
+        #expect(chainedUserMsg?.roleId == polishRole.id)
+
+        // 2. Test refineCurrentOutput
+        // Simulate completion of polish step
+        if let sIdx = state.sessions.firstIndex(where: { $0.id == state.activeSessionId }),
+           let lastAssistantIdx = state.sessions[sIdx].messages.lastIndex(where: { $0.role == .assistant }) {
+            state.sessions[sIdx].messages[lastAssistantIdx].content = "Polished Content Draft"
+        }
+
+        #expect(state.currentViewedAssistantMessage?.content == "Polished Content Draft")
+
+        state.refineCurrentOutput(instruction: "Make it more concise and formal")
+
+        let refinedUserMsg = state.activeSession?.messages.last(where: { $0.role == .user })
+        #expect(refinedUserMsg != nil)
+        #expect(refinedUserMsg?.content.contains("Previous output:\nPolished Content Draft") == true)
+        #expect(refinedUserMsg?.content.contains("User refinement instruction: Make it more concise and formal") == true)
+        #expect(refinedUserMsg?.originalSelection == "Initial Output Content")
+    }
 }
