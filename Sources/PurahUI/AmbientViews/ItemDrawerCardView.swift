@@ -927,24 +927,25 @@ public struct VitalsItemDrawerView: View {
 
     public var body: some View {
         let isExpanded = (state == .expandedDrawer)
-        let cardH = isExpanded ? max(height, 48.0) : max(height, 6.0)
+        let barH = max(height, 6.0)
+        let cardH = isExpanded ? max(height, 96.0) : barH
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
 
-        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 316.0)
+        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 360.0, podId: "vitals")
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline bar (micro dynamic telemetry meter level)
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: barRadius)
                     .fill(telemetryColor.opacity(0.18))
-                    .frame(width: barW, height: cardH)
+                    .frame(width: barW, height: barH)
 
                 RoundedRectangle(cornerRadius: barRadius)
                     .fill(telemetryColor)
-                    .frame(width: barW, height: max(cardH * CGFloat(telemetryRatio), 4.0))
+                    .frame(width: barW, height: max(barH * CGFloat(telemetryRatio), 4.0))
             }
-            .frame(width: barW, height: cardH)
+            .frame(width: barW, height: barH)
             .transaction { t in
                 if !store.isBreathingActive(for: edge) {
                     t.animation = nil
@@ -993,7 +994,7 @@ public struct VitalsItemDrawerView: View {
 
     @ViewBuilder
     private func expandedCard(cardH: CGFloat) -> some View {
-        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 316.0)
+        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 360.0, podId: "vitals")
 
         VStack(alignment: .leading, spacing: 0) {
             VitalsFocusedDrawerView(

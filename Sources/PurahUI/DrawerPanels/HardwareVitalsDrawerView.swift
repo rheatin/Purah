@@ -977,12 +977,14 @@ public struct VitalsFocusedDrawerView: View {
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        if availableHeight < 46.0 {
-            // Tier A: Ultra-compact (< 46pt) -> 2 crisp lines
+        if availableHeight < 58.0 {
+            // Tier A: Ultra-compact (< 58pt) -> 2 crisp lines
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("CPU", systemImage: "cpu")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     Text("Ld \(String(format: "%.1f", metrics.loadAverage1m))")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
@@ -990,10 +992,12 @@ public struct VitalsFocusedDrawerView: View {
                         .padding(.vertical, 1)
                         .background(Color.primary.opacity(0.05))
                         .cornerRadius(2.5)
-                    Spacer()
+                    Spacer(minLength: 6)
                     Text("\(Int(metrics.cpuUsage * 100))%")
                         .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
 
@@ -1015,30 +1019,28 @@ public struct VitalsFocusedDrawerView: View {
                 }
             }
         } else {
-            // Tier B (46 <= h < 88) and Tier C (h >= 88)
+            // Tier B (58 <= h < 116) and Tier C (h >= 116)
             VStack(alignment: .leading, spacing: 3) {
                 // Row 1: Header
                 HStack(spacing: 6) {
-                    Label("CPU Activity", systemImage: "cpu")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Text("Load \(String(format: "%.1f", metrics.loadAverage1m)) · \(metrics.thermalStateLabel)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3)
-                    Spacer()
+                    Label("CPU", systemImage: "cpu")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
                     Text("\(Int(metrics.cpuUsage * 100))%")
                         .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
+                .frame(height: 20)
 
                 // Row 2: Graph
-                let graphH: CGFloat = availableHeight >= 88.0 ?
-                    max(min(availableHeight - 64, 88), 24) :
-                    max(availableHeight - 40, 22)
+                let graphH: CGFloat = availableHeight >= 116.0 ?
+                    max(min(availableHeight - 76.0, 90.0), 30.0) :
+                    max(availableHeight - 46.0, 26.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .cpu, scope: timeScope),
@@ -1049,19 +1051,20 @@ public struct VitalsFocusedDrawerView: View {
                 )
 
                 // Row 3 (Tier C only): 4-Pill Telemetry Strip
-                if availableHeight >= 88.0 {
+                if availableHeight >= 116.0 {
                     HStack(spacing: 3) {
                         miniPill(title: "Usr", value: "\(Int(metrics.cpuUserUsage * 100))%", color: color)
                         miniPill(title: "Sys", value: "\(Int(metrics.cpuSystemUsage * 100))%", color: VitalsColorResolver.warningYellow)
                         miniPill(title: "Load 1m", value: String(format: "%.1f", metrics.loadAverage1m), color: .secondary)
                         miniPill(title: "Thermal", value: metrics.thermalStateLabel, color: .secondary)
                     }
+                    .frame(height: 24)
                 }
 
-                // Bottom Footer: Breakdown + Top Process + Scope Picker
-                HStack {
+                // Row 3 (Tier B) / Row 4 (Tier C): Footer
+                HStack(spacing: 4) {
                     if let top = metrics.topProcesses.first {
-                        Text("Top: \(top.name) (\(String(format: "%.0f", top.cpuPercent))%)")
+                        Text("Top: \(top.name) (\(String(format: "%.0f", top.cpuPercent))%) · Ld \(String(format: "%.1f", metrics.loadAverage1m))")
                             .font(.system(size: 7.5, design: .rounded))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
@@ -1076,13 +1079,15 @@ public struct VitalsFocusedDrawerView: View {
                         .cornerRadius(3)
                         .buttonStyle(.tactile)
                     } else {
-                        Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))%")
+                        Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Ld \(String(format: "%.1f", metrics.loadAverage1m))")
                             .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
                     Spacer()
                     scopePicker
                 }
+                .frame(height: 16)
             }
         }
     }
@@ -1093,19 +1098,23 @@ public struct VitalsFocusedDrawerView: View {
         let color = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let gpuRatio = max(min(metrics.gpuUsage, 1.0), 0.0)
 
-        if availableHeight < 46.0 {
+        if availableHeight < 58.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("GPU", systemImage: "display")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     Text(metrics.chipModelName)
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
-                    Spacer()
+                    Spacer(minLength: 6)
                     Text("\(Int(gpuRatio * 100))%")
                         .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
 
@@ -1127,27 +1136,26 @@ public struct VitalsFocusedDrawerView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 3) {
+                // Row 1: Header
                 HStack(spacing: 6) {
-                    Label("GPU Activity", systemImage: "display")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Text("\(metrics.chipModelName) · \(metrics.thermalStateLabel)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3)
+                    Label("GPU", systemImage: "display")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
-                    Spacer()
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
                     Text("\(Int(gpuRatio * 100))%")
                         .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
+                .frame(height: 20)
 
-                let graphH: CGFloat = availableHeight >= 88.0 ?
-                    max(min(availableHeight - 64, 88), 24) :
-                    max(availableHeight - 40, 22)
+                // Row 2: Graph
+                let graphH: CGFloat = availableHeight >= 116.0 ?
+                    max(min(availableHeight - 76.0, 90.0), 30.0) :
+                    max(availableHeight - 46.0, 26.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .gpu, scope: timeScope),
@@ -1157,23 +1165,27 @@ public struct VitalsFocusedDrawerView: View {
                     scope: timeScope
                 )
 
-                if availableHeight >= 88.0 {
+                // Row 3 (Tier C only): 4-Pill Telemetry Strip
+                if availableHeight >= 116.0 {
                     HStack(spacing: 3) {
                         miniPill(title: "Chip", value: metrics.chipModelName, color: color)
                         miniPill(title: "Load", value: "\(Int(gpuRatio * 100))%", color: color)
                         miniPill(title: "Metal", value: gpuRatio > 0.6 ? "High" : "Normal", color: .secondary)
                         miniPill(title: "Thermal", value: metrics.thermalStateLabel, color: .secondary)
                     }
+                    .frame(height: 24)
                 }
 
+                // Row 3 (Tier B) / Row 4 (Tier C): Footer
                 HStack {
-                    Text(gpuRatio > 0.10 ? "Metal / Apple Silicon GPU Active" : "Low Power / Idle Engine")
+                    Text(gpuRatio > 0.10 ? "\(metrics.chipModelName) · Metal Active" : "\(metrics.chipModelName) · Low Power")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Spacer()
                     scopePicker
                 }
+                .frame(height: 16)
             }
         }
     }
@@ -1183,11 +1195,13 @@ public struct VitalsFocusedDrawerView: View {
     private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        if availableHeight < 46.0 {
+        if availableHeight < 58.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Label("RAM", systemImage: "memorychip")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                    Label("Memory", systemImage: "memorychip")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     Text("Swap \(Int(metrics.memorySwapUsedMB))M")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
@@ -1195,10 +1209,12 @@ public struct VitalsFocusedDrawerView: View {
                         .padding(.vertical, 1)
                         .background(Color.primary.opacity(0.05))
                         .cornerRadius(2.5)
-                    Spacer()
+                    Spacer(minLength: 6)
                     Text("\(Int(metrics.memoryUsage * 100))%")
                         .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
 
@@ -1220,26 +1236,26 @@ public struct VitalsFocusedDrawerView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 3) {
+                // Row 1: Header
                 HStack(spacing: 6) {
-                    Label("Memory (RAM)", systemImage: "memorychip")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Text("Swap \(Int(metrics.memorySwapUsedMB))M · \(metrics.memoryPressureLevel)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3)
-                    Spacer()
-                    Text("\(Int(metrics.memoryUsage * 100))%")
-                        .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
+                    Label("Memory", systemImage: "memorychip")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
+                    Text("\(Int(metrics.memoryUsage * 100))% (\(String(format: "%.1f", metrics.memoryUsedGB))G)")
+                        .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
+                .frame(height: 20)
 
-                let graphH: CGFloat = availableHeight >= 88.0 ?
-                    max(min(availableHeight - 64, 88), 24) :
-                    max(availableHeight - 40, 22)
+                // Row 2: Graph
+                let graphH: CGFloat = availableHeight >= 116.0 ?
+                    max(min(availableHeight - 76.0, 90.0), 30.0) :
+                    max(availableHeight - 46.0, 26.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .ram, scope: timeScope),
@@ -1249,23 +1265,27 @@ public struct VitalsFocusedDrawerView: View {
                     scope: timeScope
                 )
 
-                if availableHeight >= 88.0 {
+                // Row 3 (Tier C only): 4-Pill Telemetry Strip
+                if availableHeight >= 116.0 {
                     HStack(spacing: 3) {
                         miniPill(title: "App", value: "\(String(format: "%.1f", metrics.memoryAppGB))G", color: color)
                         miniPill(title: "Wired", value: "\(String(format: "%.1f", metrics.memoryWiredGB))G", color: .secondary)
                         miniPill(title: "Compr", value: "\(String(format: "%.1f", metrics.memoryCompressedGB))G", color: .secondary)
                         miniPill(title: "Swap", value: "\(Int(metrics.memorySwapUsedMB))M", color: .secondary)
                     }
+                    .frame(height: 24)
                 }
 
+                // Row 3 (Tier B) / Row 4 (Tier C): Footer
                 HStack {
-                    Text("App \(String(format: "%.1f", metrics.memoryAppGB))G · Wired \(String(format: "%.1f", metrics.memoryWiredGB))G · Compr \(String(format: "%.1f", metrics.memoryCompressedGB))G")
+                    Text("App \(String(format: "%.1f", metrics.memoryAppGB))G · Wired \(String(format: "%.1f", metrics.memoryWiredGB))G · Compr \(String(format: "%.1f", metrics.memoryCompressedGB))G · Swap \(Int(metrics.memorySwapUsedMB))M")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Spacer()
                     scopePicker
                 }
+                .frame(height: 16)
             }
         }
     }
@@ -1275,11 +1295,13 @@ public struct VitalsFocusedDrawerView: View {
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        if availableHeight < 46.0 {
+        if availableHeight < 58.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Label("Power", systemImage: "bolt.batteryblock.fill")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                    Label("Battery", systemImage: "bolt.batteryblock.fill")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     Text("Hlt \(metrics.batteryHealthPercent)%")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
@@ -1287,10 +1309,12 @@ public struct VitalsFocusedDrawerView: View {
                         .padding(.vertical, 1)
                         .background(Color.primary.opacity(0.05))
                         .cornerRadius(2.5)
-                    Spacer()
+                    Spacer(minLength: 6)
                     Text("\(metrics.batteryLevel)%")
                         .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
 
@@ -1312,27 +1336,26 @@ public struct VitalsFocusedDrawerView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 3) {
+                // Row 1: Header
                 HStack(spacing: 6) {
-                    Label("Battery & Power", systemImage: "bolt.batteryblock.fill")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Text("Health \(metrics.batteryHealthPercent)% · \(metrics.powerSource)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3)
+                    Label("Battery", systemImage: "bolt.batteryblock.fill")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
-                    Spacer()
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
                     Text("\(metrics.batteryLevel)%")
                         .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
+                .frame(height: 20)
 
-                let graphH: CGFloat = availableHeight >= 88.0 ?
-                    max(min(availableHeight - 64, 88), 24) :
-                    max(availableHeight - 40, 22)
+                // Row 2: Graph
+                let graphH: CGFloat = availableHeight >= 116.0 ?
+                    max(min(availableHeight - 76.0, 90.0), 30.0) :
+                    max(availableHeight - 46.0, 26.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .power, scope: timeScope),
@@ -1342,23 +1365,27 @@ public struct VitalsFocusedDrawerView: View {
                     scope: timeScope
                 )
 
-                if availableHeight >= 88.0 {
+                // Row 3 (Tier C only): 4-Pill Telemetry Strip
+                if availableHeight >= 116.0 {
                     HStack(spacing: 3) {
                         miniPill(title: "Health", value: "\(metrics.batteryHealthPercent)%", color: color)
                         miniPill(title: "Cycles", value: "\(metrics.batteryCycleCount)", color: .secondary)
                         miniPill(title: "Temp", value: "\(String(format: "%.0f", metrics.batteryTemperatureCelsius))°C", color: .secondary)
                         miniPill(title: "Source", value: metrics.powerSource, color: .secondary)
                     }
+                    .frame(height: 24)
                 }
 
+                // Row 3 (Tier B) / Row 4 (Tier C): Footer
                 HStack {
-                    Text("Cycles \(metrics.batteryCycleCount) · \(String(format: "%.0f", metrics.batteryTemperatureCelsius))°C · \(metrics.isCharging ? "Charging" : metrics.powerSource)")
+                    Text("Hlt \(metrics.batteryHealthPercent)% · Cycles \(metrics.batteryCycleCount) · \(String(format: "%.0f", metrics.batteryTemperatureCelsius))°C · \(metrics.isCharging ? "Charging" : metrics.powerSource)")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Spacer()
                     scopePicker
                 }
+                .frame(height: 16)
             }
         }
     }
@@ -1369,22 +1396,24 @@ public struct VitalsFocusedDrawerView: View {
         let downColor = Color(hex: "#00F5D4")
         let upColor = Color(hex: "#0A84FF")
 
-        if availableHeight < 46.0 {
+        if availableHeight < 58.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Label("NET", systemImage: "network")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                    Text(metrics.networkInterfaceName)
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(2.5)
-                    Spacer()
-                    Text("↓\(formatSpeed(bytesPerSec: metrics.networkDownSpeed))")
-                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                        .foregroundColor(downColor)
+                    Label("Network", systemImage: "network")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
+                    HStack(spacing: 3) {
+                        Text("↓\(formatSpeed(bytesPerSec: metrics.networkDownSpeed))")
+                            .font(.system(size: 9.5, weight: .heavy, design: .monospaced))
+                            .foregroundColor(downColor)
+                        Text("↑\(formatSpeed(bytesPerSec: metrics.networkUpSpeed))")
+                            .font(.system(size: 8.5, weight: .heavy, design: .monospaced))
+                            .foregroundColor(upColor)
+                    }
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
 
@@ -1398,7 +1427,7 @@ public struct VitalsFocusedDrawerView: View {
                     }
                     .frame(height: 3.5)
 
-                    Text("↑\(formatSpeed(bytesPerSec: metrics.networkUpSpeed)) · \(metrics.localIPAddress)")
+                    Text("\(metrics.networkInterfaceName) · \(metrics.localIPAddress)")
                         .font(.system(size: 7, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -1408,18 +1437,13 @@ public struct VitalsFocusedDrawerView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 3) {
+                // Row 1: Header
                 HStack(spacing: 6) {
-                    Label("Network I/O", systemImage: "network")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Text("\(metrics.networkInterfaceName) · \(metrics.localIPAddress)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3)
+                    Label("Network", systemImage: "network")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
-                    Spacer()
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
                     HStack(spacing: 4) {
                         Text("↓ \(formatSpeed(bytesPerSec: metrics.networkDownSpeed))")
                             .font(.system(size: 10.5, weight: .heavy, design: .monospaced))
@@ -1428,12 +1452,16 @@ public struct VitalsFocusedDrawerView: View {
                             .font(.system(size: 9.5, weight: .heavy, design: .monospaced))
                             .foregroundColor(upColor)
                     }
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
+                .frame(height: 20)
 
-                let graphH: CGFloat = availableHeight >= 88.0 ?
-                    max(min(availableHeight - 64, 88), 24) :
-                    max(availableHeight - 40, 22)
+                // Row 2: Graph
+                let graphH: CGFloat = availableHeight >= 116.0 ?
+                    max(min(availableHeight - 76.0, 90.0), 30.0) :
+                    max(availableHeight - 46.0, 26.0)
 
                 VitalsDualTimeSeriesGraphView(
                     downPoints: vitals.history(for: .network, scope: timeScope),
@@ -1445,22 +1473,27 @@ public struct VitalsFocusedDrawerView: View {
                     scope: timeScope
                 )
 
-                if availableHeight >= 88.0 {
+                // Row 3 (Tier C only): 4-Pill Telemetry Strip
+                if availableHeight >= 116.0 {
                     HStack(spacing: 3) {
                         miniPill(title: "Dev", value: metrics.networkInterfaceName, color: downColor)
                         miniPill(title: "IP", value: metrics.localIPAddress, color: .secondary)
                         miniPill(title: "Total In", value: "\(String(format: "%.1f", metrics.networkTotalReceivedGB))G", color: downColor)
                         miniPill(title: "Total Out", value: "\(String(format: "%.1f", metrics.networkTotalSentGB))G", color: upColor)
                     }
+                    .frame(height: 24)
                 }
 
+                // Row 3 (Tier B) / Row 4 (Tier C): Footer
                 HStack {
-                    Text("Σ↓ \(String(format: "%.1f", metrics.networkTotalReceivedGB))G · Σ↑ \(String(format: "%.1f", metrics.networkTotalSentGB))G")
+                    Text("\(metrics.networkInterfaceName) · \(metrics.localIPAddress) · Σ↓ \(String(format: "%.1f", metrics.networkTotalReceivedGB))G ↑ \(String(format: "%.1f", metrics.networkTotalSentGB))G")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                     Spacer()
                     scopePicker
                 }
+                .frame(height: 16)
             }
         }
     }
@@ -1471,22 +1504,19 @@ public struct VitalsFocusedDrawerView: View {
         let color = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
 
-        if availableHeight < 46.0 {
+        if availableHeight < 58.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("Disk", systemImage: "internaldrive")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
                     Text("\(Int(metrics.diskFreeGB))G Free")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(2.5)
-                    Spacer()
-                    Text("\(Int(metrics.diskTotalGB - metrics.diskFreeGB))G")
                         .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
 
@@ -1509,27 +1539,26 @@ public struct VitalsFocusedDrawerView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 3) {
+                // Row 1: Header
                 HStack(spacing: 6) {
-                    Label("Disk Storage", systemImage: "internaldrive")
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Text("Free \(Int(metrics.diskFreeGB))G · Total \(Int(metrics.diskTotalGB))G")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3)
+                    Label("Disk", systemImage: "internaldrive")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
-                    Spacer()
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 6)
                     Text("\(Int(metrics.diskFreeGB))G Free")
                         .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
+                .frame(height: 20)
 
-                let graphH: CGFloat = availableHeight >= 88.0 ?
-                    max(min(availableHeight - 64, 88), 24) :
-                    max(availableHeight - 40, 22)
+                // Row 2: Graph
+                let graphH: CGFloat = availableHeight >= 116.0 ?
+                    max(min(availableHeight - 76.0, 90.0), 30.0) :
+                    max(availableHeight - 46.0, 26.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .disk, scope: timeScope),
@@ -1539,22 +1568,27 @@ public struct VitalsFocusedDrawerView: View {
                     scope: timeScope
                 )
 
-                if availableHeight >= 88.0 {
+                // Row 3 (Tier C only): 4-Pill Telemetry Strip
+                if availableHeight >= 116.0 {
                     HStack(spacing: 3) {
                         miniPill(title: "Used", value: "\(Int(metrics.diskTotalGB - metrics.diskFreeGB))G", color: color)
                         miniPill(title: "Free", value: "\(Int(metrics.diskFreeGB))G", color: .secondary)
                         miniPill(title: "Read", value: formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec), color: .secondary)
                         miniPill(title: "Write", value: formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec), color: .secondary)
                     }
+                    .frame(height: 24)
                 }
 
+                // Row 3 (Tier B) / Row 4 (Tier C): Footer
                 HStack {
-                    Text("R \(formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec)) · W \(formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec))")
+                    Text("Used \(Int(metrics.diskTotalGB - metrics.diskFreeGB))G · Total \(Int(metrics.diskTotalGB))G · R \(formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec)) · W \(formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec))")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                     Spacer()
                     scopePicker
                 }
+                .frame(height: 16)
             }
         }
     }
@@ -1627,6 +1661,7 @@ public struct VitalsTimeSeriesGraphView: View {
     }
 
     public var body: some View {
+        let canvasH = max(height - 12.0, 10.0)
         VStack(spacing: 2) {
             GeometryReader { geo in
                 let w = geo.size.width
@@ -1689,7 +1724,7 @@ public struct VitalsTimeSeriesGraphView: View {
                     }
                 }
             }
-            .frame(height: height)
+            .frame(height: canvasH)
 
             // X-axis time markings
             HStack {
@@ -1705,7 +1740,9 @@ public struct VitalsTimeSeriesGraphView: View {
                     .font(.system(size: 7, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
             }
+            .frame(height: 10)
         }
+        .frame(height: height)
     }
 }
 
@@ -1763,6 +1800,7 @@ public struct VitalsDualTimeSeriesGraphView: View {
     }
 
     public var body: some View {
+        let canvasH = max(height - 12.0, 10.0)
         VStack(spacing: 2) {
             GeometryReader { geo in
                 let w = geo.size.width
@@ -1837,7 +1875,7 @@ public struct VitalsDualTimeSeriesGraphView: View {
                     }
                 }
             }
-            .frame(height: height)
+            .frame(height: canvasH)
 
             // X-axis time markings
             HStack {
@@ -1853,6 +1891,8 @@ public struct VitalsDualTimeSeriesGraphView: View {
                     .font(.system(size: 7, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
             }
+            .frame(height: 10)
         }
+        .frame(height: height)
     }
 }

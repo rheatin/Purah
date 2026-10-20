@@ -93,7 +93,8 @@ public struct SteppedRailContainerView: View {
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                         // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
-                        let cardH = max(itemH, policy.minChipHeight, 48.0)
+                        let minExpandedH: CGFloat = (pod.id == "vitals") ? 96.0 : 48.0
+                        let cardH = max(itemH, policy.minChipHeight, minExpandedH)
                         let effectiveChipH = isActive ? cardH : itemH
                         let itemTop = startY + CGFloat(idx) * (itemH + spacing)
                         let itemBottom = itemTop + cardH
@@ -137,7 +138,7 @@ public struct SteppedRailContainerView: View {
             edge: edge,
             railWidth: CGFloat(store.railBarWidth),
             slotHeight: itemH,
-            drawerWidth: store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0),
+            drawerWidth: store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id),
             isExpanded: isActive,
             isPinned: isPinned,
             accentColor: subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor,
@@ -201,7 +202,7 @@ public struct SteppedRailContainerView: View {
         let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
         let isExpanded = (state == .expandedDrawer)
         let cardH = isExpanded ? max(itemH, 32.0) : max(itemH, 6.0)
-        let drawerW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0)
+        let drawerW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)
@@ -269,7 +270,7 @@ public struct SteppedRailContainerView: View {
         cardH: CGFloat,
         tintColor: Color
     ) -> some View {
-        let effectiveW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0)
+        let effectiveW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id)
 
         HStack(spacing: 8) {
             Image(systemName: subItem.systemIcon)
