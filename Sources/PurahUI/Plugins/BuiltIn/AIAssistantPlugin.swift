@@ -397,6 +397,24 @@ public struct AIAssistantPluginSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
 
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Template format: use {prompt} where user input is injected.")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+
+                        Text("Quick-fill presets:")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.top, 1)
+
+                        VStack(spacing: 3) {
+                            cliPresetPill("-p {prompt}", style: "Claude / LLM style")
+                            cliPresetPill("run {prompt}", style: "OpenCode / Ollama style")
+                            cliPresetPill("run --thinking --format json {prompt}", style: "OpenCode JSON + Thinking style")
+                            cliPresetPill("exec {prompt}", style: "Codex style")
+                        }
+                    }
+
                     let resolvedPath = AIAssistantService.shared.resolveCLIPath(for: state.selectedCLI, customPath: state.customCLIPath)
                     HStack(spacing: 4) {
                         Image(systemName: resolvedPath != nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -484,6 +502,41 @@ public struct AIAssistantPluginSettingsView: View {
             sessionRetentionSection
         }
         .padding(10)
+    }
+
+    // MARK: - CLI Preset Pill
+    @ViewBuilder
+    private func cliPresetPill(_ template: String, style: String) -> some View {
+        Button {
+            state.customCLIArguments = template
+            if state.selectedCLI != .custom {
+                state.selectedCLI = .custom
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(template)
+                    .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                    .foregroundColor(state.customCLIArguments == template ? .accentColor : .primary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("(\(style))")
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(state.customCLIArguments == template ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(state.customCLIArguments == template ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.1), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("Quick-fill template: \(template) (\(style))")
     }
 
     // MARK: - Model Selector Row

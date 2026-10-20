@@ -159,9 +159,14 @@ public final class AIAssistantPluginState: Sendable {
             self.selectedProvider = .appleIntelligence
         }
 
-        if let cliStr = storage.string(forKey: "selectedCLI"),
-           let cli = AICLIExecutable(rawValue: cliStr) {
-            self.selectedCLI = cli
+        if let cliStr = storage.string(forKey: "selectedCLI") {
+            if let cli = AICLIExecutable(rawValue: cliStr) {
+                self.selectedCLI = cli
+            } else if cliStr == "optimus" {
+                self.selectedCLI = .opencode
+            } else {
+                self.selectedCLI = .claude
+            }
         } else {
             self.selectedCLI = .claude
         }

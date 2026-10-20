@@ -325,22 +325,41 @@ public struct AIAssistantDrawerView: View {
     // MARK: - Reasoning Capsule
     @ViewBuilder
     private func reasoningCapsule(msg: AIChatMessage, reasoning: String, isLast: Bool) -> some View {
-        let isExpanded = isReasoningExpanded[msg.id] ?? (isLast && state.isStreaming)
+        let isExpanded = isReasoningExpanded[msg.id] ?? false
+        let isActivelyThinking = isLast && state.isStreaming && msg.content.isEmpty
+
         VStack(alignment: .leading, spacing: 3) {
             Button {
                 isReasoningExpanded[msg.id] = !isExpanded
             } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "bubble.left.and.text.bubble.right")
-                        .font(.system(size: 8))
-                    Text(isLast && state.isStreaming ? "Thinking..." : "Thought Process")
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 6.5))
+                HStack(spacing: 4) {
+                    if isActivelyThinking && !isExpanded {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                            .font(.system(size: 8))
+                            .symbolEffect(.pulse)
+                        Text("Thinking...")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        if let lastLine = reasoning.split(separator: "\n").last.map({ String($0).trimmingCharacters(in: .whitespaces) }), !lastLine.isEmpty {
+                            Text(lastLine)
+                                .font(.system(size: 8.5))
+                                .foregroundColor(.secondary.opacity(0.8))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 6.5))
+                    } else {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                            .font(.system(size: 8))
+                        Text("Thought Process")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 6.5))
+                    }
                 }
                 .foregroundColor(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
                 .background(Color.secondary.opacity(0.12))
                 .cornerRadius(4)
             }

@@ -37,6 +37,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     case claude = "claude"
     case codex = "codex"
     case ollama = "ollama"
+    case opencode = "opencode"
     case custom = "custom"
 
     public var id: String { rawValue }
@@ -47,6 +48,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return "Claude CLI"
         case .codex: return "Codex CLI"
         case .ollama: return "Ollama CLI"
+        case .opencode: return "OpenCode CLI (opencode)"
         case .custom: return "Custom CLI Executable"
         }
     }
@@ -56,6 +58,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return ["-p"]
         case .codex: return ["exec"]
         case .ollama: return ["run", "llama3.2"]
+        case .opencode: return ["run", "--thinking", "--format", "json"]
         case .custom: return ["{prompt}"]
         }
     }
@@ -354,19 +357,24 @@ public enum AIThinkAndChoicesParser {
         var isThinking = false
 
         // 1. Extract <think> ... </think> or unclosed <think> ...
-        if let thinkStartRange = working.range(of: "<think>") {
+        var reasonings: [String] = []
+        while let thinkStartRange = working.range(of: "<think>") {
             let afterStart = working[thinkStartRange.upperBound...]
             if let thinkEndRange = afterStart.range(of: "</think>") {
                 let extractedReasoning = String(afterStart[..<thinkEndRange.lowerBound])
-                reasoningText = extractedReasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+                reasonings.append(extractedReasoning)
                 working.removeSubrange(thinkStartRange.lowerBound..<thinkEndRange.upperBound)
                 isThinking = false
             } else {
                 let extractedReasoning = String(afterStart)
-                reasoningText = extractedReasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+                reasonings.append(extractedReasoning)
                 working.removeSubrange(thinkStartRange.lowerBound...)
                 isThinking = true
+                break
             }
+        }
+        if !reasonings.isEmpty {
+            reasoningText = reasonings.joined().trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
         // 2. Extract ```choices ... ``` fenced block

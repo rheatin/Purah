@@ -113,27 +113,60 @@ public final class AIAssistantService {
         if executable == .custom {
             return nil
         }
+        let namesToTry: [String] = (executable == .opencode) ? ["opencode", "optimus"] : [executable.executableName]
         let candidateDirs = [
+            "\(NSHomeDirectory())/.local/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
-            "\(NSHomeDirectory())/.local/bin",
             "\(NSHomeDirectory())/.cargo/bin",
+            "\(NSHomeDirectory())/.optimus/bin",
             "/usr/bin"
         ]
         let fm = FileManager.default
         for dir in candidateDirs {
-            let path = (dir as NSString).appendingPathComponent(executable.executableName)
-            if fm.isExecutableFile(atPath: path) {
-                return path
+            for name in namesToTry {
+                let path = (dir as NSString).appendingPathComponent(name)
+                if fm.isExecutableFile(atPath: path) {
+                    return path
+                }
             }
         }
         return nil
     }
 
-    public func parseArgumentsTemplate(template: String, prompt: String) -> [String] {
+    public nonisolated static func parseArgumentsTemplate(template: String, prompt: String) -> [String] {
         let trimmed = template.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [prompt] }
-        let tokens = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+
+        var tokens: [String] = []
+        var currentToken = ""
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var isEscaped = false
+
+        for char in trimmed {
+            if isEscaped {
+                currentToken.append(char)
+                isEscaped = false
+            } else if char == "\\" {
+                isEscaped = true
+            } else if char == "'" && !inDoubleQuote {
+                inSingleQuote.toggle()
+            } else if char == "\"" && !inSingleQuote {
+                inDoubleQuote.toggle()
+            } else if char.isWhitespace && !inSingleQuote && !inDoubleQuote {
+                if !currentToken.isEmpty {
+                    tokens.append(currentToken)
+                    currentToken = ""
+                }
+            } else {
+                currentToken.append(char)
+            }
+        }
+        if !currentToken.isEmpty {
+            tokens.append(currentToken)
+        }
+
         var replacedAny = false
         var args: [String] = []
         for token in tokens {
@@ -148,6 +181,10 @@ public final class AIAssistantService {
             args.append(prompt)
         }
         return args
+    }
+
+    public nonisolated func parseArgumentsTemplate(template: String, prompt: String) -> [String] {
+        Self.parseArgumentsTemplate(template: template, prompt: prompt)
     }
 
     // MARK: - Attachment Ingestion
@@ -471,9 +508,39 @@ public final class AIAssistantService {
             promptText = "\(sys)\n\nUser Input:\n\(promptText)"
         }
 
+        let args = Self.resolveCLIArguments(
+            executable: executable,
+            cliPath: cliPath,
+            customCLIArguments: customCLIArguments,
+            promptText: promptText,
+            model: model
+        )
+
+        let filename = (cliPath as NSString).lastPathComponent.lowercased()
+        let isOpenCodeFamily = executable == .opencode || filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+        let isNDJSON = isOpenCodeFamily || (args.contains("json") || args.contains("--format"))
+
+        return try await executeCLIProcess(
+            executablePath: cliPath,
+            arguments: args,
+            isNDJSON: isNDJSON,
+            onChunk: onChunk
+        )
+    }
+
+    public nonisolated static func resolveCLIArguments(
+        executable: AICLIExecutable,
+        cliPath: String,
+        customCLIArguments: String? = nil,
+        promptText: String,
+        model: String? = nil
+    ) -> [String] {
         var args: [String] = []
-        if executable == .custom || (customCLIArguments != nil && !customCLIArguments!.isEmpty && customCLIArguments != "{prompt}") {
-            let template = (customCLIArguments?.isEmpty == false) ? customCLIArguments! : "{prompt}"
+        let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasCustomTemplate = trimmedCustomArgs != nil && !trimmedCustomArgs!.isEmpty && trimmedCustomArgs != "{prompt}"
+
+        if executable == .custom || hasCustomTemplate {
+            let template = hasCustomTemplate ? trimmedCustomArgs! : "{prompt}"
             args = parseArgumentsTemplate(template: template, prompt: promptText)
         } else {
             switch executable {
@@ -484,12 +551,121 @@ public final class AIAssistantService {
             case .ollama:
                 let selectedModel = model?.isEmpty == false ? model! : "llama3.2"
                 args = ["run", selectedModel, promptText]
+            case .opencode:
+                var opencodeArgs = ["run", "--thinking", "--format", "json"]
+                if let model = model, !model.isEmpty {
+                    opencodeArgs.append(contentsOf: ["--model", model])
+                }
+                opencodeArgs.append(promptText)
+                args = opencodeArgs
             case .custom:
                 args = [promptText]
             }
         }
 
-        return try await executeCLIProcess(executablePath: cliPath, arguments: args, onChunk: onChunk)
+        let filename = (cliPath as NSString).lastPathComponent.lowercased()
+        let isOpenCodeFamily = executable == .opencode || filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+        if isOpenCodeFamily {
+            if executable == .opencode || !hasCustomTemplate {
+                if args.first != "run" {
+                    args = ["run", "--thinking", "--format", "json"] + args
+                }
+            }
+        }
+
+        return args
+    }
+
+    // MARK: - ANSI Escape Stripping & NDJSON Stream Parsing
+    public nonisolated static func stripANSIEscapeSequences(_ input: String) -> String {
+        guard !input.isEmpty else { return "" }
+        var result = input
+        let esc = "\u{001B}"
+
+        // 1. OSC sequences: ESC ] ... (BEL or ESC \)
+        let oscPattern = "\(esc)\\][^\u{0007}\(esc)]*(?:\u{0007}|\(esc)\\\\)"
+        if let oscRegex = try? NSRegularExpression(pattern: oscPattern) {
+            result = oscRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        }
+
+        // 2. CSI sequences: ESC [ ... [@-~]
+        let csiPattern = "\(esc)\\[[0-9:;<=>?]*[ -/]*[@-~]"
+        if let csiRegex = try? NSRegularExpression(pattern: csiPattern) {
+            result = csiRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        }
+
+        // 3. Generic 2-character ESC sequences (e.g. ESC @ through ESC _, ESC c, ESC =)
+        let genericEscPattern = "\(esc)[@-Z\\\\-_]"
+        if let escRegex = try? NSRegularExpression(pattern: genericEscPattern) {
+            result = escRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        }
+
+        // 4. Stray / stripped-ESC terminal sequences where ESC byte was dropped (e.g. [?2004h, [?25l, [>0q, etc.)
+        let strayPattern = "\\[(?:\\?|>)[0-9;]*[a-zA-Z$]"
+        if let strayRegex = try? NSRegularExpression(pattern: strayPattern) {
+            result = strayRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        }
+
+        // 5. Line endings normalization and carriage return cleanup
+        result = result.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "")
+
+        return result
+    }
+
+    public nonisolated static func parseNDJSONLine(_ line: String) -> String? {
+        let stripped = stripANSIEscapeSequences(line)
+        let trimmed = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Attempt JSON deserialization
+        if trimmed.hasPrefix("{") && trimmed.hasSuffix("}"),
+           let data = trimmed.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            guard let type = json["type"] as? String else {
+                return nil
+            }
+
+            if type == "reasoning" {
+                let part = json["part"] as? [String: Any]
+                let text = (part?["text"] as? String) ?? (json["text"] as? String)
+                if let text = text, !text.isEmpty {
+                    return "<think>\(text)</think>"
+                }
+                return nil
+            } else if type == "text" {
+                let part = json["part"] as? [String: Any]
+                let text = (part?["text"] as? String) ?? (json["text"] as? String)
+                if let text = text, !text.isEmpty {
+                    return text
+                }
+                return nil
+            } else {
+                // Ignore non-text lifecycle events ("step_start", "step_finish", "tool_use", etc.)
+                return nil
+            }
+        }
+
+        // Non-JSON line: convert "Thinking: ..." lines if present into <think>...</think>
+        if trimmed.hasPrefix("Thinking: ") {
+            let thought = trimmed.dropFirst("Thinking: ".count).trimmingCharacters(in: .whitespaces)
+            return "<think>\(thought)</think>\n"
+        } else if trimmed.hasPrefix("Thinking:") {
+            let thought = trimmed.dropFirst("Thinking:".count).trimmingCharacters(in: .whitespaces)
+            return "<think>\(thought)</think>\n"
+        }
+
+        return stripped.hasSuffix("\n") ? stripped : stripped + "\n"
+    }
+
+    public nonisolated static func parseNDJSONStream(_ stream: String) -> String {
+        let lines = stream.components(separatedBy: .newlines)
+        var result = ""
+        for line in lines {
+            if let parsed = parseNDJSONLine(line) {
+                result.append(parsed)
+            }
+        }
+        return result
     }
 
     private final class SafeTextBuffer: @unchecked Sendable {
@@ -502,6 +678,26 @@ public final class AIAssistantService {
             lock.unlock()
         }
 
+        func extractLines() -> [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            var lines: [String] = []
+            while let newlineRange = text.range(of: "\n") {
+                let line = String(text[..<newlineRange.lowerBound])
+                text.removeSubrange(..<newlineRange.upperBound)
+                lines.append(line)
+            }
+            return lines
+        }
+
+        func flushRemaining() -> String {
+            lock.lock()
+            defer { lock.unlock() }
+            let remaining = text
+            text = ""
+            return remaining
+        }
+
         func value() -> String {
             lock.lock()
             defer { lock.unlock() }
@@ -512,6 +708,7 @@ public final class AIAssistantService {
     private func executeCLIProcess(
         executablePath: String,
         arguments: [String],
+        isNDJSON: Bool = false,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
@@ -520,22 +717,56 @@ public final class AIAssistantService {
                 process.executableURL = URL(fileURLWithPath: executablePath)
                 process.arguments = arguments
 
+                var env = ProcessInfo.processInfo.environment
+                env["TERM"] = "dumb"
+                env["NO_COLOR"] = "1"
+                env["CI"] = "1"
+                process.environment = env
+
+                let stdinPipe = Pipe()
+                process.standardInput = stdinPipe
+                try? stdinPipe.fileHandleForWriting.close()
+
                 let outputPipe = Pipe()
                 let errorPipe = Pipe()
                 process.standardOutput = outputPipe
                 process.standardError = errorPipe
 
                 let buffer = SafeTextBuffer()
+                let lineBuffer = SafeTextBuffer()
+
+                let processChunk: @Sendable (String) -> Void = { text in
+                    if isNDJSON {
+                        lineBuffer.append(text)
+                        let lines = lineBuffer.extractLines()
+
+                        for line in lines {
+                            if let parsed = Self.parseNDJSONLine(line) {
+                                buffer.append(parsed)
+                                if let onChunk = onChunk {
+                                    Task { @MainActor in
+                                        onChunk(parsed)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        let cleaned = Self.stripANSIEscapeSequences(text)
+                        if !cleaned.isEmpty {
+                            buffer.append(cleaned)
+                            if let onChunk = onChunk {
+                                Task { @MainActor in
+                                    onChunk(cleaned)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 outputPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
                     guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-                    buffer.append(text)
-                    if let onChunk = onChunk {
-                        Task { @MainActor in
-                            onChunk(text)
-                        }
-                    }
+                    processChunk(text)
                 }
 
                 do {
@@ -545,10 +776,19 @@ public final class AIAssistantService {
 
                     let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     if !remainingData.isEmpty, let remainingText = String(data: remainingData, encoding: .utf8) {
-                        buffer.append(remainingText)
-                        if let onChunk = onChunk {
-                            Task { @MainActor in
-                                onChunk(remainingText)
+                        processChunk(remainingText)
+                    }
+
+                    if isNDJSON {
+                        let leftover = lineBuffer.flushRemaining()
+                        if !leftover.isEmpty {
+                            if let parsed = Self.parseNDJSONLine(leftover) {
+                                buffer.append(parsed)
+                                if let onChunk = onChunk {
+                                    Task { @MainActor in
+                                        onChunk(parsed)
+                                    }
+                                }
                             }
                         }
                     }
@@ -561,7 +801,7 @@ public final class AIAssistantService {
                         let errText = String(data: errData, encoding: .utf8) ?? "Unknown error"
                         continuation.resume(throwing: AIAssistantError.processExecutionFailed(
                             exitCode: process.terminationStatus,
-                            errorOutput: errText
+                            errorOutput: Self.stripANSIEscapeSequences(errText)
                         ))
                     }
                 } catch {

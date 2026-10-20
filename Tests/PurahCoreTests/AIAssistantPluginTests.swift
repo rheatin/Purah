@@ -38,6 +38,10 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.ollama.rawValue == "ollama")
         #expect(AICLIExecutable.ollama.defaultSubcommand == ["run", "llama3.2"])
 
+        #expect(AICLIExecutable.opencode.rawValue == "opencode")
+        #expect(AICLIExecutable.opencode.displayName == "OpenCode CLI (opencode)")
+        #expect(AICLIExecutable.opencode.defaultSubcommand == ["run", "--thinking", "--format", "json"])
+
         #expect(AICLIExecutable.custom.rawValue == "custom")
         #expect(AICLIExecutable.custom.displayName == "Custom CLI Executable")
         #expect(AICLIExecutable.custom.defaultSubcommand == ["{prompt}"])
@@ -612,5 +616,173 @@ struct AIAssistantPluginTests {
 
         let ollamaAvailable = state.availableModels(for: .httpOllama)
         #expect(ollamaAvailable.contains("llama3.2"))
+    }
+
+    @Test("ANSI escape sequence stripper handles CSI, OSC, and stray TUI sequences")
+    func testStripANSIEscapeSequences() {
+        // Standard CSI color codes
+        let csiText = "\u{001B}[32mGreen\u{001B}[0m and \u{001B}[1;31mBold Red\u{001B}[0m"
+        #expect(AIAssistantService.stripANSIEscapeSequences(csiText) == "Green and Bold Red")
+
+        // OSC window title sequence
+        let oscText = "\u{001B}]0;Purah Terminal\u{0007}Actual content"
+        #expect(AIAssistantService.stripANSIEscapeSequences(oscText) == "Actual content")
+
+        // Stray / stripped-ESC bracket codes (e.g. [?2004h bracketed paste mode, [?25l cursor hide)
+        let strayText = "[?2004hHello from terminal[?2004l"
+        #expect(AIAssistantService.stripANSIEscapeSequences(strayText) == "Hello from terminal")
+
+        // Stray [>0q secondary device attribute query sequence
+        let daxQuery = "[>0qOptimus ready"
+        #expect(AIAssistantService.stripANSIEscapeSequences(daxQuery) == "Optimus ready")
+
+        // Carriage return normalizations
+        let crText = "First line\r\nSecond line\r"
+        #expect(AIAssistantService.stripANSIEscapeSequences(crText) == "First line\nSecond line")
+    }
+
+    @Test("Optimus NDJSON stream parser extracts reasoning and text while ignoring lifecycle events")
+    func testOptimusNDJSONStreamParsing() {
+        // 1. Single reasoning line
+        let reasoningLine = "{\"type\":\"reasoning\",\"part\":{\"text\":\"Analyzing code structure...\"}}"
+        let parsedReasoning = AIAssistantService.parseNDJSONLine(reasoningLine)
+        #expect(parsedReasoning == "<think>Analyzing code structure...</think>")
+
+        // 2. Single text line
+        let textLine = "{\"type\":\"text\",\"part\":{\"text\":\"The function is pure and thread-safe.\"}}"
+        let parsedText = AIAssistantService.parseNDJSONLine(textLine)
+        #expect(parsedText == "The function is pure and thread-safe.")
+
+        // 3. Lifecycle events must be ignored (return nil)
+        #expect(AIAssistantService.parseNDJSONLine("{\"type\":\"step_start\"}") == nil)
+        #expect(AIAssistantService.parseNDJSONLine("{\"type\":\"step_finish\"}") == nil)
+        #expect(AIAssistantService.parseNDJSONLine("{\"type\":\"tool_use\",\"part\":{\"tool\":\"bash\"}}") == nil)
+
+        // 4. Non-JSON fallback: "Thinking: ..." lines
+        let thinkingLine = "Thinking: Querying internal knowledge base"
+        let parsedThinking = AIAssistantService.parseNDJSONLine(thinkingLine)
+        #expect(parsedThinking == "<think>Querying internal knowledge base</think>\n")
+
+        // 5. Non-JSON fallback: plain terminal text with ANSI
+        let ansiLine = "\u{001B}[34mConnecting to server...\u{001B}[0m"
+        let parsedAnsi = AIAssistantService.parseNDJSONLine(ansiLine)
+        #expect(parsedAnsi == "Connecting to server...\n")
+
+        // 6. Full multi-event NDJSON stream
+        let stream = """
+        {"type":"step_start"}
+        {"type":"reasoning","part":{"text":"Step 1. "}}
+        {"type":"reasoning","part":{"text":"Step 2."}}
+        {"type":"tool_use","part":{"tool":"bash"}}
+        {"type":"text","part":{"text":"Result: "}}
+        {"type":"text","part":{"text":"All systems nominal."}}
+        {"type":"step_finish"}
+        """
+        let parsedStream = AIAssistantService.parseNDJSONStream(stream)
+        let parsedMessage = AIThinkAndChoicesParser.parse(raw: parsedStream)
+
+        #expect(parsedMessage.reasoning == "Step 1. Step 2.")
+        #expect(parsedMessage.cleanText == "Result: All systems nominal.")
+        #expect(parsedMessage.isThinking == false)
+    }
+
+    @Test("OpenCode and Custom CLI argument resolution and presets")
+    func testOpenCodeAndCustomCLIArgumentResolution() {
+        // 1. Executable is .opencode with default settings
+        let args1 = AIAssistantService.resolveCLIArguments(
+            executable: .opencode,
+            cliPath: "/opt/homebrew/bin/opencode",
+            promptText: "Explain SwiftUI"
+        )
+        #expect(args1 == ["run", "--thinking", "--format", "json", "Explain SwiftUI"])
+
+        // 2. Executable is .opencode with model override
+        let args2 = AIAssistantService.resolveCLIArguments(
+            executable: .opencode,
+            cliPath: "/opt/homebrew/bin/opencode",
+            promptText: "Explain SwiftUI",
+            model: "anthropic/claude-3-5-sonnet"
+        )
+        #expect(args2 == ["run", "--thinking", "--format", "json", "--model", "anthropic/claude-3-5-sonnet", "Explain SwiftUI"])
+
+        // 3. Executable is .custom with path pointing to opencode/optimus and custom template lacking 'run'
+        let args3 = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "\(NSHomeDirectory())/.local/bin/opencode",
+            customCLIArguments: "{prompt}",
+            promptText: "Fix bug"
+        )
+        #expect(args3 == ["run", "--thinking", "--format", "json", "Fix bug"])
+
+        // 4. Executable is .custom with path pointing to opencode/optimus but arguments already start with 'run'
+        let args4 = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/opencode",
+            customCLIArguments: "run --model custom-model {prompt}",
+            promptText: "Optimize query"
+        )
+        #expect(args4 == ["run", "--model", "custom-model", "Optimize query"])
+
+        // 5. Executable is .custom with all preset styles
+        let claudePreset = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/my-cli",
+            customCLIArguments: "-p {prompt}",
+            promptText: "Hello"
+        )
+        #expect(claudePreset == ["-p", "Hello"])
+
+        let runPreset = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/my-cli",
+            customCLIArguments: "run {prompt}",
+            promptText: "Hello"
+        )
+        #expect(runPreset == ["run", "Hello"])
+
+        let runJsonPreset = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/my-cli",
+            customCLIArguments: "run --thinking --format json {prompt}",
+            promptText: "Hello"
+        )
+        #expect(runJsonPreset == ["run", "--thinking", "--format", "json", "Hello"])
+
+        let execPreset = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/my-cli",
+            customCLIArguments: "exec {prompt}",
+            promptText: "Hello"
+        )
+        #expect(execPreset == ["exec", "Hello"])
+
+        // 6. Executable is .claude - arguments should not be modified to include 'run'
+        let args5 = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/usr/local/bin/claude",
+            promptText: "Hello Claude"
+        )
+        #expect(args5 == ["-p", "Hello Claude"])
+    }
+
+    @Test("Custom CLI template multi-flag and quoting support")
+    func testCustomCLITemplateParsing() {
+        let multiFlags = AIAssistantService.parseArgumentsTemplate(
+            template: "run --thinking --format json {prompt}",
+            prompt: "Explain SwiftUI"
+        )
+        #expect(multiFlags == ["run", "--thinking", "--format", "json", "Explain SwiftUI"])
+
+        let quotedArgs = AIAssistantService.parseArgumentsTemplate(
+            template: "--system 'Helpful Assistant' --temp 0.7 -p {prompt}",
+            prompt: "Test query"
+        )
+        #expect(quotedArgs == ["--system", "Helpful Assistant", "--temp", "0.7", "-p", "Test query"])
+
+        let inlinePrompt = AIAssistantService.parseArgumentsTemplate(
+            template: "--prompt={prompt} --verbose",
+            prompt: "Inline test"
+        )
+        #expect(inlinePrompt == ["--prompt=Inline test", "--verbose"])
     }
 }
