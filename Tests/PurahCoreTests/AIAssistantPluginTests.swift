@@ -37,6 +37,10 @@ struct AIAssistantPluginTests {
 
         #expect(AICLIExecutable.ollama.rawValue == "ollama")
         #expect(AICLIExecutable.ollama.defaultSubcommand == ["run", "llama3.2"])
+
+        #expect(AICLIExecutable.custom.rawValue == "custom")
+        #expect(AICLIExecutable.custom.displayName == "Custom CLI Executable")
+        #expect(AICLIExecutable.custom.defaultSubcommand == ["{prompt}"])
     }
 
     @Test("AIQuickActionType system prompts and transformation flags")
@@ -395,5 +399,218 @@ struct AIAssistantPluginTests {
         let registered = PluginRegistry.shared.plugin(for: "ai")
         #expect(registered != nil)
         #expect(registered?.manifest.id == "ai")
+    }
+
+    @Test("Custom AI Role Presets and in-place editing")
+    func testCustomAIRolePresetsAndManagement() {
+        let isolated = UserDefaults(suiteName: "test_ai_presets_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        #expect(AIRolePreset.defaultPresets.count == 6)
+        #expect(state.rolePresets.count >= 6)
+
+        // Add custom role
+        state.addCustomRole(
+            title: "Rust Expert",
+            systemIcon: "hammer.fill",
+            systemPrompt: "You are an elite Rust systems programmer.",
+            isTransform: false
+        )
+
+        let customRole = state.rolePresets.first(where: { $0.title == "Rust Expert" })
+        #expect(customRole != nil)
+        #expect(customRole?.isBuiltIn == false)
+        #expect(customRole?.systemIcon == "hammer.fill")
+        #expect(customRole?.systemPrompt.contains("Rust systems") == true)
+        #expect(state.enabledRoles.contains(where: { $0.title == "Rust Expert" }))
+
+        // Update role
+        if var role = customRole {
+            role.title = "Rust Senior Engineer"
+            role.isTransform = true
+            state.updateRole(role)
+        }
+        let updated = state.rolePresets.first(where: { $0.id == customRole?.id })
+        #expect(updated?.title == "Rust Senior Engineer")
+        #expect(updated?.isTransform == true)
+
+        // Built-in role prompt reset
+        if var askRole = state.rolePresets.first(where: { $0.id == "ask" }) {
+            askRole.systemPrompt = "Custom modified ask prompt"
+            state.updateRole(askRole)
+            #expect(state.rolePresets.first(where: { $0.id == "ask" })?.systemPrompt == "Custom modified ask prompt")
+
+            state.resetBuiltInRolePrompt(id: "ask")
+            let resetAsk = state.rolePresets.first(where: { $0.id == "ask" })
+            #expect(resetAsk?.systemPrompt.contains("Purah AI") == true)
+        }
+
+        // Delete custom role
+        if let customId = customRole?.id {
+            state.deleteRole(id: customId)
+            #expect(!state.rolePresets.contains(where: { $0.id == customId }))
+        }
+    }
+
+    @Test("Custom CLI path and template argument parsing")
+    func testCustomCLIPathAndArguments() {
+        let service = AIAssistantService.shared
+
+        // Custom path resolution
+        let validShell = "/bin/sh"
+        let resolvedCustom = service.resolveCLIPath(for: .custom, customPath: validShell)
+        #expect(resolvedCustom == validShell)
+
+        let nonexistent = "/path/to/nonexistent/tool_\(UUID().uuidString)"
+        let resolvedNonexistent = service.resolveCLIPath(for: .custom, customPath: nonexistent)
+        #expect(resolvedNonexistent == nil)
+
+        // Template parsing
+        let templateWithPrompt = "-p {prompt}"
+        let args1 = service.parseArgumentsTemplate(template: templateWithPrompt, prompt: "Hello World")
+        #expect(args1 == ["-p", "Hello World"])
+
+        let templateWithoutPrompt = "exec --stream"
+        let args2 = service.parseArgumentsTemplate(template: templateWithoutPrompt, prompt: "Hello World")
+        #expect(args2 == ["exec", "--stream", "Hello World"])
+
+        let emptyTemplate = ""
+        let args3 = service.parseArgumentsTemplate(template: emptyTemplate, prompt: "Direct prompt")
+        #expect(args3 == ["Direct prompt"])
+    }
+
+    @Test("Session retention pruning and star protection immunity")
+    func testSessionRetentionAndPruning() {
+        let isolated = UserDefaults(suiteName: "test_ai_retention_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_retention", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_ret_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_retention", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_retention", customStorage: fileStorage)
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        #expect(state.retentionPeriod == .thirtyDays)
+
+        // Temporarily set retention to never so insert doesn't clean immediately
+        state.retentionPeriod = .never
+
+        // Insert an expired unstarred session (40 days ago)
+        let oldDate = Date().addingTimeInterval(-40 * 86400)
+        let expiredSession = AIChatSession(
+            id: "expired_session_1",
+            title: "Expired Session",
+            createdAt: oldDate,
+            updatedAt: oldDate,
+            isFavorite: false
+        )
+        state.repository.insert(expiredSession)
+
+        // Insert an expired STARRED session (40 days ago, isFavorite: true)
+        let starredOldSession = AIChatSession(
+            id: "starred_session_1",
+            title: "Starred Important Session",
+            createdAt: oldDate,
+            updatedAt: oldDate,
+            isFavorite: true
+        )
+        state.repository.insert(starredOldSession)
+
+        state.sessions = state.repository.items
+        #expect(state.sessions.contains(where: { $0.id == "expired_session_1" }))
+        #expect(state.sessions.contains(where: { $0.id == "starred_session_1" }))
+
+        // Set retention back to 30 days and run pruning
+        state.retentionPeriod = .thirtyDays
+        state.pruneExpiredSessions()
+
+        // Unstarred expired session must be pruned, starred session must survive!
+        #expect(!state.sessions.contains(where: { $0.id == "expired_session_1" }))
+        #expect(state.sessions.contains(where: { $0.id == "starred_session_1" }))
+
+        // Clear unstarred
+        state.clearUnstarredSessions()
+        #expect(state.sessions.allSatisfy { $0.isFavorite })
+        #expect(state.sessions.contains(where: { $0.id == "starred_session_1" }))
+    }
+
+    @Test("Stepped drawer view rendering and sub-item mapping")
+    func testSteppedDrawerRendering() {
+        let plugin = AIAssistantPlugin()
+        let isolated = UserDefaults(suiteName: "test_ai_stepped_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        plugin.state.mount(store: store)
+
+        let dummyPod = SlotPod(
+            id: "ai",
+            name: "AI Assistant",
+            systemIcon: "sparkles",
+            edge: .right,
+            range: .init(start: 0.1, length: 0.2),
+            ambientStyle: .ghostDot,
+            preferredZone: .goldenAction,
+            ergonomicWeight: 38.0
+        )
+        let context = PurahPluginContext(
+            pod: dummyPod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 52.0,
+            drawerWidth: 350.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .purple,
+            palette: ThemeManager.shared.palette,
+            storage: plugin.state.storage,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        let steppedView = plugin.makeSteppedDrawerView(subItemId: "ai-ask", context: context)
+        #expect(steppedView != nil)
+
+        let customRole = AIRolePreset(
+            id: "custom-tester",
+            title: "Tester",
+            systemIcon: "checkmark",
+            systemPrompt: "Test instructions",
+            isTransform: false,
+            isEnabled: true
+        )
+        plugin.state.rolePresets.append(customRole)
+
+        let customSteppedView = plugin.makeSteppedDrawerView(subItemId: "ai-custom-tester", context: context)
+        #expect(customSteppedView != nil)
+
+        let items = plugin.steppedItems(context: context)
+        #expect(items.contains(where: { $0.id == "ai-custom-tester" }))
+        #expect(plugin.ownsSubItemId("ai-custom-tester", store: store))
+    }
+
+    @Test("Model discovery and fetchAvailableModels endpoint handlers")
+    func testFetchAvailableModels() async throws {
+        let service = AIAssistantService.shared
+
+        let appleModels = try await service.fetchAvailableModels(provider: .appleIntelligence, baseURL: "", apiKey: "")
+        #expect(appleModels == ["apple-intelligence-on-device"])
+
+        let cliModels = try await service.fetchAvailableModels(provider: .localCLI, baseURL: "", apiKey: "")
+        #expect(cliModels == ["default"])
+
+        let claudeModels = try await service.fetchAvailableModels(provider: .httpAnthropic, baseURL: "", apiKey: "")
+        #expect(!claudeModels.isEmpty)
+        #expect(claudeModels.contains(where: { $0.contains("claude") }))
+
+        let isolated = UserDefaults(suiteName: "test_ai_models_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_models", defaults: isolated)
+        let state = AIAssistantPluginState(storage: storage)
+
+        let openaiAvailable = state.availableModels(for: .httpOpenAI)
+        #expect(openaiAvailable.contains("gpt-4o-mini"))
+
+        let ollamaAvailable = state.availableModels(for: .httpOllama)
+        #expect(ollamaAvailable.contains("llama3.2"))
     }
 }

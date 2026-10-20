@@ -100,7 +100,19 @@ public final class AIAssistantService {
         return detected
     }
 
-    public func resolveCLIPath(for executable: AICLIExecutable) -> String? {
+    public func resolveCLIPath(for executable: AICLIExecutable, customPath: String? = nil) -> String? {
+        if let custom = customPath?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            let expanded = (custom as NSString).expandingTildeInPath
+            if FileManager.default.isExecutableFile(atPath: expanded) {
+                return expanded
+            }
+            if executable == .custom {
+                return nil
+            }
+        }
+        if executable == .custom {
+            return nil
+        }
         let candidateDirs = [
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -116,6 +128,26 @@ public final class AIAssistantService {
             }
         }
         return nil
+    }
+
+    public func parseArgumentsTemplate(template: String, prompt: String) -> [String] {
+        let trimmed = template.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [prompt] }
+        let tokens = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        var replacedAny = false
+        var args: [String] = []
+        for token in tokens {
+            if token.contains("{prompt}") {
+                args.append(token.replacingOccurrences(of: "{prompt}", with: prompt))
+                replacedAny = true
+            } else {
+                args.append(token)
+            }
+        }
+        if !replacedAny {
+            args.append(prompt)
+        }
+        return args
     }
 
     // MARK: - Attachment Ingestion
@@ -170,10 +202,13 @@ public final class AIAssistantService {
         messages: [AIChatMessage],
         provider: AIProviderKind,
         cliExecutable: AICLIExecutable = .claude,
+        customCLIPath: String? = nil,
+        customCLIArguments: String? = nil,
         apiKey: String? = nil,
         endpoint: String? = nil,
         model: String? = nil,
         targetLanguage: String = "Auto (Chinese <-> English)",
+        systemPromptOverride: String? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
         isStreaming = true
@@ -181,13 +216,23 @@ public final class AIAssistantService {
 
         switch provider {
         case .appleIntelligence:
-            return try await streamSimulatedAppleIntelligence(messages: messages, targetLanguage: targetLanguage, onChunk: onChunk)
+            return try await streamSimulatedAppleIntelligence(
+                messages: messages,
+                targetLanguage: targetLanguage,
+                systemPromptOverride: systemPromptOverride,
+                onChunk: onChunk
+            )
 
         case .httpOpenAI, .httpOllama:
             let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
             if provider == .httpOpenAI && (key == nil || key?.isEmpty == true) {
                 // Graceful fallback to smart local on-device synthesis if API key is not configured
-                return try await streamSimulatedAppleIntelligence(messages: messages, targetLanguage: targetLanguage, onChunk: onChunk)
+                return try await streamSimulatedAppleIntelligence(
+                    messages: messages,
+                    targetLanguage: targetLanguage,
+                    systemPromptOverride: systemPromptOverride,
+                    onChunk: onChunk
+                )
             }
             return try await streamOpenAICompatible(
                 messages: messages,
@@ -196,6 +241,7 @@ public final class AIAssistantService {
                 endpoint: endpoint,
                 model: model,
                 targetLanguage: targetLanguage,
+                systemPromptOverride: systemPromptOverride,
                 onChunk: onChunk
             )
 
@@ -203,7 +249,12 @@ public final class AIAssistantService {
             let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
             if key == nil || key?.isEmpty == true {
                 // Graceful fallback to smart local on-device synthesis if API key is not configured
-                return try await streamSimulatedAppleIntelligence(messages: messages, targetLanguage: targetLanguage, onChunk: onChunk)
+                return try await streamSimulatedAppleIntelligence(
+                    messages: messages,
+                    targetLanguage: targetLanguage,
+                    systemPromptOverride: systemPromptOverride,
+                    onChunk: onChunk
+                )
             }
             return try await streamAnthropic(
                 messages: messages,
@@ -211,20 +262,28 @@ public final class AIAssistantService {
                 endpoint: endpoint,
                 model: model,
                 targetLanguage: targetLanguage,
+                systemPromptOverride: systemPromptOverride,
                 onChunk: onChunk
             )
 
         case .localCLI:
-            guard let cliPath = resolveCLIPath(for: cliExecutable) else {
+            guard let cliPath = resolveCLIPath(for: cliExecutable, customPath: customCLIPath) else {
                 // Graceful fallback to smart local on-device synthesis if CLI executable is not installed
-                return try await streamSimulatedAppleIntelligence(messages: messages, targetLanguage: targetLanguage, onChunk: onChunk)
+                return try await streamSimulatedAppleIntelligence(
+                    messages: messages,
+                    targetLanguage: targetLanguage,
+                    systemPromptOverride: systemPromptOverride,
+                    onChunk: onChunk
+                )
             }
             return try await streamLocalCLI(
                 cliPath: cliPath,
                 executable: cliExecutable,
+                customCLIArguments: customCLIArguments,
                 messages: messages,
                 model: model,
                 targetLanguage: targetLanguage,
+                systemPromptOverride: systemPromptOverride,
                 onChunk: onChunk
             )
         }
@@ -238,6 +297,7 @@ public final class AIAssistantService {
         endpoint: String?,
         model: String?,
         targetLanguage: String,
+        systemPromptOverride: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let defaultEndpoint = provider == .httpOllama
@@ -259,10 +319,11 @@ public final class AIAssistantService {
         let selectedModel = model?.isEmpty == false ? model! : (provider == .httpOllama ? "llama3.2" : "gpt-4o-mini")
 
         var formattedMessages: [[String: Any]] = []
-        if let lastMsg = messages.last, let action = lastMsg.quickAction {
+        let effectiveSystemPrompt = systemPromptOverride ?? messages.last?.systemPromptOverride ?? messages.last?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
+        if let systemPrompt = effectiveSystemPrompt, !systemPrompt.isEmpty {
             formattedMessages.append([
                 "role": "system",
-                "content": action.buildSystemPrompt(targetLanguage: targetLanguage)
+                "content": systemPrompt
             ])
         }
 
@@ -324,6 +385,7 @@ public final class AIAssistantService {
         endpoint: String?,
         model: String?,
         targetLanguage: String,
+        systemPromptOverride: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let urlString = endpoint?.isEmpty == false ? endpoint! : "https://api.anthropic.com/v1/messages"
@@ -339,8 +401,8 @@ public final class AIAssistantService {
 
         let selectedModel = model?.isEmpty == false ? model! : "claude-3-5-sonnet-20241022"
 
-        var systemPrompt: String? = nil
-        if let lastMsg = messages.last, let action = lastMsg.quickAction {
+        var systemPrompt: String? = systemPromptOverride ?? messages.last?.systemPromptOverride
+        if systemPrompt == nil, let action = messages.last?.quickAction {
             systemPrompt = action.buildSystemPrompt(targetLanguage: targetLanguage)
         }
 
@@ -395,26 +457,36 @@ public final class AIAssistantService {
     private func streamLocalCLI(
         cliPath: String,
         executable: AICLIExecutable,
+        customCLIArguments: String?,
         messages: [AIChatMessage],
         model: String?,
         targetLanguage: String,
+        systemPromptOverride: String?,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastMsg = messages.last
         var promptText = lastMsg?.content ?? ""
-        if let action = lastMsg?.quickAction {
-            promptText = "\(action.buildSystemPrompt(targetLanguage: targetLanguage))\n\nUser Input:\n\(promptText)"
+        let effectiveSystemPrompt = systemPromptOverride ?? lastMsg?.systemPromptOverride ?? lastMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
+        if let sys = effectiveSystemPrompt, !sys.isEmpty {
+            promptText = "\(sys)\n\nUser Input:\n\(promptText)"
         }
 
         var args: [String] = []
-        switch executable {
-        case .claude:
-            args = ["-p", promptText]
-        case .codex:
-            args = ["exec", promptText]
-        case .ollama:
-            let selectedModel = model?.isEmpty == false ? model! : "llama3.2"
-            args = ["run", selectedModel, promptText]
+        if executable == .custom || (customCLIArguments != nil && !customCLIArguments!.isEmpty && customCLIArguments != "{prompt}") {
+            let template = (customCLIArguments?.isEmpty == false) ? customCLIArguments! : "{prompt}"
+            args = parseArgumentsTemplate(template: template, prompt: promptText)
+        } else {
+            switch executable {
+            case .claude:
+                args = ["-p", promptText]
+            case .codex:
+                args = ["exec", promptText]
+            case .ollama:
+                let selectedModel = model?.isEmpty == false ? model! : "llama3.2"
+                args = ["run", selectedModel, promptText]
+            case .custom:
+                args = [promptText]
+            }
         }
 
         return try await executeCLIProcess(executablePath: cliPath, arguments: args, onChunk: onChunk)
@@ -504,62 +576,80 @@ public final class AIAssistantService {
     private func streamSimulatedAppleIntelligence(
         messages: [AIChatMessage],
         targetLanguage: String,
+        systemPromptOverride: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastUserMsg = messages.last(where: { $0.role == .user })
-        let action = lastUserMsg?.quickAction ?? .ask
+        let action = lastUserMsg?.quickAction
         let inputContent = lastUserMsg?.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let originalSelection = (lastUserMsg?.originalSelection ?? inputContent).trimmingCharacters(in: .whitespacesAndNewlines)
 
         let synthesized: String
-        switch action {
-        case .translate:
-            synthesized = "Translated: \(originalSelection.isEmpty ? "No text provided" : originalSelection)"
+        if let action = action {
+            switch action {
+            case .translate:
+                synthesized = "Translated: \(originalSelection.isEmpty ? "No text provided" : originalSelection)"
 
-        case .polish:
-            synthesized = "Polished: \(originalSelection.isEmpty ? "No text provided" : originalSelection)"
+            case .polish:
+                synthesized = "Polished: \(originalSelection.isEmpty ? "No text provided" : originalSelection)"
 
-        case .fixGrammar:
-            synthesized = originalSelection.isEmpty ? "No text provided" : originalSelection
+            case .fixGrammar:
+                synthesized = originalSelection.isEmpty ? "No text provided" : originalSelection
 
-        case .explainCode:
-            synthesized = """
-            <think>
-            Analyzing syntax, structural semantics, and algorithmic complexity of the code.
-            </think>
-            ### Architectural Overview
-            The provided code establishes clean modular boundaries and adheres to platform ergonomics.
+            case .explainCode:
+                synthesized = """
+                <think>
+                Analyzing syntax, structural semantics, and algorithmic complexity of the code.
+                </think>
+                ### Architectural Overview
+                The provided code establishes clean modular boundaries and adheres to platform ergonomics.
 
-            ### Key Mechanics
-            1. **Encapsulation**: State is scoped with clear immutability guarantees.
-            2. **Execution Flow**: Asynchronous pipeline ensures responsive interaction.
-            3. **Resilience**: Defensive boundaries protect against edge-case failures.
+                ### Key Mechanics
+                1. **Encapsulation**: State is scoped with clear immutability guarantees.
+                2. **Execution Flow**: Asynchronous pipeline ensures responsive interaction.
+                3. **Resilience**: Defensive boundaries protect against edge-case failures.
 
-            ```choices
-            Refactor for performance
-            Add unit tests
-            Explain edge cases
-            ```
-            """
+                ```choices
+                Refactor for performance
+                Add unit tests
+                Explain edge cases
+                ```
+                """
 
-        case .summarize:
-            synthesized = """
-            <think>
-            Synthesizing core takeaways, filtering noise, and generating executive summary.
-            </think>
-            ### Executive Summary
-            - **Core Theme**: High-density operational synthesis of provided context.
-            - **Primary Signal**: Key workflows remain uninterrupted and ergonomic.
-            - **Action Items**: Review generated findings and proceed with next steps.
+            case .summarize:
+                synthesized = """
+                <think>
+                Synthesizing core takeaways, filtering noise, and generating executive summary.
+                </think>
+                ### Executive Summary
+                - **Core Theme**: High-density operational synthesis of provided context.
+                - **Primary Signal**: Key workflows remain uninterrupted and ergonomic.
+                - **Action Items**: Review generated findings and proceed with next steps.
 
-            ```choices
-            Highlight action items
-            Deep-dive core concepts
-            Condense to single sentence
-            ```
-            """
+                ```choices
+                Highlight action items
+                Deep-dive core concepts
+                Condense to single sentence
+                ```
+                """
 
-        case .ask:
+            case .ask:
+                synthesized = """
+                <think>
+                Formulating structured assistance for the user query.
+                </think>
+                Purah AI is ready along your screen bezel. You can quickly summarize, translate, polish text, or inspect code with single-tap quick actions.
+
+                ```choices
+                Tell me more
+                Give practical examples
+                Summarize key takeaways
+                ```
+                """
+            }
+        } else if let roleTitle = lastUserMsg?.roleTitle {
+            synthesized = "Completed \(roleTitle): \(originalSelection.isEmpty ? "No text provided" : originalSelection)"
+        } else {
             synthesized = """
             <think>
             Formulating structured assistance for the user query.
@@ -586,5 +676,121 @@ public final class AIAssistantService {
         }
 
         return synthesized
+    }
+
+    // MARK: - Model Discovery
+    public func fetchAvailableModels(provider: AIProviderKind, baseURL: String, apiKey: String) async throws -> [String] {
+        switch provider {
+        case .appleIntelligence:
+            return ["apple-intelligence-on-device"]
+
+        case .localCLI:
+            return ["default"]
+
+        case .httpOpenAI:
+            let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedBase = trimmedBase.isEmpty ? "https://api.openai.com/v1" : trimmedBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let urlString = normalizedBase.hasSuffix("/models") ? normalizedBase : "\(normalizedBase)/models"
+            guard let url = URL(string: urlString) else {
+                throw AIAssistantError.invalidEndpoint
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 10.0
+            let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty {
+                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                throw AIAssistantError.invalidResponse(statusCode: http.statusCode)
+            }
+
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = json["data"] as? [[String: Any]] else {
+                throw AIAssistantError.parsingError("Unable to parse OpenAI models array.")
+            }
+
+            let ids = list.compactMap { $0["id"] as? String }.filter { !$0.isEmpty }
+            return Array(Set(ids)).sorted()
+
+        case .httpOllama:
+            let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedBase = trimmedBase.isEmpty ? "http://localhost:11434" : trimmedBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+            // First attempt Ollama native: /api/tags
+            let tagsUrlString = "\(normalizedBase)/api/tags"
+            if let tagsUrl = URL(string: tagsUrlString) {
+                var request = URLRequest(url: tagsUrl)
+                request.httpMethod = "GET"
+                request.timeoutInterval = 8.0
+                if let (data, response) = try? await URLSession.shared.data(for: request),
+                   let http = response as? HTTPURLResponse, http.statusCode < 400,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let models = json["models"] as? [[String: Any]] {
+                    let names = models.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
+                    if !names.isEmpty {
+                        return Array(Set(names)).sorted()
+                    }
+                }
+            }
+
+            // Fallback: /v1/models (OpenAI compatibility endpoint)
+            let v1UrlString = normalizedBase.hasSuffix("/models") ? normalizedBase : "\(normalizedBase)/v1/models"
+            if let v1Url = URL(string: v1UrlString) {
+                var request = URLRequest(url: v1Url)
+                request.httpMethod = "GET"
+                request.timeoutInterval = 8.0
+                if let (data, response) = try? await URLSession.shared.data(for: request),
+                   let http = response as? HTTPURLResponse, http.statusCode < 400,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let list = json["data"] as? [[String: Any]] {
+                    let ids = list.compactMap { $0["id"] as? String }.filter { !$0.isEmpty }
+                    if !ids.isEmpty {
+                        return Array(Set(ids)).sorted()
+                    }
+                }
+            }
+
+            return ["llama3.2", "llama3.1", "qwen2.5-coder", "deepseek-r1", "mistral", "phi3"]
+
+        case .httpAnthropic:
+            let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackClaudeModels = [
+                "claude-sonnet-4-20250514",
+                "claude-3-7-sonnet-latest",
+                "claude-3-5-sonnet-latest",
+                "claude-3-5-haiku-latest",
+                "claude-3-opus-latest"
+            ]
+
+            guard !key.isEmpty, let url = URL(string: "https://api.anthropic.com/v1/models") else {
+                return fallbackClaudeModels
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 10.0
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode < 400,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let list = json["data"] as? [[String: Any]] {
+                    let ids = list.compactMap { $0["id"] as? String }.filter { !$0.isEmpty }
+                    if !ids.isEmpty {
+                        return Array(Set(ids)).sorted()
+                    }
+                }
+            } catch {
+                // Return default list if endpoint unavailable
+            }
+
+            return fallbackClaudeModels
+        }
     }
 }

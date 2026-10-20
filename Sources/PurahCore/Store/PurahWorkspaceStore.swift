@@ -2190,6 +2190,27 @@ public final class PurahWorkspaceStore {
             storage.set(newValue, forKey: "isDecomposed")
         }
     }
+    public var _aiRolePresets: [AIRolePreset] {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            if let presets = storage.codable(forKey: "rolePresets", as: [AIRolePreset].self) {
+                return presets
+            }
+            if let data = userDefaults.data(forKey: "purah.ai.rolePresets"),
+               let decoded = try? JSONDecoder().decode([AIRolePreset].self, from: data) {
+                return decoded
+            }
+            return AIRolePreset.defaultPresets
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "rolePresets")
+            let enabledActionTypes = newValue.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
+            storage.setCodable(enabledActionTypes, forKey: "enabledActions")
+        }
+    }
     public var _aiEnabledActions: [AIQuickActionType] {
         get {
             _ = _pluginStorageRevision
@@ -2207,6 +2228,13 @@ public final class PurahWorkspaceStore {
             _pluginStorageRevision &+= 1
             let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
             storage.setCodable(newValue, forKey: "enabledActions")
+            var currentPresets = self._aiRolePresets
+            for i in currentPresets.indices {
+                if let action = AIQuickActionType(rawValue: currentPresets[i].id) {
+                    currentPresets[i].isEnabled = newValue.contains(action)
+                }
+            }
+            storage.setCodable(currentPresets, forKey: "rolePresets")
         }
     }
     package var _terminalFontFamily: String {

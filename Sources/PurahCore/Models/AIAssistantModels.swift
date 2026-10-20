@@ -37,6 +37,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     case claude = "claude"
     case codex = "codex"
     case ollama = "ollama"
+    case custom = "custom"
 
     public var id: String { rawValue }
     public var executableName: String { rawValue }
@@ -46,6 +47,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return "Claude CLI"
         case .codex: return "Codex CLI"
         case .ollama: return "Ollama CLI"
+        case .custom: return "Custom CLI Executable"
         }
     }
 
@@ -54,6 +56,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return ["-p"]
         case .codex: return ["exec"]
         case .ollama: return ["run", "llama3.2"]
+        case .custom: return ["{prompt}"]
         }
     }
 }
@@ -161,6 +164,58 @@ public enum AIQuickActionType: String, Codable, CaseIterable, Sendable, Identifi
     }
 }
 
+// MARK: - AI Role Preset
+public struct AIRolePreset: Identifiable, Codable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var systemIcon: String
+    public var systemPrompt: String
+    public var isTransform: Bool
+    public var isEnabled: Bool
+    public var isBuiltIn: Bool
+
+    public init(
+        id: String,
+        title: String,
+        systemIcon: String,
+        systemPrompt: String,
+        isTransform: Bool = false,
+        isEnabled: Bool = true,
+        isBuiltIn: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.systemIcon = systemIcon
+        self.systemPrompt = systemPrompt
+        self.isTransform = isTransform
+        self.isEnabled = isEnabled
+        self.isBuiltIn = isBuiltIn
+    }
+
+    public static func from(action: AIQuickActionType, isEnabled: Bool = true) -> AIRolePreset {
+        AIRolePreset(
+            id: action.id,
+            title: action.title,
+            systemIcon: action.systemIcon,
+            systemPrompt: action.buildSystemPrompt(),
+            isTransform: action.isTransform,
+            isEnabled: isEnabled,
+            isBuiltIn: true
+        )
+    }
+
+    public static var defaultPresets: [AIRolePreset] {
+        [
+            AIRolePreset.from(action: .ask, isEnabled: true),
+            AIRolePreset.from(action: .translate, isEnabled: true),
+            AIRolePreset.from(action: .polish, isEnabled: true),
+            AIRolePreset.from(action: .fixGrammar, isEnabled: false),
+            AIRolePreset.from(action: .explainCode, isEnabled: true),
+            AIRolePreset.from(action: .summarize, isEnabled: false)
+        ]
+    }
+}
+
 // MARK: - Attachments & Budget
 public struct AIAttachmentItem: Identifiable, Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
@@ -225,6 +280,9 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     public var timestamp: Date
     public var quickAction: AIQuickActionType?
     public var originalSelection: String?
+    public var systemPromptOverride: String?
+    public var roleTitle: String?
+    public var roleId: String?
 
     public init(
         id: UUID = UUID(),
@@ -235,7 +293,10 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         attachments: [AIAttachmentItem] = [],
         timestamp: Date = Date(),
         quickAction: AIQuickActionType? = nil,
-        originalSelection: String? = nil
+        originalSelection: String? = nil,
+        systemPromptOverride: String? = nil,
+        roleTitle: String? = nil,
+        roleId: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -246,6 +307,9 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         self.timestamp = timestamp
         self.quickAction = quickAction
         self.originalSelection = originalSelection
+        self.systemPromptOverride = systemPromptOverride
+        self.roleTitle = roleTitle
+        self.roleId = roleId
     }
 }
 

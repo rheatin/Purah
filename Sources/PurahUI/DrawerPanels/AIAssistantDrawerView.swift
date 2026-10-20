@@ -76,16 +76,16 @@ public struct AIAssistantDrawerView: View {
                 .lineLimit(1)
 
             HStack(spacing: 4) {
-                ForEach([AIQuickActionType.translate, .polish, .fixGrammar, .explainCode, .summarize]) { action in
+                ForEach(state.enabledRoles.prefix(5)) { role in
                     Button {
-                        state.sendPrompt(selection, quickAction: action, originalSelection: selection)
+                        state.sendPrompt(selection, role: role, originalSelection: selection)
                         state.capturedSelection = nil
                         state.capturedSourceApp = nil
                     } label: {
                         HStack(spacing: 2.5) {
-                            Image(systemName: action.systemIcon)
+                            Image(systemName: role.systemIcon)
                                 .font(.system(size: 7.5))
-                            Text(action.title)
+                            Text(role.title)
                                 .font(.system(size: 8.5, weight: .semibold))
                         }
                         .padding(.horizontal, 5)
@@ -111,14 +111,14 @@ public struct AIAssistantDrawerView: View {
     private var quickActionPillsRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                ForEach(state.enabledActions) { action in
+                ForEach(state.enabledRoles) { role in
                     Button {
-                        triggerQuickAction(action)
+                        triggerRoleAction(role)
                     } label: {
                         HStack(spacing: 3) {
-                            Image(systemName: action.systemIcon)
+                            Image(systemName: role.systemIcon)
                                 .font(.system(size: 8))
-                            Text(action.title)
+                            Text(role.title)
                                 .font(.system(size: 9, weight: .medium))
                         }
                         .padding(.horizontal, 6)
@@ -138,21 +138,21 @@ public struct AIAssistantDrawerView: View {
         }
     }
 
-    private func triggerQuickAction(_ action: AIQuickActionType) {
+    private func triggerRoleAction(_ role: AIRolePreset) {
         if !state.inputText.isEmpty {
             let prompt = state.inputText
             state.inputText = ""
-            state.sendPrompt(prompt, quickAction: action, originalSelection: prompt)
+            state.sendPrompt(prompt, role: role, originalSelection: prompt)
         } else if let pbText = NSPasteboard.general.string(forType: .string),
                   !pbText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            state.sendPrompt(pbText, quickAction: action, originalSelection: pbText)
+            state.sendPrompt(pbText, role: role, originalSelection: pbText)
         } else {
             state.refreshCapturedSelection()
             if let sel = state.capturedSelection {
-                state.sendPrompt(sel, quickAction: action, originalSelection: sel)
+                state.sendPrompt(sel, role: role, originalSelection: sel)
                 state.capturedSelection = nil
             } else {
-                state.sendPrompt(action.title, quickAction: action)
+                state.sendPrompt(role.title, role: role)
             }
         }
     }
@@ -687,32 +687,72 @@ private func parseMessageBlocks(_ content: String) -> [MessageBlock] {
 
 // MARK: - Stepped Mini-Drawer View (Decomposed Mode)
 public struct AIAssistantSteppedDrawerView: View {
-    public let action: AIQuickActionType
+    public let role: AIRolePreset
     @Bindable public var state: AIAssistantPluginState
     public let context: PurahPluginContext
 
     @State private var localPromptInput: String = ""
 
-    public init(action: AIQuickActionType, state: AIAssistantPluginState, context: PurahPluginContext) {
-        self.action = action
+    public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
+        self.role = role
         self.state = state
         self.context = context
     }
 
+    public init(action: AIQuickActionType, state: AIAssistantPluginState, context: PurahPluginContext) {
+        self.role = AIRolePreset.from(action: action)
+        self.state = state
+        self.context = context
+    }
+
+    private var drawerShape: UnevenRoundedRectangle {
+        if context.edge == .right {
+            return UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
+        } else {
+            return UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 10, topTrailingRadius: 10, style: .continuous)
+        }
+    }
+
     public var body: some View {
-        let isPinned = context.isItemPinned("ai-\(action.rawValue)")
-        let h = context.slotHeight
+        let subItemId = "ai-\(role.id)"
+        let isPinned = context.isItemPinned(subItemId)
+        let isExpanded = context.isExpanded || isPinned
+        let barW = CGFloat(context.store.railBarWidth)
+        let cardH = max(context.slotHeight, 44.0)
+        let drawerW = context.drawerWidth
+        let edge = context.edge
+
+        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
+            // 1. In-Rail Indicator Bar
+            RoundedRectangle(cornerRadius: min(barW / 2, 4))
+                .fill(context.accentColor.opacity(isExpanded ? 0.95 : 0.72))
+                .frame(width: barW, height: cardH)
+
+            // 2. Expanded Stepped Card
+            steppedCard(subItemId: subItemId, isPinned: isPinned, cardH: cardH, drawerW: drawerW, edge: edge)
+                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
+                .opacity(isExpanded ? 1.0 : 0.0)
+                .allowsHitTesting(isExpanded)
+        }
+        .frame(height: cardH)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
+    }
+
+    @ViewBuilder
+    private func steppedCard(subItemId: String, isPinned: Bool, cardH: CGFloat, drawerW: CGFloat, edge: MountEdge) -> some View {
+        let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id)
 
         VStack(alignment: .leading, spacing: 4) {
-            // Row 1: Action Header & Action Buttons
+            // Row 1: Role Header & Action Buttons
             HStack(spacing: 5) {
-                Image(systemName: action.systemIcon)
+                Image(systemName: role.systemIcon)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(context.accentColor)
 
-                Text(action.title)
+                Text(role.title)
                     .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
+                    .lineLimit(1)
 
                 Spacer()
 
@@ -721,9 +761,9 @@ public struct AIAssistantSteppedDrawerView: View {
                     executeAction()
                 } label: {
                     HStack(spacing: 2) {
-                        Image(systemName: (state.isStreaming && state.activeQuickAction == action) ? "stop.fill" : "play.fill")
+                        Image(systemName: isRunning ? "stop.fill" : "play.fill")
                             .font(.system(size: 7))
-                        Text((state.isStreaming && state.activeQuickAction == action) ? "Stop" : "Run")
+                        Text(isRunning ? "Stop" : "Run")
                             .font(.system(size: 8.5, weight: .semibold))
                     }
                     .padding(.horizontal, 5)
@@ -750,25 +790,27 @@ public struct AIAssistantSteppedDrawerView: View {
                     tintColor: context.accentColor,
                     size: 18,
                     action: {
-                        context.togglePin("ai-\(action.rawValue)")
+                        context.togglePin(subItemId)
                     }
                 )
             }
 
             // Row 2: Live Content Preview / Input
-            let contentH = max(h - 32.0, 20.0)
+            let contentH = max(cardH - 32.0, 20.0)
             row2Content
                 .frame(height: contentH)
                 .clipped()
         }
-        .padding(6)
-        .frame(width: context.drawerWidth, height: h)
-        .clipped()
+        .padding(.leading, edge == .left ? 12 : 20)
+        .padding(.trailing, edge == .left ? 20 : 12)
+        .padding(.vertical, 6)
+        .frame(width: drawerW, height: cardH)
+        .liquidDrawerBackground(shape: drawerShape, accentColor: context.accentColor)
     }
 
     @ViewBuilder
     private var row2Content: some View {
-        if action == .ask {
+        if !role.isTransform && (role.id == "ask" || role.id.contains("ask")) {
             HStack(spacing: 4) {
                 TextField("Prompt...", text: $localPromptInput)
                     .textFieldStyle(.plain)
@@ -780,7 +822,7 @@ public struct AIAssistantSteppedDrawerView: View {
                         if !localPromptInput.isEmpty && !state.isStreaming {
                             let text = localPromptInput
                             localPromptInput = ""
-                            state.sendPrompt(text, quickAction: .ask)
+                            state.sendPrompt(text, role: role)
                         }
                     }
 
@@ -788,7 +830,7 @@ public struct AIAssistantSteppedDrawerView: View {
                     if !localPromptInput.isEmpty && !state.isStreaming {
                         let text = localPromptInput
                         localPromptInput = ""
-                        state.sendPrompt(text, quickAction: .ask)
+                        state.sendPrompt(text, role: role)
                     }
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
@@ -800,8 +842,10 @@ public struct AIAssistantSteppedDrawerView: View {
             }
         } else {
             // Live Preview of latest assistant response
-            let matchingResponse = state.activeSession?.messages.last(where: { $0.role == .assistant && $0.quickAction == action })?.content
-                ?? (state.activeQuickAction == action ? state.activeSession?.messages.last(where: { $0.role == .assistant })?.content : nil)
+            let matchingResponse = state.activeSession?.messages.last(where: {
+                $0.role == .assistant && ($0.roleId == role.id || $0.quickAction?.id == role.id)
+            })?.content
+                ?? ((state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id) ? state.activeSession?.messages.last(where: { $0.role == .assistant })?.content : nil)
 
             if let content = matchingResponse, !content.isEmpty {
                 ScrollView(.vertical, showsIndicators: false) {
@@ -821,25 +865,27 @@ public struct AIAssistantSteppedDrawerView: View {
     }
 
     private func executeAction() {
-        if state.isStreaming && state.activeQuickAction == action {
+        let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id)
+        if isRunning {
             state.stopStreaming()
             return
         }
 
         if let captured = AIAssistantService.shared.captureFrontmostSelection(),
            !captured.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            state.sendPrompt(captured.text, quickAction: action, originalSelection: captured.text)
+            state.sendPrompt(captured.text, role: role, originalSelection: captured.text)
         } else if let pbText = NSPasteboard.general.string(forType: .string),
                   !pbText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            state.sendPrompt(pbText, quickAction: action, originalSelection: pbText)
+            state.sendPrompt(pbText, role: role, originalSelection: pbText)
         } else {
-            state.sendPrompt(action.title, quickAction: action)
+            state.sendPrompt(role.title, role: role)
         }
     }
 
     private func copyLatestOutput() {
-        let matching = state.activeSession?.messages.last(where: { $0.role == .assistant && $0.quickAction == action })?.content
-            ?? state.activeSession?.messages.last(where: { $0.role == .assistant })?.content
+        let matching = state.activeSession?.messages.last(where: {
+            $0.role == .assistant && ($0.roleId == role.id || $0.quickAction?.id == role.id)
+        })?.content ?? state.activeSession?.messages.last(where: { $0.role == .assistant })?.content
         if let text = matching, !text.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)

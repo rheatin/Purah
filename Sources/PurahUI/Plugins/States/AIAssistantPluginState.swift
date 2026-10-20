@@ -27,6 +27,26 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var customCLIPath: String {
+        didSet {
+            storage.set(customCLIPath, forKey: "customCLIPath")
+        }
+    }
+
+    public var customCLIArguments: String {
+        didSet {
+            storage.set(customCLIArguments, forKey: "customCLIArguments")
+        }
+    }
+
+    public var retentionPeriod: PurahRetentionPeriod {
+        didSet {
+            storage.set(retentionPeriod.rawValue, forKey: "retentionPeriod")
+            repository.retentionPeriod = retentionPeriod
+            pruneExpiredSessions()
+        }
+    }
+
     public var openAIBaseURL: String {
         didSet {
             storage.set(openAIBaseURL, forKey: "openAIBaseURL")
@@ -76,12 +96,32 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var rolePresets: [AIRolePreset] {
+        didSet {
+            storage.setCodable(rolePresets, forKey: "rolePresets")
+            boundStore?._aiRolePresets = rolePresets
+            let filtered = rolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
+            if enabledActions != filtered {
+                enabledActions = filtered
+            }
+        }
+    }
+
+    public var enabledRoles: [AIRolePreset] {
+        rolePresets.filter(\.isEnabled)
+    }
+
     public var enabledActions: [AIQuickActionType] {
         didSet {
             storage.setCodable(enabledActions, forKey: "enabledActions")
             boundStore?._aiEnabledActions = enabledActions
         }
     }
+
+    // MARK: - Model Discovery State
+    public var fetchedModels: [AIProviderKind: [String]] = [:]
+    public var isFetchingModels: Bool = false
+    public var fetchModelsStatusMessage: String? = nil
 
     // MARK: - Live Chat & Streaming State
     public var sessions: [AIChatSession] = []
@@ -92,6 +132,7 @@ public final class AIAssistantPluginState: Sendable {
     public var capturedSourceApp: String? = nil
     public var stagedAttachments: [AIAttachmentItem] = []
     public var activeQuickAction: AIQuickActionType? = nil
+    public var activeRole: AIRolePreset? = nil
 
     @ObservationIgnored private var currentStreamingTask: Task<Void, Never>?
     @ObservationIgnored private var accumulatedStreamRaw: String = ""
@@ -125,6 +166,19 @@ public final class AIAssistantPluginState: Sendable {
             self.selectedCLI = .claude
         }
 
+        self.customCLIPath = storage.string(forKey: "customCLIPath") ?? ""
+        self.customCLIArguments = storage.string(forKey: "customCLIArguments") ?? "{prompt}"
+
+        let resolvedRetention: PurahRetentionPeriod
+        if let retStr = storage.string(forKey: "retentionPeriod"),
+           let ret = PurahRetentionPeriod(rawValue: retStr) {
+            resolvedRetention = ret
+        } else {
+            resolvedRetention = .thirtyDays
+        }
+        self.retentionPeriod = resolvedRetention
+        self.repository.retentionPeriod = resolvedRetention
+
         self.openAIBaseURL = storage.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1"
         self.openAIAPIKey = storage.string(forKey: "openAIAPIKey") ?? ""
         self.openAIModel = storage.string(forKey: "openAIModel") ?? "gpt-4o-mini"
@@ -139,13 +193,23 @@ public final class AIAssistantPluginState: Sendable {
             self.isDecomposed = false
         }
 
+        let resolvedPresets: [AIRolePreset]
+        if let presets = storage.codable(forKey: "rolePresets", as: [AIRolePreset].self) {
+            resolvedPresets = presets
+        } else {
+            resolvedPresets = AIRolePreset.defaultPresets
+        }
+        self.rolePresets = resolvedPresets
+
         if let actions = storage.codable(forKey: "enabledActions", as: [AIQuickActionType].self) {
             self.enabledActions = actions
         } else {
-            self.enabledActions = [.ask, .translate, .polish, .explainCode]
+            self.enabledActions = resolvedPresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
         }
 
         self.sessions = repository.items
+        pruneExpiredSessions()
+
         if let first = self.sessions.first {
             self.activeSessionId = first.id
         } else {
@@ -168,7 +232,8 @@ public final class AIAssistantPluginState: Sendable {
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
         self.isDecomposed = store._isAIDecomposed
-        self.enabledActions = store._aiEnabledActions
+        self.rolePresets = store._aiRolePresets
+        self.enabledActions = store._aiRolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
         refreshCapturedSelection()
     }
 
@@ -183,6 +248,9 @@ public final class AIAssistantPluginState: Sendable {
     public func save() {
         storage.set(selectedProvider.rawValue, forKey: "selectedProvider")
         storage.set(selectedCLI.rawValue, forKey: "selectedCLI")
+        storage.set(customCLIPath, forKey: "customCLIPath")
+        storage.set(customCLIArguments, forKey: "customCLIArguments")
+        storage.set(retentionPeriod.rawValue, forKey: "retentionPeriod")
         storage.set(openAIBaseURL, forKey: "openAIBaseURL")
         storage.set(openAIAPIKey, forKey: "openAIAPIKey")
         storage.set(openAIModel, forKey: "openAIModel")
@@ -191,11 +259,12 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(ollamaBaseURL, forKey: "ollamaBaseURL")
         storage.set(ollamaModel, forKey: "ollamaModel")
         storage.set(isDecomposed, forKey: "isDecomposed")
+        storage.setCodable(rolePresets, forKey: "rolePresets")
         storage.setCodable(enabledActions, forKey: "enabledActions")
         repository.saveToDisk()
     }
 
-    // MARK: - Session Management
+    // MARK: - Session Management & Retention
     public func createNewSession() {
         let newSession = AIChatSession(
             id: UUID().uuidString,
@@ -230,6 +299,128 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public func pruneExpiredSessions(now: Date = Date()) {
+        repository.cleanExpired(retention: retentionPeriod, now: now)
+        self.sessions = repository.items
+        if !sessions.contains(where: { $0.id == activeSessionId }) {
+            if let first = sessions.first {
+                activeSessionId = first.id
+            } else {
+                createNewSession()
+            }
+        }
+    }
+
+    public func clearUnstarredSessions() {
+        repository.clearAll(keepFavorites: true)
+        self.sessions = repository.items
+        if !sessions.contains(where: { $0.id == activeSessionId }) {
+            if let first = sessions.first {
+                activeSessionId = first.id
+            } else {
+                createNewSession()
+            }
+        }
+    }
+
+    // MARK: - Custom Role Presets Management
+    public func addCustomRole(title: String, systemIcon: String = "sparkles", systemPrompt: String, isTransform: Bool = false) {
+        let id = "role-\(UUID().uuidString.prefix(8).lowercased())"
+        let newRole = AIRolePreset(
+            id: id,
+            title: title,
+            systemIcon: systemIcon,
+            systemPrompt: systemPrompt,
+            isTransform: isTransform,
+            isEnabled: true,
+            isBuiltIn: false
+        )
+        rolePresets.append(newRole)
+        save()
+    }
+
+    public func updateRole(_ role: AIRolePreset) {
+        if let idx = rolePresets.firstIndex(where: { $0.id == role.id }) {
+            rolePresets[idx] = role
+            save()
+        }
+    }
+
+    public func deleteRole(id: String) {
+        if let idx = rolePresets.firstIndex(where: { $0.id == id }) {
+            if rolePresets[idx].isBuiltIn {
+                resetBuiltInRolePrompt(id: id)
+            } else {
+                rolePresets.remove(at: idx)
+                save()
+            }
+        }
+    }
+
+    public func resetBuiltInRolePrompt(id: String) {
+        if let defaultRole = AIRolePreset.defaultPresets.first(where: { $0.id == id }),
+           let idx = rolePresets.firstIndex(where: { $0.id == id }) {
+            rolePresets[idx].title = defaultRole.title
+            rolePresets[idx].systemIcon = defaultRole.systemIcon
+            rolePresets[idx].systemPrompt = defaultRole.systemPrompt
+            rolePresets[idx].isTransform = defaultRole.isTransform
+            save()
+        }
+    }
+
+    // MARK: - Model Discovery
+    public func availableModels(for provider: AIProviderKind) -> [String] {
+        if let fetched = fetchedModels[provider], !fetched.isEmpty {
+            return fetched
+        }
+        switch provider {
+        case .httpOpenAI:
+            return ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini", "gpt-4-turbo"]
+        case .httpAnthropic:
+            return ["claude-sonnet-4-20250514", "claude-3-7-sonnet-latest", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
+        case .httpOllama:
+            return ["llama3.2", "llama3.1", "qwen2.5-coder", "deepseek-r1", "mistral", "phi3"]
+        case .appleIntelligence:
+            return ["apple-intelligence-on-device"]
+        case .localCLI:
+            return ["default"]
+        }
+    }
+
+    public func fetchModelsForCurrentProvider() async {
+        isFetchingModels = true
+        fetchModelsStatusMessage = nil
+        let provider = selectedProvider
+        let baseURL: String = {
+            switch provider {
+            case .httpOpenAI: return openAIBaseURL
+            case .httpOllama: return ollamaBaseURL
+            case .httpAnthropic: return ""
+            default: return ""
+            }
+        }()
+        let apiKey: String = {
+            switch provider {
+            case .httpOpenAI: return openAIAPIKey
+            case .httpAnthropic: return anthropicAPIKey
+            default: return ""
+            }
+        }()
+
+        do {
+            let models = try await AIAssistantService.shared.fetchAvailableModels(
+                provider: provider,
+                baseURL: baseURL,
+                apiKey: apiKey
+            )
+            fetchedModels[provider] = models
+            fetchModelsStatusMessage = "Found \(models.count) models"
+        } catch {
+            fetchModelsStatusMessage = "Failed: \(error.localizedDescription)"
+        }
+        isFetchingModels = false
+    }
+
     // MARK: - Selection Context Capture
     public func refreshCapturedSelection() {
         if let captured = AIAssistantService.shared.captureFrontmostSelection() {
@@ -242,7 +433,12 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     // MARK: - Prompt Execution & Streaming
-    public func sendPrompt(_ prompt: String, quickAction: AIQuickActionType? = nil, originalSelection: String? = nil) {
+    public func sendPrompt(
+        _ prompt: String,
+        quickAction: AIQuickActionType? = nil,
+        role: AIRolePreset? = nil,
+        originalSelection: String? = nil
+    ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
 
@@ -254,13 +450,21 @@ public final class AIAssistantPluginState: Sendable {
 
         guard let sessionIdx = sessions.firstIndex(where: { $0.id == activeSessionId }) else { return }
 
+        let effectiveAction = quickAction ?? (role.flatMap { AIQuickActionType(rawValue: $0.id) })
+        let effectivePromptOverride = role?.systemPrompt ?? quickAction?.buildSystemPrompt()
+        let effectiveRoleTitle = role?.title ?? effectiveAction?.title
+        let effectiveRoleId = role?.id ?? effectiveAction?.id
+
         let userMsg = AIChatMessage(
             role: .user,
             content: trimmed.isEmpty ? "Sent attachments" : trimmed,
             attachments: stagedAttachments,
             timestamp: Date(),
-            quickAction: quickAction,
-            originalSelection: originalSelection
+            quickAction: effectiveAction,
+            originalSelection: originalSelection,
+            systemPromptOverride: effectivePromptOverride,
+            roleTitle: effectiveRoleTitle,
+            roleId: effectiveRoleId
         )
         stagedAttachments.removeAll()
 
@@ -270,8 +474,11 @@ public final class AIAssistantPluginState: Sendable {
             role: .assistant,
             content: "",
             timestamp: Date(),
-            quickAction: quickAction,
-            originalSelection: originalSelection
+            quickAction: effectiveAction,
+            originalSelection: originalSelection,
+            systemPromptOverride: effectivePromptOverride,
+            roleTitle: effectiveRoleTitle,
+            roleId: effectiveRoleId
         )
 
         sessions[sessionIdx].messages.append(userMsg)
@@ -290,13 +497,16 @@ public final class AIAssistantPluginState: Sendable {
         repository.update(sessions[sessionIdx])
 
         isStreaming = true
-        activeQuickAction = quickAction
+        activeQuickAction = effectiveAction
+        activeRole = role
         accumulatedStreamRaw = ""
 
         let msgsToSend = Array(sessions[sessionIdx].messages.dropLast())
         let targetSessionId = activeSessionId
         let provider = selectedProvider
         let cli = selectedCLI
+        let customPath = customCLIPath
+        let customArgs = customCLIArguments
         let apiKey: String? = {
             switch provider {
             case .httpOpenAI: return openAIAPIKey
@@ -327,9 +537,12 @@ public final class AIAssistantPluginState: Sendable {
                     messages: msgsToSend,
                     provider: provider,
                     cliExecutable: cli,
+                    customCLIPath: customPath,
+                    customCLIArguments: customArgs,
                     apiKey: apiKey,
                     endpoint: endpoint,
                     model: model,
+                    systemPromptOverride: effectivePromptOverride,
                     onChunk: { [weak self] chunk in
                         Task { @MainActor [weak self] in
                             self?.handleChunk(chunk, forSession: targetSessionId, assistantMsgId: assistantMsgId)
