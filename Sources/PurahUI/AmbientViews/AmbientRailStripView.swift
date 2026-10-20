@@ -180,6 +180,8 @@ public struct AmbientRailStripView: View {
                     if store.hoveredPodId == pod.id {
                         store.hoveredPodId = nil
                     }
+                    store.onDismissPreviewPanel?()
+                    store.activePreviewScreenFrame = nil
                     store.invalidateLayoutCache()
                 }
             },
@@ -294,6 +296,8 @@ public struct AmbientRailStripView: View {
                     if store.hoveredPodId == pod.id {
                         store.hoveredPodId = nil
                     }
+                    store.onDismissPreviewPanel?()
+                    store.activePreviewScreenFrame = nil
                     store.invalidateLayoutCache()
                 }
             },

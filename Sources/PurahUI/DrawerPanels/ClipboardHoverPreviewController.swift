@@ -1,6 +1,7 @@
 // Sources/PurahUI/DrawerPanels/ClipboardHoverPreviewController.swift
 import AppKit
 import SwiftUI
+import Observation
 import PurahCore
 
 // MARK: - Detached Floating QuickLook Aperture View
@@ -9,19 +10,25 @@ public struct ClipboardHoverApertureView: View {
     public let shelfFile: ShelfFileItem?
     public let shelfURL: URL?
     public let palette: ThemePalette
+    public var isPinned: Bool = false
+    public var onClosePinned: (() -> Void)? = nil
 
-    public init(item: ClipboardItem, palette: ThemePalette) {
+    public init(item: ClipboardItem, palette: ThemePalette, isPinned: Bool = false, onClosePinned: (() -> Void)? = nil) {
         self.item = item
         self.shelfFile = nil
         self.shelfURL = nil
         self.palette = palette
+        self.isPinned = isPinned
+        self.onClosePinned = onClosePinned
     }
 
-    public init(shelfFile: ShelfFileItem, url: URL, item: ClipboardItem? = nil, palette: ThemePalette) {
+    public init(shelfFile: ShelfFileItem, url: URL, item: ClipboardItem? = nil, palette: ThemePalette, isPinned: Bool = false, onClosePinned: (() -> Void)? = nil) {
         self.item = item
         self.shelfFile = shelfFile
         self.shelfURL = url
         self.palette = palette
+        self.isPinned = isPinned
+        self.onClosePinned = onClosePinned
     }
 
     public var body: some View {
@@ -53,6 +60,31 @@ public struct ClipboardHoverApertureView: View {
     }
 
     @ViewBuilder
+    private var pinnedHeaderBadge: some View {
+        if isPinned {
+            HStack(spacing: 4) {
+                Text("PINNED")
+                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(palette.primaryAccent.opacity(0.22))
+                    .foregroundColor(palette.primaryAccent)
+                    .cornerRadius(4)
+
+                Button {
+                    onClosePinned?()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Close pinned preview")
+            }
+        }
+    }
+
+    @ViewBuilder
     private func colorPreview(hex: String, r: Double, g: Double, b: Double, a: Double) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -70,6 +102,8 @@ public struct ClipboardHoverApertureView: View {
                     .background(Color(hex: hex).opacity(0.2))
                     .foregroundColor(Color(hex: hex))
                     .cornerRadius(4)
+
+                pinnedHeaderBadge
             }
 
             // Big tactile swatch
@@ -112,6 +146,16 @@ public struct ClipboardHoverApertureView: View {
                     }
                 }
             }
+
+            if isPinned {
+                HStack {
+                    Spacer()
+                    Text("Scroll or select text • Click 👁 or × to unpin")
+                        .font(.system(size: 9))
+                        .foregroundColor(palette.primaryAccent)
+                        .lineLimit(1)
+                }
+            }
         }
     }
 
@@ -134,6 +178,8 @@ public struct ClipboardHoverApertureView: View {
                     .background(Color.blue.opacity(0.18))
                     .foregroundColor(.blue)
                     .cornerRadius(4)
+
+                pinnedHeaderBadge
             }
 
             if let nsImg = NSImage(contentsOfFile: path) {
@@ -156,9 +202,9 @@ public struct ClipboardHoverApertureView: View {
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(shelfFile?.filePath ?? "Drag thumbnail to export")
+                Text(isPinned ? "Scroll or select text • Click 👁 or × to unpin" : (shelfFile?.filePath ?? "Drag thumbnail to export"))
                     .font(.system(size: 9))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(isPinned ? palette.primaryAccent : .secondary.opacity(0.8))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -184,6 +230,8 @@ public struct ClipboardHoverApertureView: View {
                     .background(Color.secondary.opacity(0.15))
                     .foregroundColor(.secondary)
                     .cornerRadius(4)
+
+                pinnedHeaderBadge
             }
 
             ScrollView(.vertical, showsIndicators: true) {
@@ -209,9 +257,9 @@ public struct ClipboardHoverApertureView: View {
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(shelfFile?.filePath ?? "Click card to copy all")
+                Text(isPinned ? "Scroll or select text • Click 👁 or × to unpin" : (shelfFile?.filePath ?? "Click card to copy all"))
                     .font(.system(size: 9))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(isPinned ? palette.primaryAccent : .secondary.opacity(0.8))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -240,6 +288,8 @@ public struct ClipboardHoverApertureView: View {
                         .foregroundColor(palette.podColor(for: "shelf"))
                         .cornerRadius(4)
                 }
+
+                pinnedHeaderBadge
             }
 
             FilePreviewThumbnailView(url: url)
@@ -250,9 +300,9 @@ public struct ClipboardHoverApertureView: View {
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(url.path)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.75))
+                Text(isPinned ? "Scroll or select text • Click 👁 or × to unpin" : url.path)
+                    .font(.system(size: 9, design: isPinned ? .default : .monospaced))
+                    .foregroundColor(isPinned ? palette.primaryAccent : .secondary.opacity(0.75))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -295,19 +345,77 @@ private struct FilePreviewThumbnailView: View {
 }
 
 // MARK: - Transient Floating Hover Preview Controller (Zero Idle Memory)
-@MainActor
+@Observable @MainActor
 public final class ClipboardHoverPreviewController {
     public static let shared = ClipboardHoverPreviewController()
 
-    private var panel: NSPanel?
-    private var activeItemId: String?
-    private var pendingItemId: String?
-    private var showWorkItem: DispatchWorkItem?
-    private var hideWorkItem: DispatchWorkItem?
+    public private(set) var pinnedItemId: String? = nil
+    private weak var boundStore: PurahWorkspaceStore? = nil
+
+    @ObservationIgnored private var panel: NSPanel?
+    @ObservationIgnored private var activeItemId: String?
+    @ObservationIgnored private var pendingItemId: String?
+    @ObservationIgnored private var showWorkItem: DispatchWorkItem?
+    @ObservationIgnored private var hideWorkItem: DispatchWorkItem?
 
     private init() {}
 
+    public func isPinned(id: String) -> Bool {
+        pinnedItemId == id
+    }
+
+    public func togglePin(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat, store: PurahWorkspaceStore? = nil) {
+        if pinnedItemId == item.id {
+            pinnedItemId = nil
+            panel?.ignoresMouseEvents = true
+            boundStore?.activePreviewScreenFrame = nil
+            forceHide()
+        } else {
+            pinnedItemId = item.id
+            boundStore = store
+            store?.onDismissPreviewPanel = { [weak self] in
+                self?.forceHide()
+            }
+            showWorkItem?.cancel()
+            showWorkItem = nil
+            hideWorkItem?.cancel()
+            hideWorkItem = nil
+            performShow(item: item, edge: edge, palette: palette, drawerWidth: drawerWidth, isPinned: true)
+            if let targetPanel = panel {
+                targetPanel.ignoresMouseEvents = false
+                store?.activePreviewScreenFrame = targetPanel.frame.insetBy(dx: -28.0, dy: -20.0)
+            }
+        }
+    }
+
+    public func togglePin(shelfFile: ShelfFileItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat = 360.0, store: PurahWorkspaceStore? = nil) {
+        if pinnedItemId == shelfFile.id {
+            pinnedItemId = nil
+            panel?.ignoresMouseEvents = true
+            boundStore?.activePreviewScreenFrame = nil
+            forceHide()
+        } else {
+            pinnedItemId = shelfFile.id
+            boundStore = store
+            store?.onDismissPreviewPanel = { [weak self] in
+                self?.forceHide()
+            }
+            showWorkItem?.cancel()
+            showWorkItem = nil
+            hideWorkItem?.cancel()
+            hideWorkItem = nil
+            performShow(shelfFile: shelfFile, edge: edge, palette: palette, drawerWidth: drawerWidth, isPinned: true)
+            if let targetPanel = panel {
+                targetPanel.ignoresMouseEvents = false
+                store?.activePreviewScreenFrame = targetPanel.frame.insetBy(dx: -28.0, dy: -20.0)
+            }
+        }
+    }
+
     public func show(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
+        if pinnedItemId != nil {
+            return
+        }
         hideWorkItem?.cancel()
         hideWorkItem = nil
 
@@ -333,6 +441,9 @@ public final class ClipboardHoverPreviewController {
     }
 
     public func show(shelfFile: ShelfFileItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat = 360.0) {
+        if pinnedItemId != nil {
+            return
+        }
         hideWorkItem?.cancel()
         hideWorkItem = nil
 
@@ -355,7 +466,7 @@ public final class ClipboardHoverPreviewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
-    private func performShow(shelfFile: ShelfFileItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
+    private func performShow(shelfFile: ShelfFileItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat, isPinned: Bool = false) {
         pendingItemId = nil
         activeItemId = shelfFile.id
 
@@ -399,20 +510,37 @@ public final class ClipboardHoverPreviewController {
             }
         }
 
-        let view = ClipboardHoverApertureView(shelfFile: shelfFile, url: url, item: convertedItem, palette: palette)
-        presentApertureView(view, edge: edge, drawerWidth: drawerWidth)
+        let view = ClipboardHoverApertureView(
+            shelfFile: shelfFile,
+            url: url,
+            item: convertedItem,
+            palette: palette,
+            isPinned: isPinned,
+            onClosePinned: { [weak self] in
+                self?.forceHide()
+            }
+        )
+        presentApertureView(view, edge: edge, drawerWidth: drawerWidth, isInteractive: isPinned)
     }
 
-    private func performShow(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
+    private func performShow(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat, isPinned: Bool = false) {
         pendingItemId = nil
         activeItemId = item.id
 
-        let view = ClipboardHoverApertureView(item: item, palette: palette)
-        presentApertureView(view, edge: edge, drawerWidth: drawerWidth)
+        let view = ClipboardHoverApertureView(
+            item: item,
+            palette: palette,
+            isPinned: isPinned,
+            onClosePinned: { [weak self] in
+                self?.forceHide()
+            }
+        )
+        presentApertureView(view, edge: edge, drawerWidth: drawerWidth, isInteractive: isPinned)
     }
 
-    private func presentApertureView(_ view: ClipboardHoverApertureView, edge: MountEdge, drawerWidth: CGFloat) {
+    private func presentApertureView(_ view: ClipboardHoverApertureView, edge: MountEdge, drawerWidth: CGFloat, isInteractive: Bool = false) {
         let targetPanel = getOrCreatePanel()
+        targetPanel.ignoresMouseEvents = !isInteractive
         let hostingView = NSHostingView(rootView: view)
         hostingView.wantsLayer = true
         targetPanel.contentView = hostingView
@@ -451,6 +579,9 @@ public final class ClipboardHoverPreviewController {
     }
 
     public func hide() {
+        if pinnedItemId != nil {
+            return
+        }
         pendingItemId = nil
         showWorkItem?.cancel()
         showWorkItem = nil
@@ -464,12 +595,30 @@ public final class ClipboardHoverPreviewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.14, execute: work)
     }
 
-    private func performHide() {
+    public func forceHide() {
+        pinnedItemId = nil
+        boundStore?.activePreviewScreenFrame = nil
+        panel?.ignoresMouseEvents = true
+        showWorkItem?.cancel()
+        showWorkItem = nil
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+        performHide(immediate: true)
+    }
+
+    private func performHide(immediate: Bool = false) {
         guard let panel = panel, panel.isVisible else {
             activeItemId = nil
             return
         }
         activeItemId = nil
+
+        if immediate {
+            panel.alphaValue = 0.0
+            panel.orderOut(nil)
+            panel.contentView = nil
+            return
+        }
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.12
@@ -494,7 +643,7 @@ public final class ClipboardHoverPreviewController {
             backing: .buffered,
             defer: false
         )
-        p.level = .floating
+        p.level = NSWindow.Level(NSWindow.Level.floating.rawValue + 1)
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = false

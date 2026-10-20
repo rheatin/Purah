@@ -476,7 +476,7 @@ public struct DropShelfDrawerView: View {
             }
         }
         .onDisappear {
-            ClipboardHoverPreviewController.shared.hide()
+            ClipboardHoverPreviewController.shared.forceHide()
         }
     }
 
@@ -1408,20 +1408,23 @@ public struct ShelfFileRowView: View {
             Spacer(minLength: 8)
 
             // Trailing action buttons (remain directly clickable)
+            let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == file.id
             Button {
-                ClipboardHoverPreviewController.shared.show(
+                ClipboardHoverPreviewController.shared.togglePin(
                     shelfFile: file,
                     edge: edge,
                     palette: palette,
-                    drawerWidth: store.effectiveDrawerWidth(baseWidth: 360.0, podId: "shelf")
+                    drawerWidth: store.effectiveDrawerWidth(baseWidth: 360.0, podId: "shelf"),
+                    store: store
                 )
+                store.triggerControlHaptic(.alignment)
             } label: {
-                Image(systemName: "eye")
+                Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
                     .font(.system(size: 10))
-                    .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.55))
+                    .foregroundColor(isPreviewPinned ? shelfColor : .gray.opacity(isHovered ? 1.0 : 0.55))
             }
             .buttonStyle(.plain)
-            .help("dropshelf.quickLook".localized)
+            .help(isPreviewPinned ? "Unpin preview" : "dropshelf.quickLook".localized)
 
             Button {
                 if let onToggleFavorite {

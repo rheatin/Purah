@@ -777,6 +777,10 @@ public final class EdgeMouseMonitor {
         let hasPinned = store.hasPinnedItem(on: edge)
         guard hasActive || hasPinned else { return false }
 
+        if let previewFrame = store.activePreviewScreenFrame, previewFrame.contains(point) {
+            return true
+        }
+
         let windowW = Double(AmbientRailWindow.maxCanvasWidth)
 
         // Fast-path 2: Trivial horizontal rejection - if point is outside the maximum canvas boundary, return false instantly!

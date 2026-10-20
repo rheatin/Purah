@@ -349,6 +349,24 @@ public struct ClipboardItemDrawerView: View {
             Spacer()
 
             if let item = item {
+                let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == item.id
+                Button {
+                    ClipboardHoverPreviewController.shared.togglePin(
+                        item: item,
+                        edge: edge,
+                        palette: palette,
+                        drawerWidth: 290.0,
+                        store: store
+                    )
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                } label: {
+                    Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
+                        .font(.system(size: 11))
+                        .foregroundColor(isPreviewPinned ? palette.primaryAccent : (palette.style == .native ? .primary : .white))
+                }
+                .buttonStyle(.tactile)
+                .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+
                 Button {
                     pluginState.copyItem(item)
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
@@ -405,7 +423,7 @@ public struct ClipboardItemDrawerView: View {
             }
         }
         .onDisappear {
-            ClipboardHoverPreviewController.shared.hide()
+            ClipboardHoverPreviewController.shared.forceHide()
         }
     }
 
@@ -560,6 +578,9 @@ public struct ClipboardFullDrawerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onDisappear {
+            ClipboardHoverPreviewController.shared.forceHide()
+        }
     }
 
     @ViewBuilder
@@ -912,19 +933,39 @@ public struct ClipboardFullDrawerView: View {
         .background(isHovered ? Color.secondary.opacity(0.14) : Color.secondary.opacity(0.08))
         .cornerRadius(isCompact ? 7 : 10)
         .overlay(alignment: .topTrailing) {
-            Button {
-                state.toggleFavorite(id: item.id)
-                context.performHaptic(.alignment)
-            } label: {
-                Image(systemName: item.isFavorite ? "star.fill" : "star")
-                    .font(.system(size: isCompact ? 9 : 10.5))
-                    .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
-                    .scaleEffect(item.isFavorite ? 1.05 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
+            HStack(spacing: 5) {
+                let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == item.id
+                Button {
+                    ClipboardHoverPreviewController.shared.togglePin(
+                        item: item,
+                        edge: context.edge,
+                        palette: palette,
+                        drawerWidth: context.drawerWidth,
+                        store: context.store
+                    )
+                    context.performHaptic(.alignment)
+                } label: {
+                    Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
+                        .font(.system(size: isCompact ? 9 : 10.5))
+                        .foregroundColor(isPreviewPinned ? palette.primaryAccent : (isHovered ? .secondary : .clear))
+                }
+                .buttonStyle(.plain)
+                .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+
+                Button {
+                    state.toggleFavorite(id: item.id)
+                    context.performHaptic(.alignment)
+                } label: {
+                    Image(systemName: item.isFavorite ? "star.fill" : "star")
+                        .font(.system(size: isCompact ? 9 : 10.5))
+                        .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
+                        .scaleEffect(item.isFavorite ? 1.05 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
+                }
+                .buttonStyle(.plain)
+                .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
             }
-            .buttonStyle(.plain)
             .padding(isCompact ? 4 : 6)
-            .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
         }
         .overlay(
             RoundedRectangle(cornerRadius: isCompact ? 7 : 10)

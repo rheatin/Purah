@@ -68,6 +68,10 @@ public final class PurahWorkspaceStore {
     public var externalDragTargetPodId: String? = nil
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
     public var sculptorHotKeyShortcut: HotKeyShortcut = .defaultSculptorShortcut
+    public var activePreviewScreenFrame: CGRect? = nil
+
+    @ObservationIgnored
+    public var onDismissPreviewPanel: (@MainActor () -> Void)? = nil
 
     @ObservationIgnored
     public var onLiveRailEditingChanged: (@MainActor (Bool) -> Void)?
@@ -826,6 +830,8 @@ public final class PurahWorkspaceStore {
     }
 
     public func dismissActiveDrawer() {
+        onDismissPreviewPanel?()
+        activePreviewScreenFrame = nil
         pendingHoverPodId = nil
         activeDrawerPodId = nil
         activeDrawerItemId = nil
