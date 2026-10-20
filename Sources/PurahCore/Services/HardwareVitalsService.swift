@@ -349,8 +349,8 @@ public final class HardwareVitalsService {
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self = self else { break }
-                self.refreshMetrics(includeProcesses: false)
                 self.saveThrottleCounter += 1
+                self.refreshMetrics(includeProcesses: (self.saveThrottleCounter % 3 == 0))
                 if self.saveThrottleCounter >= 60 {
                     self.saveThrottleCounter = 0
                     self.saveHistoryToDisk()
@@ -757,7 +757,7 @@ public final class HardwareVitalsService {
         }
 
         items.sort { $0.memoryPercent > $1.memoryPercent }
-        return Array(items.prefix(6))
+        return items
     }
 
     // MARK: - Zero-Overhead GPU & Network Telemetry

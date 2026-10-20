@@ -278,6 +278,11 @@ public struct HardwareVitalsDrawerView: View {
                         withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
                             selectedTab = tab
                         }
+                        if tab == .processes {
+                            Task {
+                                await vitals.refreshMetricsAsync(includeProcesses: true)
+                            }
+                        }
                     } label: {
                         Text(tab.title)
                             .font(.system(size: 8.5, weight: selectedTab == tab ? .bold : .medium, design: .rounded))
@@ -422,7 +427,8 @@ public struct HardwareVitalsDrawerView: View {
                     }
                     .frame(height: 4)
 
-                    Text("Wired \(String(format: "%.1f", metrics.memoryWiredGB))G · Compr \(String(format: "%.1f", metrics.memoryCompressedGB))G · Swp \(Int(metrics.memorySwapUsedMB))M")
+                    let swapStr = metrics.memorySwapUsedMB >= 1024 ? String(format: "%.1fG", metrics.memorySwapUsedMB / 1024.0) : "\(Int(metrics.memorySwapUsedMB))M"
+                    Text("Wired \(String(format: "%.1f", metrics.memoryWiredGB))G · Compr \(String(format: "%.1f", metrics.memoryCompressedGB))G · Swp \(swapStr)")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -432,28 +438,26 @@ public struct HardwareVitalsDrawerView: View {
                 .cornerRadius(7)
                 .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
 
-                // 4. Net & Power Card
+                // 4. Battery Card
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text("Net & Power")
+                        Text("Battery")
                             .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("↓ \(formatSpeed(metrics.networkDownSpeed))")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(netColor)
+                        Text("\(metrics.batteryLevel)%")
+                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .foregroundColor(powerColor)
                     }
-                    HStack(spacing: 4) {
-                        Text("IP: \(metrics.localIPAddress)")
-                            .font(.system(size: 7.5, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("↑ \(formatSpeed(metrics.networkUpSpeed))")
-                            .font(.system(size: 7.5, design: .monospaced))
-                            .foregroundColor(.secondary)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule().fill(powerColor).frame(width: max(geo.size.width * CGFloat(min(max(CGFloat(metrics.batteryLevel) / 100.0, 0.0), 1.0)), 3))
+                        }
                     }
+                    .frame(height: 4)
 
-                    Text("Bat \(metrics.batteryLevel)% · \(metrics.batteryHealthPercent)% Hlt · \(metrics.batteryCycleCount) cyc")
+                    Text("Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)")
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -463,6 +467,59 @@ public struct HardwareVitalsDrawerView: View {
                 .cornerRadius(7)
                 .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
             }
+
+            // Dedicated Full-Width Network Card
+            VStack(alignment: .leading, spacing: 4) {
+                // Top Row
+                HStack(spacing: 6) {
+                    Image(systemName: "network")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(netColor)
+                    Text("Network")
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary)
+
+                    Text("\(metrics.networkInterfaceName) · \(metrics.localIPAddress)")
+                        .font(.system(size: 7.5, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(3.5)
+
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Text("↓ \(formatSpeed(metrics.networkDownSpeed))")
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .foregroundColor(netColor)
+                        Text("↑ \(formatSpeed(metrics.networkUpSpeed))")
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(hex: "#0A84FF"))
+                    }
+                }
+
+                // Bottom Row: Activity bar + session totals on the right
+                HStack(spacing: 6) {
+                    GeometryReader { geo in
+                        let netRatio = min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule().fill(netColor).frame(width: max(geo.size.width * CGFloat(netRatio), 3))
+                        }
+                    }
+                    .frame(height: 4)
+
+                    Text("Total: ↓ \(String(format: "%.1f", metrics.networkTotalReceivedGB)) GB · ↑ \(String(format: "%.1f", metrics.networkTotalSentGB)) GB")
+                        .font(.system(size: 7.5, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(6)
+            .background(Color.primary.opacity(0.035))
+            .cornerRadius(7)
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
 
             // Tier 3 Extension: If height >= 235pt, append CPU/RAM Breakdown Strip + Top Processes
             if height >= 235.0 {
@@ -493,6 +550,9 @@ public struct HardwareVitalsDrawerView: View {
                         Spacer()
                         Button {
                             withAnimation { selectedTab = .processes }
+                            Task {
+                                await vitals.refreshMetricsAsync(includeProcesses: true)
+                            }
                         } label: {
                             Text("View All")
                                 .font(.system(size: 8, weight: .medium))
@@ -745,7 +805,7 @@ public struct HardwareVitalsDrawerView: View {
 
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("Process Inspector")
+                Text("Process Inspector (\(sorted.count))")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                 Spacer()
                 HStack(spacing: 2) {
@@ -827,6 +887,11 @@ public struct HardwareVitalsDrawerView: View {
                 .padding(.vertical, 3.5)
                 .background(Color.primary.opacity(0.025))
                 .cornerRadius(5.5)
+            }
+        }
+        .onAppear {
+            Task {
+                await vitals.refreshMetricsAsync(includeProcesses: true)
             }
         }
     }
