@@ -258,6 +258,8 @@ public final class LocalizationManager {
             "notes.savedTime": "Saved · %@",
             "notes.copy": "Copy",
             "notes.copied": "Copied",
+            "notes.export": "Export",
+            "notes.exportHelp": "Export note as Markdown (.md) file",
 
             // Todo & Calendar
             "todo.empty.title": "No pending tasks",
@@ -677,6 +679,8 @@ public final class LocalizationManager {
             "notes.savedTime": "已保存 · %@",
             "notes.copy": "复制",
             "notes.copied": "已复制",
+            "notes.export": "导出",
+            "notes.exportHelp": "将当前笔记导出为 Markdown (.md) 文件",
 
             // 待办与日历
             "todo.empty.title": "无待办事项",

@@ -345,6 +345,7 @@ public final class AIAssistantService {
         model: String? = nil,
         targetLanguage: String = "Auto (Chinese <-> English)",
         systemPromptOverride: String? = nil,
+        onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
         isStreaming = true
@@ -381,6 +382,7 @@ public final class AIAssistantService {
                         model: model,
                         targetLanguage: targetLanguage,
                         systemPromptOverride: systemPromptOverride,
+                        onResolvedModel: onResolvedModel,
                         onChunk: onChunk
                     )
                 }
@@ -446,6 +448,7 @@ public final class AIAssistantService {
         model: String?,
         targetLanguage: String,
         systemPromptOverride: String? = nil,
+        onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         guard let url = Self.resolveOpenAIChatCompletionsURL(baseURL: endpoint, provider: provider) else {
@@ -459,7 +462,7 @@ public final class AIAssistantService {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
-        let selectedModel = model?.isEmpty == false ? model! : (provider == .httpOllama ? "llama3.2" : "gpt-4o-mini")
+        var selectedModel = model?.isEmpty == false ? model! : (provider == .httpOllama ? "llama3.2" : "gpt-4o-mini")
 
         var formattedMessages: [[String: Any]] = []
         let effectiveSystemPrompt = systemPromptOverride ?? messages.last?.systemPromptOverride ?? messages.last?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
@@ -481,7 +484,7 @@ public final class AIAssistantService {
             ])
         }
 
-        let bodyPayload: [String: Any] = [
+        var bodyPayload: [String: Any] = [
             "model": selectedModel,
             "messages": formattedMessages,
             "stream": true
@@ -489,7 +492,20 @@ public final class AIAssistantService {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: bodyPayload)
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        var (bytes, response) = try await URLSession.shared.bytes(for: request)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 || httpResponse.statusCode == 400 {
+            let discoveredModels = try? await fetchAvailableModels(provider: provider, baseURL: endpoint ?? "", apiKey: apiKey ?? "")
+            if let fallbackModel = discoveredModels?.first, fallbackModel != selectedModel {
+                DiagnosticLogger.shared.info("AI", "Auto-healing model error \(httpResponse.statusCode) from '\(selectedModel)' to '\(fallbackModel)'")
+                selectedModel = fallbackModel
+                bodyPayload["model"] = fallbackModel
+                request.httpBody = try JSONSerialization.data(withJSONObject: bodyPayload)
+                onResolvedModel?(fallbackModel)
+                let retryResult = try await URLSession.shared.bytes(for: request)
+                bytes = retryResult.0
+                response = retryResult.1
+            }
+        }
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
             throw AIAssistantError.invalidResponse(statusCode: httpResponse.statusCode)
         }

@@ -339,6 +339,18 @@ public final class AIAssistantPluginState: Sendable {
             self.polishTargetLanguage = .auto
         }
 
+        if let storedModels = storage.codable(forKey: "fetchedModels", as: [String: [String]].self) {
+            var loaded: [AIProviderKind: [String]] = [:]
+            for (k, v) in storedModels {
+                if let provider = AIProviderKind(rawValue: k) {
+                    loaded[provider] = v
+                }
+            }
+            self.fetchedModels = loaded
+        } else {
+            self.fetchedModels = [:]
+        }
+
         self.sessions = repository.items
         pruneExpiredSessions()
 
@@ -367,6 +379,12 @@ public final class AIAssistantPluginState: Sendable {
         self.rolePresets = store._aiRolePresets
         self.enabledActions = store._aiRolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
         refreshCapturedSelection()
+
+        if selectedProvider == .httpOpenAI || selectedProvider == .httpOllama {
+            Task { [weak self] in
+                await self?.fetchModelsForCurrentProvider()
+            }
+        }
     }
 
     public func unmount(store: PurahWorkspaceStore) {
@@ -397,6 +415,11 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(polishTargetLanguage.rawValue, forKey: "polishTargetLanguage")
         storage.setCodable(rolePresets, forKey: "rolePresets")
         storage.setCodable(enabledActions, forKey: "enabledActions")
+        var rawModels: [String: [String]] = [:]
+        for (provider, models) in fetchedModels {
+            rawModels[provider.rawValue] = models
+        }
+        storage.setCodable(rawModels, forKey: "fetchedModels")
         repository.saveToDisk()
     }
 
@@ -565,6 +588,30 @@ public final class AIAssistantPluginState: Sendable {
                 apiKey: apiKey
             )
             fetchedModels[provider] = models
+            if !models.isEmpty {
+                switch provider {
+                case .httpOpenAI:
+                    if openAIModel.isEmpty || openAIModel == "gpt-4o-mini" || !models.contains(openAIModel) {
+                        openAIModel = models[0]
+                    }
+                case .httpOllama:
+                    if ollamaModel.isEmpty || !models.contains(ollamaModel) {
+                        ollamaModel = models[0]
+                    }
+                case .httpAnthropic:
+                    if anthropicModel.isEmpty || !models.contains(anthropicModel) {
+                        anthropicModel = models[0]
+                    }
+                default:
+                    break
+                }
+            }
+            var rawModels: [String: [String]] = [:]
+            for (p, m) in fetchedModels {
+                rawModels[p.rawValue] = m
+            }
+            storage.setCodable(rawModels, forKey: "fetchedModels")
+            save()
             fetchModelsStatusMessage = "Found \(models.count) models"
         } catch {
             fetchModelsStatusMessage = "Failed: \(error.localizedDescription)"
@@ -751,6 +798,19 @@ public final class AIAssistantPluginState: Sendable {
                     endpoint: endpoint,
                     model: model,
                     systemPromptOverride: effectivePromptOverride,
+                    onResolvedModel: { [weak self] resolved in
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            if provider == .httpOpenAI {
+                                self.openAIModel = resolved
+                            } else if provider == .httpOllama {
+                                self.ollamaModel = resolved
+                            } else if provider == .httpAnthropic {
+                                self.anthropicModel = resolved
+                            }
+                            self.save()
+                        }
+                    },
                     onChunk: { [weak self] chunk in
                         Task { @MainActor [weak self] in
                             self?.handleChunk(chunk, forSession: targetSessionId, assistantMsgId: assistantMsgId)

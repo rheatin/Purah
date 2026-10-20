@@ -1,6 +1,7 @@
 // Sources/PurahUI/DrawerPanels/QuickNoteDrawerView.swift
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import PurahCore
 
 /// Cheat sheet popover displaying Markdown syntax hints and keyboard conventions.
@@ -50,12 +51,27 @@ public struct MarkdownTipsPopoverView: View {
 }
 
 /// Interactive rich Markdown preview supporting live checklist toggling,
-/// headings, quotes, styled typography, and click-to-edit transition.
+/// tables, fenced code blocks with copy, headings, quotes, and click-to-edit transition.
 public struct InteractiveMarkdownPreviewView: View {
     public let markdown: String
+    public let fontSize: CGFloat
     public let accentColor: Color
     public let onToggleChecklist: (Int) -> Void
     public let onRequestEdit: () -> Void
+
+    public init(
+        markdown: String,
+        fontSize: CGFloat = 11.5,
+        accentColor: Color,
+        onToggleChecklist: @escaping (Int) -> Void,
+        onRequestEdit: @escaping () -> Void = {}
+    ) {
+        self.markdown = markdown
+        self.fontSize = fontSize
+        self.accentColor = accentColor
+        self.onToggleChecklist = onToggleChecklist
+        self.onRequestEdit = onRequestEdit
+    }
 
     public init(
         markdown: String,
@@ -63,10 +79,13 @@ public struct InteractiveMarkdownPreviewView: View {
         onToggleChecklist: @escaping (Int) -> Void,
         onRequestEdit: @escaping () -> Void = {}
     ) {
-        self.markdown = markdown
-        self.accentColor = accentColor
-        self.onToggleChecklist = onToggleChecklist
-        self.onRequestEdit = onRequestEdit
+        self.init(
+            markdown: markdown,
+            fontSize: 11.5,
+            accentColor: accentColor,
+            onToggleChecklist: onToggleChecklist,
+            onRequestEdit: onRequestEdit
+        )
     }
 
     public init(
@@ -77,16 +96,31 @@ public struct InteractiveMarkdownPreviewView: View {
         onRequestEdit: @escaping () -> Void = {}
     ) {
         self.markdown = content.wrappedValue
+        self.fontSize = fontSize
         self.accentColor = accentColor
         self.onToggleChecklist = onToggleChecklist
         self.onRequestEdit = onRequestEdit
     }
 
+    private enum PreviewBlock: Identifiable {
+        case table(id: String, headers: [String], rows: [[String]], alignments: [Alignment])
+        case codeBlock(id: String, language: String, code: String)
+        case line(id: String, index: Int, text: String)
+
+        var id: String {
+            switch self {
+            case .table(let id, _, _, _): return id
+            case .codeBlock(let id, _, _): return id
+            case .line(let id, _, _): return id
+            }
+        }
+    }
+
     public var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(alignment: .leading, spacing: 5) {
-                let lines = markdown.components(separatedBy: "\n")
-                if lines.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            LazyVStack(alignment: .leading, spacing: 6) {
+                let blocks = parseBlocks(from: markdown)
+                if blocks.isEmpty || blocks.allSatisfy({ isBlockEmpty($0) }) {
                     HStack(spacing: 6) {
                         Image(systemName: "pencil.line")
                             .font(.system(size: 11))
@@ -98,8 +132,8 @@ public struct InteractiveMarkdownPreviewView: View {
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        renderLine(line, index: index, allLines: lines)
+                    ForEach(blocks) { block in
+                        renderBlock(block)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -113,64 +147,47 @@ public struct InteractiveMarkdownPreviewView: View {
         }
     }
 
+    private func isBlockEmpty(_ block: PreviewBlock) -> Bool {
+        switch block {
+        case .table(_, let headers, let rows, _):
+            return headers.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty } &&
+                   rows.allSatisfy { $0.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty } }
+        case .codeBlock(_, _, let code):
+            return code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .line(_, _, let text):
+            return text.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
     @ViewBuilder
-    private func renderLine(_ line: String, index: Int, allLines: [String]) -> some View {
+    private func renderBlock(_ block: PreviewBlock) -> some View {
+        switch block {
+        case .table(_, let headers, let rows, let alignments):
+            MarkdownTableView(
+                headers: headers,
+                rows: rows,
+                alignments: alignments,
+                accentColor: accentColor,
+                renderCell: { text, size, isBold, color in
+                    renderInlineMarkdown(text, fontSize: size, isBold: isBold, baseColor: color)
+                }
+            )
+        case .codeBlock(_, let language, let code):
+            MarkdownCodeBlockView(
+                language: language,
+                code: code,
+                accentColor: accentColor
+            )
+        case .line(_, let index, let text):
+            renderLine(text, index: index)
+        }
+    }
+
+    @ViewBuilder
+    private func renderLine(_ line: String, index: Int) -> some View {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-        // Fenced code block detection
-        let isFenceDelimiter = trimmed.hasPrefix("```") && !trimmed.dropFirst(3).contains("```")
-        let precedingFencesCount = allLines[0..<index].filter {
-            let t = $0.trimmingCharacters(in: .whitespaces)
-            return t.hasPrefix("```") && !t.dropFirst(3).contains("```")
-        }.count
-        let isInsideFencedBlock = precedingFencesCount % 2 == 1
-
-        if isFenceDelimiter {
-            let lang = String(trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces))
-            HStack(spacing: 4) {
-                Image(systemName: "curlybraces")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .foregroundColor(accentColor.opacity(0.85))
-                Text(lang.isEmpty ? "code" : lang)
-                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(accentColor.opacity(0.85))
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(accentColor.opacity(0.12))
-            .cornerRadius(4)
-        } else if isInsideFencedBlock {
-            Text(line)
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(accentColor.opacity(0.08))
-                .cornerRadius(2)
-        } else if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.count >= 3 {
-            let inner = trimmed.dropFirst().dropLast()
-            let isSeparator = inner.contains("-") && inner.allSatisfy { $0 == "-" || $0 == ":" || $0 == "|" || $0.isWhitespace }
-            if isSeparator {
-                Text(trimmed)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(accentColor.opacity(0.55))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                let nextLineTrimmed = (index + 1 < allLines.count) ? allLines[index + 1].trimmingCharacters(in: .whitespaces) : ""
-                let nextInner = nextLineTrimmed.dropFirst().dropLast()
-                let isHeader = nextLineTrimmed.hasPrefix("|") && nextLineTrimmed.hasSuffix("|") && nextLineTrimmed.count >= 3 && nextInner.contains("-") && nextInner.allSatisfy { $0 == "-" || $0 == ":" || $0 == "|" || $0.isWhitespace }
-
-                Text(trimmed)
-                    .font(.system(size: 10.5, weight: isHeader ? .bold : .regular, design: .monospaced))
-                    .foregroundColor(isHeader ? accentColor : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(accentColor.opacity(isHeader ? 0.12 : 0.05))
-                    .cornerRadius(3)
-            }
-        } else if trimmed.hasPrefix("- [ ] ") {
+        if trimmed.hasPrefix("- [ ] ") {
             let itemText = String(trimmed.dropFirst(6))
             HStack(alignment: .top, spacing: 6) {
                 Button {
@@ -183,9 +200,7 @@ public struct InteractiveMarkdownPreviewView: View {
                 }
                 .buttonStyle(.plain)
 
-                Text(LocalizedStringKey(itemText))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundColor(.primary)
+                renderInlineMarkdown(itemText, fontSize: fontSize)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -205,8 +220,7 @@ public struct InteractiveMarkdownPreviewView: View {
                 }
                 .buttonStyle(.plain)
 
-                Text(LocalizedStringKey(itemText))
-                    .font(.system(size: 11, design: .rounded))
+                renderInlineMarkdown(itemText, fontSize: fontSize)
                     .strikethrough(true, color: .secondary.opacity(0.6))
                     .foregroundColor(.secondary.opacity(0.7))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -216,49 +230,477 @@ public struct InteractiveMarkdownPreviewView: View {
                     }
             }
         } else if trimmed.hasPrefix("###") {
-            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            Text(String(content))
-                .font(.system(size: 11.5, weight: .bold, design: .rounded))
+            let content = String(trimmed.drop(while: { $0 == "#" || $0.isWhitespace }))
+            renderInlineMarkdown(content, fontSize: 11.5, isBold: true)
                 .foregroundColor(.primary)
         } else if trimmed.hasPrefix("##") {
-            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            Text(String(content))
-                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+            let content = String(trimmed.drop(while: { $0 == "#" || $0.isWhitespace }))
+            renderInlineMarkdown(content, fontSize: 12.5, isBold: true)
                 .foregroundColor(.primary)
                 .padding(.top, 1)
         } else if trimmed.hasPrefix("#") {
-            let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            Text(String(content))
-                .font(.system(size: 13.5, weight: .bold, design: .rounded))
+            let content = String(trimmed.drop(while: { $0 == "#" || $0.isWhitespace }))
+            renderInlineMarkdown(content, fontSize: 13.5, isBold: true)
                 .foregroundColor(.primary)
                 .padding(.top, 2)
         } else if trimmed.hasPrefix(">") {
-            let content = trimmed.drop(while: { $0 == ">" || $0.isWhitespace })
+            let content = String(trimmed.drop(while: { $0 == ">" || $0.isWhitespace }))
             HStack(spacing: 6) {
                 Rectangle()
                     .fill(accentColor.opacity(0.7))
                     .frame(width: 2.5)
-                Text(LocalizedStringKey(String(content)))
-                    .font(.system(size: 10.5, design: .rounded))
-                    .foregroundColor(.secondary)
+                renderInlineMarkdown(content, fontSize: 10.5, isBold: false, baseColor: .secondary)
             }
             .padding(.vertical, 1)
         } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+            let content = String(trimmed.dropFirst(2))
             HStack(alignment: .top, spacing: 5) {
                 Circle()
                     .fill(accentColor.opacity(0.85))
                     .frame(width: 3.5, height: 3.5)
                     .padding(.top, 5)
-                Text(LocalizedStringKey(String(trimmed.dropFirst(2))))
-                    .font(.system(size: 11, design: .rounded))
+                renderInlineMarkdown(content, fontSize: fontSize)
             }
         } else if trimmed.isEmpty {
             Spacer().frame(height: 3)
         } else {
-            Text(LocalizedStringKey(line))
-                .font(.system(size: 11, design: .rounded))
+            renderInlineMarkdown(line, fontSize: fontSize)
                 .lineSpacing(2)
         }
+    }
+
+    private func renderInlineMarkdown(
+        _ text: String,
+        fontSize: CGFloat,
+        isBold: Bool = false,
+        baseColor: Color? = nil
+    ) -> Text {
+        guard !text.isEmpty else { return Text("") }
+        if var attrString = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            for run in attrString.runs {
+                let intent = run.inlinePresentationIntent ?? []
+                if intent.contains(.code) {
+                    attrString[run.range].swiftUI.foregroundColor = accentColor
+                    attrString[run.range].swiftUI.backgroundColor = accentColor.opacity(0.15)
+                    attrString[run.range].swiftUI.font = .system(size: max(fontSize - 0.5, 9), weight: .medium, design: .monospaced)
+                } else {
+                    if let baseColor = baseColor {
+                        attrString[run.range].swiftUI.foregroundColor = baseColor
+                    }
+                    let weight: Font.Weight = (isBold || intent.contains(.stronglyEmphasized)) ? .bold : .regular
+                    attrString[run.range].swiftUI.font = .system(size: fontSize, weight: weight)
+                }
+            }
+            return Text(attrString)
+        }
+        var plain = Text(text).font(.system(size: fontSize, weight: isBold ? .bold : .regular))
+        if let baseColor = baseColor {
+            plain = plain.foregroundColor(baseColor)
+        }
+        return plain
+    }
+
+    private func parseBlocks(from markdown: String) -> [PreviewBlock] {
+        let lines = markdown.components(separatedBy: "\n")
+        var blocks: [PreviewBlock] = []
+        var i = 0
+
+        while i < lines.count {
+            let line = lines[i]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // 1. Fenced code block check
+            if trimmed.hasPrefix("```") && !trimmed.dropFirst(3).contains("```") {
+                let lang = String(trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces))
+                var codeLines: [String] = []
+                let startIdx = i
+                i += 1
+                while i < lines.count {
+                    let nextTrimmed = lines[i].trimmingCharacters(in: .whitespaces)
+                    if nextTrimmed.hasPrefix("```") {
+                        i += 1 // consume closing fence
+                        break
+                    }
+                    codeLines.append(lines[i])
+                    i += 1
+                }
+                let code = codeLines.joined(separator: "\n")
+                blocks.append(.codeBlock(id: "code_\(startIdx)", language: lang, code: code))
+                continue
+            }
+
+            // 2. Table block check
+            if isTableLine(trimmed) {
+                var tableLines: [(index: Int, text: String)] = []
+                let tableStart = i
+                while i < lines.count && isTableLine(lines[i].trimmingCharacters(in: .whitespaces)) {
+                    tableLines.append((index: i, text: lines[i]))
+                    i += 1
+                }
+
+                if let tableBlock = buildTableBlock(from: tableLines, blockId: "table_\(tableStart)") {
+                    blocks.append(tableBlock)
+                    continue
+                } else {
+                    for item in tableLines {
+                        blocks.append(.line(id: "line_\(item.index)", index: item.index, text: item.text))
+                    }
+                    continue
+                }
+            }
+
+            // 3. Normal line
+            blocks.append(.line(id: "line_\(i)", index: i, text: line))
+            i += 1
+        }
+
+        return blocks
+    }
+
+    private func isTableLine(_ trimmed: String) -> Bool {
+        (trimmed.hasPrefix("|") && trimmed.contains("|")) || (trimmed.contains("|") && trimmed.hasSuffix("|"))
+    }
+
+    private func isSeparatorRow(_ trimmed: String) -> Bool {
+        guard trimmed.contains("|") else { return false }
+        let cells = splitTableCells(trimmed)
+        guard !cells.isEmpty else { return false }
+        return cells.allSatisfy { cell in
+            let c = cell.trimmingCharacters(in: .whitespaces)
+            return !c.isEmpty && c.allSatisfy { $0 == "-" || $0 == ":" } && c.contains("-")
+        }
+    }
+
+    private func splitTableCells(_ line: String) -> [String] {
+        var trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("|") {
+            trimmed.removeFirst()
+        }
+        if trimmed.hasSuffix("|") {
+            trimmed.removeLast()
+        }
+        return trimmed.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private func parseAlignment(from separatorCell: String) -> Alignment {
+        let trimmed = separatorCell.trimmingCharacters(in: .whitespaces)
+        let startsColon = trimmed.hasPrefix(":")
+        let endsColon = trimmed.hasSuffix(":")
+        if startsColon && endsColon {
+            return .center
+        } else if endsColon {
+            return .trailing
+        } else {
+            return .leading
+        }
+    }
+
+    private func buildTableBlock(from tableLines: [(index: Int, text: String)], blockId: String) -> PreviewBlock? {
+        var sepIdx: Int? = nil
+        for (idx, line) in tableLines.enumerated() {
+            let trimmed = line.text.trimmingCharacters(in: .whitespaces)
+            if isSeparatorRow(trimmed) {
+                sepIdx = idx
+                break
+            }
+        }
+
+        if let sepIdx = sepIdx {
+            let headerLine = sepIdx > 0 ? tableLines[sepIdx - 1].text : ""
+            let headers = splitTableCells(headerLine)
+            let sepCells = splitTableCells(tableLines[sepIdx].text)
+            let alignments = sepCells.map { parseAlignment(from: $0) }
+
+            var rows: [[String]] = []
+            for (idx, line) in tableLines.enumerated() {
+                if idx < sepIdx - 1 {
+                    rows.append(splitTableCells(line.text))
+                } else if idx > sepIdx {
+                    let trimmed = line.text.trimmingCharacters(in: .whitespaces)
+                    if !isSeparatorRow(trimmed) {
+                        rows.append(splitTableCells(line.text))
+                    }
+                }
+            }
+
+            let maxCols = max(headers.count, sepCells.count, rows.map(\.count).max() ?? 0)
+            guard maxCols > 0 else { return nil }
+
+            var paddedHeaders = headers
+            while paddedHeaders.count < maxCols { paddedHeaders.append("") }
+
+            var paddedAlignments = alignments
+            while paddedAlignments.count < maxCols { paddedAlignments.append(.leading) }
+
+            let paddedRows = rows.map { row -> [String] in
+                var r = row
+                while r.count < maxCols { r.append("") }
+                return r
+            }
+
+            return .table(id: blockId, headers: paddedHeaders, rows: paddedRows, alignments: paddedAlignments)
+        } else if tableLines.count >= 2 {
+            let headers = splitTableCells(tableLines[0].text)
+            let maxCols = max(headers.count, tableLines.map { splitTableCells($0.text).count }.max() ?? 0)
+            guard maxCols >= 2 else { return nil }
+
+            var paddedHeaders = headers
+            while paddedHeaders.count < maxCols { paddedHeaders.append("") }
+
+            let alignments = (0..<maxCols).map { _ in Alignment.leading }
+            let rows = tableLines.dropFirst().map { line -> [String] in
+                var r = splitTableCells(line.text)
+                while r.count < maxCols { r.append("") }
+                return r
+            }
+
+            return .table(id: blockId, headers: paddedHeaders, rows: rows, alignments: alignments)
+        }
+
+        return nil
+    }
+}
+
+// MARK: - Markdown Table & Code Block Views
+
+public struct MarkdownTableView: View {
+    public let headers: [String]
+    public let rows: [[String]]
+    public let alignments: [Alignment]
+    public let accentColor: Color
+    public let renderCell: (String, CGFloat, Bool, Color?) -> Text
+
+    @State private var containerWidth: CGFloat = 0
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(
+        headers: [String],
+        rows: [[String]],
+        alignments: [Alignment],
+        accentColor: Color,
+        renderCell: @escaping (String, CGFloat, Bool, Color?) -> Text
+    ) {
+        self.headers = headers
+        self.rows = rows
+        self.alignments = alignments
+        self.accentColor = accentColor
+        self.renderCell = renderCell
+    }
+
+    private var columnRatios: [CGFloat] {
+        let colCount = max(1, headers.count)
+        guard colCount > 1 else { return [1.0] }
+
+        var weights: [CGFloat] = Array(repeating: 4.0, count: colCount)
+        for (cIdx, h) in headers.enumerated() {
+            let len = CGFloat(h.trimmingCharacters(in: .whitespaces).count)
+            if len > weights[cIdx] { weights[cIdx] = len }
+        }
+        for row in rows {
+            for cIdx in 0..<min(colCount, row.count) {
+                let len = CGFloat(row[cIdx].trimmingCharacters(in: .whitespaces).count)
+                if len > weights[cIdx] { weights[cIdx] = len }
+            }
+        }
+        weights = weights.map { min(max($0, 4.0), 40.0) }
+        let totalWeight = max(weights.reduce(0, +), 1.0)
+        var ratios = weights.map { $0 / totalWeight }
+
+        let minFloor = min(0.12, 1.0 / CGFloat(colCount))
+        var deficit: CGFloat = 0
+        var aboveIndices: [Int] = []
+        for i in 0..<colCount {
+            if ratios[i] < minFloor {
+                deficit += (minFloor - ratios[i])
+                ratios[i] = minFloor
+            } else if ratios[i] > minFloor {
+                aboveIndices.append(i)
+            }
+        }
+        if deficit > 0, !aboveIndices.isEmpty {
+            let expandableTotal = aboveIndices.reduce(CGFloat(0)) { $0 + (ratios[$1] - minFloor) }
+            if expandableTotal > 0 {
+                for idx in aboveIndices {
+                    let share = (ratios[idx] - minFloor) / expandableTotal
+                    ratios[idx] -= deficit * share
+                }
+            }
+        }
+        return ratios
+    }
+
+    private func columnWidth(for colIdx: Int, totalWidth: CGFloat) -> CGFloat? {
+        guard totalWidth > 0 else { return nil }
+        let ratios = columnRatios
+        guard colIdx < ratios.count else { return nil }
+        let colCount = headers.count
+        let dividersWidth = CGFloat(max(colCount - 1, 0)) * 1.0
+        let availableWidth = max(totalWidth - dividersWidth, 40)
+        return max(availableWidth * ratios[colIdx], 36)
+    }
+
+    public var body: some View {
+        let colCount = headers.count
+
+        VStack(spacing: 0) {
+            // Header Row
+            HStack(spacing: 0) {
+                ForEach(0..<colCount, id: \.self) { cIdx in
+                    let headerText = cIdx < headers.count ? headers[cIdx] : ""
+                    let alignment = cIdx < alignments.count ? alignments[cIdx] : .leading
+                    renderCell(headerText, 10.5, true, accentColor)
+                        .lineLimit(nil)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4.5)
+                        .frame(
+                            width: columnWidth(for: cIdx, totalWidth: containerWidth),
+                            alignment: alignment
+                        )
+                        .frame(maxWidth: containerWidth > 0 ? nil : .infinity, alignment: alignment)
+
+                    if cIdx < colCount - 1 {
+                        Rectangle()
+                            .fill(palette.borderColor.opacity(0.25))
+                            .frame(width: 1)
+                    }
+                }
+            }
+            .background(accentColor.opacity(0.14))
+
+            // 1px Horizontal Divider
+            Rectangle()
+                .fill(palette.borderColor.opacity(0.25))
+                .frame(height: 1)
+
+            // Data Rows
+            ForEach(Array(rows.enumerated()), id: \.offset) { rIdx, row in
+                HStack(spacing: 0) {
+                    ForEach(0..<colCount, id: \.self) { cIdx in
+                        let cellText = cIdx < row.count ? row[cIdx] : ""
+                        let alignment = cIdx < alignments.count ? alignments[cIdx] : .leading
+                        renderCell(cellText, 10.0, false, nil)
+                            .lineLimit(nil)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .frame(
+                                width: columnWidth(for: cIdx, totalWidth: containerWidth),
+                                alignment: alignment
+                            )
+                            .frame(maxWidth: containerWidth > 0 ? nil : .infinity, alignment: alignment)
+
+                        if cIdx < colCount - 1 {
+                            Rectangle()
+                                .fill(palette.borderColor.opacity(0.25))
+                                .frame(width: 1)
+                        }
+                    }
+                }
+                .background(Color.white.opacity(rIdx % 2 == 0 ? 0.03 : 0.06))
+
+                if rIdx < rows.count - 1 {
+                    Rectangle()
+                        .fill(palette.borderColor.opacity(0.25))
+                        .frame(height: 1)
+                }
+            }
+        }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        containerWidth = geo.size.width
+                    }
+                    .onChange(of: geo.size.width) { _, newWidth in
+                        containerWidth = newWidth
+                    }
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(accentColor.opacity(0.30), lineWidth: 1)
+        )
+        .padding(.vertical, 2)
+    }
+}
+
+public struct MarkdownCodeBlockView: View {
+    public let language: String
+    public let code: String
+    public let accentColor: Color
+    @State private var isCopied: Bool = false
+
+    public init(language: String, code: String, accentColor: Color) {
+        self.language = language
+        self.code = code
+        self.accentColor = accentColor
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Top Bar
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "curlybraces")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundColor(accentColor.opacity(0.85))
+                    Text(language.isEmpty ? "code" : language)
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(accentColor.opacity(0.85))
+                }
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(code, forType: .string)
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                        isCopied = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        withAnimation {
+                            isCopied = false
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 8))
+                        Text(isCopied ? "notes.copied".localized : "notes.copy".localized)
+                            .font(.system(size: 8, weight: .medium, design: .rounded))
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(4)
+                    .foregroundColor(isCopied ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("notes.copy".localized)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(accentColor.opacity(0.12))
+
+            // Body
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(code)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(.primary.opacity(0.92))
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color.black.opacity(0.25))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(accentColor.opacity(0.25), lineWidth: 1)
+        )
+        .padding(.vertical, 2)
     }
 }
 
@@ -2283,6 +2725,7 @@ public struct QuickNoteDrawerView: View {
 
     @State private var activeTextView: PurahNotesNSTextView? = nil
     @State private var isCopied: Bool = false
+    @State private var isExported: Bool = false
     @State private var isShowingTips: Bool = false
     @State private var isSearchingNotes: Bool = false
     @State private var searchQuery: String = ""
@@ -2677,6 +3120,24 @@ public struct QuickNoteDrawerView: View {
             .help("Open Notes directory in Finder")
 
             Button {
+                exportCurrentNote()
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: isExported ? "checkmark" : "square.and.arrow.up")
+                        .font(.system(size: 8))
+                    Text("notes.export".localized)
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(4)
+                .foregroundColor(isExported ? .green : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help("notes.exportHelp".localized)
+
+            Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(currentText, forType: .string)
                 store.triggerControlHaptic(.alignment)
@@ -2709,5 +3170,42 @@ public struct QuickNoteDrawerView: View {
                 .foregroundColor(noteColor.opacity(0.9))
         }
         .padding(.horizontal, 2)
+    }
+
+    private func exportCurrentNote() {
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsHiddenFiles = false
+        savePanel.level = .modalPanel
+        let rawTitle = state.currentDocument?.title ?? "Untitled"
+        let sanitized = rawTitle
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fileName = (sanitized.isEmpty ? "Note" : sanitized) + ".md"
+        savePanel.nameFieldStringValue = fileName
+        if let mdType = UTType(filenameExtension: "md") {
+            savePanel.allowedContentTypes = [mdType, .plainText]
+        } else {
+            savePanel.allowedContentTypes = [.plainText]
+        }
+
+        let response = savePanel.runModal()
+        if response == .OK, let url = savePanel.url {
+            do {
+                try currentText.write(to: url, atomically: true, encoding: .utf8)
+                store.triggerControlHaptic(.alignment)
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                    isExported = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    withAnimation {
+                        isExported = false
+                    }
+                }
+            } catch {
+                DiagnosticLogger.shared.error("Notes", "Failed to export note: \(error.localizedDescription)")
+            }
+        }
     }
 }

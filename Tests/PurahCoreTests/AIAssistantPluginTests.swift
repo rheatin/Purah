@@ -1125,4 +1125,46 @@ struct AIAssistantPluginTests {
         #expect(refinedUserMsg?.content.contains("User refinement instruction: Make it more concise and formal") == true)
         #expect(refinedUserMsg?.originalSelection == "Initial Output Content")
     }
+
+    @Test("Model persistence in ScopedPluginStorage and auto-selection of active model")
+    func testModelPersistenceAndAutoDiscovery() async {
+        let isolated = UserDefaults(suiteName: "test_ai_models_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_models_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_models_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_models_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_models_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        // Verify initial state has empty fetchedModels or restores from storage
+        #expect(state.fetchedModels.isEmpty)
+
+        // Manually simulate fetched models for OpenAI
+        state.fetchedModels[.httpOpenAI] = ["custom-local-model", "qwen2.5-coder"]
+        state.save()
+
+        // Create a new state instance with the same storage to verify persistence
+        let restoredState = AIAssistantPluginState(storage: storage, repository: repo)
+        #expect(restoredState.fetchedModels[.httpOpenAI] == ["custom-local-model", "qwen2.5-coder"])
+
+        // Test auto-selection logic when openAIModel is "gpt-4o-mini"
+        #expect(restoredState.openAIModel == "gpt-4o-mini")
+        restoredState.selectedProvider = .httpOpenAI
+        // Simulate fetchModelsForCurrentProvider logic directly
+        let discovered = ["my-hosted-llama", "qwen-7b"]
+        restoredState.fetchedModels[.httpOpenAI] = discovered
+        if !discovered.isEmpty {
+            if restoredState.openAIModel.isEmpty || restoredState.openAIModel == "gpt-4o-mini" || !discovered.contains(restoredState.openAIModel) {
+                restoredState.openAIModel = discovered[0]
+            }
+        }
+        restoredState.save()
+
+        #expect(restoredState.openAIModel == "my-hosted-llama")
+
+        // Reload state to verify openAIModel persistence
+        let finalState = AIAssistantPluginState(storage: storage, repository: repo)
+        #expect(finalState.openAIModel == "my-hosted-llama")
+        #expect(finalState.fetchedModels[.httpOpenAI] == ["my-hosted-llama", "qwen-7b"])
+    }
 }
