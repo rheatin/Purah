@@ -268,12 +268,9 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .onExitCommand {
-            if isRefiningOutput {
+            if isRefiningOutput || isEditingSource {
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
                     isRefiningOutput = false
-                }
-            } else if isEditingSource {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
                     isEditingSource = false
                 }
             }
@@ -452,8 +449,31 @@ public struct AIAssistantRoleWorkbenchView: View {
             // 2. Center Main Output Stage (80%+ of vertical height)
             centerOutputStage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .overlay {
+                    if isEditingSource || isRefiningOutput {
+                        Color.black.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                    isEditingSource = false
+                                    isRefiningOutput = false
+                                }
+                            }
+                    }
+                }
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        if isEditingSource || isRefiningOutput {
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                isEditingSource = false
+                                isRefiningOutput = false
+                            }
+                        }
+                    }
+                )
 
-            // 3. Bottom Action & Spring-Expanding Refine Bar (28pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
+            // 3. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
         }
     }
@@ -476,63 +496,42 @@ public struct AIAssistantRoleWorkbenchView: View {
                             .fill(Color.black.opacity(0.30))
                     )
 
-                HStack(spacing: 5) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(state.enabledRoles) { r in
-                                let isSelected = state.selectedRoleId == r.id
-                                let pillColor = Color(hex: r.colorHex)
-                                Button {
-                                    state.selectedRoleId = r.id
-                                    let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    if !text.isEmpty {
-                                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                                            isEditingSource = false
-                                        }
-                                        state.sendPrompt(text, role: r, originalSelection: text)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(state.enabledRoles) { r in
+                            let isSelected = state.selectedRoleId == r.id
+                            let pillColor = Color(hex: r.colorHex)
+                            Button {
+                                state.selectedRoleId = r.id
+                                let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !text.isEmpty {
+                                    withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                        isEditingSource = false
                                     }
-                                } label: {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: r.systemIcon)
-                                            .font(.system(size: 8))
-                                        Text(r.title)
-                                            .font(.system(size: 9, weight: isSelected ? .bold : .medium))
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2.5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .fill(isSelected ? pillColor.opacity(0.25) : Color.white.opacity(0.08))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
-                                    )
-                                    .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
+                                    state.sendPrompt(text, role: r, originalSelection: text)
                                 }
-                                .buttonStyle(.plain)
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: r.systemIcon)
+                                        .font(.system(size: 8))
+                                    Text(r.title)
+                                        .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(isSelected ? pillColor.opacity(0.25) : Color.white.opacity(0.08))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
+                                )
+                                .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-
-                    Spacer(minLength: 2)
-
-                    Button {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                            isEditingSource = false
-                        }
-                    } label: {
-                        Text("ai.composer.collapse".localized)
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.65))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                            )
-                    }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(6)
@@ -674,6 +673,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                             state.currentInputText = sourceText
                             isEditingSource = true
+                            isRefiningOutput = false
                         }
                     } label: {
                         HStack(spacing: 3.5) {
@@ -777,6 +777,15 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
             .frame(height: 24)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if isRefiningOutput {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                            isRefiningOutput = false
+                        }
+                    }
+                }
+            )
         }
     }
 
@@ -962,23 +971,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                     Spacer()
 
                     Button {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                            isRefiningOutput = false
-                        }
-                    } label: {
-                        Text("ai.composer.collapse".localized)
-                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.65))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                            )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
                         submitRefinement()
                     } label: {
                         HStack(spacing: 3) {
@@ -1010,7 +1002,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             )
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
         } else {
-            // Collapsed Single 28pt Row
+            // Collapsed Single 24pt Row
             HStack(spacing: 5) {
                 // 1. Primary Pill (Replace Selection / Copy Result)
                 Button {
@@ -1026,10 +1018,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                         Text(state.capturedSelection != nil ? "ai.action.replaceSelection".localized : "ai.action.copyResult".localized)
                             .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3.5)
+                    .padding(.horizontal, 8)
+                    .frame(height: 24)
                     .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(roleColor)
                     )
                     .foregroundColor(Color(hex: "#0F111A"))
@@ -1055,10 +1047,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 6, weight: .bold))
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3.5)
+                    .padding(.horizontal, 7)
+                    .frame(height: 24)
                     .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Color.white.opacity(0.08))
                     )
                     .foregroundColor(Color.white.opacity(0.85))
@@ -1067,62 +1059,82 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
 
-                // 3. Save to Quick Notes & Retry
+                // 3. Save to Quick Notes
                 Button {
                     saveToQuickNotes()
                 } label: {
                     Image(systemName: "note.text.badge.plus")
                         .font(.system(size: 9))
                         .foregroundColor(Color.white.opacity(0.80))
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.white.opacity(0.07))
                         )
                 }
                 .buttonStyle(.plain)
                 .help("ai.action.saveToNotes".localized)
 
+                // 4. Retry
                 Button {
                     retryGeneration()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 9))
                         .foregroundColor(Color.white.opacity(0.80))
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.white.opacity(0.07))
                         )
                 }
                 .buttonStyle(.plain)
                 .help("ai.action.retry".localized)
 
-                // 4. Expandable Refine Trigger Pill ([💬 Refine / Follow-up...])
+                // 5. Expandable Refine Trigger Pill ([✨ Refine / Follow-up... ⬆])
                 Button {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                         isRefiningOutput = true
+                        isEditingSource = false
                     }
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "bubble.left.and.text.bubble.right")
-                            .font(.system(size: 8))
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(roleColor)
                         Text("ai.composer.refineTrigger".localized)
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.92))
                             .lineLimit(1)
+                        Spacer(minLength: 2)
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(roleColor.opacity(0.9))
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3.5)
+                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
                     .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(LinearGradient(colors: [roleColor.opacity(0.20), Color.purple.opacity(0.14)], startPoint: .leading, endPoint: .trailing))
                     )
-                    .foregroundColor(Color.white.opacity(0.60))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(LinearGradient(colors: [roleColor.opacity(0.80), Color.cyan.opacity(0.55)], startPoint: .leading, endPoint: .trailing), lineWidth: 1.1)
+                    )
+                    .shadow(color: roleColor.opacity(0.25), radius: 4, x: 0, y: 1)
                 }
                 .buttonStyle(.plain)
             }
-            .frame(height: 28)
+            .frame(height: 24)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    if isEditingSource {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                            isEditingSource = false
+                        }
+                    }
+                }
+            )
         }
     }
 
