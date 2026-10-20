@@ -785,6 +785,7 @@ public struct ClipboardFullDrawerView: View {
                                     .cornerRadius(3)
                             }
                         }
+                        .padding(.trailing, 38)
 
                         Text("RGB(\(Int(r * 255)), \(Int(g * 255)), \(Int(b * 255)))" + (a < 0.999 ? " • \(Int(a * 100))%" : ""))
                             .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
@@ -881,6 +882,7 @@ public struct ClipboardFullDrawerView: View {
                                 .foregroundColor(.blue)
                                 .cornerRadius(2.5)
                         }
+                        .padding(.trailing, 38)
 
                         Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
                             .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
@@ -892,12 +894,6 @@ public struct ClipboardFullDrawerView: View {
                                 .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
                         }
                     }
-
-                    Spacer()
-
-                    Image(systemName: isHovered ? "eye.fill" : "arrow.up.and.down.and.arrow.left.and.right")
-                        .font(.system(size: isCompact ? 9.5 : 11))
-                        .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.6))
                 }
 
             case .text(let text):
@@ -907,6 +903,7 @@ public struct ClipboardFullDrawerView: View {
                         .lineLimit(isCompact ? 2 : 3)
                         .lineSpacing(isCompact ? 1 : 2)
                         .foregroundColor(palette.style == .native ? .primary : .white)
+                        .padding(.trailing, 38)
 
                     HStack {
                         Text("\(text.count) chars")

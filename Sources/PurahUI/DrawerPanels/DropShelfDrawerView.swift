@@ -188,7 +188,7 @@ public struct DropShelfDrawerView: View {
 
                         // Zone 2: Instant AirDrop Target
                         VStack(spacing: isCompact ? 3 : 6) {
-                            Image(systemName: "airdrop")
+                            Image(systemName: "airplayaudio")
                                 .font(.system(size: isCompact ? 14 : 24))
                                 .foregroundColor(Color.blue)
 
@@ -429,7 +429,7 @@ public struct DropShelfDrawerView: View {
 
                 // Dedicated Instant AirDrop Bar
                 HStack(spacing: 8) {
-                    Image(systemName: "airdrop")
+                    Image(systemName: "airplayaudio")
                         .font(.system(size: 18))
                         .fontWeight(.semibold)
                         .foregroundColor(isAirDropTargeted ? .cyan : .blue)
@@ -1409,64 +1409,71 @@ public struct ShelfFileRowView: View {
 
             // Trailing action buttons (remain directly clickable)
             let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == file.id
-            Button {
-                ClipboardHoverPreviewController.shared.togglePin(
-                    shelfFile: file,
-                    edge: edge,
-                    palette: palette,
-                    drawerWidth: store.effectiveDrawerWidth(baseWidth: 360.0, podId: "shelf"),
-                    store: store
-                )
-                store.triggerControlHaptic(.alignment)
-            } label: {
-                Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
-                    .font(.system(size: 10))
-                    .foregroundColor(isPreviewPinned ? shelfColor : .gray.opacity(isHovered ? 1.0 : 0.55))
-            }
-            .buttonStyle(.plain)
-            .help(isPreviewPinned ? "Unpin preview" : "dropshelf.quickLook".localized)
-
-            Button {
-                if let onToggleFavorite {
-                    onToggleFavorite()
-                } else if let state {
-                    state.toggleFavorite(id: file.id)
+            HStack(spacing: 5) {
+                Button {
+                    ClipboardHoverPreviewController.shared.togglePin(
+                        shelfFile: file,
+                        edge: edge,
+                        palette: palette,
+                        drawerWidth: store.effectiveDrawerWidth(baseWidth: 360.0, podId: "shelf"),
+                        store: store
+                    )
                     store.triggerControlHaptic(.alignment)
+                } label: {
+                    Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(isPreviewPinned ? shelfColor : .gray.opacity(isHovered ? 1.0 : 0.55))
+                        .frame(width: 18, height: 18)
                 }
-            } label: {
-                Image(systemName: file.isFavorite ? "star.fill" : "star")
-                    .font(.system(size: 10))
-                    .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
-            }
-            .buttonStyle(.plain)
-            .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
+                .buttonStyle(.plain)
+                .help(isPreviewPinned ? "Unpin preview" : "dropshelf.quickLook".localized)
 
-            Button {
-                let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
-                DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
-            } label: {
-                Image(systemName: "airdrop")
-                    .font(.system(size: 12.5))
-                    .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
-            }
-            .buttonStyle(.plain)
-            .help("dropshelf.airdrop".localized)
+                Button {
+                    if let onToggleFavorite {
+                        onToggleFavorite()
+                    } else if let state {
+                        state.toggleFavorite(id: file.id)
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    Image(systemName: file.isFavorite ? "star.fill" : "star")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
 
-            Button(action: onReveal) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 9))
-                    .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
-            }
-            .buttonStyle(.plain)
-            .help("dropshelf.reveal".localized)
+                Button {
+                    let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
+                    DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
+                } label: {
+                    Image(systemName: "airplayaudio")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("dropshelf.airdrop".localized)
 
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9))
-                    .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
+                Button(action: onReveal) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("dropshelf.reveal".localized)
+
+                Button(action: onRemove) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("dropshelf.remove".localized)
             }
-            .buttonStyle(.plain)
-            .help("dropshelf.remove".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

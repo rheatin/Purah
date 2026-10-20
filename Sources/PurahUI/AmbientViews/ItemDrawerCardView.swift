@@ -105,6 +105,8 @@ public struct TodoItemDrawerView: View {
                 if let due = todo.dueDate {
                     Text(due.formatted(date: .abbreviated, time: .shortened))
                         .purahCaption(size: 9)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
                 }
             }

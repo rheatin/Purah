@@ -126,6 +126,10 @@ public struct DiagnosticReportView: View {
                             } else {
                                 ForEach(logEntries) { entry in
                                     HStack(alignment: .top, spacing: 6) {
+                                        Text(Self.timeFormatter.string(from: entry.timestamp))
+                                            .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                                            .foregroundColor(.secondary)
+
                                         Text(entry.level.rawValue)
                                             .font(.system(size: 8, weight: .bold, design: .monospaced))
                                             .padding(.horizontal, 4)
@@ -164,7 +168,19 @@ public struct DiagnosticReportView: View {
         .onAppear {
             refreshLogs()
         }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                refreshLogs()
+            }
+        }
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm:ss"
+        return df
+    }()
 
     private func refreshLogs() {
         logEntries = logger.recentEntries(limit: 150)

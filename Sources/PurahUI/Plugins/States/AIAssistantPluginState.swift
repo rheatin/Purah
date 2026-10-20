@@ -150,6 +150,17 @@ public final class AIAssistantPluginState: Sendable {
     public var activeQuickAction: AIQuickActionType? = nil
     public var activeRole: AIRolePreset? = nil
 
+    // MARK: - Staged Drop State
+    public var stagedDropText: String? = nil
+    public var stagedDropTitle: String? = nil
+    public var isAwaitingRoleForDroppedContent: Bool = false
+
+    public func clearStagedDrop() {
+        stagedDropText = nil
+        stagedDropTitle = nil
+        isAwaitingRoleForDroppedContent = false
+    }
+
     @ObservationIgnored private var currentStreamingTask: Task<Void, Never>?
     @ObservationIgnored private var accumulatedStreamRaw: String = ""
 
@@ -666,7 +677,10 @@ public final class AIAssistantPluginState: Sendable {
 
     // MARK: - Drag & Drop Ingestion
     @discardableResult
-    public func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
+    public func handleDroppedProviders(
+        _ providers: [NSItemProvider],
+        onStaged: (@MainActor () -> Void)? = nil
+    ) -> Bool {
         var handled = false
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -681,19 +695,32 @@ public final class AIAssistantPluginState: Sendable {
                         url = nil
                     }
                     if let fileURL = url {
+                        let fileSize: Int64 = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
+                        let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+                        let fileName = fileURL.lastPathComponent
+                        let title = "\(fileName) (\(sizeStr))"
+                        let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+
                         Task { @MainActor [weak self] in
                             guard let self else { return }
+                            self.stopStreaming()
                             if let attachment = AIAssistantService.shared.makeAttachment(from: fileURL) {
                                 if self.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
                                     self.stagedAttachments.append(attachment)
                                 }
                             }
+                            let effectiveText = fileText.isEmpty ? (self.stagedAttachments.last?.textPreview ?? fileName) : fileText
+                            self.stagedDropText = effectiveText
+                            self.stagedDropTitle = title
+                            self.isAwaitingRoleForDroppedContent = true
+                            onStaged?()
                         }
                     }
                 }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) {
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                 handled = true
-                provider.loadItem(forTypeIdentifier: UTType.utf8PlainText.identifier, options: nil) { [weak self] item, _ in
+                let typeId = provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) ? UTType.utf8PlainText.identifier : UTType.plainText.identifier
+                provider.loadItem(forTypeIdentifier: typeId, options: nil) { [weak self] item, _ in
                     let text: String?
                     if let s = item as? String {
                         text = s
@@ -703,13 +730,14 @@ public final class AIAssistantPluginState: Sendable {
                         text = nil
                     }
                     if let str = text, !str.isEmpty {
+                        let title = "Dropped Text (\(str.count) chars)"
                         Task { @MainActor [weak self] in
                             guard let self else { return }
-                            if self.inputText.isEmpty {
-                                self.inputText = str
-                            } else {
-                                self.inputText += "\n" + str
-                            }
+                            self.stopStreaming()
+                            self.stagedDropText = str
+                            self.stagedDropTitle = title
+                            self.isAwaitingRoleForDroppedContent = true
+                            onStaged?()
                         }
                     }
                 }

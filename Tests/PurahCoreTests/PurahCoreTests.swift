@@ -177,6 +177,9 @@ struct MemoryFootprintTests {
         store._musicTrack.lyrics = String(repeating: "Line of synced lyrics\n", count: 1000)
         store._quickNote.text = String(repeating: "Lots of active notes text content.\n", count: 500)
 
+        // Allow initial window allocation and runloop to stabilize before taking baseline
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
         let fullMountedMB = currentFootprintMB()
 
         // 2. Stage 2: Unmount Left Rail Plugins + Single-Rail Sleep
@@ -220,6 +223,6 @@ struct MemoryFootprintTests {
         try? summary.write(toFile: "/tmp/unmount_telemetry.txt", atomically: true, encoding: .utf8)
 
         #expect(allUnmountedMB <= fullMountedMB + 20.0, "All unmounted state must not exhibit runaway memory expansion")
-        #expect(abs(remountedMB - fullMountedMB) < 25.0, "Remounting must not cause permanent runaway memory leak")
+        #expect(remountedMB <= fullMountedMB + 25.0, "Remounting must not cause permanent runaway memory leak")
     }
 }

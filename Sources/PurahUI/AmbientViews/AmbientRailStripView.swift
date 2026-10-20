@@ -393,8 +393,9 @@ public struct AmbientRailStripView: View {
                     store.openPluginSettings(id: pod.id)
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
+                        .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
                 .help("Open \(plugin.manifest.displayName) Settings")

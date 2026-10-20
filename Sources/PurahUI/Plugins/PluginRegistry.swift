@@ -84,6 +84,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         mountedPluginIds.insert(id)
         plugin.onMount(store: store)
         startPollingIfNeeded(for: plugin, store: store)
+        DiagnosticLogger.shared.info("Plugin", "Plugin mounted: \(id) (\(plugin.manifest.displayName))")
     }
 
     public func unmountPlugin(id: String, store: PurahWorkspaceStore) {
@@ -91,6 +92,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         mountedPluginIds.remove(id)
         stopPolling(for: id)
         plugin.onUnmount(store: store)
+        DiagnosticLogger.shared.info("Plugin", "Plugin unmounted: \(id)")
     }
 
     public func isPluginMounted(id: String) -> Bool {

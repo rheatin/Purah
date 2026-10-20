@@ -463,7 +463,11 @@ public final class LocalizationManager {
             "ai.action.replaceSelection": "Replace Selection ↵",
             "ai.action.retry": "Retry",
             "ai.toast.copied": "Copied result",
-            "ai.toast.replaced": "Replaced selection in target app"
+            "ai.toast.replaced": "Replaced selection in target app",
+            "ai.drop.activeHint": "Drop to stage content, then pick a role to process",
+            "ai.drop.chooseRole": "Select a role to process dropped content:",
+            "ai.drop.runRolePrefix": "Run ",
+            "ai.drop.clearStaged": "Clear"
         ],
         .chinese: [
             "app.name": "Purah Pad",
@@ -837,7 +841,11 @@ public final class LocalizationManager {
             "ai.action.replaceSelection": "替换选中文字 ↵",
             "ai.action.retry": "重试",
             "ai.toast.copied": "已复制结果",
-            "ai.toast.replaced": "已替换目标应用中的选中文字"
+            "ai.toast.replaced": "已替换目标应用中的选中文字",
+            "ai.drop.activeHint": "松开以投喂给 AI，随后可选择角色处理",
+            "ai.drop.chooseRole": "选择角色处理投喂内容，或切换顶部标签：",
+            "ai.drop.runRolePrefix": "执行 ",
+            "ai.drop.clearStaged": "清除"
         ],
         .traditionalChinese: [
             "tab.general": "通用",
@@ -938,7 +946,11 @@ public final class LocalizationManager {
             "ai.action.replaceSelection": "替換選取文字 ↵",
             "ai.action.retry": "重試",
             "ai.toast.copied": "已複製結果",
-            "ai.toast.replaced": "已替換目標應用中的選取文字"
+            "ai.toast.replaced": "已替換目標應用中的選取文字",
+            "ai.drop.activeHint": "放開以投餵給 AI，隨後可選擇角色處理",
+            "ai.drop.chooseRole": "選擇角色處理投餵內容，或切換頂部標籤：",
+            "ai.drop.runRolePrefix": "執行 ",
+            "ai.drop.clearStaged": "清除"
         ],
         .japanese: [
             "tab.general": "一般",

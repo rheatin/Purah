@@ -226,6 +226,32 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         )
         .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
+        .overlay {
+            if isDropTargeted {
+                ZStack {
+                    RoundedRectangle(cornerRadius: showRoleSwitcher ? 10 : 14, style: .continuous)
+                        .fill(roleColor.opacity(0.18))
+                    RoundedRectangle(cornerRadius: showRoleSwitcher ? 10 : 14, style: .continuous)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1.8, dash: [6, 4]))
+                        .foregroundColor(roleColor)
+
+                    VStack(spacing: 6) {
+                        Image(systemName: "tray.and.arrow.down.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(roleColor)
+                        Text("ai.drop.activeHint".localized)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.utf8PlainText, .plainText, .fileURL], isTargeted: $isDropTargeted) { providers in
+            state.handleDroppedProviders(providers)
+        }
         .onAppear {
             if let sel = state.capturedSelection, !sel.isEmpty, latestResult.isEmpty, !isRoleStreaming {
                 state.sendPrompt(sel, role: role, originalSelection: sel)
@@ -384,10 +410,13 @@ public struct AIAssistantRoleWorkbenchView: View {
         }
     }
 
-    // MARK: - Body Content Area (3 States)
+    // MARK: - Body Content Area (3 States + Staged Drop)
     @ViewBuilder
     private var bodyContentArea: some View {
-        if sourceText.isEmpty && !isRoleStreaming && latestResult.isEmpty {
+        if let stagedText = state.stagedDropText {
+            // Staged Drop Mode
+            stagedDropModeView(stagedText: stagedText)
+        } else if sourceText.isEmpty && !isRoleStreaming && latestResult.isEmpty {
             // State 1: Idle Dashed Drop Zone
             idleDropZone
         } else if isRoleStreaming && latestResult.isEmpty {
@@ -396,6 +425,138 @@ public struct AIAssistantRoleWorkbenchView: View {
         } else {
             // State 3: Completed / Streaming Content
             completedStateView
+        }
+    }
+
+    // MARK: - Staged Drop Mode
+    @ViewBuilder
+    private func stagedDropModeView(stagedText: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Sleek Staged Content Banner
+            stagedContentBanner(stagedText: stagedText)
+
+            if isRoleStreaming && latestResult.isEmpty {
+                generatingStateView
+            } else if !latestResult.isEmpty {
+                completedStateView
+            } else {
+                // Role Action Selector Grid / Strip
+                roleActionSelectorStrip(stagedText: stagedText)
+                Spacer()
+            }
+        }
+    }
+
+    private func stagedContentBanner(stagedText: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: "doc.text.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(roleColor)
+
+                Text(state.stagedDropTitle ?? "Dropped Content")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                        state.clearStagedDrop()
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .help("ai.drop.clearStaged".localized)
+            }
+
+            HStack(alignment: .top, spacing: 6) {
+                Rectangle()
+                    .fill(roleColor)
+                    .frame(width: 2)
+                    .cornerRadius(1)
+
+                Text(stagedText)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(Color.white.opacity(0.85))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 2)
+        }
+        .padding(7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(roleColor.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(roleColor.opacity(0.35), lineWidth: 1.0)
+        )
+    }
+
+    private func roleActionSelectorStrip(stagedText: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ai.drop.chooseRole".localized)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.70))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(state.enabledRoles) { r in
+                        let pillColor = Color(hex: r.colorHex)
+                        Button {
+                            state.selectedRoleId = r.id
+                            state.sendPrompt(stagedText, role: r, originalSelection: stagedText)
+                        } label: {
+                            HStack(spacing: 3.5) {
+                                Image(systemName: r.systemIcon)
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                Text(r.title)
+                                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(pillColor.opacity(0.18))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(pillColor.opacity(0.5), lineWidth: 1)
+                            )
+                            .foregroundColor(pillColor)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Button {
+                state.sendPrompt(stagedText, role: role, originalSelection: stagedText)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("ai.drop.runRolePrefix".localized + role.title + " ↵")
+                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(roleColor)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
         }
     }
 
@@ -440,30 +601,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.utf8PlainText.identifier, options: nil) { item, _ in
-                    let str: String? = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
-                    if let text = str, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Task { @MainActor in
-                            state.sendPrompt(text, role: role, originalSelection: text)
-                        }
-                    }
-                }
-                return true
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                    let url: URL? = (item as? URL) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8).flatMap { URL(fileURLWithPath: $0) } }
-                    if let fileURL = url, let content = try? String(contentsOf: fileURL, encoding: .utf8), !content.isEmpty {
-                        Task { @MainActor in
-                            state.sendPrompt(content, role: role, originalSelection: content)
-                        }
-                    }
-                }
-                return true
-            }
-        }
-        return false
+        state.handleDroppedProviders(providers)
     }
 
     // MARK: - State 2: Generating State

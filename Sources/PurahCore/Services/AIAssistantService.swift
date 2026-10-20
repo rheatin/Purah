@@ -340,78 +340,90 @@ public final class AIAssistantService {
         isStreaming = true
         defer { isStreaming = false }
 
-        switch provider {
-        case .appleIntelligence:
-            return try await streamSimulatedAppleIntelligence(
-                messages: messages,
-                targetLanguage: targetLanguage,
-                systemPromptOverride: systemPromptOverride,
-                onChunk: onChunk
-            )
-
-        case .httpOpenAI, .httpOllama:
-            let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if provider == .httpOpenAI && (key == nil || key?.isEmpty == true) {
-                // Graceful fallback to smart local on-device synthesis if API key is not configured
-                return try await streamSimulatedAppleIntelligence(
+        DiagnosticLogger.shared.info("AI", "Request started: provider=\(provider.displayName), model=\(model ?? "default")")
+        do {
+            let result: String
+            switch provider {
+            case .appleIntelligence:
+                result = try await streamSimulatedAppleIntelligence(
                     messages: messages,
                     targetLanguage: targetLanguage,
                     systemPromptOverride: systemPromptOverride,
                     onChunk: onChunk
                 )
-            }
-            return try await streamOpenAICompatible(
-                messages: messages,
-                provider: provider,
-                apiKey: key,
-                endpoint: endpoint,
-                model: model,
-                targetLanguage: targetLanguage,
-                systemPromptOverride: systemPromptOverride,
-                onChunk: onChunk
-            )
 
-        case .httpAnthropic:
-            let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if key == nil || key?.isEmpty == true {
-                // Graceful fallback to smart local on-device synthesis if API key is not configured
-                return try await streamSimulatedAppleIntelligence(
+            case .httpOpenAI, .httpOllama:
+                let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if provider == .httpOpenAI && (key == nil || key?.isEmpty == true) {
+                    // Graceful fallback to smart local on-device synthesis if API key is not configured
+                    result = try await streamSimulatedAppleIntelligence(
+                        messages: messages,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                } else {
+                    result = try await streamOpenAICompatible(
+                        messages: messages,
+                        provider: provider,
+                        apiKey: key,
+                        endpoint: endpoint,
+                        model: model,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                }
+
+            case .httpAnthropic:
+                let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if key == nil || key?.isEmpty == true {
+                    // Graceful fallback to smart local on-device synthesis if API key is not configured
+                    result = try await streamSimulatedAppleIntelligence(
+                        messages: messages,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                } else {
+                    result = try await streamAnthropic(
+                        messages: messages,
+                        apiKey: key ?? "",
+                        endpoint: endpoint,
+                        model: model,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                }
+
+            case .localCLI:
+                guard let cliPath = resolveCLIPath(for: cliExecutable, customPath: customCLIPath) else {
+                    // Graceful fallback to smart local on-device synthesis if CLI executable is not installed
+                    result = try await streamSimulatedAppleIntelligence(
+                        messages: messages,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                    break
+                }
+                result = try await streamLocalCLI(
+                    cliPath: cliPath,
+                    executable: cliExecutable,
+                    customCLIArguments: customCLIArguments,
                     messages: messages,
+                    model: model,
                     targetLanguage: targetLanguage,
                     systemPromptOverride: systemPromptOverride,
                     onChunk: onChunk
                 )
             }
-            return try await streamAnthropic(
-                messages: messages,
-                apiKey: key ?? "",
-                endpoint: endpoint,
-                model: model,
-                targetLanguage: targetLanguage,
-                systemPromptOverride: systemPromptOverride,
-                onChunk: onChunk
-            )
-
-        case .localCLI:
-            guard let cliPath = resolveCLIPath(for: cliExecutable, customPath: customCLIPath) else {
-                // Graceful fallback to smart local on-device synthesis if CLI executable is not installed
-                return try await streamSimulatedAppleIntelligence(
-                    messages: messages,
-                    targetLanguage: targetLanguage,
-                    systemPromptOverride: systemPromptOverride,
-                    onChunk: onChunk
-                )
-            }
-            return try await streamLocalCLI(
-                cliPath: cliPath,
-                executable: cliExecutable,
-                customCLIArguments: customCLIArguments,
-                messages: messages,
-                model: model,
-                targetLanguage: targetLanguage,
-                systemPromptOverride: systemPromptOverride,
-                onChunk: onChunk
-            )
+            DiagnosticLogger.shared.info("AI", "Request completed: provider=\(provider.displayName), chars=\(result.count)")
+            return result
+        } catch {
+            DiagnosticLogger.shared.error("AI", "Request failed: provider=\(provider.displayName), error=\(error.localizedDescription)")
+            throw error
         }
     }
 

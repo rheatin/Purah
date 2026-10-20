@@ -96,7 +96,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 // History Menu
                 Menu {
                     ForEach(state.sessions) { session in
@@ -116,8 +116,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                     }
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
+                        .frame(width: 20, height: 20)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -129,8 +130,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                     state.toggleFavoriteSession(id: state.activeSessionId)
                 } label: {
                     Image(systemName: (state.activeSession?.isFavorite == true) ? "star.fill" : "star")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor((state.activeSession?.isFavorite == true) ? .yellow : .secondary)
+                        .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
                 .help("Favorite Session")
@@ -140,8 +142,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                     state.createNewSession()
                 } label: {
                     Image(systemName: "plus.bubble")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(context.accentColor)
+                        .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
                 .help("New Chat")
@@ -173,7 +176,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public var supportedDropTypes: [UTType] { [.fileURL, .utf8PlainText, .png, .tiff, .pdf] }
 
     public func onDrop(providers: [NSItemProvider], context: PurahPluginContext) -> Bool {
-        state.handleDroppedProviders(providers)
+        state.handleDroppedProviders(providers) {
+            context.requestExpand()
+        }
     }
 
     public var decomposedPolicy: PurahDecomposedPolicy {

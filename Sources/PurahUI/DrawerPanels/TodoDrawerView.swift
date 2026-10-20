@@ -121,6 +121,8 @@ public struct TodoDrawerView: View {
                         }
                         Text(due.formatted(date: .abbreviated, time: .shortened))
                             .font(.system(size: 9))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .foregroundColor(isDone ? effectiveColor.opacity(0.35) : (urgency.badge != nil ? effectiveColor : .gray))
                     }
                 }
@@ -136,11 +138,13 @@ public struct TodoDrawerView: View {
                     .foregroundColor(todo.dueDate != nil ? effectiveColor : .secondary.opacity(0.65))
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .fixedSize()
             .help("Set Quick Due Date")
 
             Text(todo.listTitle)
                 .font(.system(size: 8))
+                .lineLimit(1)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
                 .background(effectiveColor.opacity(isDone ? 0.10 : 0.18))

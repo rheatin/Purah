@@ -51,6 +51,10 @@ public struct TodoPlugin: PurahPodPlugin {
         state.unmount(store: store)
     }
 
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        340.0
+    }
+
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
 
     public var decomposedPolicy: PurahDecomposedPolicy {

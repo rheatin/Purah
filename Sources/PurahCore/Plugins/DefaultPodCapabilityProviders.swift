@@ -56,6 +56,7 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { true }
     var decomposedPolicy: PurahDecomposedPolicy { .todoDefault }
 
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 340.0 }
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let maxTasks = max(store.todoMaxRailTasks, 1)

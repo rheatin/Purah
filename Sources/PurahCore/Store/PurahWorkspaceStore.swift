@@ -175,10 +175,12 @@ public final class PurahWorkspaceStore {
         let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
         if pages.count > 1 {
             setRailPage(pages.count - 1, for: targetEdge)
+            DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(targetEdge)")
             onCapacityWarningToast?("layout.toast.pageOverflow".localized)
         } else if isBreathingActive(for: targetEdge, totalHeight: screenH) {
             if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
                 lastCapacityAlertTime = Date()
+                DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(targetEdge)")
                 onCapacityWarningToast?("layout.toast.breathingActivated".localized)
             }
         }
@@ -228,6 +230,7 @@ public final class PurahWorkspaceStore {
         } else {
             rightRailPage = clamped
         }
+        DiagnosticLogger.shared.info("Store", "Rail page switched: edge=\(edge), page=\(clamped)")
         invalidateLayoutCache()
     }
 
@@ -755,11 +758,15 @@ public final class PurahWorkspaceStore {
     }
 
     public func togglePinItem(id: String) {
+        let isNowPinned: Bool
         if pinnedDrawerItemIds.contains(id) {
             pinnedDrawerItemIds.remove(id)
+            isNowPinned = false
         } else {
             pinnedDrawerItemIds.insert(id)
+            isNowPinned = true
         }
+        DiagnosticLogger.shared.info("Store", "Item pin toggled: id=\(id), isPinned=\(isNowPinned)")
         invalidateLayoutCache()
     }
 
@@ -774,6 +781,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func activateDrawer(podId: String, itemId: String? = nil) {
+        DiagnosticLogger.shared.info("Store", "Drawer activated: podId=\(podId), itemId=\(itemId ?? podId)")
         if dismissAlertOnHover {
             acknowledgeAllAlerts(forPodId: podId)
             if let itemId {
@@ -830,6 +838,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func dismissActiveDrawer() {
+        DiagnosticLogger.shared.info("Store", "Active drawer dismissed")
         onDismissPreviewPanel?()
         activePreviewScreenFrame = nil
         pendingHoverPodId = nil
@@ -1352,10 +1361,12 @@ public final class PurahWorkspaceStore {
             let pages = paginatedPods(for: edge, totalHeight: screenH)
             if pages.count > 1 {
                 lastCapacityAlertTime = now
+                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(edge)")
                 onCapacityWarningToast?("layout.toast.pageOverflow".localized)
                 return
             } else if isBreathingActive(for: edge, totalHeight: screenH) {
                 lastCapacityAlertTime = now
+                DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(edge)")
                 onCapacityWarningToast?("layout.toast.breathingActivated".localized)
                 return
             }
@@ -2589,10 +2600,12 @@ public final class PurahWorkspaceStore {
             let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
             if pages.count > 1 {
                 setRailPage(pages.count - 1, for: pod.edge)
+                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(pod.edge)")
                 onCapacityWarningToast?("layout.toast.pageOverflow".localized)
             } else if isBreathingActive(for: pod.edge, totalHeight: screenH) {
                 if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
                     lastCapacityAlertTime = Date()
+                    DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(pod.edge)")
                     onCapacityWarningToast?("layout.toast.breathingActivated".localized)
                 }
             }
