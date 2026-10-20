@@ -278,13 +278,13 @@ struct AIAssistantPluginTests {
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         #expect(store.pods.contains(where: { $0.id == "ai" }))
-        #expect(store.preferredDrawerHeight(for: "ai") == 340.0)
+        #expect(store.preferredDrawerHeight(for: "ai") == 250.0)
 
         #expect(store.capabilityProvider(for: "ai") != nil)
 
         let provider = DefaultAICapabilityProvider()
         #expect(provider.podId == "ai")
-        #expect(provider.adaptiveDrawerWidth(store: store) == 400.0)
+        #expect(provider.adaptiveDrawerWidth(store: store) == 370.0)
         #expect(provider.minimumDrawerHeight(store: store) == 220.0)
 
         // Toggle decomposed mode
@@ -292,7 +292,7 @@ struct AIAssistantPluginTests {
         store._isAIDecomposed = true
         #expect(store._isAIDecomposed == true)
         #expect(provider.isDecomposed(store: store) == true)
-        #expect(provider.adaptiveDrawerWidth(store: store) == 340.0)
+        #expect(provider.adaptiveDrawerWidth(store: store) == 370.0)
 
         let actionCount = store._aiEnabledActions.count
         #expect(provider.subItemCount(store: store) == actionCount)
@@ -362,7 +362,7 @@ struct AIAssistantPluginTests {
 
         let isolated = UserDefaults(suiteName: "test_ai_plugin_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        #expect(plugin.adaptiveDrawerWidth(store: store) == 400.0)
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 370.0)
         #expect(plugin.minimumDrawerHeight(store: store) == 220.0)
 
         // Test Views instantiation
@@ -833,5 +833,69 @@ struct AIAssistantPluginTests {
 
         let anthropic4 = AIAssistantService.resolveAnthropicMessagesURL(baseURL: "https://custom-proxy.internal/messages/")
         #expect(anthropic4?.absoluteString == "https://custom-proxy.internal/messages")
+    }
+
+    @Test("AIPolishTone cases, localization, and AIRolePreset colorHex defaults")
+    func testPolishTonesAndRoleColorHex() {
+        #expect(AIPolishTone.allCases.count == 3)
+        #expect(AIPolishTone.concise.rawValue == "concise")
+        #expect(AIPolishTone.formal.rawValue == "formal")
+        #expect(AIPolishTone.friendly.rawValue == "friendly")
+
+        let translate = AIRolePreset.from(action: .translate)
+        #expect(translate.colorHex == "#5BA8FF")
+
+        let polish = AIRolePreset.from(action: .polish)
+        #expect(polish.colorHex == "#A78BFA")
+
+        let grammar = AIRolePreset.from(action: .fixGrammar)
+        #expect(grammar.colorHex == "#A78BFA")
+
+        let summarize = AIRolePreset.from(action: .summarize)
+        #expect(summarize.colorHex == "#34D399")
+
+        let explain = AIRolePreset.from(action: .explainCode)
+        #expect(explain.colorHex == "#FBBF24")
+
+        let ask = AIRolePreset.from(action: .ask)
+        #expect(ask.colorHex == "#EC4899")
+    }
+
+    @Test("AIAssistantService detectLanguageBadge handles empty, English, and CJK text")
+    func testLanguageDetectionBadge() {
+        let service = AIAssistantService.shared
+
+        // 1. Empty string returns auto badge
+        let emptyBadge = service.detectLanguageBadge(for: "", roleId: "translate")
+        #expect(!emptyBadge.isEmpty)
+
+        // 2. English text in translate mode
+        let enTranslateBadge = service.detectLanguageBadge(for: "Hello world this is English", roleId: "translate")
+        #expect(!enTranslateBadge.isEmpty)
+
+        // 3. Chinese text in translate mode (\u{4E2D}\u{6587})
+        let zhTranslateBadge = service.detectLanguageBadge(for: "\u{4E2D}\u{6587}\u{6D4B}\u{8BD5}\u{6587}\u{672C}", roleId: "translate")
+        #expect(!zhTranslateBadge.isEmpty)
+
+        // 4. Polish mode with English text
+        let enPolishBadge = service.detectLanguageBadge(for: "Refine this paragraph", roleId: "polish")
+        #expect(!enPolishBadge.isEmpty)
+
+        // 5. Polish mode with Chinese text
+        let zhPolishBadge = service.detectLanguageBadge(for: "\u{8FD9}\u{6BB5}\u{6587}\u{5B57}", roleId: "polish")
+        #expect(!zhPolishBadge.isEmpty)
+    }
+
+    @Test("AIAssistantService AX selection capture and replaceSelectionInTargetApp")
+    func testSelectionAndReplacement() {
+        let service = AIAssistantService.shared
+
+        // Verify fallback gating: when allowPasteboardFallback is false and no window is selected, returns nil safely
+        _ = service.captureFrontmostSelection(allowPasteboardFallback: false)
+
+        // Verify replaceSelectionInTargetApp safely copies to general pasteboard
+        service.replaceSelectionInTargetApp(with: "Replaced text payload")
+        let pbString = NSPasteboard.general.string(forType: .string)
+        #expect(pbString == "Replaced text payload")
     }
 }

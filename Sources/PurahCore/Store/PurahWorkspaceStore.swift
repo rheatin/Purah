@@ -1257,7 +1257,7 @@ public final class PurahWorkspaceStore {
         case "clipboard":
             return 280.0
         case "ai":
-            return 340.0
+            return 250.0
         case "calendar":
             return max(minH, 260.0)
         case "todo":
@@ -2024,7 +2024,7 @@ public final class PurahWorkspaceStore {
                 let totalSpacing = spacing * Double(safeCount - 1)
                 let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
                 let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
-                let cardH = max(itemH, minChipH, 48.0)
+                let cardH = (pod.id == "ai") ? max(itemH, 195.0) : max(itemH, minChipH, 48.0)
 
                 var matchedSubItem = false
                 for idx in 0..<count {
@@ -2038,8 +2038,12 @@ public final class PurahWorkspaceStore {
                         matchedSubItem = true
                         let itemTop = item.startY + Double(idx) * (itemH + spacing)
                         let itemBottom = itemTop + cardH
-                        let topOfCardY = totalHeight - itemTop
-                        let bottomOfCardY = totalHeight - itemBottom
+                        let maxAllowedY = totalHeight - 12.0
+                        let shift = max(itemBottom - maxAllowedY, 0.0)
+                        let shiftedTop = itemTop - shift
+                        let shiftedBottom = itemBottom - shift
+                        let topOfCardY = totalHeight - shiftedTop
+                        let bottomOfCardY = totalHeight - shiftedBottom
                         let minY = max(bottomOfCardY - 6.0, 0.0)
                         let maxY = min(topOfCardY + 6.0, totalHeight)
 

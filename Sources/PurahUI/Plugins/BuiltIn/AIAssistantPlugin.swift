@@ -22,7 +22,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             ergonomicWeight: 38.0,
             minLengthRatio: 0.18,
             defaultColorHex: "#A855F7",
-            defaultDrawerWidth: 400.0,
+            defaultDrawerWidth: 370.0,
             category: .systemService,
             permissions: [.pasteboard, .fileSystem],
             tags: ["ai", "assistant", "chat", "translate", "rewrite"]
@@ -179,8 +179,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
             maxRailItems: max(state.enabledRoles.count, 1),
-            minChipHeight: 42.0,
-            maxChipHeight: 185.0,
+            minChipHeight: 52.0,
+            maxChipHeight: 210.0,
             spacing: 2.5,
             overflowStrategy: .truncate
         )
@@ -190,8 +190,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         let count = max(state.enabledRoles.count, 1)
         return PurahDecomposedPolicy(
             maxRailItems: count,
-            minChipHeight: 42.0,
-            maxChipHeight: 185.0,
+            minChipHeight: 52.0,
+            maxChipHeight: 210.0,
             spacing: 2.5,
             overflowStrategy: .truncate
         )
@@ -205,10 +205,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "ai") {
-            return 400.0
-        }
-        return 350.0
+        370.0
     }
 
     public var isDecomposed: Bool {
@@ -247,7 +244,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         state.enabledRoles.map { role in
-            let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id)
+            let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id || state.selectedRoleId == role.id)
             return PurahPluginSubItem(
                 id: "ai-\(role.id)",
                 title: role.title,
@@ -257,7 +254,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                 state: isRunning ? .running : .normal,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
-                tintColorHex: nil,
+                tintColorHex: role.colorHex,
                 isPinned: context.isItemPinned("ai-\(role.id)")
             )
         }
@@ -301,27 +298,44 @@ public struct AIRailBarPluginView: View {
     }
 
     public var body: some View {
-        let radius = min(context.railWidth / 2, 4)
-        ZStack {
+        let barW = context.railWidth
+        let barH = context.slotHeight
+        let radius = min(barW / 2, 4)
+        let roleColor = Color(hex: state.selectedRole.colorHex)
+
+        ZStack(alignment: .top) {
             RoundedRectangle(cornerRadius: radius)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.purple.opacity(0.85), Color.cyan.opacity(0.85)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .fill(roleColor.opacity(0.88))
+                .frame(width: barW, height: barH)
 
             if state.isStreaming {
                 TimelineView(.animation) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    let pulse = (sin(time * 5.0) + 1.0) / 2.0
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
+                    let spotH = max(barH * 0.28, 14.0)
+                    let spotY = progress * (barH + spotH) - spotH
+
                     RoundedRectangle(cornerRadius: radius)
-                        .fill(Color.cyan.opacity(0.25 + 0.5 * pulse))
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.0),
+                                    .init(color: .white.opacity(0.85), location: 0.5),
+                                    .init(color: .clear, location: 1.0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: barW, height: spotH)
+                        .offset(y: spotY)
+                        .clipped()
                 }
+                .frame(width: barW, height: barH)
+                .clipped()
             }
         }
-        .frame(width: context.railWidth, height: context.slotHeight)
+        .frame(width: barW, height: barH)
     }
 }
 

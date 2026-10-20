@@ -9,699 +9,30 @@ public struct AIAssistantDrawerView: View {
     @Bindable public var state: AIAssistantPluginState
     public let store: PurahWorkspaceStore
 
-    @State private var isReasoningExpanded: [UUID: Bool] = [:]
-    @State private var diffMode: [UUID: Bool] = [:]
-    @State private var isDropTargeted: Bool = false
-
     public init(state: AIAssistantPluginState, store: PurahWorkspaceStore) {
         self.state = state
         self.store = store
     }
 
     public var body: some View {
-        GeometryReader { outerGeo in
-            let h = outerGeo.size.height
-
-            VStack(spacing: 6) {
-                // 1. Captured Selection Banner or Quick Action Pills
-                if let selection = state.capturedSelection, !selection.isEmpty {
-                    capturedSelectionBanner(selection: selection)
-                } else if h >= 150.0 {
-                    quickActionPillsRow
-                }
-
-                // 2. Transcript ScrollView
-                transcriptView(availableHeight: max(h - 85.0, 60.0))
-
-                // 3. Multi-Modal Composer
-                composerBar
-            }
-            .padding(6)
-            .frame(width: outerGeo.size.width, height: h)
-            .background(Color.clear)
-            .onDrop(of: [.fileURL, .utf8PlainText, .png, .tiff, .pdf], isTargeted: $isDropTargeted) { providers in
-                state.handleDroppedProviders(providers)
-            }
-        }
-    }
-
-    // MARK: - Captured Selection Banner
-    @ViewBuilder
-    private func capturedSelectionBanner(selection: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: "selection.pin.in.out")
-                    .font(.system(size: 9))
-                    .foregroundColor(.cyan)
-                Text(state.capturedSourceApp ?? "Selection")
-                    .font(.system(size: 9.5, weight: .bold))
-                Text("(\(selection.count) chars)")
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button {
-                    state.capturedSelection = nil
-                    state.capturedSourceApp = nil
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            Text(selection.prefix(100) + (selection.count > 100 ? "..." : ""))
-                .font(.system(size: 9.5))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-
-            HStack(spacing: 4) {
-                ForEach(state.enabledRoles.prefix(5)) { role in
-                    Button {
-                        state.sendPrompt(selection, role: role, originalSelection: selection)
-                        state.capturedSelection = nil
-                        state.capturedSourceApp = nil
-                    } label: {
-                        HStack(spacing: 2.5) {
-                            Image(systemName: role.systemIcon)
-                                .font(.system(size: 7.5))
-                            Text(role.title)
-                                .font(.system(size: 8.5, weight: .semibold))
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.cyan.opacity(0.16))
-                        .foregroundColor(.cyan)
-                        .cornerRadius(3)
-                    }
-                    .buttonStyle(.tactile)
-                }
-            }
-        }
-        .padding(6)
-        .background(Color.cyan.opacity(0.08))
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.cyan.opacity(0.2), lineWidth: 0.5)
-        )
-    }
-
-    // MARK: - Quick Action Pills Row
-    private var quickActionPillsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(state.enabledRoles) { role in
-                    Button {
-                        triggerRoleAction(role)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: role.systemIcon)
-                                .font(.system(size: 8))
-                            Text(role.title)
-                                .font(.system(size: 9, weight: .medium))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.purple.opacity(0.12))
-                        .foregroundColor(.primary)
-                        .cornerRadius(4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.purple.opacity(0.25), lineWidth: 0.5)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                }
-            }
-            .padding(.horizontal, 1)
-        }
-    }
-
-    private func triggerRoleAction(_ role: AIRolePreset) {
-        if !state.inputText.isEmpty {
-            let prompt = state.inputText
-            state.inputText = ""
-            state.sendPrompt(prompt, role: role, originalSelection: prompt)
-        } else if let pbText = NSPasteboard.general.string(forType: .string),
-                  !pbText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            state.sendPrompt(pbText, role: role, originalSelection: pbText)
-        } else {
-            state.refreshCapturedSelection()
-            if let sel = state.capturedSelection {
-                state.sendPrompt(sel, role: role, originalSelection: sel)
-                state.capturedSelection = nil
-            } else {
-                state.sendPrompt(role.title, role: role)
-            }
-        }
-    }
-
-    // MARK: - Conversation Transcript
-    @ViewBuilder
-    private func transcriptView(availableHeight: CGFloat) -> some View {
-        let currentMessages = state.activeSession?.messages ?? []
-
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    if currentMessages.isEmpty {
-                        emptyWelcomeCard
-                    } else {
-                        ForEach(currentMessages) { msg in
-                            if msg.role == .user {
-                                userMessageBubble(msg)
-                                    .id(msg.id)
-                            } else {
-                                assistantMessageBubble(msg, isLast: msg.id == currentMessages.last?.id)
-                                    .id(msg.id)
-                            }
-                        }
+        let isPinned = store.isItemPinned(id: "ai")
+        GeometryReader { geo in
+            AIAssistantRoleWorkbenchView(
+                role: state.selectedRole,
+                state: state,
+                store: store,
+                showRoleSwitcher: true,
+                isPinned: isPinned,
+                cardHeight: geo.size.height,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        store.togglePinItem(id: "ai")
                     }
                 }
-                .padding(.vertical, 4)
-            }
-            .frame(maxHeight: availableHeight)
-            .onChange(of: currentMessages.count) { _, _ in
-                if let last = currentMessages.last {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
+            )
+            .frame(width: geo.size.width, height: geo.size.height)
         }
     }
-
-    // MARK: - Empty Welcome Card
-    private var emptyWelcomeCard: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 24))
-                .foregroundColor(.purple)
-                .padding(.top, 12)
-
-            Text("Purah AI Assistant")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-
-            HStack(spacing: 4) {
-                Image(systemName: state.selectedProvider.systemIcon)
-                    .font(.system(size: 9))
-                Text(state.selectedProvider.displayName)
-                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.purple.opacity(0.12))
-            .foregroundColor(.purple)
-            .cornerRadius(4)
-
-            VStack(alignment: .leading, spacing: 4) {
-                hintRow(icon: "cursorarrow.and.square.on.square.dashed", text: "Select text in any app to translate, polish, or explain")
-                hintRow(icon: "arrow.down.doc", text: "Drag & drop files or code snippets directly into this drawer")
-                hintRow(icon: "return", text: "Type a prompt below and press Return to ask")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.06))
-            .cornerRadius(8)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 8)
-    }
-
-    private func hintRow(icon: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-                .frame(width: 12)
-            Text(text)
-                .font(.system(size: 9.5))
-                .foregroundColor(.secondary)
-        }
-    }
-
-    // MARK: - User Message Bubble
-    @ViewBuilder
-    private func userMessageBubble(_ msg: AIChatMessage) -> some View {
-        HStack {
-            Spacer(minLength: 28)
-            VStack(alignment: .trailing, spacing: 4) {
-                if !msg.attachments.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(msg.attachments) { att in
-                            attachmentBadge(att)
-                        }
-                    }
-                }
-
-                Text(msg.content)
-                    .font(.system(size: 11))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.purple.opacity(0.85))
-                    .cornerRadius(10)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
-    private func attachmentBadge(_ att: AIAttachmentItem) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: att.kind == .image ? "photo" : (att.kind == .code ? "chevron.left.forwardslash.chevron.right" : "doc"))
-                .font(.system(size: 7.5))
-            Text(att.name)
-                .font(.system(size: 8, design: .monospaced))
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(Color.secondary.opacity(0.2))
-        .cornerRadius(4)
-    }
-
-    // MARK: - Assistant Message Bubble
-    @ViewBuilder
-    private func assistantMessageBubble(_ msg: AIChatMessage, isLast: Bool) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 6) {
-                // Collapsible Reasoning Capsule
-                if let reasoning = msg.reasoningContent, !reasoning.isEmpty {
-                    reasoningCapsule(msg: msg, reasoning: reasoning, isLast: isLast)
-                }
-
-                // Inline Diff Toggle & Content
-                if let original = msg.originalSelection, msg.quickAction?.isTransform == true {
-                    diffToggleRow(msg: msg)
-
-                    let showDiff = diffMode[msg.id] ?? true
-                    if showDiff {
-                        diffContentView(original: original, modified: msg.content)
-                    } else {
-                        formattedMessageBody(msg.content)
-                    }
-                } else {
-                    formattedMessageBody(msg.content)
-                }
-
-                // Bottom Action Row
-                bottomMessageActionRow(msg: msg, isLast: isLast)
-
-                // Choices follow-up pills on the last message
-                if isLast && !msg.choices.isEmpty && !state.isStreaming {
-                    choicesPills(msg.choices)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.08))
-            .cornerRadius(10)
-
-            Spacer(minLength: 16)
-        }
-    }
-
-    // MARK: - Reasoning Capsule
-    @ViewBuilder
-    private func reasoningCapsule(msg: AIChatMessage, reasoning: String, isLast: Bool) -> some View {
-        let isExpanded = isReasoningExpanded[msg.id] ?? false
-        let isActivelyThinking = isLast && state.isStreaming && msg.content.isEmpty
-
-        VStack(alignment: .leading, spacing: 3) {
-            Button {
-                isReasoningExpanded[msg.id] = !isExpanded
-            } label: {
-                HStack(spacing: 4) {
-                    if isActivelyThinking && !isExpanded {
-                        Image(systemName: "bubble.left.and.text.bubble.right")
-                            .font(.system(size: 8))
-                            .symbolEffect(.pulse)
-                        Text("Thinking...")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        if let lastLine = reasoning.split(separator: "\n").last.map({ String($0).trimmingCharacters(in: .whitespaces) }), !lastLine.isEmpty {
-                            Text(lastLine)
-                                .font(.system(size: 8.5))
-                                .foregroundColor(.secondary.opacity(0.8))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 6.5))
-                    } else {
-                        Image(systemName: "bubble.left.and.text.bubble.right")
-                            .font(.system(size: 8))
-                        Text("Thought Process")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 6.5))
-                    }
-                }
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2.5)
-                .background(Color.secondary.opacity(0.12))
-                .cornerRadius(4)
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                Text(reasoning)
-                    .font(.system(size: 9.5, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(5)
-            }
-        }
-    }
-
-    // MARK: - Diff Toggle & View
-    @ViewBuilder
-    private func diffToggleRow(msg: AIChatMessage) -> some View {
-        let isDiff = diffMode[msg.id] ?? true
-        HStack(spacing: 4) {
-            Button {
-                diffMode[msg.id] = true
-            } label: {
-                Text("Diff")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(isDiff ? Color.purple.opacity(0.3) : Color.clear)
-                    .foregroundColor(isDiff ? .purple : .secondary)
-                    .cornerRadius(3)
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                diffMode[msg.id] = false
-            } label: {
-                Text("Result")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(!isDiff ? Color.purple.opacity(0.3) : Color.clear)
-                    .foregroundColor(!isDiff ? .purple : .secondary)
-                    .cornerRadius(3)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private func diffContentView(original: String, modified: String) -> some View {
-        let tokens = AITextDiffEngine.diffWords(original: original, modified: modified)
-        Text(buildDiffAttributedString(tokens: tokens))
-            .font(.system(size: 11))
-            .textSelection(.enabled)
-    }
-
-    private func buildDiffAttributedString(tokens: [AITextDiffEngine.DiffToken]) -> AttributedString {
-        var result = AttributedString()
-        for token in tokens {
-            var part = AttributedString(token.text)
-            switch token.kind {
-            case .equal:
-                part.foregroundColor = .primary
-            case .removed:
-                part.foregroundColor = .red
-                part.strikethroughStyle = .single
-                part.strikethroughColor = .red
-            case .added:
-                part.foregroundColor = .green
-                part.inlinePresentationIntent = .stronglyEmphasized
-                part.backgroundColor = Color.green.opacity(0.18)
-            }
-            result.append(part)
-        }
-        return result
-    }
-
-    // MARK: - Formatted Message Body & Code Blocks
-    @ViewBuilder
-    private func formattedMessageBody(_ content: String) -> some View {
-        let parts = parseMessageBlocks(content)
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(parts) { part in
-                switch part {
-                case .text(let text):
-                    Text(text)
-                        .font(.system(size: 11))
-                        .textSelection(.enabled)
-                case .code(let lang, let code):
-                    codeBlockView(lang: lang, code: code)
-                }
-            }
-        }
-    }
-
-    private func codeBlockView(lang: String, code: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(lang.uppercased())
-                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(code, forType: .string)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 8))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.tactile)
-                .help("Copy code")
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Color.black.opacity(0.35))
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white)
-                    .padding(6)
-                    .textSelection(.enabled)
-            }
-        }
-        .background(Color.black.opacity(0.25))
-        .cornerRadius(6)
-    }
-
-    // MARK: - Bottom Action Row
-    @ViewBuilder
-    private func bottomMessageActionRow(msg: AIChatMessage, isLast: Bool) -> some View {
-        HStack(spacing: 6) {
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(msg.content, forType: .string)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 8.5))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.tactile)
-            .help("Copy full message")
-
-            if let action = msg.quickAction {
-                HStack(spacing: 2) {
-                    Image(systemName: action.systemIcon)
-                        .font(.system(size: 7))
-                    Text(action.title)
-                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(.purple)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1.5)
-                .background(Color.purple.opacity(0.12))
-                .cornerRadius(3)
-            }
-
-            if isLast && state.isStreaming {
-                ProgressView()
-                    .controlSize(.mini)
-            }
-
-            Spacer()
-        }
-    }
-
-    // MARK: - Choices Follow-Up Pills
-    @ViewBuilder
-    private func choicesPills(_ choices: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("Suggestions")
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .foregroundColor(.secondary)
-
-            HStack(spacing: 4) {
-                ForEach(choices, id: \.self) { choice in
-                    Button {
-                        state.sendPrompt(choice)
-                    } label: {
-                        HStack(spacing: 2.5) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 7))
-                            Text(choice)
-                                .font(.system(size: 8.5, weight: .medium))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.purple.opacity(0.16))
-                        .foregroundColor(.primary)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.purple.opacity(0.3), lineWidth: 0.5)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                }
-            }
-        }
-    }
-
-    // MARK: - Bottom Multi-Modal Composer
-    private var composerBar: some View {
-        VStack(spacing: 4) {
-            // Staged Attachments
-            if !state.stagedAttachments.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(state.stagedAttachments) { att in
-                            HStack(spacing: 3) {
-                                Image(systemName: att.kind == .image ? "photo" : "doc")
-                                    .font(.system(size: 7.5))
-                                Text(att.name)
-                                    .font(.system(size: 8, design: .monospaced))
-                                    .lineLimit(1)
-                                Button {
-                                    state.stagedAttachments.removeAll(where: { $0.id == att.id })
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 7, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.15))
-                            .cornerRadius(4)
-                        }
-                    }
-                }
-            }
-
-            // Input Row
-            HStack(spacing: 5) {
-                Button {
-                    openAttachmentPicker()
-                } label: {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.tactile)
-                .help("Attach file")
-
-                TextField("Ask AI, or select text in any app...", text: $state.inputText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11))
-                    .padding(5)
-                    .background(Color.secondary.opacity(0.08))
-                    .cornerRadius(5)
-                    .onSubmit {
-                        if !state.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !state.isStreaming {
-                            let text = state.inputText
-                            state.inputText = ""
-                            state.sendPrompt(text)
-                        }
-                    }
-
-                if state.isStreaming {
-                    Button {
-                        state.stopStreaming()
-                    } label: {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(.red)
-                    }
-                    .buttonStyle(.tactile)
-                    .help("Stop generating")
-                } else {
-                    Button {
-                        let text = state.inputText
-                        state.inputText = ""
-                        state.sendPrompt(text)
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor((state.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.stagedAttachments.isEmpty) ? .secondary.opacity(0.3) : .purple)
-                    }
-                    .buttonStyle(.tactile)
-                    .disabled(state.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.stagedAttachments.isEmpty)
-                    .help("Send prompt")
-                }
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    private func openAttachmentPicker() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        if panel.runModal() == .OK {
-            for url in panel.urls {
-                if let item = AIAssistantService.shared.makeAttachment(from: url) {
-                    if state.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
-                        state.stagedAttachments.append(item)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Message Block Parser
-private enum MessageBlock: Identifiable {
-    case text(String)
-    case code(lang: String, code: String)
-
-    var id: String {
-        switch self {
-        case .text(let s): return "t-\(s.hashValue)"
-        case .code(let l, let c): return "c-\(l)-\(c.hashValue)"
-        }
-    }
-}
-
-private func parseMessageBlocks(_ content: String) -> [MessageBlock] {
-    let comps = content.components(separatedBy: "```")
-    guard comps.count > 1 else {
-        return [.text(content)]
-    }
-
-    var blocks: [MessageBlock] = []
-    for (idx, comp) in comps.enumerated() {
-        if idx % 2 == 0 {
-            let trimmed = comp.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                blocks.append(.text(trimmed))
-            }
-        } else {
-            let lines = comp.components(separatedBy: .newlines)
-            let lang = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let code = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .newlines)
-            blocks.append(.code(lang: lang.isEmpty ? "code" : lang, code: code))
-        }
-    }
-    return blocks.isEmpty ? [.text(content)] : blocks
 }
 
 // MARK: - Stepped Mini-Drawer View (Decomposed Mode)
@@ -709,8 +40,6 @@ public struct AIAssistantSteppedDrawerView: View {
     public let role: AIRolePreset
     @Bindable public var state: AIAssistantPluginState
     public let context: PurahPluginContext
-
-    @State private var localPromptInput: String = ""
 
     public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
         self.role = role
@@ -724,191 +53,655 @@ public struct AIAssistantSteppedDrawerView: View {
         self.context = context
     }
 
-    private var drawerShape: UnevenRoundedRectangle {
-        if context.edge == .right {
-            return UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
-        } else {
-            return UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 10, topTrailingRadius: 10, style: .continuous)
-        }
-    }
-
     public var body: some View {
         let subItemId = "ai-\(role.id)"
         let isPinned = context.isItemPinned(subItemId)
         let isExpanded = context.isExpanded || isPinned
         let barW = CGFloat(context.store.railBarWidth)
-        let cardH = max(context.slotHeight, 44.0)
+        let slotH = context.slotHeight
+        let expandedCardH = max(slotH, 195.0)
         let drawerW = context.drawerWidth
         let edge = context.edge
+        let roleColor = Color(hex: role.colorHex)
+        let barRadius = min(barW / 2, 4)
+        let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id || state.selectedRoleId == role.id)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // 1. In-Rail Indicator Bar
-            RoundedRectangle(cornerRadius: min(barW / 2, 4))
-                .fill(context.accentColor.opacity(isExpanded ? 0.95 : 0.72))
-                .frame(width: barW, height: cardH)
+            // 1. In-Rail Indicator Bar with flowing light spot when streaming
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: barRadius)
+                    .fill(roleColor.opacity(isExpanded ? 0.96 : 0.75))
+                    .frame(width: barW, height: slotH)
 
-            // 2. Expanded Stepped Card
-            steppedCard(subItemId: subItemId, isPinned: isPinned, cardH: cardH, drawerW: drawerW, edge: edge)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
-        }
-        .frame(height: cardH)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
-    }
+                if isRunning {
+                    TimelineView(.animation) { timeline in
+                        let t = timeline.date.timeIntervalSinceReferenceDate
+                        let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
+                        let spotH = max(slotH * 0.28, 14.0)
+                        let spotY = progress * (slotH + spotH) - spotH
 
-    @ViewBuilder
-    private func steppedCard(subItemId: String, isPinned: Bool, cardH: CGFloat, drawerW: CGFloat, edge: MountEdge) -> some View {
-        let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id)
-
-        VStack(alignment: .leading, spacing: 4) {
-            // Row 1: Role Header & Action Buttons
-            HStack(spacing: 5) {
-                Image(systemName: role.systemIcon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(context.accentColor)
-
-                Text(role.title)
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-
-                Spacer()
-
-                // Run on Selection or Clipboard
-                Button {
-                    executeAction()
-                } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: isRunning ? "stop.fill" : "play.fill")
-                            .font(.system(size: 7))
-                        Text(isRunning ? "Stop" : "Run")
-                            .font(.system(size: 8.5, weight: .semibold))
+                        RoundedRectangle(cornerRadius: barRadius)
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .clear, location: 0.0),
+                                        .init(color: .white.opacity(0.85), location: 0.5),
+                                        .init(color: .clear, location: 1.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .frame(width: barW, height: spotH)
+                            .offset(y: spotY)
+                            .clipped()
                     }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(context.accentColor.opacity(0.18))
-                    .foregroundColor(context.accentColor)
-                    .cornerRadius(3)
+                    .frame(width: barW, height: slotH)
+                    .clipped()
                 }
-                .buttonStyle(.tactile)
+            }
+            .frame(width: barW, height: slotH)
 
-                // Copy Latest Output
-                Button {
-                    copyLatestOutput()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.tactile)
-                .help("Copy Output")
-
-                PurahPinButton(
-                    isPinned: isPinned,
-                    tintColor: context.accentColor,
-                    size: 18,
-                    action: {
+            // 2. Expanded Floating Role Workbench Card
+            AIAssistantRoleWorkbenchView(
+                role: role,
+                state: state,
+                store: context.store,
+                showRoleSwitcher: false,
+                isPinned: isPinned,
+                cardHeight: expandedCardH,
+                onTogglePin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
                         context.togglePin(subItemId)
                     }
-                )
-            }
-
-            // Row 2: Live Content Preview / Input
-            let contentH = max(cardH - 32.0, 20.0)
-            row2Content
-                .frame(height: contentH)
-                .clipped()
+                }
+            )
+            .frame(width: drawerW, height: expandedCardH)
+            .offset(x: isExpanded ? (edge == .right ? (-barW - 6) : (barW + 6)) : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
+            .opacity(isExpanded ? 1.0 : 0.0)
+            .allowsHitTesting(isExpanded)
         }
-        .padding(.leading, edge == .left ? 12 : 20)
-        .padding(.trailing, edge == .left ? 20 : 12)
-        .padding(.vertical, 6)
-        .frame(width: drawerW, height: cardH)
-        .liquidDrawerBackground(shape: drawerShape, accentColor: context.accentColor)
+        .frame(height: slotH, alignment: .top)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+    }
+}
+
+// MARK: - Unified Role Workbench View
+public struct AIAssistantRoleWorkbenchView: View {
+    public let role: AIRolePreset
+    @Bindable public var state: AIAssistantPluginState
+    public let store: PurahWorkspaceStore
+    public let showRoleSwitcher: Bool
+    public let isPinned: Bool
+    public let cardHeight: CGFloat
+    public let onTogglePin: () -> Void
+
+    @State private var isDropTargeted: Bool = false
+    @State private var inlineInput: String = ""
+    @State private var showInlineInput: Bool = false
+
+    public init(
+        role: AIRolePreset,
+        state: AIAssistantPluginState,
+        store: PurahWorkspaceStore,
+        showRoleSwitcher: Bool = false,
+        isPinned: Bool = false,
+        cardHeight: CGFloat = 200.0,
+        onTogglePin: @escaping () -> Void = {}
+    ) {
+        self.role = role
+        self.state = state
+        self.store = store
+        self.showRoleSwitcher = showRoleSwitcher
+        self.isPinned = isPinned
+        self.cardHeight = cardHeight
+        self.onTogglePin = onTogglePin
     }
 
-    @ViewBuilder
-    private var row2Content: some View {
-        if !role.isTransform && (role.id == "ask" || role.id.contains("ask")) {
-            HStack(spacing: 4) {
-                TextField("Prompt...", text: $localPromptInput)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 10))
-                    .padding(3)
-                    .background(Color.secondary.opacity(0.08))
-                    .cornerRadius(4)
-                    .onSubmit {
-                        if !localPromptInput.isEmpty && !state.isStreaming {
-                            let text = localPromptInput
-                            localPromptInput = ""
-                            state.sendPrompt(text, role: role)
+    private var roleColor: Color {
+        Color(hex: role.colorHex)
+    }
+
+    private var lastUserMsg: AIChatMessage? {
+        state.latestUserMessage(for: role.id)
+    }
+
+    private var lastAssistantMsg: AIChatMessage? {
+        state.latestAssistantMessage(for: role.id)
+    }
+
+    private var sourceText: String {
+        if let sel = lastUserMsg?.originalSelection, !sel.isEmpty {
+            return sel
+        }
+        if let currentSel = state.capturedSelection, !currentSel.isEmpty {
+            return currentSel
+        }
+        return lastUserMsg?.content ?? ""
+    }
+
+    private var latestResult: String {
+        lastAssistantMsg?.content ?? ""
+    }
+
+    private var isRoleStreaming: Bool {
+        state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id || state.selectedRoleId == role.id)
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Top: Role Switcher Pill Bar (Composite Mode)
+            if showRoleSwitcher {
+                roleSwitcherPillBar
+            }
+
+            // Row 1: Role Header Row
+            headerRow
+
+            // Tone Selector Row (Polish role when not idle)
+            if role.id == "polish" && (!latestResult.isEmpty || !sourceText.isEmpty || isRoleStreaming) {
+                polishToneRow
+            }
+
+            // Body Content Area (3 States)
+            bodyContentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // Row 3: Bottom Action Row (when completed or prompt input for ask)
+            if !latestResult.isEmpty || role.id == "ask" || showInlineInput {
+                bottomActionRow
+            }
+        }
+        .padding(12)
+        .frame(height: max(cardHeight, 185.0))
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(hex: "#181B24").opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+        )
+        .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
+        .onAppear {
+            if let sel = state.capturedSelection, !sel.isEmpty, latestResult.isEmpty, !isRoleStreaming {
+                state.sendPrompt(sel, role: role, originalSelection: sel)
+            }
+        }
+    }
+
+    // MARK: - Top Role Switcher Pill Bar (Composite Mode)
+    private var roleSwitcherPillBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(state.enabledRoles) { r in
+                    let isSelected = state.selectedRoleId == r.id
+                    let pillColor = Color(hex: r.colorHex)
+                    Button {
+                        state.selectedRoleId = r.id
+                        if let sel = state.capturedSelection, !sel.isEmpty {
+                            state.sendPrompt(sel, role: r, originalSelection: sel)
                         }
+                    } label: {
+                        Text(r.title)
+                            .font(.system(size: 11.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(isSelected ? pillColor.opacity(0.24) : Color.white.opacity(0.08))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
+                            )
+                            .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
                     }
+                    .buttonStyle(.plain)
+                }
 
                 Button {
-                    if !localPromptInput.isEmpty && !state.isStreaming {
-                        let text = localPromptInput
-                        localPromptInput = ""
-                        state.sendPrompt(text, role: role)
+                    store.openPluginSettings(id: "ai")
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .frame(width: 24, height: 24)
+                        .background(
+                            Circle().fill(Color.white.opacity(0.08))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Configure AI Roles")
+            }
+            .padding(.horizontal, 1)
+        }
+    }
+
+    // MARK: - Header Row
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            // Icon Badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(roleColor.opacity(0.18))
+                    .frame(width: 28, height: 28)
+
+                Image(systemName: role.systemIcon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(roleColor)
+            }
+
+            // Role Title
+            Text(role.title)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+
+            // Language / Context Badge Pill
+            let badgeText = AIAssistantService.shared.detectLanguageBadge(for: sourceText, roleId: role.id)
+            Text(badgeText)
+                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2.5)
+                .background(
+                    Capsule().fill(roleColor.opacity(0.15))
+                )
+                .foregroundColor(roleColor)
+
+            Spacer()
+
+            // Copy Button
+            Button {
+                copyResult()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.75))
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("ai.action.copy".localized)
+
+            // Pin Button
+            Button {
+                onTogglePin()
+            } label: {
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Pin Drawer")
+        }
+    }
+
+    // MARK: - Polish Tone Row
+    private var polishToneRow: some View {
+        HStack(spacing: 6) {
+            ForEach(AIPolishTone.allCases) { tone in
+                let isSelected = state.selectedPolishTone == tone
+                Button {
+                    state.selectedPolishTone = tone
+                    if !sourceText.isEmpty {
+                        state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
                     }
                 } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(context.accentColor)
+                    Text(tone.title)
+                        .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(isSelected ? roleColor.opacity(0.24) : Color.white.opacity(0.06))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(isSelected ? roleColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
+                        )
+                        .foregroundColor(isSelected ? roleColor : Color.white.opacity(0.65))
                 }
-                .buttonStyle(.tactile)
-                .disabled(localPromptInput.isEmpty || state.isStreaming)
+                .buttonStyle(.plain)
             }
-        } else {
-            // Live Preview of latest assistant response
-            let matchingResponse = state.activeSession?.messages.last(where: {
-                $0.role == .assistant && ($0.roleId == role.id || $0.quickAction?.id == role.id)
-            })?.content
-                ?? ((state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id) ? state.activeSession?.messages.last(where: { $0.role == .assistant })?.content : nil)
+            Spacer()
+        }
+        .padding(.top, 1)
+    }
 
-            if let content = matchingResponse, !content.isEmpty {
+    // MARK: - Body Content Area (3 States)
+    @ViewBuilder
+    private var bodyContentArea: some View {
+        if sourceText.isEmpty && !isRoleStreaming && latestResult.isEmpty {
+            // State 1: Idle Dashed Drop Zone
+            idleDropZone
+        } else if isRoleStreaming && latestResult.isEmpty {
+            // State 2: Generating Shimmer Skeleton
+            generatingStateView
+        } else {
+            // State 3: Completed / Streaming Content
+            completedStateView
+        }
+    }
+
+    // MARK: - State 1: Idle Drop Zone
+    private var idleDropZone: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.02))
+
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                .foregroundColor(Color.white.opacity(0.16))
+
+            VStack(spacing: 6) {
+                Text("ai.idle.dropPromptLine1".localized)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(Color.white.opacity(0.65))
+
+                Text("ai.idle.dropPromptLine2Prefix".localized + role.localizedVerb)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(Color.white.opacity(0.65))
+            }
+            .multilineTextAlignment(.center)
+            .padding(14)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            handleIdleTap()
+        }
+        .onDrop(of: [.utf8PlainText, .plainText, .fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
+        }
+    }
+
+    private func handleIdleTap() {
+        if let pb = NSPasteboard.general.string(forType: .string),
+           !pb.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            state.sendPrompt(pb, role: role, originalSelection: pb)
+        } else {
+            showInlineInput = true
+        }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.utf8PlainText.identifier, options: nil) { item, _ in
+                    let str: String? = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
+                    if let text = str, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Task { @MainActor in
+                            state.sendPrompt(text, role: role, originalSelection: text)
+                        }
+                    }
+                }
+                return true
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    let url: URL? = (item as? URL) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8).flatMap { URL(fileURLWithPath: $0) } }
+                    if let fileURL = url, let content = try? String(contentsOf: fileURL, encoding: .utf8), !content.isEmpty {
+                        Task { @MainActor in
+                            state.sendPrompt(content, role: role, originalSelection: content)
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        return false
+    }
+
+    // MARK: - State 2: Generating State
+    private var generatingStateView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Source quote preview
+            if !sourceText.isEmpty {
+                sourceQuotePreview
+            }
+
+            // 3 Shimmering Skeleton Lines
+            AIShimmerSkeletonView(roleColor: roleColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+
+            Spacer()
+
+            // Generating Status Pill
+            Button {
+                state.stopStreaming()
+            } label: {
+                HStack(spacing: 5) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("ai.status.generating".localized)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(roleColor.opacity(0.18))
+                )
+                .foregroundColor(roleColor)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - State 3: Completed / Streaming View
+    private var completedStateView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if role.isTransform && (role.id == "polish" || role.id == "grammar") && !sourceText.isEmpty {
+                // Inline Diff View (Mockup 3)
                 ScrollView(.vertical, showsIndicators: false) {
-                    Text(content)
-                        .font(.system(size: 9.5))
-                        .foregroundColor(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
+                    Text(buildDiffAttributedString(tokens: tokens))
+                        .font(.system(size: 13, weight: .medium))
+                        .lineSpacing(4)
                         .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                Text("Click Run to execute on selection or clipboard")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Top Source Quote (Mockup 1)
+                if !sourceText.isEmpty {
+                    sourceQuotePreview
+                }
+
+                // Main Result Text
+                ScrollView(.vertical, showsIndicators: false) {
+                    Text(latestResult)
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundColor(.white)
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
 
-    private func executeAction() {
-        let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id)
-        if isRunning {
-            state.stopStreaming()
-            return
-        }
+    // MARK: - Source Quote Preview
+    private var sourceQuotePreview: some View {
+        HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.white.opacity(0.28))
+                .frame(width: 2)
 
-        if let captured = AIAssistantService.shared.captureFrontmostSelection(),
-           !captured.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            state.sendPrompt(captured.text, role: role, originalSelection: captured.text)
-        } else if let pbText = NSPasteboard.general.string(forType: .string),
-                  !pbText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            state.sendPrompt(pbText, role: role, originalSelection: pbText)
-        } else {
-            state.sendPrompt(role.title, role: role)
+            Text(sourceText)
+                .font(.system(size: 12))
+                .foregroundColor(Color.white.opacity(0.52))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: - Bottom Action Row
+    private var bottomActionRow: some View {
+        VStack(spacing: 6) {
+            if role.id == "ask" || showInlineInput {
+                HStack(spacing: 6) {
+                    TextField("ai.composer.placeholder".localized, text: $inlineInput)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                        .padding(6)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                        .onSubmit {
+                            submitInlinePrompt()
+                        }
+
+                    Button {
+                        submitInlinePrompt()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.white.opacity(0.2) : roleColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+
+            if !latestResult.isEmpty {
+                HStack(spacing: 8) {
+                    // Primary Replace Button
+                    Button {
+                        replaceSelection()
+                    } label: {
+                        Text("ai.action.replaceSelection".localized)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(roleColor)
+                            )
+                            .foregroundColor(Color(hex: "#0F111A"))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Secondary Retry Button
+                    Button {
+                        retryGeneration()
+                    } label: {
+                        Text("ai.action.retry".localized)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color(hex: "#262A36"))
+                            )
+                            .foregroundColor(.white)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+            }
         }
     }
 
-    private func copyLatestOutput() {
-        let matching = state.activeSession?.messages.last(where: {
-            $0.role == .assistant && ($0.roleId == role.id || $0.quickAction?.id == role.id)
-        })?.content ?? state.activeSession?.messages.last(where: { $0.role == .assistant })?.content
-        if let text = matching, !text.isEmpty {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            context.showToast("Copied result", "doc.on.doc.fill")
+    private func submitInlinePrompt() {
+        let text = inlineInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty && !state.isStreaming else { return }
+        inlineInput = ""
+        showInlineInput = false
+        state.sendPrompt(text, role: role, originalSelection: text)
+    }
+
+    private func replaceSelection() {
+        guard !latestResult.isEmpty else { return }
+        AIAssistantService.shared.replaceSelectionInTargetApp(with: latestResult)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+    }
+
+    private func retryGeneration() {
+        if !sourceText.isEmpty {
+            state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
         }
+    }
+
+    private func copyResult() {
+        let textToCopy = !latestResult.isEmpty ? latestResult : sourceText
+        guard !textToCopy.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(textToCopy, forType: .string)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+    }
+
+    // MARK: - Diff Attributed String Builder
+    private func buildDiffAttributedString(tokens: [AITextDiffEngine.DiffToken]) -> AttributedString {
+        var result = AttributedString()
+        for token in tokens {
+            var part = AttributedString(token.text)
+            switch token.kind {
+            case .equal:
+                part.foregroundColor = NSColor(Color.white.opacity(0.92))
+            case .removed:
+                part.foregroundColor = NSColor(Color.white.opacity(0.42))
+                part.strikethroughStyle = .single
+                part.strikethroughColor = NSColor(Color.white.opacity(0.42))
+            case .added:
+                part.foregroundColor = NSColor(Color(hex: "#6EE7B7"))
+                part.backgroundColor = NSColor(Color(hex: "#143D33"))
+                part.inlinePresentationIntent = .stronglyEmphasized
+            }
+            result.append(part)
+        }
+        return result
+    }
+}
+
+// MARK: - Shimmer Skeleton Lines View
+private struct AIShimmerSkeletonView: View {
+    let roleColor: Color
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                skeletonLine(widthFraction: 0.92, phase: phase)
+                skeletonLine(widthFraction: 0.82, phase: phase)
+                skeletonLine(widthFraction: 0.48, phase: phase)
+            }
+        }
+    }
+
+    private func skeletonLine(widthFraction: CGFloat, phase: CGFloat) -> some View {
+        GeometryReader { geo in
+            let w = geo.size.width * widthFraction
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: max(0, phase - 0.25)),
+                                .init(color: roleColor.opacity(0.40), location: phase),
+                                .init(color: .white.opacity(0.60), location: min(1, phase + 0.1)),
+                                .init(color: roleColor.opacity(0.40), location: min(1, phase + 0.2)),
+                                .init(color: .clear, location: min(1, phase + 0.4))
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            }
+            .frame(width: w, height: 10)
+        }
+        .frame(height: 10)
     }
 }

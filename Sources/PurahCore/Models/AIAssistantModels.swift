@@ -174,6 +174,24 @@ public enum AIQuickActionType: String, Codable, CaseIterable, Sendable, Identifi
     }
 }
 
+// MARK: - Polish Tone
+public enum AIPolishTone: String, Codable, CaseIterable, Sendable, Identifiable {
+    case concise = "concise"
+    case formal = "formal"
+    case friendly = "friendly"
+
+    public var id: String { rawValue }
+
+    @MainActor
+    public var title: String {
+        switch self {
+        case .concise: return "ai.tone.concise".localized
+        case .formal: return "ai.tone.formal".localized
+        case .friendly: return "ai.tone.friendly".localized
+        }
+    }
+}
+
 // MARK: - AI Role Preset
 public struct AIRolePreset: Identifiable, Codable, Equatable, Sendable {
     public var id: String
@@ -183,6 +201,7 @@ public struct AIRolePreset: Identifiable, Codable, Equatable, Sendable {
     public var isTransform: Bool
     public var isEnabled: Bool
     public var isBuiltIn: Bool
+    public var colorHex: String
 
     public init(
         id: String,
@@ -191,7 +210,8 @@ public struct AIRolePreset: Identifiable, Codable, Equatable, Sendable {
         systemPrompt: String,
         isTransform: Bool = false,
         isEnabled: Bool = true,
-        isBuiltIn: Bool = false
+        isBuiltIn: Bool = false,
+        colorHex: String = "#A78BFA"
     ) {
         self.id = id
         self.title = title
@@ -200,17 +220,68 @@ public struct AIRolePreset: Identifiable, Codable, Equatable, Sendable {
         self.isTransform = isTransform
         self.isEnabled = isEnabled
         self.isBuiltIn = isBuiltIn
+        self.colorHex = colorHex
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, systemIcon, systemPrompt, isTransform, isEnabled, isBuiltIn, colorHex
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.systemIcon = try container.decode(String.self, forKey: .systemIcon)
+        self.systemPrompt = try container.decode(String.self, forKey: .systemPrompt)
+        self.isTransform = try container.decodeIfPresent(Bool.self, forKey: .isTransform) ?? false
+        self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        self.isBuiltIn = try container.decodeIfPresent(Bool.self, forKey: .isBuiltIn) ?? false
+        if let hex = try container.decodeIfPresent(String.self, forKey: .colorHex) {
+            self.colorHex = hex
+        } else {
+            switch self.id {
+            case "translate": self.colorHex = "#5BA8FF"
+            case "polish", "grammar": self.colorHex = "#A78BFA"
+            case "summarize": self.colorHex = "#34D399"
+            case "explain": self.colorHex = "#FBBF24"
+            case "ask": self.colorHex = "#EC4899"
+            default: self.colorHex = "#A78BFA"
+            }
+        }
+    }
+
+    @MainActor
+    public var localizedVerb: String {
+        switch id {
+        case "translate": return "ai.verb.translate".localized
+        case "polish": return "ai.verb.polish".localized
+        case "grammar": return "ai.verb.grammar".localized
+        case "summarize": return "ai.verb.summarize".localized
+        case "explain": return "ai.verb.explain".localized
+        case "ask": return "ai.verb.ask".localized
+        default: return "ai.verb.translate".localized
+        }
     }
 
     public static func from(action: AIQuickActionType, isEnabled: Bool = true) -> AIRolePreset {
-        AIRolePreset(
+        let hex: String = {
+            switch action {
+            case .translate: return "#5BA8FF"
+            case .polish, .fixGrammar: return "#A78BFA"
+            case .summarize: return "#34D399"
+            case .explainCode: return "#FBBF24"
+            case .ask: return "#EC4899"
+            }
+        }()
+        return AIRolePreset(
             id: action.id,
             title: action.title,
             systemIcon: action.systemIcon,
             systemPrompt: action.buildSystemPrompt(),
             isTransform: action.isTransform,
             isEnabled: isEnabled,
-            isBuiltIn: true
+            isBuiltIn: true,
+            colorHex: hex
         )
     }
 

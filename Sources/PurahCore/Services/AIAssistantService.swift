@@ -41,13 +41,34 @@ public final class AIAssistantService {
     public private(set) var availableCLIs: [AICLIExecutable] = []
     public var lastCapturedSelection: String? = nil
     public var lastCapturedApp: String? = nil
+    public private(set) var lastCapturedRunningApp: NSRunningApplication? = nil
+    private var lastFocusedAXElement: AXUIElement? = nil
 
     public init() {
         self.availableCLIs = detectAvailableCLIs()
     }
 
+    // MARK: - Language Detection Badge
+    public func detectLanguageBadge(for text: String, roleId: String = "translate", targetLanguage: String? = nil) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "ai.lang.autoToZh".localized
+        }
+        let hasChinese = trimmed.range(of: "\\p{Han}", options: .regularExpression) != nil
+        if roleId == "translate" {
+            return hasChinese ? "ai.lang.zhToEn".localized : "ai.lang.enToZh".localized
+        } else {
+            return hasChinese ? "ai.lang.zh".localized : "ai.lang.en".localized
+        }
+    }
+
     // MARK: - Context Capture
-    public func captureFrontmostSelection() -> (text: String, sourceApp: String?)? {
+    public func captureFrontmostSelection(allowPasteboardFallback: Bool = false) -> (text: String, sourceApp: String?)? {
+        if let frontmost = NSWorkspace.shared.frontmostApplication,
+           frontmost.bundleIdentifier != Bundle.main.bundleIdentifier {
+            self.lastCapturedRunningApp = frontmost
+        }
+
         let systemWide = AXUIElementCreateSystemWide()
         var appRef: CFTypeRef?
         let appResult = AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &appRef)
@@ -75,22 +96,53 @@ public final class AIAssistantService {
             if AXUIElementCopyAttributeValue(elem, kAXSelectedTextAttribute as CFString, &selectedTextRef) == .success,
                let selectedText = selectedTextRef as? String,
                !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.lastFocusedAXElement = elem
                 self.lastCapturedSelection = selectedText
                 self.lastCapturedApp = sourceAppName
                 return (selectedText, sourceAppName)
             }
         }
 
-        // Fallback: inspect pasteboard string if short/recent
-        if let pbString = NSPasteboard.general.string(forType: .string),
-           !pbString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           pbString.count <= 20_000 {
-            self.lastCapturedSelection = pbString
-            self.lastCapturedApp = sourceAppName
-            return (pbString, sourceAppName)
+        if allowPasteboardFallback {
+            if let pbString = NSPasteboard.general.string(forType: .string),
+               !pbString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               pbString.count <= 20_000 {
+                self.lastCapturedSelection = pbString
+                self.lastCapturedApp = sourceAppName
+                return (pbString, sourceAppName)
+            }
         }
 
         return nil
+    }
+
+    // MARK: - Replace Selection In Target App
+    public func replaceSelectionInTargetApp(with replacementText: String) {
+        guard !replacementText.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(replacementText, forType: .string)
+
+        if let elem = lastFocusedAXElement {
+            let axStatus = AXUIElementSetAttributeValue(elem, kAXSelectedTextAttribute as CFString, replacementText as CFTypeRef)
+            if axStatus == .success {
+                return
+            }
+        }
+
+        if let targetApp = lastCapturedRunningApp {
+            targetApp.activate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                let src = CGEventSource(stateID: .combinedSessionState)
+                let vKeyCode: CGKeyCode = 0x09
+                let keyDown = CGEvent(keyboardEventSource: src, virtualKey: vKeyCode, keyDown: true)
+                keyDown?.flags = .maskCommand
+                let keyUp = CGEvent(keyboardEventSource: src, virtualKey: vKeyCode, keyDown: false)
+                keyUp?.flags = .maskCommand
+
+                keyDown?.post(tap: .cghidEventTap)
+                keyUp?.post(tap: .cghidEventTap)
+            }
+        }
     }
 
     // MARK: - CLI Detection

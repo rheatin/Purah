@@ -118,6 +118,22 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var selectedRoleId: String {
+        didSet {
+            storage.set(selectedRoleId, forKey: "selectedRoleId")
+        }
+    }
+
+    public var selectedPolishTone: AIPolishTone {
+        didSet {
+            storage.set(selectedPolishTone.rawValue, forKey: "selectedPolishTone")
+        }
+    }
+
+    public var selectedRole: AIRolePreset {
+        rolePresets.first(where: { $0.id == selectedRoleId }) ?? rolePresets.first ?? AIRolePreset.from(action: .translate)
+    }
+
     // MARK: - Model Discovery State
     public var fetchedModels: [AIProviderKind: [String]] = [:]
     public var isFetchingModels: Bool = false
@@ -210,6 +226,14 @@ public final class AIAssistantPluginState: Sendable {
             self.enabledActions = resolvedPresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
         }
 
+        self.selectedRoleId = storage.string(forKey: "selectedRoleId") ?? (resolvedPresets.first?.id ?? "translate")
+        if let toneStr = storage.string(forKey: "selectedPolishTone"),
+           let tone = AIPolishTone(rawValue: toneStr) {
+            self.selectedPolishTone = tone
+        } else {
+            self.selectedPolishTone = .concise
+        }
+
         self.sessions = repository.items
         pruneExpiredSessions()
 
@@ -262,6 +286,8 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(ollamaBaseURL, forKey: "ollamaBaseURL")
         storage.set(ollamaModel, forKey: "ollamaModel")
         storage.set(isDecomposed, forKey: "isDecomposed")
+        storage.set(selectedRoleId, forKey: "selectedRoleId")
+        storage.set(selectedPolishTone.rawValue, forKey: "selectedPolishTone")
         storage.setCodable(rolePresets, forKey: "rolePresets")
         storage.setCodable(enabledActions, forKey: "enabledActions")
         repository.saveToDisk()
@@ -436,6 +462,18 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     // MARK: - Prompt Execution & Streaming
+    public func latestAssistantMessage(for roleId: String) -> AIChatMessage? {
+        activeSession?.messages.last(where: {
+            $0.role == .assistant && ($0.roleId == roleId || $0.quickAction?.id == roleId)
+        })
+    }
+
+    public func latestUserMessage(for roleId: String) -> AIChatMessage? {
+        activeSession?.messages.last(where: {
+            $0.role == .user && ($0.roleId == roleId || $0.quickAction?.id == roleId)
+        })
+    }
+
     public func sendPrompt(
         _ prompt: String,
         quickAction: AIQuickActionType? = nil,
@@ -454,9 +492,29 @@ public final class AIAssistantPluginState: Sendable {
         guard let sessionIdx = sessions.firstIndex(where: { $0.id == activeSessionId }) else { return }
 
         let effectiveAction = quickAction ?? (role.flatMap { AIQuickActionType(rawValue: $0.id) })
-        let effectivePromptOverride = role?.systemPrompt ?? quickAction?.buildSystemPrompt()
         let effectiveRoleTitle = role?.title ?? effectiveAction?.title
         let effectiveRoleId = role?.id ?? effectiveAction?.id
+
+        var effectivePromptOverride = role?.systemPrompt ?? quickAction?.buildSystemPrompt()
+        if effectiveRoleId == "polish" {
+            let toneModifier: String
+            switch selectedPolishTone {
+            case .concise:
+                toneModifier = "Deliver the revision in a concise, compact, and punchy tone without unnecessary words."
+            case .formal:
+                toneModifier = "Deliver the revision in an authoritative, professional, and formal tone."
+            case .friendly:
+                toneModifier = "Deliver the revision in a warm, empathetic, and friendly tone."
+            }
+            effectivePromptOverride = """
+            You are an elite prose and copy editor. Refine, polish, and elevate the provided text for clarity, rhythm, and elegance.
+            Tone requirement: \(toneModifier)
+            Strict output rules:
+            1. Output ONLY the refined text.
+            2. Do NOT add conversational preamble, pleasantries, or commentary.
+            3. Preserve formatting and markdown structure where applicable.
+            """
+        }
 
         let userMsg = AIChatMessage(
             role: .user,

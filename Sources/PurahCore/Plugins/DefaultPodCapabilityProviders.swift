@@ -198,8 +198,8 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
     var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
             maxRailItems: 4,
-            minChipHeight: 42.0,
-            maxChipHeight: 185.0,
+            minChipHeight: 52.0,
+            maxChipHeight: 210.0,
             spacing: 2.5,
             overflowStrategy: .truncate
         )
@@ -209,8 +209,8 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
         let count = max(store._aiRolePresets.filter(\.isEnabled).count, 1)
         return PurahDecomposedPolicy(
             maxRailItems: count,
-            minChipHeight: 42.0,
-            maxChipHeight: 185.0,
+            minChipHeight: 52.0,
+            maxChipHeight: 210.0,
             spacing: 2.5,
             overflowStrategy: .truncate
         )
@@ -221,17 +221,14 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "ai") {
-            return 400.0
-        }
-        return 340.0
+        370.0
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if store._isAIDecomposed {
             let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
             let count = max(enabledRoles.count, 1)
-            return CGFloat(count) * 42.0 + CGFloat(count - 1) * 2.5
+            return CGFloat(count) * 52.0 + CGFloat(count - 1) * 2.5
         }
         return 220.0
     }
