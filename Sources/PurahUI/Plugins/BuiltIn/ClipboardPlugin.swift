@@ -792,7 +792,7 @@ public struct ClipboardFullDrawerView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 0)
 
                     // Quick Action Buttons
                     if !isCompact {
@@ -894,6 +894,8 @@ public struct ClipboardFullDrawerView: View {
                                 .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
                         }
                     }
+
+                    Spacer(minLength: 0)
                 }
 
             case .text(let text):
@@ -926,6 +928,7 @@ public struct ClipboardFullDrawerView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(isCompact ? 6 : 10)
         .background(isHovered ? Color.secondary.opacity(0.14) : Color.secondary.opacity(0.08))
         .cornerRadius(isCompact ? 7 : 10)

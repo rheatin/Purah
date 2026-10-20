@@ -130,6 +130,21 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var translateTargetLanguage: AITargetLanguage {
+        didSet {
+            storage.set(translateTargetLanguage.rawValue, forKey: "translateTargetLanguage")
+        }
+    }
+
+    public var polishTargetLanguage: AITargetLanguage {
+        didSet {
+            storage.set(polishTargetLanguage.rawValue, forKey: "polishTargetLanguage")
+        }
+    }
+
+    public var currentInputText: String = ""
+    public var isShowingHistoryPanel: Bool = false
+
     public var selectedRole: AIRolePreset {
         rolePresets.first(where: { $0.id == selectedRoleId }) ?? rolePresets.first ?? AIRolePreset.from(action: .translate)
     }
@@ -245,6 +260,20 @@ public final class AIAssistantPluginState: Sendable {
             self.selectedPolishTone = .concise
         }
 
+        if let transStr = storage.string(forKey: "translateTargetLanguage"),
+           let lang = AITargetLanguage(rawValue: transStr) {
+            self.translateTargetLanguage = lang
+        } else {
+            self.translateTargetLanguage = .auto
+        }
+
+        if let polishStr = storage.string(forKey: "polishTargetLanguage"),
+           let lang = AITargetLanguage(rawValue: polishStr) {
+            self.polishTargetLanguage = lang
+        } else {
+            self.polishTargetLanguage = .auto
+        }
+
         self.sessions = repository.items
         pruneExpiredSessions()
 
@@ -299,6 +328,8 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.set(selectedRoleId, forKey: "selectedRoleId")
         storage.set(selectedPolishTone.rawValue, forKey: "selectedPolishTone")
+        storage.set(translateTargetLanguage.rawValue, forKey: "translateTargetLanguage")
+        storage.set(polishTargetLanguage.rawValue, forKey: "polishTargetLanguage")
         storage.setCodable(rolePresets, forKey: "rolePresets")
         storage.setCodable(enabledActions, forKey: "enabledActions")
         repository.saveToDisk()
@@ -325,6 +356,21 @@ public final class AIAssistantPluginState: Sendable {
     public func toggleFavoriteSession(id: String) {
         repository.toggleFavorite(id: id)
         self.sessions = repository.items
+    }
+
+    public func renameSession(id: String, newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if let idx = sessions.firstIndex(where: { $0.id == id }) {
+            sessions[idx].title = trimmed
+            sessions[idx].updatedAt = Date()
+            repository.update(sessions[idx])
+        }
+    }
+
+    public func promoteOutputToSource(_ outputText: String) {
+        currentInputText = outputText
+        capturedSelection = outputText
     }
 
     public func deleteSession(id: String) {
@@ -507,7 +553,23 @@ public final class AIAssistantPluginState: Sendable {
         let effectiveRoleId = role?.id ?? effectiveAction?.id
 
         var effectivePromptOverride = role?.systemPrompt ?? quickAction?.buildSystemPrompt()
-        if effectiveRoleId == "polish" {
+        if effectiveRoleId == "translate" {
+            let targetInstruction: String
+            switch translateTargetLanguage {
+            case .auto:
+                targetInstruction = "Auto (if source text contains Chinese, translate into natural English; if source is English or other languages, translate into Simplified Chinese)"
+            default:
+                targetInstruction = translateTargetLanguage.promptInstructionTargetName
+            }
+            effectivePromptOverride = """
+            You are an expert, fluent multilingual translator. Translate the given text accurately and naturally into \(targetInstruction).
+            Strict output rules:
+            1. Output ONLY the translated text.
+            2. Do NOT add any preamble, conversational greeting, explanation, or notes.
+            3. Do NOT wrap the entire output in quotation marks.
+            4. Faithfully preserve formatting, lists, and code blocks.
+            """
+        } else if effectiveRoleId == "polish" {
             let toneModifier: String
             switch selectedPolishTone {
             case .concise:
@@ -517,9 +579,17 @@ public final class AIAssistantPluginState: Sendable {
             case .friendly:
                 toneModifier = "Deliver the revision in a warm, empathetic, and friendly tone."
             }
+            let langModifier: String
+            switch polishTargetLanguage {
+            case .auto:
+                langModifier = "Preserve the original language of the input text."
+            default:
+                langModifier = "Translate and polish into \(polishTargetLanguage.promptInstructionTargetName)."
+            }
             effectivePromptOverride = """
             You are an elite prose and copy editor. Refine, polish, and elevate the provided text for clarity, rhythm, and elegance.
             Tone requirement: \(toneModifier)
+            Language requirement: \(langModifier)
             Strict output rules:
             1. Output ONLY the refined text.
             2. Do NOT add conversational preamble, pleasantries, or commentary.

@@ -97,32 +97,18 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
         AnyView(
             HStack(spacing: 5) {
-                // History Menu
-                Menu {
-                    ForEach(state.sessions) { session in
-                        Button {
-                            state.activeSessionId = session.id
-                        } label: {
-                            HStack {
-                                if session.isFavorite {
-                                    Image(systemName: "star.fill")
-                                }
-                                Text(session.title)
-                                if session.id == state.activeSessionId {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
+                // History Toggle Button
+                Button {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                        state.isShowingHistoryPanel.toggle()
                     }
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(state.isShowingHistoryPanel ? context.accentColor : .secondary)
                         .frame(width: 20, height: 20)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize(horizontal: true, vertical: false)
+                .buttonStyle(.tactile)
                 .help("Chat History")
 
                 // Favorite Toggle

@@ -174,6 +174,103 @@ public enum AIQuickActionType: String, Codable, CaseIterable, Sendable, Identifi
     }
 }
 
+// MARK: - AI Target Language
+public enum AITargetLanguage: String, Codable, CaseIterable, Sendable, Identifiable {
+    case auto = "auto"
+    case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+    case english = "en"
+    case japanese = "ja"
+    case korean = "ko"
+    case french = "fr"
+    case german = "de"
+    case spanish = "es"
+
+    public var id: String { rawValue }
+
+    @MainActor
+    public func displayName(for roleId: String = "") -> String {
+        switch self {
+        case .auto:
+            if roleId == "polish" || roleId == "grammar" {
+                return "ai.lang.keepOriginal".localized
+            } else {
+                return "ai.lang.auto".localized
+            }
+        case .simplifiedChinese: return "ai.lang.zhHans".localized
+        case .traditionalChinese: return "ai.lang.zhHant".localized
+        case .english: return "ai.lang.en".localized
+        case .japanese: return "ai.lang.ja".localized
+        case .korean: return "ai.lang.ko".localized
+        case .french: return "ai.lang.fr".localized
+        case .german: return "ai.lang.de".localized
+        case .spanish: return "ai.lang.es".localized
+        }
+    }
+
+    @MainActor
+    public var shortLabel: String {
+        switch self {
+        case .auto: return "Auto"
+        case .simplifiedChinese: return "ai.lang.shortZh".localized
+        case .traditionalChinese: return "ai.lang.shortZhHant".localized
+        case .english: return "EN"
+        case .japanese: return "ai.lang.shortJa".localized
+        case .korean: return "ai.lang.shortKo".localized
+        case .french: return "ai.lang.shortFr".localized
+        case .german: return "ai.lang.shortDe".localized
+        case .spanish: return "ai.lang.shortEs".localized
+        }
+    }
+
+    public var promptInstructionTargetName: String {
+        switch self {
+        case .auto: return "Auto"
+        case .simplifiedChinese: return "Simplified Chinese"
+        case .traditionalChinese: return "Traditional Chinese"
+        case .english: return "English"
+        case .japanese: return "Japanese"
+        case .korean: return "Korean"
+        case .french: return "French"
+        case .german: return "German"
+        case .spanish: return "Spanish"
+        }
+    }
+
+    @MainActor
+    public func badgeLabel(sourceText: String, roleId: String) -> String {
+        switch self {
+        case .auto:
+            if roleId == "translate" {
+                if sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return "ai.lang.autoToZh".localized
+                } else if Self.containsCJK(sourceText) {
+                    return "ai.lang.zhToEn".localized
+                } else {
+                    return "ai.lang.enToZh".localized
+                }
+            } else if roleId == "polish" || roleId == "grammar" {
+                return "ai.lang.keepOriginal".localized
+            } else {
+                return "Auto"
+            }
+        default:
+            return "→ \(shortLabel)"
+        }
+    }
+
+    public static func containsCJK(_ text: String) -> Bool {
+        for scalar in text.unicodeScalars {
+            if (0x4E00...0x9FFF).contains(scalar.value) ||
+               (0x3400...0x4DBF).contains(scalar.value) ||
+               (0x20000...0x2A6DF).contains(scalar.value) {
+                return true
+            }
+        }
+        return false
+    }
+}
+
 // MARK: - Polish Tone
 public enum AIPolishTone: String, Codable, CaseIterable, Sendable, Identifiable {
     case concise = "concise"

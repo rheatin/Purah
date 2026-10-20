@@ -49,17 +49,27 @@ public final class AIAssistantService {
     }
 
     // MARK: - Language Detection Badge
-    public func detectLanguageBadge(for text: String, roleId: String = "translate", targetLanguage: String? = nil) -> String {
+    public func detectLanguageBadge(for text: String, roleId: String = "translate", targetLanguage: AITargetLanguage? = nil) -> String {
+        if let target = targetLanguage, target != .auto {
+            return target.badgeLabel(sourceText: text, roleId: roleId)
+        }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             return "ai.lang.autoToZh".localized
         }
-        let hasChinese = trimmed.range(of: "\\p{Han}", options: .regularExpression) != nil
+        let hasChinese = AITargetLanguage.containsCJK(trimmed)
         if roleId == "translate" {
             return hasChinese ? "ai.lang.zhToEn".localized : "ai.lang.enToZh".localized
+        } else if roleId == "polish" || roleId == "grammar" {
+            return "ai.lang.keepOriginal".localized
         } else {
             return hasChinese ? "ai.lang.zh".localized : "ai.lang.en".localized
         }
+    }
+
+    public func detectLanguageBadge(for text: String, roleId: String = "translate", targetLanguage: String?) -> String {
+        let parsed = targetLanguage.flatMap { AITargetLanguage(rawValue: $0) }
+        return detectLanguageBadge(for: text, roleId: roleId, targetLanguage: parsed)
     }
 
     // MARK: - Context Capture

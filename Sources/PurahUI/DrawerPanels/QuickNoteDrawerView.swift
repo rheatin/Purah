@@ -69,6 +69,19 @@ public struct InteractiveMarkdownPreviewView: View {
         self.onRequestEdit = onRequestEdit
     }
 
+    public init(
+        content: Binding<String>,
+        fontSize: CGFloat = 11.5,
+        accentColor: Color = Color(hex: "#A78BFA"),
+        onToggleChecklist: @escaping (Int) -> Void = { _ in },
+        onRequestEdit: @escaping () -> Void = {}
+    ) {
+        self.markdown = content.wrappedValue
+        self.accentColor = accentColor
+        self.onToggleChecklist = onToggleChecklist
+        self.onRequestEdit = onRequestEdit
+    }
+
     public var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(alignment: .leading, spacing: 5) {

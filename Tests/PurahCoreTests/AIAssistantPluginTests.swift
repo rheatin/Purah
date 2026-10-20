@@ -898,4 +898,89 @@ struct AIAssistantPluginTests {
         let pbString = NSPasteboard.general.string(forType: .string)
         #expect(pbString == "Replaced text payload")
     }
+
+    @Test("AITargetLanguage model properties, badge labels, and CJK detection")
+    func testTargetLanguageModel() {
+        #expect(AITargetLanguage.allCases.count == 9)
+        #expect(AITargetLanguage.auto.rawValue == "auto")
+        #expect(AITargetLanguage.simplifiedChinese.rawValue == "zh-Hans")
+        #expect(AITargetLanguage.traditionalChinese.rawValue == "zh-Hant")
+        #expect(AITargetLanguage.english.rawValue == "en")
+        #expect(AITargetLanguage.japanese.rawValue == "ja")
+        #expect(AITargetLanguage.korean.rawValue == "ko")
+        #expect(AITargetLanguage.french.rawValue == "fr")
+        #expect(AITargetLanguage.german.rawValue == "de")
+        #expect(AITargetLanguage.spanish.rawValue == "es")
+
+        #expect(AITargetLanguage.containsCJK("Hello World") == false)
+        #expect(AITargetLanguage.containsCJK("\u{4E2D}\u{6587}") == true)
+
+        let auto = AITargetLanguage.auto
+        #expect(!auto.displayName(for: "translate").isEmpty)
+        #expect(!auto.displayName(for: "polish").isEmpty)
+
+        // Badge labels in auto mode
+        let autoTranslateEmpty = auto.badgeLabel(sourceText: "", roleId: "translate")
+        #expect(!autoTranslateEmpty.isEmpty)
+
+        let autoTranslateEn = auto.badgeLabel(sourceText: "Hello", roleId: "translate")
+        #expect(!autoTranslateEn.isEmpty)
+
+        let autoTranslateZh = auto.badgeLabel(sourceText: "\u{4F60}\u{597D}", roleId: "translate")
+        #expect(!autoTranslateZh.isEmpty)
+
+        let autoPolish = auto.badgeLabel(sourceText: "Any text", roleId: "polish")
+        #expect(!autoPolish.isEmpty)
+
+        // Specific languages
+        let ja = AITargetLanguage.japanese
+        #expect(ja.promptInstructionTargetName == "Japanese")
+        #expect(ja.badgeLabel(sourceText: "Hello", roleId: "translate").hasPrefix("→"))
+
+        let en = AITargetLanguage.english
+        #expect(en.promptInstructionTargetName == "English")
+        #expect(en.shortLabel == "EN")
+    }
+
+    @Test("AIAssistantPluginState renameSession, promoteOutputToSource, and language persistence")
+    func testSessionRenameAndPromoteOutput() {
+        let isolated = UserDefaults(suiteName: "test_ai_rename_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_rename_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_rename_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_rename_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_rename_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        // 1. Target language defaults
+        #expect(state.translateTargetLanguage == .auto)
+        #expect(state.polishTargetLanguage == .auto)
+
+        state.translateTargetLanguage = .japanese
+        state.polishTargetLanguage = .french
+        #expect(state.translateTargetLanguage == .japanese)
+        #expect(state.polishTargetLanguage == .french)
+
+        // Verify persistence roundtrip
+        let state2 = AIAssistantPluginState(storage: storage, repository: repo)
+        #expect(state2.translateTargetLanguage == .japanese)
+        #expect(state2.polishTargetLanguage == .french)
+
+        // 2. promoteOutputToSource
+        state.promoteOutputToSource("Generated translated content")
+        #expect(state.currentInputText == "Generated translated content")
+        #expect(state.capturedSelection == "Generated translated content")
+
+        // 3. renameSession
+        state.createNewSession()
+        let sessionId = state.activeSessionId
+        state.renameSession(id: sessionId, newTitle: "  My Renamed Session  ")
+        let updated = state.sessions.first(where: { $0.id == sessionId })
+        #expect(updated?.title == "My Renamed Session")
+
+        // Empty title does not rename
+        state.renameSession(id: sessionId, newTitle: "   ")
+        let untouched = state.sessions.first(where: { $0.id == sessionId })
+        #expect(untouched?.title == "My Renamed Session")
+    }
 }
