@@ -67,6 +67,12 @@ public struct CalendarDrawerView: View {
         let isImminent = event.isImminent
         let isAcknowledged = state.isAlertAcknowledged(id: event.id) || store.isAlertAcknowledged(id: event.id)
         let isAlerting = (isOngoing || isImminent) && (state.isEventGlowAlertEnabled || store.isEventGlowAlertEnabled) && !isAcknowledged
+        let calColor: Color = {
+            if let hex = event.colorHex {
+                return Color(hex: hex)
+            }
+            return podColor
+        }()
 
         HStack(alignment: .top, spacing: 8) {
             if isAlerting && !reduceMotion {
@@ -170,13 +176,6 @@ public struct CalendarDrawerView: View {
                     Text("·")
                         .foregroundColor(.gray)
 
-                    let calColor: Color = {
-                        if let hex = event.colorHex {
-                            return Color(hex: hex)
-                        }
-                        return podColor
-                    }()
-
                     HStack(spacing: 3) {
                         Circle()
                             .fill(calColor)
@@ -197,6 +196,10 @@ public struct CalendarDrawerView: View {
                             .lineLimit(1)
                     }
                 }
+
+                if isOngoing {
+                    eventProgressBar(calColor: calColor)
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -211,6 +214,42 @@ public struct CalendarDrawerView: View {
                 state.acknowledgeAlert(id: event.id)
                 store.acknowledgeAlert(id: event.id)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func eventProgressBar(event: CalendarEventItem? = nil, calColor: Color) -> some View {
+        let resolvedEvent = event ?? state.events.first(where: { $0.id == store.activeDrawerItemId })
+        if let resolvedEvent {
+            let totalDuration = max(resolvedEvent.endTime.timeIntervalSince(resolvedEvent.startTime), 60.0)
+            let elapsed = max(Date().timeIntervalSince(resolvedEvent.startTime), 0.0)
+            let progress = min(max(elapsed / totalDuration, 0.0), 1.0)
+            let remainingMins = max(Int(ceil(resolvedEvent.endTime.timeIntervalSince(Date()) / 60.0)), 0)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    HStack(spacing: 3.5) {
+                        Circle().fill(calColor).frame(width: 3.5, height: 3.5)
+                        Text("In Progress")
+                            .purahCaption(size: 8.5)
+                            .foregroundColor(calColor)
+                    }
+                    Spacer()
+                    Text("\(remainingMins)m remaining")
+                        .font(palette.fontMono)
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(calColor.opacity(0.18))
+                        Capsule().fill(calColor)
+                            .frame(width: max(geo.size.width * CGFloat(progress), 6.0))
+                    }
+                }
+                .frame(height: 3.5)
+            }
+            .padding(.vertical, 2)
         }
     }
 

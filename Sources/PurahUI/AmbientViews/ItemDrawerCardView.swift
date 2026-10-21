@@ -580,8 +580,10 @@ public struct CalendarItemDrawerView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Dynamic Timeline Countdown
-            if isImminent {
+            // Dynamic Timeline Progress / Countdown
+            if isOngoing {
+                eventProgressBar(calColor: calColor)
+            } else if isImminent {
                 let startMins = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
                 HStack(spacing: 4) {
                     Image(systemName: "hourglass")
