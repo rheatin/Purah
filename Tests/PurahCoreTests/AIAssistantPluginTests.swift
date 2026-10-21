@@ -1561,4 +1561,16 @@ struct AIAssistantPluginTests {
         #expect(state.refineInputText.contains(fileURL.path))
         #expect(state.stagedAttachments.compactMap(\.filePath) == [fileURL.path])
     }
+
+    @Test("Apple Intelligence status check returns valid status without crashing")
+    func testAppleIntelligenceStatusCheck() {
+        let status = AIAssistantService.shared.checkAppleIntelligenceStatus()
+        switch status {
+        case .available:
+            #expect(status.isAvailable == true)
+        case .unavailable(let reason):
+            #expect(status.isAvailable == false)
+            #expect(!reason.isEmpty)
+        }
+    }
 }
