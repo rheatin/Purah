@@ -187,9 +187,9 @@ public struct AIAssistantSteppedDrawerView: View {
                     ZStack(alignment: .bottomTrailing) {
                         if isRoleRunning && roleOutput.isEmpty {
                             VStack(spacing: 4) {
-                                AIShimmerSkeletonView(roleColor: roleColor)
+                                AIShimmerSingleLineView(roleColor: roleColor)
                                     .padding(.horizontal, 6)
-                                    .padding(.top, 2)
+                                    .padding(.top, 4)
                                 Spacer()
                                 Text(isSteppedThinking ? "💭 Thinking..." : "ai.stepped.generating".localized)
                                     .font(.system(size: 9.5, weight: .medium, design: .rounded))
@@ -466,10 +466,31 @@ public struct AIAssistantSteppedDrawerView: View {
 
 // MARK: - AI Workbench Split Drop Delegate
 public struct AIWorkbenchSplitDropDelegate: DropDelegate {
+    public let state: AIAssistantPluginState
     public let cardHeight: CGFloat
     public let hasExistingConversation: Bool
     @Binding public var activeDropZone: AIDropZoneTarget?
+    public var onFocusRefine: (() -> Void)? = nil
+    public var onFocusSource: (() -> Void)? = nil
     public let onPerformDrop: ([NSItemProvider], AIDropZoneTarget) -> Bool
+
+    public init(
+        state: AIAssistantPluginState,
+        cardHeight: CGFloat,
+        hasExistingConversation: Bool,
+        activeDropZone: Binding<AIDropZoneTarget?>,
+        onFocusRefine: (() -> Void)? = nil,
+        onFocusSource: (() -> Void)? = nil,
+        onPerformDrop: @escaping ([NSItemProvider], AIDropZoneTarget) -> Bool
+    ) {
+        self.state = state
+        self.cardHeight = cardHeight
+        self.hasExistingConversation = hasExistingConversation
+        self._activeDropZone = activeDropZone
+        self.onFocusRefine = onFocusRefine
+        self.onFocusSource = onFocusSource
+        self.onPerformDrop = onPerformDrop
+    }
 
     public func validateDrop(info: DropInfo) -> Bool {
         return true
@@ -505,8 +526,17 @@ public struct AIWorkbenchSplitDropDelegate: DropDelegate {
             target = (info.location.y < (cardHeight * 0.5)) ? .newSession : .followUp
         }
         activeDropZone = nil
-        let providers = info.itemProviders(for: [.fileURL, .utf8PlainText, .plainText])
-        return onPerformDrop(providers, target)
+        let success = state.ingestDropFromDrag(target: target)
+        if target == .followUp {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                state.isRefiningOutput = true
+                state.isEditingSource = false
+            }
+            onFocusRefine?()
+        } else {
+            onFocusSource?()
+        }
+        return success || onPerformDrop(info.itemProviders(for: [.fileURL, .utf8PlainText, .plainText]), target)
     }
 }
 
@@ -523,6 +553,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     @FocusState private var isRefineEditorFocused: Bool
     @FocusState private var isSourceEditorFocused: Bool
 
+    @State private var inlineInput: String = ""
     @State private var activeDropZone: AIDropZoneTarget? = nil
     @State private var isHoveringSaveNotes: Bool = false
     @State private var isHoveringRetry: Bool = false
@@ -635,9 +666,23 @@ public struct AIAssistantRoleWorkbenchView: View {
         .onDrop(
             of: [.fileURL, .utf8PlainText, .plainText],
             delegate: AIWorkbenchSplitDropDelegate(
+                state: state,
                 cardHeight: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0),
                 hasExistingConversation: !latestResult.isEmpty || !sourceText.isEmpty,
                 activeDropZone: $activeDropZone,
+                onFocusRefine: {
+                    inlineInput = state.refineInputText
+                    isRefineEditorFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isRefineEditorFocused = true
+                    }
+                },
+                onFocusSource: {
+                    isSourceEditorFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isSourceEditorFocused = true
+                    }
+                },
                 onPerformDrop: { providers, target in
                     return state.handleDroppedProviders(providers, target: target) {
                         if target == .newSession {
@@ -652,6 +697,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 state.isRefiningOutput = true
                                 state.isEditingSource = false
                             }
+                            inlineInput = state.refineInputText
                             isRefineEditorFocused = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                 isRefineEditorFocused = true
@@ -680,6 +726,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         }
         .onChange(of: state.focusRequestCounter) {
             if state.isRefiningOutput {
+                inlineInput = state.refineInputText
                 isRefineEditorFocused = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     isRefineEditorFocused = true

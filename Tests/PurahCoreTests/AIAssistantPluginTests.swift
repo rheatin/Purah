@@ -1480,4 +1480,36 @@ struct AIAssistantPluginTests {
         #expect(md.contains("Let me break down actor isolation."))
         #expect(md.contains("Sendable guarantees thread safety."))
     }
+
+    @Test("AIAssistantPluginState ingestDropFromDrag routes properly to new session and follow up")
+    func testIngestDropFromDrag() {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_drag", defaults: UserDefaults(suiteName: "test_ai_drag_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_drag")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        pb.setString("Hello from drag", forType: .string)
+
+        // 1. Ingest for .newSession
+        let initialFocus = state.focusRequestCounter
+        let success1 = state.ingestDropFromDrag(pasteboard: pb, target: .newSession)
+        #expect(success1 == true)
+        #expect(state.currentInputText == "Hello from drag")
+        #expect(state.isEditingSource == false)
+        #expect(state.isRefiningOutput == false)
+        #expect(state.focusRequestCounter == initialFocus + 1)
+
+        // 2. Ingest for .followUp
+        let pb2 = NSPasteboard.withUniqueName()
+        pb2.clearContents()
+        pb2.setString("Follow up query", forType: .string)
+
+        let success2 = state.ingestDropFromDrag(pasteboard: pb2, target: .followUp)
+        #expect(success2 == true)
+        #expect(state.refineInputText == "Follow up query")
+        #expect(state.isEditingSource == false)
+        #expect(state.isRefiningOutput == true)
+        #expect(state.focusRequestCounter == initialFocus + 2)
+    }
 }

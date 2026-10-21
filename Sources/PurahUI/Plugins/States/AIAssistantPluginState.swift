@@ -1275,6 +1275,63 @@ public final class AIAssistantPluginState: Sendable {
 
     // MARK: - Drag & Drop Ingestion
     @discardableResult
+    public func ingestDropFromDrag(
+        pasteboard: NSPasteboard = NSPasteboard(name: .drag),
+        providers: [NSItemProvider] = [],
+        target: AIDropZoneTarget = .newSession
+    ) -> Bool {
+        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !fileURLs.isEmpty {
+            var paths: [String] = []
+            for fileURL in fileURLs {
+                let filePath = fileURL.standardizedFileURL.path
+                self.allowPath(filePath)
+                if let attachment = AIAssistantService.shared.makeAttachment(from: fileURL) {
+                    if stagedAttachments.count < AIAttachmentBudget.maxAttachments {
+                        stagedAttachments.append(attachment)
+                    }
+                }
+                paths.append(filePath)
+            }
+            let pathsText = paths.map { "\($0) " }.joined()
+
+            if target == .newSession {
+                self.createNewSession()
+                self.currentInputText = pathsText
+                self.stagedDropText = pathsText
+                self.isEditingSource = false
+                self.isRefiningOutput = false
+                self.focusRequestCounter += 1
+            } else {
+                self.refineInputText = pathsText
+                self.isEditingSource = false
+                self.isRefiningOutput = true
+                self.focusRequestCounter += 1
+            }
+            return true
+        }
+
+        if let str = pasteboard.string(forType: .string), !str.isEmpty {
+            if target == .newSession {
+                createNewSession()
+                currentInputText = str
+                stagedDropText = str
+                isEditingSource = false
+                isRefiningOutput = false
+                focusRequestCounter += 1
+            } else {
+                refineInputText = str
+                isEditingSource = false
+                isRefiningOutput = true
+                focusRequestCounter += 1
+            }
+            return true
+        }
+
+        return handleDroppedProviders(providers, target: target)
+    }
+
+    @discardableResult
     public func handleDroppedProviders(
         _ providers: [NSItemProvider],
         target: AIDropZoneTarget = .newSession,

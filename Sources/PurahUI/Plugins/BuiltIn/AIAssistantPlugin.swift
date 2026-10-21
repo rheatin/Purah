@@ -930,46 +930,44 @@ public struct AIAssistantPluginSettingsView: View {
                         .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
                 )
 
-                if state.isDecomposed {
-                    // Max Visible Roles Slider
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Text("Max Visible Roles on Rail")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            Spacer()
-                            Text("\(state.maxRailRoles) roles")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(palette.primaryAccent)
-                        }
-
-                        Slider(
-                            value: Binding(
-                                get: { Double(state.maxRailRoles) },
-                                set: {
-                                    state.maxRailRoles = Int($0)
-                                    state.save()
-                                    store.aiMaxRailRoles = Int($0)
-                                    store.savePersistentState()
-                                    store.invalidateLayoutCache()
-                                    store.onWindowsRebuildNeeded?()
-                                }
-                            ),
-                            in: 2.0...6.0,
-                            step: 1.0
-                        )
-
-                        Text("Controls the maximum number of role chips decomposed along the screen edge.")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
+                // Max Visible Roles Slider
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("Max Visible Roles on Rail")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        Spacer()
+                        Text("\(state.maxRailRoles) roles")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(palette.primaryAccent)
                     }
-                    .padding(9)
-                    .background(Color.primary.opacity(0.025))
-                    .cornerRadius(7)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+
+                    Slider(
+                        value: Binding(
+                            get: { Double(state.maxRailRoles) },
+                            set: {
+                                state.maxRailRoles = Int($0)
+                                state.save()
+                                store.aiMaxRailRoles = Int($0)
+                                store.savePersistentState()
+                                store.invalidateLayoutCache()
+                                store.onWindowsRebuildNeeded?()
+                            }
+                        ),
+                        in: 2.0...6.0,
+                        step: 1.0
                     )
+
+                    Text("Controls the maximum number of role chips decomposed along the screen edge.")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
                 }
+                .padding(9)
+                .background(Color.primary.opacity(0.025))
+                .cornerRadius(7)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                )
 
                 // Header for AI Roles & System Prompts
                 HStack {
