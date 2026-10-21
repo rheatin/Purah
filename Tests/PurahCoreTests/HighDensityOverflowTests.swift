@@ -89,6 +89,7 @@ struct HighDensityOverflowTests {
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isDynamicBreathingEnabled = true
+        store.isAlwaysCompactBreathing = true
 
         // Verify with 3~4 pods on left rail (default balanced/initial left rail has 4 enabled pods)
         let totalHeight = 900.0

@@ -169,8 +169,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
-        PurahDecomposedPolicy(
-            maxRailItems: max(state.enabledRoles.count, 1),
+        let count = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
+        return PurahDecomposedPolicy(
+            maxRailItems: max(count, 1),
             minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
@@ -179,9 +180,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
-        let count = max(state.enabledRoles.count, 1)
+        let count = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
         return PurahDecomposedPolicy(
-            maxRailItems: count,
+            maxRailItems: max(count, 1),
             minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
@@ -191,7 +192,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if isDecomposed(store: store) {
-            return decomposedPolicy(store: store).calculateMinimumHeight(activeCount: state.enabledRoles.count)
+            let activeCount = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
+            return decomposedPolicy(store: store).calculateMinimumHeight(activeCount: activeCount)
         }
         return 260.0
     }
@@ -209,33 +211,38 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public var subItemCount: Int {
-        state.isDecomposed ? state.enabledRoles.count : 0
+        state.isDecomposed ? min(state.enabledRoles.count, max(state.maxRailRoles, 1)) : 0
     }
 
     public var subItemTitles: [String] {
-        state.isDecomposed ? state.enabledRoles.map(\.title) : []
+        let maxCount = max(state.maxRailRoles, 1)
+        return state.isDecomposed ? Array(state.enabledRoles.prefix(maxCount)).map(\.title) : []
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let isDecomp = state.isDecomposed || store._isAIDecomposed
+        let isDecomp = state.isDecomposed && store._isAIDecomposed
         guard isDecomp else { return 0 }
-        return state.enabledRoles.count
+        return min(state.enabledRoles.count, max(state.maxRailRoles, 1))
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store._isAIDecomposed
-        guard isDecomp, state.enabledRoles.indices.contains(index) else { return nil }
+        let isDecomp = state.isDecomposed && store._isAIDecomposed
+        let maxCount = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
+        guard isDecomp, index >= 0, index < maxCount else { return nil }
         return "ai-\(state.enabledRoles[index].id)"
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store._isAIDecomposed
-        guard isDecomp, state.enabledRoles.indices.contains(index) else { return nil }
+        let isDecomp = state.isDecomposed && store._isAIDecomposed
+        let maxCount = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
+        guard isDecomp, index >= 0, index < maxCount else { return nil }
         return state.enabledRoles[index].title
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
-        state.enabledRoles.map { role in
+        let maxCount = max(state.maxRailRoles, 1)
+        let visibleRoles = Array(state.enabledRoles.prefix(maxCount))
+        return visibleRoles.map { role in
             let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id || state.selectedRoleId == role.id)
             return PurahPluginSubItem(
                 id: "ai-\(role.id)",
@@ -922,6 +929,47 @@ public struct AIAssistantPluginSettingsView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
                 )
+
+                if state.isDecomposed {
+                    // Max Visible Roles Slider
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("Max Visible Roles on Rail")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text("\(state.maxRailRoles) roles")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(state.maxRailRoles) },
+                                set: {
+                                    state.maxRailRoles = Int($0)
+                                    state.save()
+                                    store.aiMaxRailRoles = Int($0)
+                                    store.savePersistentState()
+                                    store.invalidateLayoutCache()
+                                    store.onWindowsRebuildNeeded?()
+                                }
+                            ),
+                            in: 2.0...6.0,
+                            step: 1.0
+                        )
+
+                        Text("Controls the maximum number of role chips decomposed along the screen edge.")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(9)
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                    )
+                }
 
                 // Header for AI Roles & System Prompts
                 HStack {

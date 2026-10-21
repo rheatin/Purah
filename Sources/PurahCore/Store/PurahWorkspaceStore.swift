@@ -1150,6 +1150,20 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public var aiMaxRailRoles: Int {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            let val = storage.int(forKey: "maxRailRoles")
+            return val > 0 ? min(max(val, 2), 8) : 4
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.set(min(max(newValue, 2), 8), forKey: "maxRailRoles")
+        }
+    }
+
     public var isMusicWaveformAnimationEnabled: Bool {
         get {
             _ = _pluginStorageRevision
@@ -1544,6 +1558,36 @@ public final class PurahWorkspaceStore {
         cachedResolvedLayouts.removeAll()
     }
 
+    private func calculateSubSpans(for cluster: [SlotPod], clusterSpan: Double, subGap: Double = 3.0) -> [Double] {
+        let m = cluster.count
+        guard m > 0 else { return [] }
+        let totalSubGaps = Double(max(m - 1, 0)) * subGap
+        let minSubFloor = min(28.0, max((clusterSpan - totalSubGaps) / Double(max(m, 1)), 18.0))
+        let netSubSpan = max(clusterSpan - totalSubGaps, Double(m) * minSubFloor)
+        let subWeights = cluster.map { max($0.range.length, 0.025) }
+        let subWeightSum = max(subWeights.reduce(0.0, +), 0.0001)
+
+        var subSpans: [Double] = subWeights.map { weight in
+            max(netSubSpan * (weight / subWeightSum), minSubFloor)
+        }
+        let subSum = subSpans.reduce(0.0, +)
+        if subSum > netSubSpan && subSum > 0 {
+            let excess = subSum - netSubSpan
+            let slackIndices = subSpans.indices.filter { subSpans[$0] > minSubFloor + 0.01 }
+            let totalSlack = slackIndices.reduce(0.0) { $0 + (subSpans[$1] - minSubFloor) }
+            if totalSlack >= excess && totalSlack > 0 {
+                for idx in slackIndices {
+                    let itemSlack = subSpans[idx] - minSubFloor
+                    subSpans[idx] -= excess * (itemSlack / totalSlack)
+                }
+            } else {
+                let s = netSubSpan / subSum
+                subSpans = subSpans.map { max($0 * s, 18.0) }
+            }
+        }
+        return subSpans
+    }
+
     public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
         lastKnownTotalHeight[edge] = totalHeight
         let now = Date().timeIntervalSinceReferenceDate
@@ -1639,8 +1683,9 @@ public final class PurahWorkspaceStore {
         let hasExpandingCluster = clusters.indices.contains(where: { idx in
             expandedFlags[idx] && preferredExpandedSpans[idx] > standardSpans[idx]
         })
+        _ = hasExpandingCluster
 
-        if isBreathingActiveOnPage || (isDynamicBreathingEnabled && !isLiveRailEditingMode && hasExpandingCluster) {
+        if isBreathingActiveOnPage {
             var idleClusterSpans: [Double]
             if isAlwaysCompactBreathing {
                 idleClusterSpans = clusters.indices.map { cIdx in
@@ -1753,7 +1798,27 @@ public final class PurahWorkspaceStore {
                     if idealAnchorStart + anchorSpan < idleBottom { idealAnchorStart = idleBottom - anchorSpan }
                     let minAllowedAnchorStart = safeTop + minAboveSpace
                     let maxAllowedAnchorStart = max(minAllowedAnchorStart, safeBottom - anchorSpan - minBelowSpace)
-                    let anchorStartY = min(max(idealAnchorStart, minAllowedAnchorStart), maxAllowedAnchorStart)
+                    var anchorStartY = min(max(idealAnchorStart, minAllowedAnchorStart), maxAllowedAnchorStart)
+
+                    if clusters[anchorIdx].count >= 2,
+                       let hoveredSubIdx = clusters[anchorIdx].firstIndex(where: { $0.id == primaryHoveredId }) {
+                        let idleSubSpans = calculateSubSpans(for: clusters[anchorIdx], clusterSpan: idleClusterSpans[anchorIdx])
+                        let expSubSpans = calculateSubSpans(for: clusters[anchorIdx], clusterSpan: anchorSpan)
+
+                        let idleSubOffset = (0..<hoveredSubIdx).reduce(0.0) { $0 + idleSubSpans[$1] + clusterGap }
+                        let idleSubStartY = idleTop + idleSubOffset
+                        let idleSubEndY = idleSubStartY + idleSubSpans[hoveredSubIdx]
+
+                        let expSubOffset = (0..<hoveredSubIdx).reduce(0.0) { $0 + expSubSpans[$1] + clusterGap }
+                        let expSubSpan = expSubSpans[hoveredSubIdx]
+
+                        let maxAnchorForHover = idleSubStartY - expSubOffset
+                        let minAnchorForHover = idleSubEndY - expSubOffset - expSubSpan
+                        if minAnchorForHover <= maxAnchorForHover {
+                            anchorStartY = min(max(anchorStartY, minAnchorForHover), maxAnchorForHover)
+                        }
+                        anchorStartY = min(max(anchorStartY, minAllowedAnchorStart), maxAllowedAnchorStart)
+                    }
 
                     clusterStartYs[anchorIdx] = anchorStartY
 
@@ -1924,32 +1989,8 @@ public final class PurahWorkspaceStore {
                 )
             } else {
                 let gid = cluster.first?.majorGroupId ?? "major_\(edge.rawValue)_\(cIdx)"
-                let m = cluster.count
                 let subGap = 3.0
-                let totalSubGaps = Double(max(m - 1, 0)) * subGap
-                let minSubFloor = min(28.0, max((clusterSpan - totalSubGaps) / Double(max(m, 1)), 18.0))
-                let netSubSpan = max(clusterSpan - totalSubGaps, Double(m) * minSubFloor)
-                let subWeights = cluster.map { max($0.range.length, 0.025) }
-                let subWeightSum = max(subWeights.reduce(0.0, +), 0.0001)
-
-                var subSpans: [Double] = subWeights.map { weight in
-                    max(netSubSpan * (weight / subWeightSum), minSubFloor)
-                }
-                let subSum = subSpans.reduce(0.0, +)
-                if subSum > netSubSpan && subSum > 0 {
-                    let excess = subSum - netSubSpan
-                    let slackIndices = subSpans.indices.filter { subSpans[$0] > minSubFloor + 0.01 }
-                    let totalSlack = slackIndices.reduce(0.0) { $0 + (subSpans[$1] - minSubFloor) }
-                    if totalSlack >= excess && totalSlack > 0 {
-                        for idx in slackIndices {
-                            let itemSlack = subSpans[idx] - minSubFloor
-                            subSpans[idx] -= excess * (itemSlack / totalSlack)
-                        }
-                    } else {
-                        let s = netSubSpan / subSum
-                        subSpans = subSpans.map { max($0 * s, 18.0) }
-                    }
-                }
+                let subSpans = calculateSubSpans(for: cluster, clusterSpan: clusterSpan, subGap: subGap)
 
                 var curSubY = clusterY
                 for (subIdx, pod) in cluster.enumerated() {

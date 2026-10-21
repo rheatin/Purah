@@ -51,6 +51,8 @@ public struct AIAssistantSteppedDrawerView: View {
 
     @State private var roleInput: String = ""
     @State private var roleOutput: String = ""
+    @State private var rawSteppedStream: String = ""
+    @State private var isSteppedThinking: Bool = false
     @State private var isRoleRunning: Bool = false
     @State private var isCopiedFeedback: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
@@ -189,7 +191,7 @@ public struct AIAssistantSteppedDrawerView: View {
                                     .padding(.horizontal, 6)
                                     .padding(.top, 2)
                                 Spacer()
-                                Text("ai.stepped.generating".localized)
+                                Text(isSteppedThinking ? "💭 Thinking..." : "ai.stepped.generating".localized)
                                     .font(.system(size: 9.5, weight: .medium, design: .rounded))
                                     .foregroundColor(Color.white.opacity(0.60))
                                     .padding(.bottom, 4)
@@ -297,6 +299,8 @@ public struct AIAssistantSteppedDrawerView: View {
         isRoleRunning = false
         roleInput = ""
         roleOutput = ""
+        rawSteppedStream = ""
+        isSteppedThinking = false
         isCopiedFeedback = false
     }
 
@@ -304,6 +308,7 @@ public struct AIAssistantSteppedDrawerView: View {
         currentStreamTask?.cancel()
         currentStreamTask = nil
         isRoleRunning = false
+        isSteppedThinking = false
     }
 
     private func copyRoleOutput() {
@@ -326,6 +331,8 @@ public struct AIAssistantSteppedDrawerView: View {
         guard !trimmed.isEmpty else { return }
         isRoleRunning = true
         roleOutput = ""
+        rawSteppedStream = ""
+        isSteppedThinking = false
         currentStreamTask?.cancel()
 
         let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
@@ -400,7 +407,10 @@ public struct AIAssistantSteppedDrawerView: View {
                     systemPromptOverride: systemPrompt,
                     onChunk: { chunk in
                         Task { @MainActor in
-                            self.roleOutput += chunk
+                            self.rawSteppedStream += chunk
+                            let parsed = AIThinkAndChoicesParser.parse(raw: self.rawSteppedStream)
+                            self.isSteppedThinking = parsed.isThinking || (parsed.cleanText.isEmpty && !(parsed.reasoning ?? "").isEmpty)
+                            self.roleOutput = parsed.cleanText
                         }
                     }
                 )
@@ -516,9 +526,6 @@ public struct AIAssistantRoleWorkbenchView: View {
     @State private var activeDropZone: AIDropZoneTarget? = nil
     @State private var isHoveringSaveNotes: Bool = false
     @State private var isHoveringRetry: Bool = false
-    @State private var inlineInput: String = ""
-    @State private var isRefiningOutput: Bool = false
-    @State private var isEditingSource: Bool = false
     @State private var isReasoningExpanded: Bool = false
     @State private var isDiffMode: Bool = true
 
@@ -553,7 +560,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     private var sourceText: String {
-        if isEditingSource {
+        if state.isEditingSource {
             return state.currentInputText
         }
         if let sel = lastUserMsg?.originalSelection, !sel.isEmpty {
@@ -596,6 +603,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
         }
+        .allowsHitTesting(activeDropZone == nil)
         .padding(showRoleSwitcher ? 0 : 8)
         .frame(height: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0))
         .background(
@@ -633,22 +641,16 @@ public struct AIAssistantRoleWorkbenchView: View {
                 onPerformDrop: { providers, target in
                     return state.handleDroppedProviders(providers, target: target) {
                         if target == .newSession {
-                            if let dropped = state.stagedDropText, !dropped.isEmpty {
-                                state.currentInputText = dropped
-                            }
-                            isEditingSource = false
-                            isRefiningOutput = false
+                            state.isEditingSource = false
+                            state.isRefiningOutput = false
                             isSourceEditorFocused = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                 isSourceEditorFocused = true
                             }
                         } else {
-                            if let dropped = state.stagedDropText, !dropped.isEmpty {
-                                inlineInput = dropped + " "
-                            }
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                                isRefiningOutput = true
-                                isEditingSource = false
+                                state.isRefiningOutput = true
+                                state.isEditingSource = false
                             }
                             isRefineEditorFocused = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -669,10 +671,23 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .onExitCommand {
-            if isRefiningOutput || isEditingSource {
+            if state.isRefiningOutput || state.isEditingSource {
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                    isRefiningOutput = false
-                    isEditingSource = false
+                    state.isRefiningOutput = false
+                    state.isEditingSource = false
+                }
+            }
+        }
+        .onChange(of: state.focusRequestCounter) {
+            if state.isRefiningOutput {
+                isRefineEditorFocused = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    isRefineEditorFocused = true
+                }
+            } else {
+                isSourceEditorFocused = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    isSourceEditorFocused = true
                 }
             }
         }
@@ -803,6 +818,24 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .padding(.horizontal, 12)
                 }
             }
+            .contentShape(Rectangle())
+            .onDrop(
+                of: [.fileURL, .utf8PlainText, .plainText],
+                isTargeted: Binding(
+                    get: { isTopTargeted },
+                    set: { if $0 { activeDropZone = .newSession } }
+                )
+            ) { providers in
+                activeDropZone = nil
+                return state.handleDroppedProviders(providers, target: .newSession) {
+                    state.isEditingSource = false
+                    state.isRefiningOutput = false
+                    isSourceEditorFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isSourceEditorFocused = true
+                    }
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 2. Bottom 50% Box: Follow-up / Refine
@@ -826,12 +859,32 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .padding(.horizontal, 12)
                 }
             }
+            .contentShape(Rectangle())
+            .onDrop(
+                of: [.fileURL, .utf8PlainText, .plainText],
+                isTargeted: Binding(
+                    get: { isBottomTargeted },
+                    set: { if $0 { activeDropZone = .followUp } }
+                )
+            ) { providers in
+                activeDropZone = nil
+                return state.handleDroppedProviders(providers, target: .followUp) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                        state.isRefiningOutput = true
+                        state.isEditingSource = false
+                    }
+                    isRefineEditorFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isRefineEditorFocused = true
+                    }
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(6)
         .background(Color.black.opacity(0.60))
         .cornerRadius(showRoleSwitcher ? 10 : 14)
-        .allowsHitTesting(false)
+        .allowsHitTesting(true)
     }
 
     // MARK: - Stage 1: Input Stage (When latestResult.isEmpty && !isRoleStreaming)
@@ -1015,23 +1068,23 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .overlay {
-                    if isEditingSource || isRefiningOutput {
+                    if state.isEditingSource || state.isRefiningOutput {
                         Color.black.opacity(0.001)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                                    isEditingSource = false
-                                    isRefiningOutput = false
+                                    state.isEditingSource = false
+                                    state.isRefiningOutput = false
                                 }
                             }
                     }
                 }
                 .simultaneousGesture(
                     TapGesture().onEnded {
-                        if isEditingSource || isRefiningOutput {
+                        if state.isEditingSource || state.isRefiningOutput {
                             withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                                isEditingSource = false
-                                isRefiningOutput = false
+                                state.isEditingSource = false
+                                state.isRefiningOutput = false
                             }
                         }
                     }
@@ -1045,7 +1098,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     // MARK: - Top 3-in-1 Status Bar
     @ViewBuilder
     private var topStatusBar: some View {
-        if isEditingSource {
+        if state.isEditingSource {
             // Expanded Source Editing Card (~96pt)
             VStack(alignment: .leading, spacing: 5) {
                 TextEditor(text: $state.currentInputText)
@@ -1077,7 +1130,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
                                 if !text.isEmpty {
                                     withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                                        isEditingSource = false
+                                        state.isEditingSource = false
                                     }
                                     state.sendPrompt(text, role: r, originalSelection: text)
                                 }
@@ -1249,8 +1302,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                     Button {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                             state.currentInputText = sourceText
-                            isEditingSource = true
-                            isRefiningOutput = false
+                            state.isEditingSource = true
+                            state.isRefiningOutput = false
                         }
                         isSourceEditorFocused = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -1361,9 +1414,9 @@ public struct AIAssistantRoleWorkbenchView: View {
             .frame(height: 22)
             .simultaneousGesture(
                 TapGesture().onEnded {
-                    if isRefiningOutput {
+                    if state.isRefiningOutput {
                         withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                            isRefiningOutput = false
+                            state.isRefiningOutput = false
                         }
                     }
                 }
@@ -1548,12 +1601,12 @@ public struct AIAssistantRoleWorkbenchView: View {
     // MARK: - Bottom Action & Spring-Expanding Refine Bar
     @ViewBuilder
     private var bottomRefineBar: some View {
-        if isRefiningOutput {
+        if state.isRefiningOutput {
             // Expanded Refine Box (~78pt)
             VStack(alignment: .leading, spacing: 4) {
                 // Top row (height: 44pt): TextEditor
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $inlineInput)
+                    TextEditor(text: $state.refineInputText)
                         .focused($isRefineEditorFocused)
                         .font(.system(size: 11))
                         .foregroundColor(.white)
@@ -1567,7 +1620,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             }
                         }
 
-                    if inlineInput.isEmpty {
+                    if state.refineInputText.isEmpty {
                         Text("ai.composer.refinePlaceholder".localized)
                             .font(.system(size: 10.5))
                             .foregroundColor(Color.white.opacity(0.35))
@@ -1606,7 +1659,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
-                    .disabled(inlineInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(state.refineInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .keyboardShortcut(.return, modifiers: [.command])
                 }
                 .frame(height: 20)
@@ -1801,8 +1854,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                 // 5. Expandable Refine Trigger Pill ([✨ Refine / Follow-up... ⬆])
                 Button {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                        isRefiningOutput = true
-                        isEditingSource = false
+                        state.isRefiningOutput = true
+                        state.isEditingSource = false
                     }
                     isRefineEditorFocused = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -1835,9 +1888,9 @@ public struct AIAssistantRoleWorkbenchView: View {
             .frame(height: 24)
             .simultaneousGesture(
                 TapGesture().onEnded {
-                    if isEditingSource {
+                    if state.isEditingSource {
                         withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-                            isEditingSource = false
+                            state.isEditingSource = false
                         }
                     }
                 }
@@ -1846,11 +1899,11 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     private func submitRefinement() {
-        let text = inlineInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = state.refineInputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !state.isStreaming else { return }
-        inlineInput = ""
+        state.refineInputText = ""
         withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
-            isRefiningOutput = false
+            state.isRefiningOutput = false
         }
         state.refineCurrentOutput(instruction: text)
     }

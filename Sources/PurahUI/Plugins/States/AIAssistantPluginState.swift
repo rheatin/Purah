@@ -129,6 +129,13 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var maxRailRoles: Int {
+        didSet {
+            storage.set(maxRailRoles, forKey: "maxRailRoles")
+            boundStore?.aiMaxRailRoles = maxRailRoles
+        }
+    }
+
     public var rolePresets: [AIRolePreset] {
         didSet {
             storage.setCodable(rolePresets, forKey: "rolePresets")
@@ -188,6 +195,10 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     public var currentInputText: String = ""
+    public var isRefiningOutput: Bool = false
+    public var isEditingSource: Bool = false
+    public var refineInputText: String = ""
+    public var focusRequestCounter: Int = 0
     public var isShowingHistoryPanel: Bool = false
     public var viewingStepIndex: Int? = nil
 
@@ -417,6 +428,9 @@ public final class AIAssistantPluginState: Sendable {
             self.isDecomposed = false
         }
 
+        let savedMaxRoles = storage.int(forKey: "maxRailRoles")
+        self.maxRailRoles = savedMaxRoles > 0 ? min(max(savedMaxRoles, 2), 8) : 4
+
         let resolvedPresets: [AIRolePreset]
         if let presets = storage.codable(forKey: "rolePresets", as: [AIRolePreset].self) {
             resolvedPresets = presets
@@ -477,6 +491,12 @@ public final class AIAssistantPluginState: Sendable {
             self.fetchedModels = [:]
         }
 
+        if let storedAllowed = storage.codable(forKey: "allowedFilePaths", as: [String].self) {
+            self.allowedFilePaths = Set(storedAllowed)
+        } else {
+            self.allowedFilePaths = []
+        }
+
         self.sessions = repository.items
         pruneExpiredSessions()
 
@@ -493,12 +513,6 @@ public final class AIAssistantPluginState: Sendable {
                 providerKind: self.selectedProvider
             )
             repository.insert(initialSession, at: 0)
-        if let storedAllowed = storage.codable(forKey: "allowedFilePaths", as: [String].self) {
-            self.allowedFilePaths = Set(storedAllowed)
-        } else {
-            self.allowedFilePaths = []
-        }
-
             self.sessions = repository.items
             self.activeSessionId = initialSession.id
         }
@@ -564,6 +578,7 @@ public final class AIAssistantPluginState: Sendable {
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
         self.isDecomposed = store._isAIDecomposed
+        self.maxRailRoles = store.aiMaxRailRoles
         self.rolePresets = store._aiRolePresets
         self.enabledActions = store._aiRolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
         refreshCapturedSelection()
@@ -597,6 +612,7 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(ollamaBaseURL, forKey: "ollamaBaseURL")
         storage.set(ollamaModel, forKey: "ollamaModel")
         storage.set(isDecomposed, forKey: "isDecomposed")
+        storage.set(maxRailRoles, forKey: "maxRailRoles")
         storage.set(selectedRoleId, forKey: "selectedRoleId")
         storage.set(selectedPolishTone.rawValue, forKey: "selectedPolishTone")
         storage.set(translateTargetLanguage.rawValue, forKey: "translateTargetLanguage")
@@ -1287,35 +1303,32 @@ public final class AIAssistantPluginState: Sendable {
                         let fileSize: Int64 = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
                         let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
                         let title = "\(filePath) (\(sizeStr))"
-                        let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-                        let trimmed = fileText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let effectiveText: String = {
-                            if !trimmed.isEmpty {
-                                return "\(filePath)\n\n\(trimmed)"
-                            } else {
-                                return filePath
-                            }
-                        }()
 
                         Task { @MainActor [weak self] in
                             guard let self else { return }
                             self.allowPath(filePath)
                             self.stopStreaming()
-                            if target == .newSession {
-                                self.createNewSession()
-                            }
                             if let attachment = AIAssistantService.shared.makeAttachment(from: fileURL) {
                                 if self.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
                                     self.stagedAttachments.append(attachment)
                                 }
                             }
-                            self.stagedDropText = effectiveText
                             self.stagedDropTitle = title
 
                             if target == .newSession {
-                                self.currentInputText = effectiveText
+                                self.createNewSession()
+                                self.currentInputText = "\(filePath) "
+                                self.stagedDropText = "\(filePath) "
+                                self.isEditingSource = false
+                                self.isRefiningOutput = false
+                                self.focusRequestCounter += 1
                                 self.isAwaitingRoleForDroppedContent = true
                             } else {
+                                self.refineInputText = "\(filePath) "
+                                self.stagedDropText = "\(filePath) "
+                                self.isEditingSource = false
+                                self.isRefiningOutput = true
+                                self.focusRequestCounter += 1
                                 self.isAwaitingRoleForDroppedContent = false
                             }
                             onStaged?()
@@ -1339,16 +1352,21 @@ public final class AIAssistantPluginState: Sendable {
                         Task { @MainActor [weak self] in
                             guard let self else { return }
                             self.stopStreaming()
-                            if target == .newSession {
-                                self.createNewSession()
-                            }
-                            self.stagedDropText = str
                             self.stagedDropTitle = title
+                            self.stagedDropText = str
 
                             if target == .newSession {
+                                self.createNewSession()
                                 self.currentInputText = str
+                                self.isEditingSource = false
+                                self.isRefiningOutput = false
+                                self.focusRequestCounter += 1
                                 self.isAwaitingRoleForDroppedContent = true
                             } else {
+                                self.refineInputText = str
+                                self.isEditingSource = false
+                                self.isRefiningOutput = true
+                                self.focusRequestCounter += 1
                                 self.isAwaitingRoleForDroppedContent = false
                             }
                             onStaged?()

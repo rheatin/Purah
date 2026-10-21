@@ -348,6 +348,9 @@ public struct AmbientRailStripView: View {
                     }
                     plugin.onRailBarTap(subItemId: nil, context: barContext)
                 }
+                .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
+                    plugin.onDrop(providers: providers, context: drawerContext)
+                })
 
             if isActive {
                 pluginDrawerCard(plugin: plugin, pod: pod, context: drawerContext, totalHeight: drawerSlotH)
@@ -361,9 +364,6 @@ public struct AmbientRailStripView: View {
             }
         }
         .frame(height: barSlotH, alignment: .top)
-        .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
-            plugin.onDrop(providers: providers, context: drawerContext)
-        })
     }
 
     @ViewBuilder

@@ -587,6 +587,7 @@ struct AIAssistantPluginTests {
             isEnabled: true
         )
         plugin.state.rolePresets.append(customRole)
+        plugin.state.maxRailRoles = 6
 
         let customSteppedView = plugin.makeSteppedDrawerView(subItemId: "ai-custom-tester", context: context)
         #expect(customSteppedView != nil)
