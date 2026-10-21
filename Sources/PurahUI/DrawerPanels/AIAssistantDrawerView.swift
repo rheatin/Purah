@@ -269,8 +269,8 @@ public struct AIAssistantSteppedDrawerView: View {
                                 lineWidth: isSteppedDropTargeted ? 1.6 : 1.0
                             )
                     )
-                    .onDrop(of: [.fileURL, .utf8PlainText, .plainText], isTargeted: $isSteppedDropTargeted) { providers in
-                        return handleSteppedDrop(providers: providers)
+                    .onDrop(of: AIWorkbenchSplitDropDelegate.acceptedTypes, isTargeted: $isSteppedDropTargeted) { _ in
+                        handleSteppedTurnFromDrag()
                     }
                 }
                 .padding(6)
@@ -423,120 +423,126 @@ public struct AIAssistantSteppedDrawerView: View {
         }
     }
 
-    private func handleSteppedDrop(providers: [NSItemProvider]) -> Bool {
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                    let url: URL?
-                    if let directURL = item as? URL {
-                        url = directURL.standardizedFileURL
-                    } else if let data = item as? Data, let pathString = String(data: data, encoding: .utf8) {
-                        url = URL(fileURLWithPath: pathString).standardizedFileURL
-                    } else {
-                        url = nil
-                    }
-                    if let fileURL = url {
-                        let path = fileURL.path
-                        let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-                        let effectiveText = fileText.isEmpty ? path : "\(path)\n\n\(fileText)"
-                        Task { @MainActor in
-                            self.roleInput = path
-                            self.runSingleTurn(input: effectiveText)
-                        }
-                    }
-                }
-                return true
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                let typeId = provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) ? UTType.utf8PlainText.identifier : UTType.plainText.identifier
-                provider.loadItem(forTypeIdentifier: typeId, options: nil) { item, _ in
-                    let text = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
-                    if let text, !text.isEmpty {
-                        Task { @MainActor in
-                            self.roleInput = text
-                            self.runSingleTurn(input: text)
-                        }
-                    }
-                }
-                return true
-            }
+    /// Starts a turn directly from the drop.
+    ///
+    /// Reads `NSPasteboard(name: .drag)` synchronously: the drag pasteboard is only valid inside
+    /// the drop callback, and awaiting `NSItemProvider.loadItem` lost the payload entirely.
+    private func handleSteppedTurnFromDrag() -> Bool {
+        let pasteboard = NSPasteboard(name: .drag)
+        if let fileURL = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?.first {
+            let path = fileURL.standardizedFileURL.path
+            let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            roleInput = path
+            runSingleTurn(input: fileText.isEmpty ? path : "\(path)\n\n\(fileText)")
+            return true
+        }
+        if let text = pasteboard.string(forType: .string), !text.isEmpty {
+            roleInput = text
+            runSingleTurn(input: text)
+            return true
         }
         return false
     }
 }
 
 // MARK: - AI Workbench Split Drop Delegate
+/// Single drop target for the whole AI card.
+///
+/// The 50/50 New Session / Follow-up split is resolved purely from the pointer location inside
+/// `performDrop`; overlays are decoration only (`.allowsHitTesting(false)`). Nested `.onDrop`
+/// targets inside the overlay used to compete with this one and cancelled each other out, which
+/// is why drops silently never landed.
 public struct AIWorkbenchSplitDropDelegate: DropDelegate {
+    public static let acceptedTypes: [UTType] = [
+        .fileURL, .url, .image, .png, .tiff, .pdf, .utf8PlainText, .plainText
+    ]
+
     public let state: AIAssistantPluginState
     public let cardHeight: CGFloat
     public let hasExistingConversation: Bool
     @Binding public var activeDropZone: AIDropZoneTarget?
-    public var onFocusRefine: (() -> Void)? = nil
-    public var onFocusSource: (() -> Void)? = nil
-    public let onPerformDrop: ([NSItemProvider], AIDropZoneTarget) -> Bool
+    /// Set once `performDrop` runs. AppKit still delivers a trailing `dropUpdated` after a
+    /// successful drop; without this guard it re-armed the hint overlay and left it stuck on
+    /// top of the freshly staged content.
+    @Binding public var dropSessionConcluded: Bool
+    public let onRoute: (AIDropZoneTarget) -> Void
 
     public init(
         state: AIAssistantPluginState,
         cardHeight: CGFloat,
         hasExistingConversation: Bool,
         activeDropZone: Binding<AIDropZoneTarget?>,
-        onFocusRefine: (() -> Void)? = nil,
-        onFocusSource: (() -> Void)? = nil,
-        onPerformDrop: @escaping ([NSItemProvider], AIDropZoneTarget) -> Bool
+        dropSessionConcluded: Binding<Bool>,
+        onRoute: @escaping (AIDropZoneTarget) -> Void
     ) {
         self.state = state
         self.cardHeight = cardHeight
         self.hasExistingConversation = hasExistingConversation
         self._activeDropZone = activeDropZone
-        self.onFocusRefine = onFocusRefine
-        self.onFocusSource = onFocusSource
-        self.onPerformDrop = onPerformDrop
+        self._dropSessionConcluded = dropSessionConcluded
+        self.onRoute = onRoute
     }
 
     public func validateDrop(info: DropInfo) -> Bool {
-        return true
+        info.hasItemsConforming(to: Self.acceptedTypes) || Self.dragPasteboardHasPayload
     }
 
     public func dropEntered(info: DropInfo) {
+        dropSessionConcluded = false
         updateTarget(for: info)
     }
 
     public func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard !dropSessionConcluded else { return DropProposal(operation: .copy) }
         updateTarget(for: info)
         return DropProposal(operation: .copy)
-    }
-
-    private func updateTarget(for info: DropInfo) {
-        if !hasExistingConversation {
-            activeDropZone = .newSession
-        } else {
-            let isTopHalf = info.location.y < (cardHeight * 0.5)
-            activeDropZone = isTopHalf ? .newSession : .followUp
-        }
     }
 
     public func dropExited(info: DropInfo) {
         activeDropZone = nil
     }
 
+    private func updateTarget(for info: DropInfo) {
+        let next = resolveTarget(at: info.location.y)
+        if activeDropZone != next {
+            activeDropZone = next
+        }
+    }
+
+    private func resolveTarget(at y: CGFloat) -> AIDropZoneTarget {
+        guard hasExistingConversation else { return .newSession }
+        let splitY = max(cardHeight, 1.0) * 0.5
+        return y < splitY ? .newSession : .followUp
+    }
+
+    private static var dragPasteboardHasPayload: Bool {
+        let pasteboard = NSPasteboard(name: .drag)
+        return pasteboard.canReadObject(forClasses: [NSURL.self], options: nil)
+            || pasteboard.data(forType: .png) != nil
+            || pasteboard.data(forType: .tiff) != nil
+            || pasteboard.string(forType: .string) != nil
+    }
+
     public func performDrop(info: DropInfo) -> Bool {
-        let target: AIDropZoneTarget
-        if !hasExistingConversation {
-            target = .newSession
-        } else {
-            target = (info.location.y < (cardHeight * 0.5)) ? .newSession : .followUp
-        }
+        let target = resolveTarget(at: info.location.y)
+        dropSessionConcluded = true
         activeDropZone = nil
-        let success = state.ingestDropFromDrag(target: target)
-        if target == .followUp {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                state.isRefiningOutput = true
-                state.isEditingSource = false
-            }
-            onFocusRefine?()
-        } else {
-            onFocusSource?()
+
+        // 1. Fast path: read the drag pasteboard synchronously so routing is decided before
+        //    AppKit tears the drag session down.
+        if state.ingestDropFromDrag(target: target) {
+            onRoute(target)
+            return true
         }
-        return success || onPerformDrop(info.itemProviders(for: [.fileURL, .utf8PlainText, .plainText]), target)
+
+        // 2. Provider fallback: async load for sources that only vend item providers.
+        let accepted = state.handleDroppedProviders(
+            info.itemProviders(for: Self.acceptedTypes),
+            target: target
+        ) { [onRoute] in
+            onRoute(target)
+        }
+        return accepted
     }
 }
 
@@ -550,11 +556,13 @@ public struct AIAssistantRoleWorkbenchView: View {
     public let cardHeight: CGFloat
     public let onTogglePin: () -> Void
 
-    @FocusState private var isRefineEditorFocused: Bool
-    @FocusState private var isSourceEditorFocused: Bool
+    // AppKit-backed composers do not participate in SwiftUI focus, so focus is requested by
+    // incrementing a counter that the composer bridges into `makeFirstResponder`.
+    @State private var sourceFocusRequest: Int = 0
+    @State private var refineFocusRequest: Int = 0
 
-    @State private var inlineInput: String = ""
     @State private var activeDropZone: AIDropZoneTarget? = nil
+    @State private var dropSessionConcluded: Bool = false
     @State private var isHoveringSaveNotes: Bool = false
     @State private var isHoveringRetry: Bool = false
     @State private var isReasoningExpanded: Bool = false
@@ -634,7 +642,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
         }
-        .allowsHitTesting(activeDropZone == nil)
         .padding(showRoleSwitcher ? 0 : 8)
         .frame(height: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0))
         .background(
@@ -655,55 +662,29 @@ public struct AIAssistantRoleWorkbenchView: View {
         )
         .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
         .overlay {
-            if activeDropZone != nil {
-                if !latestResult.isEmpty || !sourceText.isEmpty {
-                    splitDropOverlayView
-                } else {
-                    dropOverlayView
+            // Decoration only: the single drop target lives on the card so the overlay can never
+            // steal the drag session or cancel the parent target.
+            if let zone = activeDropZone {
+                Group {
+                    if !latestResult.isEmpty || !sourceText.isEmpty {
+                        splitDropOverlayView(activeZone: zone)
+                    } else {
+                        dropOverlayView
+                    }
                 }
+                .allowsHitTesting(false)
             }
         }
         .onDrop(
-            of: [.fileURL, .utf8PlainText, .plainText],
+            of: AIWorkbenchSplitDropDelegate.acceptedTypes,
             delegate: AIWorkbenchSplitDropDelegate(
                 state: state,
                 cardHeight: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0),
                 hasExistingConversation: !latestResult.isEmpty || !sourceText.isEmpty,
                 activeDropZone: $activeDropZone,
-                onFocusRefine: {
-                    inlineInput = state.refineInputText
-                    isRefineEditorFocused = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isRefineEditorFocused = true
-                    }
-                },
-                onFocusSource: {
-                    isSourceEditorFocused = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isSourceEditorFocused = true
-                    }
-                },
-                onPerformDrop: { providers, target in
-                    return state.handleDroppedProviders(providers, target: target) {
-                        if target == .newSession {
-                            state.isEditingSource = false
-                            state.isRefiningOutput = false
-                            isSourceEditorFocused = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                isSourceEditorFocused = true
-                            }
-                        } else {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                                state.isRefiningOutput = true
-                                state.isEditingSource = false
-                            }
-                            inlineInput = state.refineInputText
-                            isRefineEditorFocused = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                isRefineEditorFocused = true
-                            }
-                        }
-                    }
+                dropSessionConcluded: $dropSessionConcluded,
+                onRoute: { target in
+                    routeDrop(to: target)
                 }
             )
         )
@@ -725,18 +706,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .onChange(of: state.focusRequestCounter) {
-            if state.isRefiningOutput {
-                inlineInput = state.refineInputText
-                isRefineEditorFocused = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    isRefineEditorFocused = true
-                }
-            } else {
-                isSourceEditorFocused = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    isSourceEditorFocused = true
-                }
-            }
+            routeFocus()
         }
     }
 
@@ -838,100 +808,55 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     // MARK: - Split 50/50 Dual-Zone Drop Overlay
+    /// Purely visual 50/50 hint. Routing is decided by `AIWorkbenchSplitDropDelegate` from the
+    /// pointer Y position, so this overlay never registers a drop target of its own.
     @ViewBuilder
-    private var splitDropOverlayView: some View {
-        let isTopTargeted = activeDropZone == .newSession
-        let isBottomTargeted = activeDropZone == .followUp
+    private func splitDropOverlayView(activeZone: AIDropZoneTarget) -> some View {
+        let isTopTargeted = activeZone == .newSession
+        let isBottomTargeted = activeZone == .followUp
 
         VStack(spacing: 8) {
-            // 1. Top 50% Box: New Session
-            ZStack {
-                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                    .fill(isTopTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
-                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                    .strokeBorder(
-                        style: StrokeStyle(lineWidth: isTopTargeted ? 2.0 : 1.2, dash: [6, 4])
-                    )
-                    .foregroundColor(isTopTargeted ? roleColor : Color.white.opacity(0.35))
+            dropZoneBox(
+                isTargeted: isTopTargeted,
+                icon: "plus.bubble.fill",
+                titleKey: "ai.drop.newSessionZone"
+            )
 
-                VStack(spacing: 5) {
-                    Image(systemName: "plus.bubble.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(isTopTargeted ? roleColor : Color.white.opacity(0.85))
-                    Text("ai.drop.newSessionZone".localized)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                }
-            }
-            .contentShape(Rectangle())
-            .onDrop(
-                of: [.fileURL, .utf8PlainText, .plainText],
-                isTargeted: Binding(
-                    get: { isTopTargeted },
-                    set: { if $0 { activeDropZone = .newSession } }
-                )
-            ) { providers in
-                activeDropZone = nil
-                return state.handleDroppedProviders(providers, target: .newSession) {
-                    state.isEditingSource = false
-                    state.isRefiningOutput = false
-                    isSourceEditorFocused = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isSourceEditorFocused = true
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // 2. Bottom 50% Box: Follow-up / Refine
-            ZStack {
-                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                    .fill(isBottomTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
-                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                    .strokeBorder(
-                        style: StrokeStyle(lineWidth: isBottomTargeted ? 2.0 : 1.2, dash: [6, 4])
-                    )
-                    .foregroundColor(isBottomTargeted ? roleColor : Color.white.opacity(0.35))
-
-                VStack(spacing: 5) {
-                    Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(isBottomTargeted ? roleColor : Color.white.opacity(0.85))
-                    Text("ai.drop.followUpZone".localized)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                }
-            }
-            .contentShape(Rectangle())
-            .onDrop(
-                of: [.fileURL, .utf8PlainText, .plainText],
-                isTargeted: Binding(
-                    get: { isBottomTargeted },
-                    set: { if $0 { activeDropZone = .followUp } }
-                )
-            ) { providers in
-                activeDropZone = nil
-                return state.handleDroppedProviders(providers, target: .followUp) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                        state.isRefiningOutput = true
-                        state.isEditingSource = false
-                    }
-                    isRefineEditorFocused = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isRefineEditorFocused = true
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            dropZoneBox(
+                isTargeted: isBottomTargeted,
+                icon: "bubble.left.and.text.bubble.right.fill",
+                titleKey: "ai.drop.followUpZone"
+            )
         }
         .padding(6)
         .background(Color.black.opacity(0.60))
         .cornerRadius(showRoleSwitcher ? 10 : 14)
-        .allowsHitTesting(true)
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func dropZoneBox(isTargeted: Bool, icon: String, titleKey: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
+                .fill(isTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+            RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
+                .strokeBorder(
+                    style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4])
+                )
+                .foregroundColor(isTargeted ? roleColor : Color.white.opacity(0.35))
+
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(isTargeted ? roleColor : Color.white.opacity(0.85))
+                Text(titleKey.localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Stage 1: Input Stage (When latestResult.isEmpty && !isRoleStreaming)
@@ -939,15 +864,15 @@ public struct AIAssistantRoleWorkbenchView: View {
         VStack(alignment: .leading, spacing: 8) {
             // 1. Top: Interactive Source Content Box (Unified with Follow-up style)
             VStack(alignment: .leading, spacing: 5) {
-                // Inner recessed well around TextEditor
+                // Inner recessed well around the Return-to-send composer
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $state.currentInputText)
-                        .focused($isSourceEditorFocused)
-                        .font(.system(size: 11.5, weight: .regular))
-                        .foregroundColor(.white)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .padding(6)
+                    PurahAIComposerEditor(
+                        text: $state.currentInputText,
+                        fontSize: 11.5,
+                        focusRequest: sourceFocusRequest,
+                        onSubmit: sendSourcePrompt
+                    )
+                    .padding(5)
 
                     if state.currentInputText.isEmpty {
                         VStack(spacing: 5) {
@@ -971,10 +896,9 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                 // Bottom status row inside card
                 HStack(spacing: 5) {
-                    Text("ai.stage1.runCurrentRole".localized)
+                    Text("ai.composer.enterToSend".localized)
                         .font(.system(size: 8.5))
                         .foregroundColor(Color.white.opacity(0.45))
-
                     Spacer()
 
                     if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1015,12 +939,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .help("Pin Drawer")
                     }
 
-                    // Hidden button for Command+Return shortcut
+                    // Hidden button for ⌘↩, kept for muscle memory alongside Return-to-send.
                     Button {
-                        let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !text.isEmpty {
-                            state.sendPrompt(text, role: role, originalSelection: text)
-                        }
+                        sendSourcePrompt()
                     } label: {
                         EmptyView()
                     }
@@ -1148,24 +1069,19 @@ public struct AIAssistantRoleWorkbenchView: View {
         if state.isEditingSource {
             // Expanded Source Editing Card (~96pt)
             VStack(alignment: .leading, spacing: 5) {
-                TextEditor(text: $state.currentInputText)
-                    .focused($isSourceEditorFocused)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(.white)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .frame(height: 58)
-                    .padding(4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.black.opacity(0.30))
-                    )
-                    .onAppear {
-                        isSourceEditorFocused = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            isSourceEditorFocused = true
-                        }
-                    }
+                PurahAIComposerEditor(
+                    text: $state.currentInputText,
+                    fontSize: 11,
+                    focusRequest: sourceFocusRequest,
+                    autoFocus: true,
+                    onSubmit: sendSourcePromptFromEditCard
+                )
+                .frame(height: 58)
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.black.opacity(0.30))
+                )
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
@@ -1352,10 +1268,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             state.isEditingSource = true
                             state.isRefiningOutput = false
                         }
-                        isSourceEditorFocused = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            isSourceEditorFocused = true
-                        }
+                        sourceFocusRequest += 1
                     } label: {
                         HStack(spacing: 3.5) {
                             RoundedRectangle(cornerRadius: 1)
@@ -1651,21 +1564,16 @@ public struct AIAssistantRoleWorkbenchView: View {
         if state.isRefiningOutput {
             // Expanded Refine Box (~78pt)
             VStack(alignment: .leading, spacing: 4) {
-                // Top row (height: 44pt): TextEditor
+                // Top row (height: 44pt): Return-to-send composer
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $state.refineInputText)
-                        .focused($isRefineEditorFocused)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .frame(height: 44)
-                        .onAppear {
-                            isRefineEditorFocused = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                isRefineEditorFocused = true
-                            }
-                        }
+                    PurahAIComposerEditor(
+                        text: $state.refineInputText,
+                        fontSize: 11,
+                        focusRequest: refineFocusRequest,
+                        autoFocus: true,
+                        onSubmit: submitRefinement
+                    )
+                    .frame(height: 44)
 
                     if state.refineInputText.isEmpty {
                         Text("ai.composer.refinePlaceholder".localized)
@@ -1904,10 +1812,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         state.isRefiningOutput = true
                         state.isEditingSource = false
                     }
-                    isRefineEditorFocused = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isRefineEditorFocused = true
-                    }
+                    refineFocusRequest += 1
                 } label: {
                     HStack(spacing: 4) {
                         Text("ai.composer.refineTrigger".localized)
@@ -1942,6 +1847,48 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                 }
             )
+        }
+    }
+
+    // MARK: - Drop & Focus Routing
+
+    /// Applies the landing zone decided by `AIWorkbenchSplitDropDelegate`.
+    private func routeDrop(to target: AIDropZoneTarget) {
+        activeDropZone = nil
+        switch target {
+        case .newSession:
+            state.isEditingSource = false
+            state.isRefiningOutput = false
+            sourceFocusRequest += 1
+        case .followUp:
+            state.isEditingSource = false
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                state.isRefiningOutput = true
+            }
+            refineFocusRequest += 1
+        }
+    }
+
+    /// Restores focus after `state.focusRequestCounter` bumps (drops and external requests).
+    private func routeFocus() {
+        if state.isRefiningOutput {
+            refineFocusRequest += 1
+        } else {
+            sourceFocusRequest += 1
+        }
+    }
+
+    private func sendSourcePrompt() {
+        let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        state.isEditingSource = false
+        state.sendPrompt(text, role: role, originalSelection: text)
+    }
+
+    private func sendSourcePromptFromEditCard() {
+        sendSourcePrompt()
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+            state.isEditingSource = false
         }
     }
 
