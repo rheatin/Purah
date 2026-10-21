@@ -17,6 +17,7 @@ struct HighDensityOverflowTests {
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isDynamicBreathingEnabled = breathingEnabled
         store.isAlwaysCompactBreathing = alwaysCompact
+        store.pods.removeAll(where: { $0.id == "ai" })
 
         // Move all 9 pods to the left rail and ensure all 9 are enabled via togglePodEnabled
         for idx in store.pods.indices {
@@ -88,6 +89,7 @@ struct HighDensityOverflowTests {
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isDynamicBreathingEnabled = true
+        store.isAlwaysCompactBreathing = true
 
         // Verify with 3~4 pods on left rail (default balanced/initial left rail has 4 enabled pods)
         let totalHeight = 900.0
@@ -459,6 +461,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_nine_pods_single_major_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.pods.removeAll(where: { $0.id == "ai" })
 
         for idx in store.pods.indices {
             store.pods[idx].edge = .right

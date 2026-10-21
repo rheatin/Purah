@@ -61,6 +61,15 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         saveToDisk()
     }
 
+    public func update(_ item: Item) {
+        if let idx = items.firstIndex(where: { $0.id == item.id }) {
+            items[idx] = item
+            saveToDisk()
+        } else {
+            insert(item)
+        }
+    }
+
     public func toggleFavorite(id: String) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
             items[idx].isFavorite.toggle()

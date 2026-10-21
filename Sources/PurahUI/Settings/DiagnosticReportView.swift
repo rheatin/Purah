@@ -126,6 +126,10 @@ public struct DiagnosticReportView: View {
                             } else {
                                 ForEach(logEntries) { entry in
                                     HStack(alignment: .top, spacing: 6) {
+                                        Text(Self.timeFormatter.string(from: entry.timestamp))
+                                            .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                                            .foregroundColor(.secondary)
+
                                         Text(entry.level.rawValue)
                                             .font(.system(size: 8, weight: .bold, design: .monospaced))
                                             .padding(.horizontal, 4)
@@ -164,7 +168,19 @@ public struct DiagnosticReportView: View {
         .onAppear {
             refreshLogs()
         }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                refreshLogs()
+            }
+        }
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm:ss"
+        return df
+    }()
 
     private func refreshLogs() {
         logEntries = logger.recentEntries(limit: 150)
@@ -229,11 +245,13 @@ public struct DiagnosticReportView: View {
         let report = logger.generateReport(store: store)
         let savePanel = NSSavePanel()
         savePanel.title = "Export Purah Diagnostic Report"
-        savePanel.nameFieldStringValue = "Purah-Diagnostic-Report-\(Date().ISO8601Format()).log"
+        let fileName = "Purah-Diagnostic-Report-\(Date().ISO8601Format()).log"
+        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
         savePanel.allowedContentTypes = [.plainText]
 
         savePanel.begin { result in
             if result == .OK, let url = savePanel.url {
+                PurahExportPathManager.updateLastDirectory(from: url)
                 try? report.write(to: url, atomically: true, encoding: .utf8)
             }
         }

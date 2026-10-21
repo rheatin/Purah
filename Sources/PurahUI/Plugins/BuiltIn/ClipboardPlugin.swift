@@ -349,6 +349,24 @@ public struct ClipboardItemDrawerView: View {
             Spacer()
 
             if let item = item {
+                let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == item.id
+                Button {
+                    ClipboardHoverPreviewController.shared.togglePin(
+                        item: item,
+                        edge: edge,
+                        palette: palette,
+                        drawerWidth: 290.0,
+                        store: store
+                    )
+                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+                } label: {
+                    Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
+                        .font(.system(size: 11))
+                        .foregroundColor(isPreviewPinned ? palette.primaryAccent : (palette.style == .native ? .primary : .white))
+                }
+                .buttonStyle(.tactile)
+                .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+
                 Button {
                     pluginState.copyItem(item)
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
@@ -405,7 +423,7 @@ public struct ClipboardItemDrawerView: View {
             }
         }
         .onDisappear {
-            ClipboardHoverPreviewController.shared.hide()
+            ClipboardHoverPreviewController.shared.forceHide()
         }
     }
 
@@ -560,6 +578,9 @@ public struct ClipboardFullDrawerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onDisappear {
+            ClipboardHoverPreviewController.shared.forceHide()
+        }
     }
 
     @ViewBuilder
@@ -764,13 +785,14 @@ public struct ClipboardFullDrawerView: View {
                                     .cornerRadius(3)
                             }
                         }
+                        .padding(.trailing, 38)
 
                         Text("RGB(\(Int(r * 255)), \(Int(g * 255)), \(Int(b * 255)))" + (a < 0.999 ? " • \(Int(a * 100))%" : ""))
                             .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 0)
 
                     // Quick Action Buttons
                     if !isCompact {
@@ -860,6 +882,7 @@ public struct ClipboardFullDrawerView: View {
                                 .foregroundColor(.blue)
                                 .cornerRadius(2.5)
                         }
+                        .padding(.trailing, 38)
 
                         Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
                             .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
@@ -872,11 +895,7 @@ public struct ClipboardFullDrawerView: View {
                         }
                     }
 
-                    Spacer()
-
-                    Image(systemName: isHovered ? "eye.fill" : "arrow.up.and.down.and.arrow.left.and.right")
-                        .font(.system(size: isCompact ? 9.5 : 11))
-                        .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.6))
+                    Spacer(minLength: 0)
                 }
 
             case .text(let text):
@@ -886,6 +905,7 @@ public struct ClipboardFullDrawerView: View {
                         .lineLimit(isCompact ? 2 : 3)
                         .lineSpacing(isCompact ? 1 : 2)
                         .foregroundColor(palette.style == .native ? .primary : .white)
+                        .padding(.trailing, 38)
 
                     HStack {
                         Text("\(text.count) chars")
@@ -908,23 +928,44 @@ public struct ClipboardFullDrawerView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(isCompact ? 6 : 10)
         .background(isHovered ? Color.secondary.opacity(0.14) : Color.secondary.opacity(0.08))
         .cornerRadius(isCompact ? 7 : 10)
         .overlay(alignment: .topTrailing) {
-            Button {
-                state.toggleFavorite(id: item.id)
-                context.performHaptic(.alignment)
-            } label: {
-                Image(systemName: item.isFavorite ? "star.fill" : "star")
-                    .font(.system(size: isCompact ? 9 : 10.5))
-                    .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
-                    .scaleEffect(item.isFavorite ? 1.05 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
+            HStack(spacing: 5) {
+                let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == item.id
+                Button {
+                    ClipboardHoverPreviewController.shared.togglePin(
+                        item: item,
+                        edge: context.edge,
+                        palette: palette,
+                        drawerWidth: context.drawerWidth,
+                        store: context.store
+                    )
+                    context.performHaptic(.alignment)
+                } label: {
+                    Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
+                        .font(.system(size: isCompact ? 9 : 10.5))
+                        .foregroundColor(isPreviewPinned ? palette.primaryAccent : (isHovered ? .secondary : .clear))
+                }
+                .buttonStyle(.plain)
+                .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+
+                Button {
+                    state.toggleFavorite(id: item.id)
+                    context.performHaptic(.alignment)
+                } label: {
+                    Image(systemName: item.isFavorite ? "star.fill" : "star")
+                        .font(.system(size: isCompact ? 9 : 10.5))
+                        .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
+                        .scaleEffect(item.isFavorite ? 1.05 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
+                }
+                .buttonStyle(.plain)
+                .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
             }
-            .buttonStyle(.plain)
             .padding(isCompact ? 4 : 6)
-            .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
         }
         .overlay(
             RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
@@ -1006,6 +1047,10 @@ public struct ClipboardPluginSettingsView: View {
     public let state: ClipboardPluginState
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: ClipboardPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -1013,51 +1058,78 @@ public struct ClipboardPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Clipboard Sidecar Settings")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Decomposed Rail Chips", isOn: Binding(
-                    get: { state.isDecomposed },
-                    set: {
-                        state.isDecomposed = $0
-                        state.save()
+            // Card 1: Clipboard Sidecar & Rail Chips
+            PurahPluginSettingsCard(
+                title: "Clipboard Sidecar & Rail Chips",
+                subtitle: "Manage physical rail chip decomposition and capacity",
+                icon: "doc.on.clipboard.fill",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Decomposed Rail Chips")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Display recent copies as discrete tactile chips along the screen edge")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.isDecomposed },
+                            set: {
+                                state.isDecomposed = $0
+                                state.save()
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
                     }
-                ))
-                .toggleStyle(.switch)
-                Text("When enabled, recent items are displayed as discrete physical chips along the rail edge for zero-drawer switching.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
 
-                Divider()
-                    .opacity(0.3)
-                    .padding(.vertical, 2)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("Max In-Rail Items")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text("\(store.clipboardMaxRailItems) Chips")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(hex: "#FF9F0A"))
+                        }
 
-                HStack {
-                    Text("Max In-Rail Items")
-                        .font(.subheadline)
-                    Spacer()
-                    Text("\(store.clipboardMaxRailItems) Chips")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(hex: "#FF9F0A"))
+                        Slider(value: Binding(
+                            get: { Double(store.clipboardMaxRailItems) },
+                            set: {
+                                store.clipboardMaxRailItems = Int($0)
+                                store.savePersistentState()
+                            }
+                        ), in: 2...8, step: 1)
+
+                        Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(9)
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                    )
                 }
-
-                Slider(value: Binding(
-                    get: { Double(store.clipboardMaxRailItems) },
-                    set: {
-                        store.clipboardMaxRailItems = Int($0)
-                        store.savePersistentState()
-                    }
-                ), in: 2...8, step: 1)
-
-                Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
 
+            // Card 2: Storage Policy Section
             PurahStoragePolicySection(
                 retention: Binding(
                     get: { state.retentionPeriod },
@@ -1095,7 +1167,6 @@ public struct ClipboardPluginSettingsView: View {
                 }
             )
         }
-        .padding()
     }
 }
 

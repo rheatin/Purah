@@ -258,6 +258,8 @@ public final class ScreenEdgeCoordinator {
 
             if isCurrentOnEdge && !isPinned {
                 isDismissingEdge[targetEdge] = true
+                store.onDismissPreviewPanel?()
+                store.activePreviewScreenFrame = nil
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
                     store.activeDrawerItemId = nil
                     store.activeDrawerPodId = nil

@@ -180,6 +180,8 @@ public struct AmbientRailStripView: View {
                     if store.hoveredPodId == pod.id {
                         store.hoveredPodId = nil
                     }
+                    store.onDismissPreviewPanel?()
+                    store.activePreviewScreenFrame = nil
                     store.invalidateLayoutCache()
                 }
             },
@@ -294,6 +296,8 @@ public struct AmbientRailStripView: View {
                     if store.hoveredPodId == pod.id {
                         store.hoveredPodId = nil
                     }
+                    store.onDismissPreviewPanel?()
+                    store.activePreviewScreenFrame = nil
                     store.invalidateLayoutCache()
                 }
             },
@@ -344,6 +348,9 @@ public struct AmbientRailStripView: View {
                     }
                     plugin.onRailBarTap(subItemId: nil, context: barContext)
                 }
+                .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
+                    plugin.onDrop(providers: providers, context: drawerContext)
+                })
 
             if isActive {
                 pluginDrawerCard(plugin: plugin, pod: pod, context: drawerContext, totalHeight: drawerSlotH)
@@ -357,9 +364,6 @@ public struct AmbientRailStripView: View {
             }
         }
         .frame(height: barSlotH, alignment: .top)
-        .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
-            plugin.onDrop(providers: providers, context: drawerContext)
-        })
     }
 
     @ViewBuilder
@@ -389,8 +393,9 @@ public struct AmbientRailStripView: View {
                     store.openPluginSettings(id: pod.id)
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
+                        .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
                 .help("Open \(plugin.manifest.displayName) Settings")

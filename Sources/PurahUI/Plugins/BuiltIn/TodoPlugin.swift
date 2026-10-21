@@ -51,6 +51,10 @@ public struct TodoPlugin: PurahPodPlugin {
         state.unmount(store: store)
     }
 
+    public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        340.0
+    }
+
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.stepped] }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
@@ -234,6 +238,10 @@ public struct TodoPluginSettingsView: View {
     public let state: TodoPluginState
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -245,61 +253,139 @@ public struct TodoPluginSettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Reminders Scope")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Picker("", selection: Binding(
-                    get: { state.scope },
-                    set: { newScope in
-                        state.scope = newScope
-                        state.save()
-                        store.remindersScope = newScope
-                        Task {
-                            await state.syncReminders(into: store)
+        VStack(alignment: .leading, spacing: 14) {
+            // Card 1: Reminders Scope & Rail Capacity
+            PurahPluginSettingsCard(
+                title: "Reminders Scope & Rail Capacity",
+                subtitle: "Manage reminder filters, rail density, and background sync",
+                icon: "checklist",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Reminders Scope Selector
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Reminders Scope")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text(state.scope.title)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                        }
+
+                        HStack(spacing: 6) {
+                            ForEach(RemindersScope.allCases) { scope in
+                                let isSelected = state.scope == scope
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        state.scope = scope
+                                        state.save()
+                                        store.remindersScope = scope
+                                        Task {
+                                            await state.syncReminders(into: store)
+                                        }
+                                    }
+                                } label: {
+                                    Text(scope.title)
+                                        .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                        .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.6)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
-                )) {
-                    ForEach(RemindersScope.allCases) { scope in
-                        Text(scope.title).tag(scope)
+
+                    // Max Visible Tasks Slider
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("Max Visible Tasks on Rail")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text("\(state.maxRailTodos) tasks")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(state.maxRailTodos) },
+                                set: {
+                                    state.maxRailTodos = Int($0)
+                                    state.save()
+                                    store.todoMaxRailTasks = Int($0)
+                                    store.savePersistentState()
+                                    store.invalidateLayoutCache()
+                                    store.onWindowsRebuildNeeded?()
+                                }
+                            ),
+                            in: 2.0...10.0,
+                            step: 1.0
+                        )
+
+                        Text("Primary tasks shown on bezel before folding into remainder")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(9)
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                    )
+
+                    // Footer bar
+                    HStack(spacing: 8) {
+                        let pendingCount = state.todos.filter { !$0.isCompleted }.count
+                        HStack(spacing: 5) {
+                            Image(systemName: "clock.badge.checkmark")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text("Pending: \(pendingCount) Tasks")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.primary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(6)
+
+                        Spacer()
+
+                        Button {
+                            Task {
+                                await state.syncReminders(into: store)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 10))
+                                Text("Sync Reminders")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundColor(palette.primaryAccent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(palette.primaryAccent.opacity(0.1))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.primaryAccent.opacity(0.3), lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
-            }
-
-            PurahThemedSliderRow(
-                title: "Max Visible Tasks on Rail",
-                subtitle: "Primary tasks shown on bezel before folding into remainder",
-                value: Binding(
-                    get: { Double(state.maxRailTodos) },
-                    set: {
-                        state.maxRailTodos = Int($0)
-                        state.save()
-                        store.todoMaxRailTasks = Int($0)
-                        store.savePersistentState()
-                        store.invalidateLayoutCache()
-                        store.onWindowsRebuildNeeded?()
-                    }
-                ),
-                range: 2...10,
-                step: 1,
-                valueBadgeText: "\(state.maxRailTodos) tasks"
-            )
-
-            HStack {
-                Text("Pending Tasks: \(state.todos.filter { !$0.isCompleted }.count)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button("Sync Reminders") {
-                    Task {
-                        await state.syncReminders(into: store)
-                    }
-                }
-                .buttonStyle(.plain)
-                .font(.caption.weight(.medium))
-                .foregroundColor(.accentColor)
             }
         }
     }

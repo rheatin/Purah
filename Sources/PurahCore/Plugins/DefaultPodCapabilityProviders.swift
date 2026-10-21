@@ -56,6 +56,7 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     var isDecomposed: Bool { true }
     var decomposedPolicy: PurahDecomposedPolicy { .todoDefault }
 
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 340.0 }
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let maxTasks = max(store.todoMaxRailTasks, 1)
@@ -188,6 +189,80 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
         guard store._isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
         return store.scriptsEnabledActions[index].name
+    }
+}
+
+@MainActor
+struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
+    let podId: String = "ai"
+    var isDecomposed: Bool { true }
+    var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(
+            maxRailItems: 4,
+            minChipHeight: 52.0,
+            maxChipHeight: 210.0,
+            spacing: 2.5,
+            overflowStrategy: .truncate
+        )
+    }
+
+    func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        let enabledCount = store._aiRolePresets.filter(\.isEnabled).count
+        let count = min(enabledCount, max(store.aiMaxRailRoles, 1))
+        return PurahDecomposedPolicy(
+            maxRailItems: max(count, 1),
+            minChipHeight: 52.0,
+            maxChipHeight: 210.0,
+            spacing: 2.5,
+            overflowStrategy: .truncate
+        )
+    }
+
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        store._isAIDecomposed
+    }
+
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
+        store._isAIDecomposed ? 390.0 : 420.0
+    }
+
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if store._isAIDecomposed {
+            let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
+            let count = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
+            let effectiveCount = max(count, 1)
+            return CGFloat(effectiveCount) * 52.0 + CGFloat(effectiveCount - 1) * 2.5
+        }
+        return 260.0
+    }
+
+    func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
+        let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
+        return enabledRoles.contains { store.isItemPinned(id: "ai-\($0.id)") }
+    }
+
+    func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool {
+        itemId.hasPrefix("ai-")
+    }
+
+    func subItemCount(store: PurahWorkspaceStore) -> Int {
+        let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
+        let count = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
+        return store._isAIDecomposed ? count : 0
+    }
+
+    func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
+        let maxCount = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
+        guard store._isAIDecomposed, index >= 0, index < maxCount else { return nil }
+        return "ai-\(enabledRoles[index].id)"
+    }
+
+    func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
+        let maxCount = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
+        guard store._isAIDecomposed, index >= 0, index < maxCount else { return nil }
+        return enabledRoles[index].title
     }
 }
 

@@ -453,4 +453,91 @@ struct ClipboardPluginTests {
         #expect(service.history.contains(where: { $0.id == expiredStarred.id }), "Starred item MUST be strictly protected from expiration cleanup")
         #expect(!service.history.contains(where: { $0.id == expiredUnstarred.id }), "Expired unstarred item must be deleted")
     }
+
+    @Test("ClipboardHoverPreviewController show shelfFile renders image, text, and binary sidecar previews")
+    @MainActor
+    func testShelfFileHoverPreview() async throws {
+        let controller = ClipboardHoverPreviewController.shared
+        let palette = ThemeManager.shared.palette
+
+        // 1. Text file
+        let tempTextURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test_shelf_doc_\(UUID().uuidString).txt")
+        try "Line 1: Hello Purah\nLine 2: Sidecar".write(to: tempTextURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempTextURL) }
+
+        let textShelfFile = ShelfFileItem(
+            name: tempTextURL.lastPathComponent,
+            sizeDescription: "32 B",
+            fileExtension: "txt",
+            filePath: tempTextURL.path
+        )
+        #expect(textShelfFile.fileSize > 0)
+
+        controller.show(shelfFile: textShelfFile, edge: .left, palette: palette, drawerWidth: 360.0)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        // 2. Binary / PDF file
+        let tempPdfURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test_shelf_doc_\(UUID().uuidString).pdf")
+        try Data([0x25, 0x50, 0x44, 0x46]).write(to: tempPdfURL)
+        defer { try? FileManager.default.removeItem(at: tempPdfURL) }
+
+        let pdfShelfFile = ShelfFileItem(
+            name: tempPdfURL.lastPathComponent,
+            sizeDescription: "4 B",
+            fileExtension: "pdf",
+            filePath: tempPdfURL.path
+        )
+        controller.show(shelfFile: pdfShelfFile, edge: .right, palette: palette, drawerWidth: 360.0)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        // 3. Hide
+        controller.hide()
+        try await Task.sleep(nanoseconds: 200_000_000)
+    }
+
+    @Test("ClipboardHoverPreviewController togglePin pinned interactive preview mode and drawer bound lifecycle")
+    @MainActor
+    func testPinnedInteractivePreviewLifecycle() async throws {
+        let controller = ClipboardHoverPreviewController.shared
+        controller.forceHide()
+        let palette = ThemeManager.shared.palette
+        let store = PurahWorkspaceStore()
+
+        let item1 = ClipboardItem(id: "item-1", type: .text("Content of item 1"))
+        let item2 = ClipboardItem(id: "item-2", type: .text("Content of item 2"))
+
+        // 1. Toggle pin on item 1
+        controller.togglePin(item: item1, edge: .left, palette: palette, drawerWidth: 320.0, store: store)
+        #expect(controller.pinnedItemId == "item-1")
+        #expect(controller.isPinned(id: "item-1") == true)
+        #expect(controller.isPinned(id: "item-2") == false)
+        #expect(store.activePreviewScreenFrame != nil)
+
+        // 2. Hovering item 2 while item 1 is pinned does NOT overwrite pinned preview
+        controller.show(item: item2, edge: .left, palette: palette, drawerWidth: 320.0)
+        #expect(controller.pinnedItemId == "item-1")
+
+        // 3. Calling hide() does not unpin
+        controller.hide()
+        #expect(controller.pinnedItemId == "item-1")
+
+        // 4. Dismissing drawer via store lifecycle cleans up pinned preview panel
+        store.dismissActiveDrawer()
+        #expect(controller.pinnedItemId == nil)
+        #expect(store.activePreviewScreenFrame == nil)
+
+        // 5. Toggle pin on shelfFile
+        let shelfFile = ShelfFileItem(id: "shelf-file-1", name: "test.txt", sizeDescription: "10 B", fileExtension: "txt", filePath: "/tmp/test.txt")
+        controller.togglePin(shelfFile: shelfFile, edge: .right, palette: palette, drawerWidth: 360.0, store: store)
+        #expect(controller.pinnedItemId == "shelf-file-1")
+        #expect(controller.isPinned(id: "shelf-file-1") == true)
+        #expect(store.activePreviewScreenFrame != nil)
+
+        // 6. Toggle pin again on same shelfFile unpins
+        controller.togglePin(shelfFile: shelfFile, edge: .right, palette: palette, drawerWidth: 360.0, store: store)
+        #expect(controller.pinnedItemId == nil)
+        #expect(store.activePreviewScreenFrame == nil)
+
+        controller.forceHide()
+    }
 }

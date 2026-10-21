@@ -68,6 +68,10 @@ public final class PurahWorkspaceStore {
     public var externalDragTargetPodId: String? = nil
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
     public var sculptorHotKeyShortcut: HotKeyShortcut = .defaultSculptorShortcut
+    public var activePreviewScreenFrame: CGRect? = nil
+
+    @ObservationIgnored
+    public var onDismissPreviewPanel: (@MainActor () -> Void)? = nil
 
     @ObservationIgnored
     public var onLiveRailEditingChanged: (@MainActor (Bool) -> Void)?
@@ -171,10 +175,12 @@ public final class PurahWorkspaceStore {
         let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
         if pages.count > 1 {
             setRailPage(pages.count - 1, for: targetEdge)
+            DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(targetEdge)")
             onCapacityWarningToast?("layout.toast.pageOverflow".localized)
         } else if isBreathingActive(for: targetEdge, totalHeight: screenH) {
             if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
                 lastCapacityAlertTime = Date()
+                DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(targetEdge)")
                 onCapacityWarningToast?("layout.toast.breathingActivated".localized)
             }
         }
@@ -224,6 +230,7 @@ public final class PurahWorkspaceStore {
         } else {
             rightRailPage = clamped
         }
+        DiagnosticLogger.shared.info("Store", "Rail page switched: edge=\(edge), page=\(clamped)")
         invalidateLayoutCache()
     }
 
@@ -751,11 +758,15 @@ public final class PurahWorkspaceStore {
     }
 
     public func togglePinItem(id: String) {
+        let isNowPinned: Bool
         if pinnedDrawerItemIds.contains(id) {
             pinnedDrawerItemIds.remove(id)
+            isNowPinned = false
         } else {
             pinnedDrawerItemIds.insert(id)
+            isNowPinned = true
         }
+        DiagnosticLogger.shared.info("Store", "Item pin toggled: id=\(id), isPinned=\(isNowPinned)")
         invalidateLayoutCache()
     }
 
@@ -770,6 +781,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func activateDrawer(podId: String, itemId: String? = nil) {
+        DiagnosticLogger.shared.info("Store", "Drawer activated: podId=\(podId), itemId=\(itemId ?? podId)")
         if dismissAlertOnHover {
             acknowledgeAllAlerts(forPodId: podId)
             if let itemId {
@@ -826,6 +838,9 @@ public final class PurahWorkspaceStore {
     }
 
     public func dismissActiveDrawer() {
+        DiagnosticLogger.shared.info("Store", "Active drawer dismissed")
+        onDismissPreviewPanel?()
+        activePreviewScreenFrame = nil
         pendingHoverPodId = nil
         activeDrawerPodId = nil
         activeDrawerItemId = nil
@@ -941,6 +956,10 @@ public final class PurahWorkspaceStore {
         } else {
             activePluginAlertIds.remove(id)
         }
+    }
+
+    public func triggerAlert(id: String) {
+        setPluginAlert(id: id, isAlerting: true)
     }
 
     public func isPodAlerting(podId: String) -> Bool {
@@ -1131,6 +1150,20 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public var aiMaxRailRoles: Int {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            let val = storage.int(forKey: "maxRailRoles")
+            return val > 0 ? min(max(val, 2), 8) : 4
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.set(min(max(newValue, 2), 8), forKey: "maxRailRoles")
+        }
+    }
+
     public var isMusicWaveformAnimationEnabled: Bool {
         get {
             _ = _pluginStorageRevision
@@ -1246,6 +1279,8 @@ public final class PurahWorkspaceStore {
             return 280.0
         case "clipboard":
             return 280.0
+        case "ai":
+            return 320.0
         case "calendar":
             return max(minH, 260.0)
         case "todo":
@@ -1340,10 +1375,12 @@ public final class PurahWorkspaceStore {
             let pages = paginatedPods(for: edge, totalHeight: screenH)
             if pages.count > 1 {
                 lastCapacityAlertTime = now
+                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(edge)")
                 onCapacityWarningToast?("layout.toast.pageOverflow".localized)
                 return
             } else if isBreathingActive(for: edge, totalHeight: screenH) {
                 lastCapacityAlertTime = now
+                DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(edge)")
                 onCapacityWarningToast?("layout.toast.breathingActivated".localized)
                 return
             }
@@ -1521,6 +1558,36 @@ public final class PurahWorkspaceStore {
         cachedResolvedLayouts.removeAll()
     }
 
+    private func calculateSubSpans(for cluster: [SlotPod], clusterSpan: Double, subGap: Double = 3.0) -> [Double] {
+        let m = cluster.count
+        guard m > 0 else { return [] }
+        let totalSubGaps = Double(max(m - 1, 0)) * subGap
+        let minSubFloor = min(28.0, max((clusterSpan - totalSubGaps) / Double(max(m, 1)), 18.0))
+        let netSubSpan = max(clusterSpan - totalSubGaps, Double(m) * minSubFloor)
+        let subWeights = cluster.map { max($0.range.length, 0.025) }
+        let subWeightSum = max(subWeights.reduce(0.0, +), 0.0001)
+
+        var subSpans: [Double] = subWeights.map { weight in
+            max(netSubSpan * (weight / subWeightSum), minSubFloor)
+        }
+        let subSum = subSpans.reduce(0.0, +)
+        if subSum > netSubSpan && subSum > 0 {
+            let excess = subSum - netSubSpan
+            let slackIndices = subSpans.indices.filter { subSpans[$0] > minSubFloor + 0.01 }
+            let totalSlack = slackIndices.reduce(0.0) { $0 + (subSpans[$1] - minSubFloor) }
+            if totalSlack >= excess && totalSlack > 0 {
+                for idx in slackIndices {
+                    let itemSlack = subSpans[idx] - minSubFloor
+                    subSpans[idx] -= excess * (itemSlack / totalSlack)
+                }
+            } else {
+                let s = netSubSpan / subSum
+                subSpans = subSpans.map { max($0 * s, 18.0) }
+            }
+        }
+        return subSpans
+    }
+
     public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
         lastKnownTotalHeight[edge] = totalHeight
         let now = Date().timeIntervalSinceReferenceDate
@@ -1616,8 +1683,9 @@ public final class PurahWorkspaceStore {
         let hasExpandingCluster = clusters.indices.contains(where: { idx in
             expandedFlags[idx] && preferredExpandedSpans[idx] > standardSpans[idx]
         })
+        _ = hasExpandingCluster
 
-        if isBreathingActiveOnPage || (isDynamicBreathingEnabled && !isLiveRailEditingMode && hasExpandingCluster) {
+        if isBreathingActiveOnPage {
             var idleClusterSpans: [Double]
             if isAlwaysCompactBreathing {
                 idleClusterSpans = clusters.indices.map { cIdx in
@@ -1730,7 +1798,27 @@ public final class PurahWorkspaceStore {
                     if idealAnchorStart + anchorSpan < idleBottom { idealAnchorStart = idleBottom - anchorSpan }
                     let minAllowedAnchorStart = safeTop + minAboveSpace
                     let maxAllowedAnchorStart = max(minAllowedAnchorStart, safeBottom - anchorSpan - minBelowSpace)
-                    let anchorStartY = min(max(idealAnchorStart, minAllowedAnchorStart), maxAllowedAnchorStart)
+                    var anchorStartY = min(max(idealAnchorStart, minAllowedAnchorStart), maxAllowedAnchorStart)
+
+                    if clusters[anchorIdx].count >= 2,
+                       let hoveredSubIdx = clusters[anchorIdx].firstIndex(where: { $0.id == primaryHoveredId }) {
+                        let idleSubSpans = calculateSubSpans(for: clusters[anchorIdx], clusterSpan: idleClusterSpans[anchorIdx])
+                        let expSubSpans = calculateSubSpans(for: clusters[anchorIdx], clusterSpan: anchorSpan)
+
+                        let idleSubOffset = (0..<hoveredSubIdx).reduce(0.0) { $0 + idleSubSpans[$1] + clusterGap }
+                        let idleSubStartY = idleTop + idleSubOffset
+                        let idleSubEndY = idleSubStartY + idleSubSpans[hoveredSubIdx]
+
+                        let expSubOffset = (0..<hoveredSubIdx).reduce(0.0) { $0 + expSubSpans[$1] + clusterGap }
+                        let expSubSpan = expSubSpans[hoveredSubIdx]
+
+                        let maxAnchorForHover = idleSubStartY - expSubOffset
+                        let minAnchorForHover = idleSubEndY - expSubOffset - expSubSpan
+                        if minAnchorForHover <= maxAnchorForHover {
+                            anchorStartY = min(max(anchorStartY, minAnchorForHover), maxAnchorForHover)
+                        }
+                        anchorStartY = min(max(anchorStartY, minAllowedAnchorStart), maxAllowedAnchorStart)
+                    }
 
                     clusterStartYs[anchorIdx] = anchorStartY
 
@@ -1738,35 +1826,35 @@ public final class PurahWorkspaceStore {
                         let aboveGaps = Double(max(aboveCount - 1, 0)) * clusterGap
                         let minAboveSum = (0..<aboveCount).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                         let aboveNetSpace = max(anchorStartY - clusterGap - safeTop - aboveGaps, minAboveSum)
-                        let aboveWeightSum = max((0..<aboveCount).reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
-                        var aboveSpans = (0..<aboveCount).map { i in
-                            let minH = max(18.0, Double(clusters[i].count) * 18.0)
-                            return min(max(aboveNetSpace * (clusterWeights[i] / aboveWeightSum), minH), clusterMaxVisuals[i])
-                        }
-                        let aboveSum = aboveSpans.reduce(0.0, +)
-                        if aboveSum > aboveNetSpace && aboveSum > 0 {
-                            let scale = aboveNetSpace / aboveSum
-                            aboveSpans = aboveSpans.map { $0 * scale }
-                        } else if aboveSum < aboveNetSpace {
-                            let leftover = aboveNetSpace - aboveSum
-                            let uncapped = (0..<aboveCount).filter { aboveSpans[$0] < clusterMaxVisuals[$0] - 0.5 }
-                            if !uncapped.isEmpty {
-                                let uncappedWeight = max(uncapped.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
-                                for i in uncapped {
-                                    aboveSpans[i] = min(aboveSpans[i] + leftover * (clusterWeights[i] / uncappedWeight), clusterMaxVisuals[i])
-                                }
+                        let idleAboveSum = (0..<aboveCount).reduce(0.0) { $0 + idleClusterSpans[$1] }
+
+                        if idleAboveSum <= aboveNetSpace {
+                            let aboveSpans = (0..<aboveCount).map { idleClusterSpans[$0] }
+                            var curY = safeTop
+                            for i in 0..<aboveCount {
+                                clusterSpans[i] = aboveSpans[i]
+                                let remainingNeeded = ((i + 1)..<aboveCount).reduce(0.0) { $0 + aboveSpans[$1] + clusterGap } + aboveSpans[i]
+                                let targetY = min(max(idleClusterStartYs[i], curY), anchorStartY - clusterGap - remainingNeeded)
+                                clusterStartYs[i] = targetY
+                                curY = targetY + aboveSpans[i] + clusterGap
                             }
-                            let finalAboveSum = aboveSpans.reduce(0.0, +)
-                            if finalAboveSum < aboveNetSpace && aboveCount > 0 {
-                                let extraEach = (aboveNetSpace - finalAboveSum) / Double(aboveCount)
-                                for i in 0..<aboveCount { aboveSpans[i] += extraEach }
+                        } else {
+                            let scale = aboveNetSpace / max(idleAboveSum, 0.0001)
+                            var aboveSpans = (0..<aboveCount).map { i in
+                                let minH = max(18.0, Double(clusters[i].count) * 18.0)
+                                return max(idleClusterSpans[i] * scale, minH)
                             }
-                        }
-                        var curY = safeTop
-                        for i in 0..<aboveCount {
-                            clusterSpans[i] = aboveSpans[i]
-                            clusterStartYs[i] = curY
-                            curY += aboveSpans[i] + clusterGap
+                            let currentSum = aboveSpans.reduce(0.0, +)
+                            if currentSum > aboveNetSpace && currentSum > 0 {
+                                let secondScale = aboveNetSpace / currentSum
+                                aboveSpans = aboveSpans.map { $0 * secondScale }
+                            }
+                            var curY = safeTop
+                            for i in 0..<aboveCount {
+                                clusterSpans[i] = aboveSpans[i]
+                                clusterStartYs[i] = curY
+                                curY += aboveSpans[i] + clusterGap
+                            }
                         }
                     }
 
@@ -1776,36 +1864,33 @@ public final class PurahWorkspaceStore {
                         let belowGaps = Double(max(belowCount - 1, 0)) * clusterGap
                         let minBelowSum = belowIndices.reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                         let belowNetSpace = max(safeBottom - belowStart - belowGaps, minBelowSum)
-                        let belowWeightSum = max(belowIndices.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
-                        var belowSpans = belowIndices.map { i in
-                            let minH = max(18.0, Double(clusters[i].count) * 18.0)
-                            return min(max(belowNetSpace * (clusterWeights[i] / belowWeightSum), minH), clusterMaxVisuals[i])
-                        }
-                        let belowSum = belowSpans.reduce(0.0, +)
-                        if belowSum > belowNetSpace && belowSum > 0 {
-                            let scale = belowNetSpace / belowSum
-                            belowSpans = belowSpans.map { $0 * scale }
-                        } else if belowSum < belowNetSpace {
-                            let leftover = belowNetSpace - belowSum
-                            let uncappedOffsets = belowIndices.indices.filter { belowSpans[$0] < clusterMaxVisuals[belowIndices[$0]] - 0.5 }
-                            if !uncappedOffsets.isEmpty {
-                                let uncappedWeight = max(uncappedOffsets.reduce(0.0) { $0 + clusterWeights[belowIndices[$1]] }, 0.0001)
-                                for offset in uncappedOffsets {
-                                    let cI = belowIndices[offset]
-                                    belowSpans[offset] = min(belowSpans[offset] + leftover * (clusterWeights[cI] / uncappedWeight), clusterMaxVisuals[cI])
-                                }
+                        let idleBelowSum = belowIndices.reduce(0.0) { $0 + idleClusterSpans[$1] }
+
+                        if idleBelowSum <= belowNetSpace {
+                            let belowSpans = belowIndices.map { idleClusterSpans[$0] }
+                            var curY = belowStart
+                            for (offset, cI) in belowIndices.enumerated() {
+                                clusterSpans[cI] = belowSpans[offset]
+                                clusterStartYs[cI] = max(idleClusterStartYs[cI], curY)
+                                curY = clusterStartYs[cI] + clusterSpans[cI] + clusterGap
                             }
-                            let finalBelowSum = belowSpans.reduce(0.0, +)
-                            if finalBelowSum < belowNetSpace && belowCount > 0 {
-                                let extraEach = (belowNetSpace - finalBelowSum) / Double(belowCount)
-                                for offset in 0..<belowCount { belowSpans[offset] += extraEach }
+                        } else {
+                            let scale = belowNetSpace / max(idleBelowSum, 0.0001)
+                            var belowSpans = belowIndices.map { cI in
+                                let minH = max(18.0, Double(clusters[cI].count) * 18.0)
+                                return max(idleClusterSpans[cI] * scale, minH)
                             }
-                        }
-                        var curY = belowStart
-                        for (offset, cI) in belowIndices.enumerated() {
-                            clusterSpans[cI] = belowSpans[offset]
-                            clusterStartYs[cI] = curY
-                            curY += belowSpans[offset] + clusterGap
+                            let currentSum = belowSpans.reduce(0.0, +)
+                            if currentSum > belowNetSpace && currentSum > 0 {
+                                let secondScale = belowNetSpace / currentSum
+                                belowSpans = belowSpans.map { $0 * secondScale }
+                            }
+                            var curY = belowStart
+                            for (offset, cI) in belowIndices.enumerated() {
+                                clusterSpans[cI] = belowSpans[offset]
+                                clusterStartYs[cI] = curY
+                                curY += belowSpans[offset] + clusterGap
+                            }
                         }
                     }
                 } else {
@@ -1904,32 +1989,8 @@ public final class PurahWorkspaceStore {
                 )
             } else {
                 let gid = cluster.first?.majorGroupId ?? "major_\(edge.rawValue)_\(cIdx)"
-                let m = cluster.count
                 let subGap = 3.0
-                let totalSubGaps = Double(max(m - 1, 0)) * subGap
-                let minSubFloor = min(28.0, max((clusterSpan - totalSubGaps) / Double(max(m, 1)), 18.0))
-                let netSubSpan = max(clusterSpan - totalSubGaps, Double(m) * minSubFloor)
-                let subWeights = cluster.map { max($0.range.length, 0.025) }
-                let subWeightSum = max(subWeights.reduce(0.0, +), 0.0001)
-
-                var subSpans: [Double] = subWeights.map { weight in
-                    max(netSubSpan * (weight / subWeightSum), minSubFloor)
-                }
-                let subSum = subSpans.reduce(0.0, +)
-                if subSum > netSubSpan && subSum > 0 {
-                    let excess = subSum - netSubSpan
-                    let slackIndices = subSpans.indices.filter { subSpans[$0] > minSubFloor + 0.01 }
-                    let totalSlack = slackIndices.reduce(0.0) { $0 + (subSpans[$1] - minSubFloor) }
-                    if totalSlack >= excess && totalSlack > 0 {
-                        for idx in slackIndices {
-                            let itemSlack = subSpans[idx] - minSubFloor
-                            subSpans[idx] -= excess * (itemSlack / totalSlack)
-                        }
-                    } else {
-                        let s = netSubSpan / subSum
-                        subSpans = subSpans.map { max($0 * s, 18.0) }
-                    }
-                }
+                let subSpans = calculateSubSpans(for: cluster, clusterSpan: clusterSpan, subGap: subGap)
 
                 var curSubY = clusterY
                 for (subIdx, pod) in cluster.enumerated() {
@@ -2026,8 +2087,12 @@ public final class PurahWorkspaceStore {
                         matchedSubItem = true
                         let itemTop = item.startY + Double(idx) * (itemH + spacing)
                         let itemBottom = itemTop + cardH
-                        let topOfCardY = totalHeight - itemTop
-                        let bottomOfCardY = totalHeight - itemBottom
+                        let maxAllowedY = totalHeight - 12.0
+                        let shift = max(itemBottom - maxAllowedY, 0.0)
+                        let shiftedTop = itemTop - shift
+                        let shiftedBottom = itemBottom - shift
+                        let topOfCardY = totalHeight - shiftedTop
+                        let bottomOfCardY = totalHeight - shiftedBottom
                         let minY = max(bottomOfCardY - 6.0, 0.0)
                         let maxY = min(topOfCardY + 6.0, totalHeight)
 
@@ -2160,6 +2225,71 @@ public final class PurahWorkspaceStore {
             storage.setCodable(newValue, forKey: "enabledActionIds")
         }
     }
+    public var _isAIDecomposed: Bool {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            if storage.string(forKey: "isDecomposed") != nil {
+                return storage.bool(forKey: "isDecomposed")
+            }
+            if userDefaults.object(forKey: "purah.ai.isDecomposed") != nil {
+                return userDefaults.bool(forKey: "purah.ai.isDecomposed")
+            }
+            return false
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.set(newValue, forKey: "isDecomposed")
+        }
+    }
+    public var _aiRolePresets: [AIRolePreset] {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            if let presets = storage.codable(forKey: "rolePresets", as: [AIRolePreset].self) {
+                return presets
+            }
+            if let data = userDefaults.data(forKey: "purah.ai.rolePresets"),
+               let decoded = try? JSONDecoder().decode([AIRolePreset].self, from: data) {
+                return decoded
+            }
+            return AIRolePreset.defaultPresets
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "rolePresets")
+            let enabledActionTypes = newValue.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
+            storage.setCodable(enabledActionTypes, forKey: "enabledActions")
+        }
+    }
+    public var _aiEnabledActions: [AIQuickActionType] {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            if let actions = storage.codable(forKey: "enabledActions", as: [AIQuickActionType].self) {
+                return actions
+            }
+            if let arr = userDefaults.stringArray(forKey: "purah.ai.enabledActions") {
+                let parsed = arr.compactMap { AIQuickActionType(rawValue: $0) }
+                if !parsed.isEmpty { return parsed }
+            }
+            return [.ask, .translate, .polish, .explainCode]
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "ai", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "enabledActions")
+            var currentPresets = self._aiRolePresets
+            for i in currentPresets.indices {
+                if let action = AIQuickActionType(rawValue: currentPresets[i].id) {
+                    currentPresets[i].isEnabled = newValue.contains(action)
+                }
+            }
+            storage.setCodable(currentPresets, forKey: "rolePresets")
+        }
+    }
     package var _terminalFontFamily: String {
         get {
             _ = _pluginStorageRevision
@@ -2257,6 +2387,7 @@ public final class PurahWorkspaceStore {
         registerCapabilityProvider(DefaultTodoCapabilityProvider())
         registerCapabilityProvider(DefaultVitalsCapabilityProvider())
         registerCapabilityProvider(DefaultScriptsCapabilityProvider())
+        registerCapabilityProvider(DefaultAICapabilityProvider())
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0, adaptiveWidth: 360.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0))
@@ -2506,10 +2637,12 @@ public final class PurahWorkspaceStore {
             let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
             if pages.count > 1 {
                 setRailPage(pages.count - 1, for: pod.edge)
+                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(pod.edge)")
                 onCapacityWarningToast?("layout.toast.pageOverflow".localized)
             } else if isBreathingActive(for: pod.edge, totalHeight: screenH) {
                 if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
                     lastCapacityAlertTime = Date()
+                    DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(pod.edge)")
                     onCapacityWarningToast?("layout.toast.breathingActivated".localized)
                 }
             }
@@ -2834,6 +2967,7 @@ public final class PurahWorkspaceStore {
             SlotPod(id: "calendar", name: "Calendar Timeline", systemIcon: "calendar", edge: .right, range: .init(start: 0.15, length: 0.35), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.15, defaultColorHex: "#FF5A60"),
             SlotPod(id: "todo", name: "Todo Checklist", systemIcon: "checklist", edge: .right, range: .init(start: 0.52, length: 0.25), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.15, defaultColorHex: "#FF9E0A"),
             SlotPod(id: "music", name: "Music Waveform", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.14), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.12, defaultColorHex: "#FF2D55"),
+            SlotPod(id: "ai", name: "AI Assistant", systemIcon: "sparkles", edge: .right, range: .init(start: 0.85, length: 0.26), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 38, minLength: 0.20, isEnabled: true, drawerWidth: 420, defaultColorHex: "#A855F7"),
             SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.08, length: 0.22), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35, minLength: 0.18, defaultColorHex: "#00E5A3"),
             SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.32, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16, defaultColorHex: "#2ED573"),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.54, length: 0.14), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.12, isEnabled: false, defaultColorHex: "#FFD166"),

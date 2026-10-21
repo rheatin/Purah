@@ -108,6 +108,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
                 SystemMusicSyncService.shared.clearArtworkCache()
             }
         }
+
+        DiagnosticLogger.shared.info("Lifecycle", "Application launch completed successfully")
     }
 
     @objc public func toggleFreezeMode() {
@@ -117,6 +119,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         mouseMonitor?.setFrozen(frozen)
         TransientHUDController.shared.show(isFrozen: frozen, shortcut: store.hotKeyShortcut.displayString)
         updateStatusItemForFreeze()
+        DiagnosticLogger.shared.info("Lifecycle", "Global rails freeze mode toggled: \(frozen ? "frozen" : "unfrozen")")
     }
 
     public func updateStatusItemForFreeze() {
@@ -221,6 +224,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     @objc private func toggleLiveRailSculptor() {
         store.toggleLiveRailEditingMode()
+        DiagnosticLogger.shared.info("Lifecycle", "Live rail sculptor toggled: \(store.isLiveRailEditingMode ? "active" : "inactive")")
     }
 
     @objc private func openPermissions() {
@@ -228,6 +232,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     }
 
     private func showPreferences(initialTab: PreferencesTab, initialPluginId: String? = nil) {
+        DiagnosticLogger.shared.info("Lifecycle", "Preferences opened (tab: \(initialTab), plugin: \(initialPluginId ?? "none"))")
         if preferencesWindow == nil {
             let prefView = PreferencesView(store: store, initialTab: initialTab, initialPluginId: initialPluginId)
             let window = NSWindow(

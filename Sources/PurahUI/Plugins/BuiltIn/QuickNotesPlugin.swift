@@ -75,6 +75,10 @@ public struct NotesPluginSettingsView: View {
     public let store: PurahWorkspaceStore
     @State private var newFolderName: String = ""
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: NotesPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -86,58 +90,103 @@ public struct NotesPluginSettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             // 1. Folders Management Card
-            VStack(alignment: .leading, spacing: 8) {
-                Text("notes.settings.folders".localized)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+            PurahPluginSettingsCard(
+                title: "notes.settings.folders".localized,
+                subtitle: "Manage note categories and organization",
+                icon: "folder.fill",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: 6) {
+                        ForEach(state.availableFolders, id: \.self) { folder in
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(palette.primaryAccent)
 
-                ForEach(state.availableFolders, id: \.self) { folder in
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .font(.caption)
-                            .foregroundColor(.accentColor)
-                        Text(folder)
-                            .font(.caption.weight(.medium))
-                        let count = state.documents.filter { $0.folder == folder }.count
-                        Text("(\(count) notes)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        if folder != "General" {
-                            Button(role: .destructive) {
-                                state.deleteFolder(folder)
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.caption2)
+                                Text(folder)
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.primary)
+
+                                let count = state.documents.filter { $0.folder == folder }.count
+                                Text("\(count) notes")
+                                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                                     .foregroundColor(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.primary.opacity(0.06))
+                                    .cornerRadius(4)
+
+                                Spacer()
+
+                                if folder != "General" {
+                                    Button(role: .destructive) {
+                                        state.deleteFolder(folder)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("notes.settings.deleteFolderHelp".localized)
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .help("notes.settings.deleteFolderHelp".localized)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Color.primary.opacity(0.025))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                            )
                         }
                     }
-                    .padding(.vertical, 2)
-                }
 
-                HStack {
-                    TextField("notes.settings.newFolderPlaceholder".localized, text: $newFolderName)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
+                    HStack(spacing: 8) {
+                        HStack {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            TextField("notes.settings.newFolderPlaceholder".localized, text: $newFolderName)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 11))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.primary.opacity(0.05))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                        )
 
-                    Button("notes.settings.addFolder".localized) {
-                        state.addFolder(newFolderName)
-                        newFolderName = ""
+                        Button {
+                            state.addFolder(newFolderName)
+                            newFolderName = ""
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("notes.settings.addFolder".localized)
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.secondary.opacity(0.4) : palette.primaryAccent)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
             }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
 
             // 2. Storage Policy & Physical Markdown Card
             PurahStoragePolicySection(

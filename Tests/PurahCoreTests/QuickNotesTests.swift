@@ -978,4 +978,34 @@ struct QuickNotesTests {
             #expect((previewItem as URL?)?.standardizedFileURL == url.standardizedFileURL)
         }
     }
+
+    @Test("InteractiveMarkdownPreviewView instantiates with table, code block, and inline code")
+    @MainActor
+    func testInteractiveMarkdownPreviewViewWithTablesAndCode() {
+        let sampleMarkdown = """
+        # Test Document
+        Here is some `np.nan` inline code.
+
+        | Dimension | Details |
+        | :--- | :---: |
+        | Alpha | `val_1` |
+        | Beta | `val_2` |
+
+        ```python
+        import numpy as np
+        print("Hello")
+        ```
+        """
+
+        let previewView = InteractiveMarkdownPreviewView(
+            markdown: sampleMarkdown,
+            accentColor: .purple,
+            onToggleChecklist: { _ in }
+        )
+        #expect(previewView.markdown == sampleMarkdown)
+
+        // Verify localization keys for export
+        #expect("notes.export".localized.isEmpty == false)
+        #expect("notes.exportHelp".localized.isEmpty == false)
+    }
 }

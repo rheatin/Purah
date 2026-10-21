@@ -138,6 +138,10 @@ public struct ShelfPluginSettingsView: View {
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     public init(state: ShelfPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -149,35 +153,86 @@ public struct ShelfPluginSettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Toggle("shelf.settings.autoRemoveOnDrag".localized, isOn: Binding(
-                    get: { state.autoRemoveOnDrag },
-                    set: {
-                        state.autoRemoveOnDrag = $0
-                        state.save()
+        VStack(alignment: .leading, spacing: 14) {
+            // Card 1: Drop Shelf Behavior
+            PurahPluginSettingsCard(
+                title: "Drop Shelf Behavior",
+                subtitle: "Temporary drag-and-drop workspace and stash files",
+                icon: "tray.and.arrow.down.fill",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("shelf.settings.autoRemoveOnDrag".localized)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("shelf.settings.autoRemoveSubtitle".localized)
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { state.autoRemoveOnDrag },
+                            set: {
+                                state.autoRemoveOnDrag = $0
+                                state.save()
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
                     }
-                ))
-                .font(.caption)
+                    .padding(9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.primary.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
 
-                Text("shelf.settings.autoRemoveSubtitle".localized)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
+                    HStack(spacing: 8) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "doc.on.doc.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text(String(format: "shelf.settings.stashedFiles".localized, state.files.count))
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.primary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(6)
 
-            HStack {
-                Text(String(format: "shelf.settings.stashedFiles".localized, state.files.count))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                let starredCount = state.files.filter { $0.isFavorite }.count
-                if starredCount > 0 {
-                    Text(String(format: "shelf.settings.starred".localized, starredCount))
-                        .font(.caption2)
-                        .foregroundColor(Color(hex: "#FF9F0A"))
+                        Spacer()
+
+                        let starredCount = state.files.filter { $0.isFavorite }.count
+                        if starredCount > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "#FF9F0A"))
+                                Text(String(format: "shelf.settings.starred".localized, starredCount))
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundColor(Color(hex: "#FF9F0A"))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.yellow.opacity(0.1))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.yellow.opacity(0.25), lineWidth: 0.8)
+                            )
+                        }
+                    }
                 }
             }
 
+            // Card 2: Storage Policy Section
             PurahStoragePolicySection(
                 retention: Binding(
                     get: { state.retentionPeriod },

@@ -105,6 +105,10 @@ public struct TerminalPluginSettingsView: View {
         TerminalManager.shared
     }
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     private var availableFonts: [String] {
         TerminalFontManager.availableFamilies()
     }
@@ -121,86 +125,156 @@ public struct TerminalPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Persistent Terminal Settings")
-                .font(.headline)
-
-            // Font Settings Group
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Font Family & Starship Nerd Font")
-                    .font(.caption.weight(.bold))
-
-                Picker("Font", selection: Binding(
-                    get: { state.fontFamily },
-                    set: {
-                        state.fontFamily = $0
-                        state.save()
-                        store._terminalFontFamily = $0
-                        store.savePersistentState()
+            // Card 1: Typography & Nerd Font Engine
+            PurahPluginSettingsCard(
+                title: "Typography & Nerd Font Engine",
+                subtitle: "Configure monospace terminal font and glyph cascading",
+                icon: "textformat.size",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Font Family")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        Spacer()
+                        Menu {
+                            ForEach(availableFonts, id: \.self) { fontName in
+                                Button(fontName) {
+                                    state.fontFamily = fontName
+                                    state.save()
+                                    store._terminalFontFamily = fontName
+                                    store.savePersistentState()
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(state.fontFamily)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.04))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
+                            )
+                        }
+                        .menuIndicator(.hidden)
                     }
-                )) {
-                    ForEach(availableFonts, id: \.self) { fontName in
-                        Text(fontName).tag(fontName)
+
+                    Text("Starship icons automatically cascade to Symbols Nerd Font / Maple Mono NF.")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Font Size")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Spacer()
+                            Text("\(String(format: "%.1f", state.fontSize)) pt")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(palette.primaryAccent)
+                        }
+
+                        Slider(value: Binding(
+                            get: { state.fontSize },
+                            set: {
+                                state.fontSize = $0
+                                state.save()
+                                store._terminalFontSize = $0
+                                store.savePersistentState()
+                            }
+                        ), in: 9.0...20.0, step: 0.5)
                     }
                 }
-                .pickerStyle(.menu)
-
-                Text("Starship icons automatically cascade to Symbols Nerd Font / Maple Mono NF.")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-
-                HStack {
-                    Text("Font Size: \(String(format: "%.1f", state.fontSize))pt")
-                        .font(.caption)
-                    Spacer()
-                }
-
-                Slider(value: Binding(
-                    get: { state.fontSize },
-                    set: {
-                        state.fontSize = $0
-                        state.save()
-                        store._terminalFontSize = $0
-                        store.savePersistentState()
-                    }
-                ), in: 9.0...20.0, step: 0.5)
             }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
 
-            // Shell & Session State Group
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Shell Binary")
-                    .font(.caption.weight(.bold))
-                Text(state.shellName.uppercased())
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.secondary)
+            // Card 2: Persistent Shell Session
+            PurahPluginSettingsCard(
+                title: "Persistent Shell Session",
+                subtitle: "PTY subprocess execution and GPU buffer lifecycle",
+                icon: "apple.terminal.fill",
+                iconColor: Color(hex: "#34C759")
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(state.isProcessRunning ? Color.green : Color.red)
+                            .frame(width: 8, height: 8)
 
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(state.isProcessRunning ? Color.green : Color.red)
-                        .frame(width: 8, height: 8)
-                    Text(state.isProcessRunning ? "Active & Running in Background (Metal GPU Rendered)" : "Exited")
-                        .font(.caption)
+                        Text(state.shellName.uppercased())
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(palette.primaryAccent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(palette.primaryAccent.opacity(0.12))
+                            .cornerRadius(4)
+
+                        Text(state.isProcessRunning ? "Active & Running (Metal GPU)" : "Exited")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary)
+
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(Color.primary.opacity(0.03))
+                    .cornerRadius(7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                    )
+
+                    HStack(spacing: 8) {
+                        Button {
+                            state.restartShell(palette: ThemePalette.palette(for: .native))
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10))
+                                Text("Restart Shell")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.primary.opacity(0.05))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            state.clearScreen()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 10))
+                                Text("Clear Output Buffer")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.primary.opacity(0.05))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+                    }
                 }
-            }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
-
-            HStack(spacing: 10) {
-                Button("Restart Shell") {
-                    state.restartShell(palette: ThemePalette.palette(for: .native))
-                }
-                .buttonStyle(.bordered)
-
-                Button("Clear Output Buffer") {
-                    state.clearScreen()
-                }
-                .buttonStyle(.bordered)
             }
         }
-        .padding()
     }
 }
 

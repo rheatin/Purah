@@ -15,8 +15,12 @@ public final class ShelfThumbnailCache {
 
     public init() {}
 
-    public func cachedThumbnail(for path: String) -> NSImage? {
-        cache[path]
+    public func cachedThumbnail(for path: String, size: CGSize? = nil) -> NSImage? {
+        if let size {
+            let key = "\(Int(size.width))x\(Int(size.height))_\(path)"
+            if let img = cache[key] { return img }
+        }
+        return cache[path]
     }
 
     @MainActor
@@ -26,7 +30,8 @@ public final class ShelfThumbnailCache {
         completion: @escaping (NSImage?) -> Void
     ) {
         let path = url.standardizedFileURL.path
-        if let existing = cache[path] {
+        let key = "\(Int(size.width))x\(Int(size.height))_\(path)"
+        if let existing = cache[key] {
             completion(existing)
             return
         }
@@ -44,7 +49,10 @@ public final class ShelfThumbnailCache {
             let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
             let image = representation?.nsImage
             if let image {
-                self.cache[path] = image
+                self.cache[key] = image
+                if size.width <= 32 {
+                    self.cache[path] = image
+                }
             }
             completion(image)
         }
@@ -180,7 +188,7 @@ public struct DropShelfDrawerView: View {
 
                         // Zone 2: Instant AirDrop Target
                         VStack(spacing: isCompact ? 3 : 6) {
-                            Image(systemName: "airdrop")
+                            Image(systemName: "airplayaudio")
                                 .font(.system(size: isCompact ? 14 : 24))
                                 .foregroundColor(Color.blue)
 
@@ -296,11 +304,13 @@ public struct DropShelfDrawerView: View {
                 }
 
                 // File List with Automatic Direct Left-Click Drag Marquee Selection
+                let shelfEdge = store.pods.first(where: { $0.id == "shelf" })?.edge ?? .left
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 6) {
                         ForEach(state.files) { file in
                             ShelfFileRowView(
                                 file: file,
+                                edge: shelfEdge,
                                 shelfColor: shelfColor,
                                 palette: palette,
                                 store: store,
@@ -419,7 +429,7 @@ public struct DropShelfDrawerView: View {
 
                 // Dedicated Instant AirDrop Bar
                 HStack(spacing: 8) {
-                    Image(systemName: "airdrop")
+                    Image(systemName: "airplayaudio")
                         .font(.system(size: 18))
                         .fontWeight(.semibold)
                         .foregroundColor(isAirDropTargeted ? .cyan : .blue)
@@ -464,6 +474,9 @@ public struct DropShelfDrawerView: View {
                     DropShelfDrawerView.shareViaAirDrop(urls: urls)
                 }
             }
+        }
+        .onDisappear {
+            ClipboardHoverPreviewController.shared.forceHide()
         }
     }
 
@@ -1245,6 +1258,7 @@ public struct BatchShelfDragPillView: View {
 
 public struct ShelfFileRowView: View {
     public let file: ShelfFileItem
+    public let edge: MountEdge
     public let shelfColor: Color
     public let palette: ThemePalette
     public let store: PurahWorkspaceStore
@@ -1262,6 +1276,7 @@ public struct ShelfFileRowView: View {
 
     public init(
         file: ShelfFileItem,
+        edge: MountEdge = .left,
         shelfColor: Color,
         palette: ThemePalette,
         store: PurahWorkspaceStore = PurahWorkspaceStore(),
@@ -1274,6 +1289,7 @@ public struct ShelfFileRowView: View {
         onMarqueeDragEnded: (() -> Void)? = nil
     ) {
         self.file = file
+        self.edge = edge
         self.shelfColor = shelfColor
         self.palette = palette
         self.store = store
@@ -1361,6 +1377,7 @@ public struct ShelfFileRowView: View {
                         isDragging = true
                         store.isDraggingFromDrawer = true
                         store.triggerControlHaptic(.alignment)
+                        ClipboardHoverPreviewController.shared.hide()
                     },
                     onDragCompleted: { succeeded in
                         isDragging = false
@@ -1391,58 +1408,72 @@ public struct ShelfFileRowView: View {
             Spacer(minLength: 8)
 
             // Trailing action buttons (remain directly clickable)
-            Button {
-                let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
-                DropShelfDrawerView.quickLookFiles(urls: [targetURL])
-            } label: {
-                Image(systemName: "eye")
-                    .font(.system(size: 10))
-                    .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.55))
-            }
-            .buttonStyle(.plain)
-            .help("dropshelf.quickLook".localized)
-
-            Button {
-                if let onToggleFavorite {
-                    onToggleFavorite()
-                } else if let state {
-                    state.toggleFavorite(id: file.id)
+            let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == file.id
+            HStack(spacing: 5) {
+                Button {
+                    ClipboardHoverPreviewController.shared.togglePin(
+                        shelfFile: file,
+                        edge: edge,
+                        palette: palette,
+                        drawerWidth: store.effectiveDrawerWidth(baseWidth: 360.0, podId: "shelf"),
+                        store: store
+                    )
                     store.triggerControlHaptic(.alignment)
+                } label: {
+                    Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(isPreviewPinned ? shelfColor : .gray.opacity(isHovered ? 1.0 : 0.55))
+                        .frame(width: 18, height: 18)
                 }
-            } label: {
-                Image(systemName: file.isFavorite ? "star.fill" : "star")
-                    .font(.system(size: 10))
-                    .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
-            }
-            .buttonStyle(.plain)
-            .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
+                .buttonStyle(.plain)
+                .help(isPreviewPinned ? "Unpin preview" : "dropshelf.quickLook".localized)
 
-            Button {
-                let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
-                DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
-            } label: {
-                Image(systemName: "airdrop")
-                    .font(.system(size: 12.5))
-                    .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
-            }
-            .buttonStyle(.plain)
-            .help("dropshelf.airdrop".localized)
+                Button {
+                    if let onToggleFavorite {
+                        onToggleFavorite()
+                    } else if let state {
+                        state.toggleFavorite(id: file.id)
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    Image(systemName: file.isFavorite ? "star.fill" : "star")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
 
-            Button(action: onReveal) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 9))
-                    .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
-            }
-            .buttonStyle(.plain)
-            .help("dropshelf.reveal".localized)
+                Button {
+                    let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
+                    DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
+                } label: {
+                    Image(systemName: "airplayaudio")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("dropshelf.airdrop".localized)
 
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9))
-                    .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
+                Button(action: onReveal) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("dropshelf.reveal".localized)
+
+                Button(action: onRemove) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("dropshelf.remove".localized)
             }
-            .buttonStyle(.plain)
-            .help("dropshelf.remove".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -1466,8 +1497,25 @@ public struct ShelfFileRowView: View {
         .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }
+        .onChange(of: isHovered) { _, hovered in
+            if hovered {
+                if !isDragging {
+                    ClipboardHoverPreviewController.shared.show(
+                        shelfFile: file,
+                        edge: edge,
+                        palette: palette,
+                        drawerWidth: store.effectiveDrawerWidth(baseWidth: 360.0, podId: "shelf")
+                    )
+                }
+            } else {
+                ClipboardHoverPreviewController.shared.hide()
+            }
+        }
         .onAppear {
             refreshThumbnail()
+        }
+        .onDisappear {
+            ClipboardHoverPreviewController.shared.hide()
         }
         .onChange(of: file.filePath) { _, _ in
             refreshThumbnail()
