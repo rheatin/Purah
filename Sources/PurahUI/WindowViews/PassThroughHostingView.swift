@@ -157,6 +157,16 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         }
     }
 
+    /// True from the moment the left button goes down until it comes back up.
+    ///
+    /// A drag session emits no `mouseMoved`, so the hit-test writes in `mouseMoved` /`mouseExited`
+    /// would win against `EdgeMouseMonitor`'s per-frame `setInteractive(true)` and the panel would
+    /// fall back to click-through exactly when a payload is inbound. While the button is held the
+    /// monitor owns interactivity instead.
+    private var isLeftButtonHeld: Bool {
+        NSEvent.pressedMouseButtons & 0x1 != 0
+    }
+
     public override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         guard !store.isRailsFrozen else { return }
@@ -173,6 +183,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             }
             return
         }
+
+        guard !isLeftButtonHeld else { return }
 
         let barW: CGFloat = max(CGFloat(store.railBarWidth), 4.0)
         let isOnRail = (edge == .right) ? (winPoint.x >= bounds.maxX - barW) : (winPoint.x <= bounds.minX + barW)
@@ -195,6 +207,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
     public override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
+
+        // A drag in flight leaves the panel; the monitor keeps the rail awake instead.
+        guard !isLeftButtonHeld else { return }
 
         let mouseLoc = NSEvent.mouseLocation
         if let win = self.window, win.frame.contains(mouseLoc) {

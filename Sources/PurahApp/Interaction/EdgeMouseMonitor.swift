@@ -4,6 +4,7 @@ import SwiftUI
 import Foundation
 import CoreGraphics
 import PurahCore
+import PurahUI
 
 @MainActor
 public final class EdgeMouseMonitor {
@@ -118,14 +119,132 @@ public final class EdgeMouseMonitor {
         }
         stop()
         isRunning = true
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
-            self?.handleMouse(event: event)
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .leftMouseUp, .scrollWheel]
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+            switch event.type {
+            case .leftMouseDragged, .leftMouseUp:
+                self?.handleDrag(event: event)
+            default:
+                self?.handleMouse(event: event)
+            }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
-            self?.handleMouse(event: event)
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            switch event.type {
+            case .leftMouseDragged, .leftMouseUp:
+                self?.handleDrag(event: event)
+            default:
+                self?.handleMouse(event: event)
+            }
             return event
         }
         updateEventTapState()
+    }
+
+    /// Keeps the rail awake while a drag session passes over it.
+    ///
+    /// Inbound drags emit `leftMouseDragged` instead of `mouseMoved`, and the panel switched to
+    /// click-through (`ignoresMouseEvents = true`) the moment the cursor left the rail to pick the
+    /// file up. Without this the drop could never be delivered.
+    ///
+    /// The hit region is the drawer card's 2D bounding box (`isPointInsideAnyDrawerCard`) plus the
+    /// rail band — **not** the narrow overshoot corridor, which only hugs the bezel and misses the
+    /// card body where the drop targets actually live.
+    ///
+    /// This is not the hover trigger: it skips the dwell/push-force pipeline, and only expands the
+    /// drawer of a pod that actually accepts the dragged payload.
+    private func handleDrag(event: NSEvent) {
+        autoreleasepool {
+            guard !isFrozen, !store.isRailsFrozen, !store.isLiveRailEditingMode else { return }
+
+            if event.type == .leftMouseUp {
+                processMouse(point: NSEvent.mouseLocation, now: Date())
+                return
+            }
+            let point = NSEvent.mouseLocation
+            coordinator?.updateActiveScreenIfNeeded(for: point)
+            let screen = coordinator?.targetScreen(for: point) ?? NSScreen.main ?? NSScreen.screens.first
+            let visibleRect = customTargetVisibleRect ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            guard point.y >= visibleRect.minY, point.y <= visibleRect.maxY else { return }
+            let barW = max(CGFloat(store.railBarWidth), 4.0)
+            let bandWidth = max(CGFloat(store.activeCatchCorridor), barW)
+
+            // A drag session emits no `mouseMoved`, so `processMouse` never runs and the
+            // exit-grace timer started by `mouseExited` (picking the payload up leaves the rail)
+            // would retract an unpinned hover drawer before the payload ever reaches the card.
+            // The drawer must survive the whole trip from the source to the rail, so this runs
+            // regardless of where the cursor currently is; `leftMouseUp` restores the pipeline.
+            if !store.isDraggingFromDrawer { keepOpenDrawersAliveDuringDrag() }
+
+            let currentWindowY = visibleRect.maxY - point.y
+
+            for edge in [MountEdge.left, .right] {
+                let withinBand = (edge == .left)
+                    ? point.x <= visibleRect.minX + bandWidth
+                    : point.x >= visibleRect.maxX - bandWidth
+                let insideCard = isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: edge)
+                guard withinBand || insideCard else { continue }
+
+                // While a drag is in flight the rail must accept drops even when nothing is pinned,
+                // otherwise the rail band (and its plugin drop targets) is skipped by hit-testing.
+                coordinator?.setInteractive(true, for: edge)
+
+                if insideCard {
+                    // A drag carries no mouseMoved events, so without this the exit-grace timer
+                    // would retract the drawer mid-drag and the drop would be lost.
+                    coordinator?.expandCanvas(for: edge)
+                } else if withinBand {
+                    // Dock-style affordance: hovering a drop-capable pod while carrying a payload
+                    // opens its drawer, so the drop targets inside the card become reachable.
+                    // Without this the payload can only land on the narrow rail bar itself.
+                    expandDropCapablePodIfNeeded(
+                        edge: edge,
+                        currentWindowY: currentWindowY,
+                        totalHeight: Double(visibleRect.height)
+                    )
+                }
+            }
+        }
+    }
+
+    /// Opens the drawer of the drop-capable pod under the cursor during a drag session.
+    private func expandDropCapablePodIfNeeded(edge: MountEdge, currentWindowY: CGFloat, totalHeight: Double) {
+        guard !store.isDraggingFromDrawer else { return }
+        let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
+        guard let matched = layoutItems.first(where: { item in
+            let topY = CGFloat(item.startY)
+            return currentWindowY >= topY && currentWindowY <= topY + actualOccupiedHeight(for: item)
+        }) else { return }
+        // Only pods that actually accept payloads should pop open mid-drag; everything else
+        // would open a card that then refuses the drop.
+        guard let plugin = PluginRegistry.shared.plugin(for: matched.pod.id),
+              !plugin.supportedDropTypes.isEmpty else { return }
+        guard store.activeDrawerPodId != matched.pod.id else { return }
+
+        activatePodDrawer(candidate: matched.pod, matched: matched, currentWindowY: currentWindowY, edge: edge)
+        cancelExitGrace(for: edge)
+    }
+
+    private func cancelExitGrace(for edge: MountEdge) {
+        if edge == .left {
+            leftExitGraceTask?.cancel()
+            leftExitGraceTask = nil
+        } else {
+            rightExitGraceTask?.cancel()
+            rightExitGraceTask = nil
+        }
+    }
+
+    /// Suspends exit-grace dismissal for every edge that currently shows a drawer or pinned card.
+    ///
+    /// Re-applied on every `leftMouseDragged`, so it holds for the whole drag; `leftMouseUp`
+    /// runs `processMouse`, which restarts the grace timer naturally.
+    private func keepOpenDrawersAliveDuringDrag() {
+        let activeEdge = store.activePod?.edge
+        for edge in [MountEdge.left, .right] {
+            let hasActive = (activeEdge == edge) && (store.activeDrawerPodId != nil || store.activeDrawerItemId != nil)
+            guard hasActive || store.hasPinnedItem(on: edge) else { continue }
+            cancelExitGrace(for: edge)
+        }
     }
 
     public func updateEventTapState() {
