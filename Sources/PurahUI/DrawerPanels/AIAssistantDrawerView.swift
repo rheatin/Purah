@@ -568,6 +568,16 @@ public struct AIAssistantRoleWorkbenchView: View {
     @State private var isReasoningExpanded: Bool = false
     @State private var isDiffMode: Bool = true
 
+    @State private var thinkingFollowsTail: Bool = true
+    @State private var isThinkingScrolledUp: Bool = false
+    @State private var isHoveringThinkingScroll: Bool = false
+    @State private var thinkingScrollMonitor: Any? = nil
+
+    @State private var diffFollowsTail: Bool = true
+    @State private var isDiffScrolledUp: Bool = false
+    @State private var isHoveringDiffScroll: Bool = false
+    @State private var diffScrollMonitor: Any? = nil
+
     public init(
         role: AIRolePreset,
         state: AIAssistantPluginState,
@@ -707,6 +717,14 @@ public struct AIAssistantRoleWorkbenchView: View {
         }
         .onChange(of: state.focusRequestCounter) {
             routeFocus()
+        }
+        .onChange(of: isRoleStreaming) { _, streaming in
+            if streaming {
+                thinkingFollowsTail = true
+                isThinkingScrolledUp = false
+                diffFollowsTail = true
+                isDiffScrolledUp = false
+            }
         }
     }
 
@@ -1434,13 +1452,90 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
 
                     if isDiffMode {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
-                            Text(buildDiffAttributedString(tokens: tokens))
-                                .font(.system(size: 11.5, weight: .regular))
-                                .lineSpacing(2.5)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        GeometryReader { outerGeo in
+                            ScrollViewReader { proxy in
+                                ZStack(alignment: .bottomTrailing) {
+                                    ScrollView(.vertical, showsIndicators: false) {
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
+                                            Text(buildDiffAttributedString(tokens: tokens))
+                                                .font(.system(size: 11.5, weight: .regular))
+                                                .lineSpacing(2.5)
+                                                .textSelection(.enabled)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                            Color.clear
+                                                .frame(height: 1)
+                                                .id("diffBottomAnchor")
+                                                .background(
+                                                    GeometryReader { geo in
+                                                        Color.clear.preference(
+                                                            key: BottomAnchorMaxYPreferenceKey.self,
+                                                            value: geo.frame(in: .named("diffScroll")).maxY
+                                                        )
+                                                    }
+                                                )
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: outerGeo.size.height, alignment: .topLeading)
+                                    }
+                                    .coordinateSpace(name: "diffScroll")
+                                    .onHover { hovering in
+                                        isHoveringDiffScroll = hovering
+                                    }
+                                    .onPreferenceChange(BottomAnchorMaxYPreferenceKey.self) { bottomMaxY in
+                                        guard bottomMaxY > 0 && outerGeo.size.height > 0 else { return }
+                                        if bottomMaxY > outerGeo.size.height + 24 {
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                isDiffScrolledUp = true
+                                            }
+                                        } else if bottomMaxY <= outerGeo.size.height + 14 {
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                isDiffScrolledUp = false
+                                            }
+                                            diffFollowsTail = true
+                                        }
+                                    }
+                                    .onChange(of: latestResult) { _, _ in
+                                        if diffFollowsTail {
+                                            withAnimation(.easeOut(duration: 0.15)) {
+                                                proxy.scrollTo("diffBottomAnchor", anchor: .bottom)
+                                            }
+                                        }
+                                    }
+                                    .onAppear {
+                                        if diffFollowsTail {
+                                            proxy.scrollTo("diffBottomAnchor", anchor: .bottom)
+                                        }
+                                        if !PurahWorkspaceStore.isTestingEnvironment && diffScrollMonitor == nil {
+                                            diffScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                                                if isHoveringDiffScroll && event.scrollingDeltaY > 1.0 {
+                                                    diffFollowsTail = false
+                                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                        isDiffScrolledUp = true
+                                                    }
+                                                }
+                                                return event
+                                            }
+                                        }
+                                    }
+                                    .onDisappear {
+                                        if let monitor = diffScrollMonitor {
+                                            NSEvent.removeMonitor(monitor)
+                                            diffScrollMonitor = nil
+                                        }
+                                    }
+
+                                    if isDiffScrolledUp {
+                                        FloatingScrollToBottomButton(accentColor: roleColor) {
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                diffFollowsTail = true
+                                                isDiffScrolledUp = false
+                                                proxy.scrollTo("diffBottomAnchor", anchor: .bottom)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     } else {
                         InteractiveMarkdownPreviewView(
@@ -1479,33 +1574,96 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .padding(.horizontal, 4)
                     .padding(.top, 2)
 
-                    ScrollViewReader { proxy in
-                        ScrollView(.vertical, showsIndicators: true) {
-                            Text(reasoning)
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundColor(Color.white.opacity(0.70))
-                                .lineSpacing(2)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(6)
-                                .id("streamingReasoningAnchor")
-                        }
-                        .background(Color.black.opacity(0.35))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(roleColor.opacity(0.30), lineWidth: 0.8)
-                        )
-                        .onChange(of: reasoning) { _, _ in
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
+                    GeometryReader { outerGeo in
+                        ScrollViewReader { proxy in
+                            ZStack(alignment: .bottomTrailing) {
+                                ScrollView(.vertical, showsIndicators: true) {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(reasoning)
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .foregroundColor(Color.white.opacity(0.70))
+                                            .lineSpacing(2)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(6)
+
+                                        Color.clear
+                                            .frame(height: 1)
+                                            .id("streamingReasoningAnchor")
+                                            .background(
+                                                GeometryReader { geo in
+                                                    Color.clear.preference(
+                                                        key: BottomAnchorMaxYPreferenceKey.self,
+                                                        value: geo.frame(in: .named("thinkingReasoningScroll")).maxY
+                                                    )
+                                                }
+                                            )
+                                    }
+                                }
+                                .coordinateSpace(name: "thinkingReasoningScroll")
+                                .onHover { hovering in
+                                    isHoveringThinkingScroll = hovering
+                                }
+                                .onPreferenceChange(BottomAnchorMaxYPreferenceKey.self) { bottomMaxY in
+                                    guard bottomMaxY > 0 && outerGeo.size.height > 0 else { return }
+                                    if bottomMaxY > outerGeo.size.height + 24 {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                            isThinkingScrolledUp = true
+                                        }
+                                    } else if bottomMaxY <= outerGeo.size.height + 14 {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                            isThinkingScrolledUp = false
+                                        }
+                                        thinkingFollowsTail = true
+                                    }
+                                }
+                                .onChange(of: reasoning) { _, _ in
+                                    if thinkingFollowsTail {
+                                        withAnimation(.easeOut(duration: 0.15)) {
+                                            proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
+                                        }
+                                    }
+                                }
+                                .onAppear {
+                                    proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
+                                    if !PurahWorkspaceStore.isTestingEnvironment && thinkingScrollMonitor == nil {
+                                        thinkingScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                                            if isHoveringThinkingScroll && event.scrollingDeltaY > 1.0 {
+                                                thinkingFollowsTail = false
+                                                withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                    isThinkingScrolledUp = true
+                                                }
+                                            }
+                                            return event
+                                        }
+                                    }
+                                }
+                                .onDisappear {
+                                    if let monitor = thinkingScrollMonitor {
+                                        NSEvent.removeMonitor(monitor)
+                                        thinkingScrollMonitor = nil
+                                    }
+                                }
+
+                                if isThinkingScrolledUp {
+                                    FloatingScrollToBottomButton(accentColor: roleColor) {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                            thinkingFollowsTail = true
+                                            isThinkingScrolledUp = false
+                                            proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
+                                        }
+                                    }
+                                }
                             }
                         }
-                        .onAppear {
-                            proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
-                        }
                     }
+                    .background(Color.black.opacity(0.35))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(roleColor.opacity(0.30), lineWidth: 0.8)
+                    )
                 }
-                .frame(maxHeight: 120)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 AIShimmerSingleLineView(roleColor: roleColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1516,6 +1674,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .padding(.top, 4)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Collapsible Reasoning View

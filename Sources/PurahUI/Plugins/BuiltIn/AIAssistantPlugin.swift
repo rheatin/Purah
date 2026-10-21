@@ -536,18 +536,102 @@ public struct AIAssistantPluginSettingsView: View {
     // MARK: - Apple Intelligence Panel
     @ViewBuilder
     private var appleIntelligencePanel: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "apple.intelligence")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.purple)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Apple Intelligence (On-Device)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                Text("Native Apple Foundation Models with zero latency, offline execution, and complete privacy.")
-                    .font(.system(size: 10))
+        let status = AIAssistantService.shared.checkAppleIntelligenceStatus()
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "apple.intelligence")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(status.isAvailable ? .purple : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("Apple Intelligence (On-Device)")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+
+                        if status.isAvailable {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 5, height: 5)
+                                Text("Available")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.green)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.12))
+                            .cornerRadius(4)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.green.opacity(0.3), lineWidth: 0.6))
+                        } else {
+                            HStack(spacing: 3) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.orange)
+                                Text("Unavailable on this Mac")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.orange)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.12))
+                            .cornerRadius(4)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.orange.opacity(0.3), lineWidth: 0.6))
+                        }
+                    }
+                    Text("Native Apple Foundation Models with zero latency, offline execution, and complete privacy.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+
+            if case .unavailable(let reason) = status {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 5) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.orange)
+                            .padding(.top, 1)
+                        Text(reason)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if reason.contains("System Settings") || reason.contains("not enabled") {
+                        Button {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "gearshape")
+                                    .font(.system(size: 9))
+                                Text("Open System Settings")
+                                    .font(.system(size: 9.5, weight: .medium))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3.5)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundColor(.orange)
+                            .cornerRadius(5)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.orange.opacity(0.3), lineWidth: 0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.06))
+                .cornerRadius(6)
+            }
+
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(.purple)
+                Text("Custom role System Prompts are 100% supported via LanguageModelSession(instructions:).")
+                    .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
-            Spacer()
         }
         .padding(10)
         .background(Color.purple.opacity(0.08))
@@ -1290,8 +1374,8 @@ public struct AIAssistantPluginSettingsView: View {
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
 
-                    VStack(spacing: 8) {
-                        Toggle(isOn: $state.skillConfig.enableFileReadSkill) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 1.5) {
                                 Text("Auto-Read Local File Paths")
                                     .font(.system(size: 10.5, weight: .medium))
@@ -1299,12 +1383,16 @@ public struct AIAssistantPluginSettingsView: View {
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
+                            Spacer()
+                            Toggle("", isOn: $state.skillConfig.enableFileReadSkill)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
                         }
-                        .toggleStyle(.switch)
+                        .frame(maxWidth: .infinity)
 
                         Divider().opacity(0.3)
 
-                        Toggle(isOn: $state.skillConfig.enableDirectoryListSkill) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 1.5) {
                                 Text("Auto-Inspect Directories")
                                     .font(.system(size: 10.5, weight: .medium))
@@ -1312,12 +1400,16 @@ public struct AIAssistantPluginSettingsView: View {
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
+                            Spacer()
+                            Toggle("", isOn: $state.skillConfig.enableDirectoryListSkill)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
                         }
-                        .toggleStyle(.switch)
+                        .frame(maxWidth: .infinity)
 
                         Divider().opacity(0.3)
 
-                        Toggle(isOn: $state.skillConfig.enableShellSnippetSkill) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 1.5) {
                                 Text("Shell & Clipboard Context")
                                     .font(.system(size: 10.5, weight: .medium))
@@ -1325,8 +1417,12 @@ public struct AIAssistantPluginSettingsView: View {
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
+                            Spacer()
+                            Toggle("", isOn: $state.skillConfig.enableShellSnippetSkill)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
                         }
-                        .toggleStyle(.switch)
+                        .frame(maxWidth: .infinity)
                     }
                     .padding(10)
                     .background(Color.primary.opacity(0.03))
@@ -1378,7 +1474,7 @@ public struct AIAssistantPluginSettingsView: View {
                             HStack(spacing: 3) {
                                 Image(systemName: isAddingMCPServer ? "minus" : "plus")
                                     .font(.system(size: 8.5, weight: .bold))
-                                Text(isAddingMCPServer ? "Close" : "+ Add Server")
+                                Text(isAddingMCPServer ? "Close" : "Add Server")
                                     .font(.system(size: 9.5, weight: .semibold))
                             }
                             .padding(.horizontal, 7)
@@ -1399,7 +1495,7 @@ public struct AIAssistantPluginSettingsView: View {
                             Image(systemName: "tray")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                            Text("No MCP servers configured yet. Click '+ Add Server' or 'Import Local Config'.")
+                            Text("No MCP servers configured yet. Click 'Add Server' or 'Import Local Config'.")
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -1637,11 +1733,26 @@ public struct AIAssistantPluginSettingsView: View {
 
                     Spacer()
 
-                    Button("Clear Unstarred") {
+                    Button {
                         state.clearUnstarredSessions()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 9.5, weight: .semibold))
+                            Text("Clear Unstarred")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4.5)
+                        .background(Color.red.opacity(0.12))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.red.opacity(0.35), lineWidth: 0.8)
+                        )
                     }
-                    .buttonStyle(.tactile)
-                    .font(.system(size: 10.5))
+                    .buttonStyle(.plain)
                 }
 
                 // Immunity Banner

@@ -46,37 +46,41 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 
 - **⚡️ Zero-Block Click-Through**: Transparent empty space lets clicks pass straight through to desktop windows, Finder, and IDEs without blocking your workflow.
 - **🎛 Physical Bezel Extrusion**: Drawers slide smoothly out from the screen edge towards the center and retract solidly with zero ghosting.
-- **💻 Edge Interactive Terminal**: Persistent background terminal shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with full VT100/Xterm emulation, live font scaling, and Starship / Nerd Font glyphs.
-- **📐 Ergonomic Zone Layout**: Intelligently arranges modules into glance, action, and flick zones based on natural cursor momentum.
+- **🧱 Unified 3-Layer Elastic Rail Engine**: Stack any modules together like folders, enable optional Dynamic Breathing compression on crowded pages, and seamlessly overflow or organize across multi-page rail spaces with edge portals.
+- **📐 1:1 Live Desktop Rail Sculptor (`⌃⌥E`)**: Sculpt, resize, stack/unstack, and move modules across edges and pages directly on your live desktop bezel.
+- **💾 Configuration Backup & Restore**: Export, import, and factory-reset your entire workspace layout, shortcuts, and plugin preferences as portable JSON files.
+- **💻 Edge Interactive Terminal**: Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with full VT100/Xterm emulation, 1-click `cd` to active Finder folder, live font scaling, and Starship / Nerd Font glyphs.
 - **🌊 60 / 120 FPS Fluid Waveform**: Metal GPU-driven audio visualizer that pulses naturally along the screen edge.
 - **🖥 Multi-Display Adaptive**: Follows your cursor across displays while suppressing accidental triggers when crossing screen borders.
 
 ---
 
-### 🧩 Built-in Plugins
+### 🧩 Built-in Plugins (10 Built-in Plugins)
 
 | Plugin | Icon | Description |
 | :--- | :---: | :--- |
-| **Terminal** | `apple.terminal.fill` | Persistent background command shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with Starship & Nerd Font support. |
-| **Hardware Vitals** | `waveform.path.ecg` | Real-time CPU, RAM, GPU, SSD, thermal, and network telemetry. |
+| **AI Assistant** | `sparkles` | Multi-provider AI workbench supporting On-Device Apple Intelligence (`FoundationModels`), Local CLI Agents (`claude`, `codex`, `ollama`, custom), and OpenAI / Anthropic / Ollama HTTP APIs. Features frontmost selection capture, 50/50 split drop zones (New Session vs. Follow-up), inline diff polishing, custom role prompts, built-in local file skills, and MCP server integration. |
+| **Hardware Vitals** | `waveform.path.ecg` | Deep Darwin/IOKit telemetry across a unified 2x2 overview grid (CPU User/Sys/LoadAvg/Thermal, GPU, RAM App/Wired/Compressed/Swap, Battery Health/Cycles), full-width Network I/O card, Disk R/W throughput, and full Process Inspector. |
+| **Drop Shelf** | `tray.fill` | Desktop staging shelf with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, and pinned interactive floating sidecar preview (`👁`). |
+| **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, pinned interactive floating sidecar preview (`👁`), color preview, image caching, and fuzzy search. |
+| **Quick Notes** | `note.text` | Typora-style live Markdown & resizable tables, cross-folder instant search, image paste, and 1-click `.md` export. |
+| **Terminal** | `apple.terminal.fill` | Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with 1-click `cd` to active Finder folder, Starship & Nerd Font glyph support. |
+| **Music Waveform** | `waveform` | Apple Music playback controller with dynamic visualizer and fluid scrub bar. |
 | **Calendar Timeline** | `calendar` | Day agenda timeline with meeting link detection (`Zoom`, `Meet`, `Teams`). |
 | **Todo Checklist** | `checklist` | System Reminders integration with one-tap completion. |
-| **Music Waveform** | `waveform` | Apple Music playback controller with dynamic visualizer. |
-| **Drop Shelf** | `tray.fill` | Temporary desktop shelf for drag-and-drop file staging. |
-| **Quick Notes** | `note.text` | Instant scratchpad for fleeting thoughts and code snippets. |
 | **Script Runway** | `terminal.fill` | Quick-fire developer automation runway for everyday maintenance tasks. |
-| **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with color preview, image caching, and fuzzy search. |
 
 > 🚀 **More to come**: Additional plugins, custom widgets, and third-party developer extensibility are actively in development.
 
 ---
 
-### ⌨️ Shortcut & Ergonomic Interactions
+### ⌨️ Global Shortcuts & Ergonomic Interactions
 
 Purah is designed to stay completely out of your way until intentionally summoned.
 
-#### The Only Shortcut
-- **`⌥⇥` (Option + Tab)**: Instant **Freeze / Unfreeze** rails toggle with a tactile HUD. Use it anytime during full-screen presentations or focused coding sessions.
+#### Global Shortcuts
+- **`⌥⇥` (Option + Tab)**: Global **Freeze / Unfreeze** rails toggle with a tactile HUD (customizable in Settings). Use it anytime during full-screen presentations or focused coding sessions.
+- **`⌃⌥E` (Control + Option + E)**: Global **1:1 Live Desktop Rail Sculptor** toggle (customizable in Settings). Sculpt, resize, stack/unstack, and move modules directly on your live desktop bezel.
 
 #### Anti-Accidental Touch & Anti-Loss Details
 - **Edge Summon**: Slide your cursor to the 14px physical screen bezel to pop out the corresponding drawer.

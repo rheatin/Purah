@@ -2,6 +2,20 @@
 import Foundation
 import AppKit
 import ApplicationServices
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
+// MARK: - Apple Intelligence Status
+public enum AppleIntelligenceStatus: Equatable, Sendable {
+    case available
+    case unavailable(reason: String)
+
+    public var isAvailable: Bool {
+        if case .available = self { return true }
+        return false
+    }
+}
 
 // MARK: - AI Assistant Error
 public enum AIAssistantError: LocalizedError, Sendable {
@@ -46,6 +60,35 @@ public final class AIAssistantService {
 
     public init() {
         self.availableCLIs = detectAvailableCLIs()
+    }
+
+    // MARK: - Apple Intelligence Availability
+    public func checkAppleIntelligenceStatus() -> AppleIntelligenceStatus {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            switch SystemLanguageModel.default.availability {
+            case .available:
+                return .available
+            case .unavailable(let reason):
+                switch reason {
+                case .appleIntelligenceNotEnabled:
+                    return .unavailable(reason: "Apple Intelligence is not enabled in macOS System Settings.")
+                case .modelNotReady:
+                    return .unavailable(reason: "On-device model weights are still downloading or preparing.")
+                case .deviceNotEligible:
+                    return .unavailable(reason: "This Mac hardware or region is not eligible for Apple Intelligence.")
+                @unknown default:
+                    return .unavailable(reason: "Apple Intelligence is currently unavailable on this Mac.")
+                }
+            @unknown default:
+                return .unavailable(reason: "Apple Intelligence is currently unavailable on this Mac.")
+            }
+        } else {
+            return .unavailable(reason: "Apple Intelligence requires macOS 26+ with Apple Intelligence enabled.")
+        }
+        #else
+        return .unavailable(reason: "Apple Intelligence requires macOS 26+ with Apple Intelligence enabled.")
+        #endif
     }
 
     // MARK: - Language Detection Badge
@@ -356,12 +399,32 @@ public final class AIAssistantService {
             let result: String
             switch provider {
             case .appleIntelligence:
+                #if canImport(FoundationModels)
+                if #available(macOS 26.0, *),
+                   !PurahWorkspaceStore.isTestingEnvironment,
+                   SystemLanguageModel.default.availability == .available {
+                    result = try await streamNativeAppleIntelligence(
+                        messages: messages,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                } else {
+                    result = try await streamSimulatedAppleIntelligence(
+                        messages: messages,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                }
+                #else
                 result = try await streamSimulatedAppleIntelligence(
                     messages: messages,
                     targetLanguage: targetLanguage,
                     systemPromptOverride: systemPromptOverride,
                     onChunk: onChunk
                 )
+                #endif
 
             case .httpOpenAI, .httpOllama:
                 let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -969,6 +1032,39 @@ public final class AIAssistantService {
             }
         }
     }
+
+    // MARK: - Native Apple Intelligence Stream
+    #if canImport(FoundationModels)
+    @available(macOS 26.0, *)
+    private func streamNativeAppleIntelligence(
+        messages: [AIChatMessage],
+        targetLanguage: String,
+        systemPromptOverride: String?,
+        onChunk: (@Sendable (String) -> Void)?
+    ) async throws -> String {
+        let lastUserMsg = messages.last(where: { $0.role == .user })
+        let effectiveSystemPrompt = systemPromptOverride ?? lastUserMsg?.systemPromptOverride ?? lastUserMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
+        let prompt = lastUserMsg?.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? messages.last?.content ?? ""
+
+        let session = LanguageModelSession(instructions: effectiveSystemPrompt)
+        let stream = session.streamResponse(to: prompt)
+        var accumulated = ""
+        for try await snapshot in stream {
+            let current = snapshot.content
+            if current.hasPrefix(accumulated) {
+                let delta = String(current.dropFirst(accumulated.count))
+                accumulated = current
+                if !delta.isEmpty {
+                    onChunk?(delta)
+                }
+            } else {
+                accumulated = current
+                onChunk?(current)
+            }
+        }
+        return accumulated
+    }
+    #endif
 
     // MARK: - Apple Intelligence Simulated Synthesis
     private func streamSimulatedAppleIntelligence(

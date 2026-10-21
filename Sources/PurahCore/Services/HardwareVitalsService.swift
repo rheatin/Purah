@@ -185,6 +185,7 @@ public final class HardwareVitalsService {
     public private(set) var diskHistory: [VitalsHistoryPoint] = []
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
+    public var isDrawerVisible: Bool = false
 
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
@@ -350,7 +351,7 @@ public final class HardwareVitalsService {
             while !Task.isCancelled {
                 guard let self = self else { break }
                 self.saveThrottleCounter += 1
-                self.refreshMetrics(includeProcesses: (self.saveThrottleCounter % 3 == 0))
+                self.refreshMetrics(includeProcesses: self.isDrawerVisible && (self.saveThrottleCounter % 3 == 0))
                 if self.saveThrottleCounter >= 60 {
                     self.saveThrottleCounter = 0
                     self.saveHistoryToDisk()

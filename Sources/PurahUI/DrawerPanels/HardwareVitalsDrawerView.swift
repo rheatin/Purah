@@ -159,6 +159,7 @@ public struct HardwareVitalsDrawerView: View {
             }
         }
         .onAppear {
+            vitals.isDrawerVisible = true
             withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
                 isPulsing = true
             }
@@ -168,6 +169,9 @@ public struct HardwareVitalsDrawerView: View {
                 await vitals.refreshMetricsAsync(includeProcesses: true)
                 state.refreshMetrics(includeProcesses: true)
             }
+        }
+        .onDisappear {
+            vitals.isDrawerVisible = false
         }
     }
 

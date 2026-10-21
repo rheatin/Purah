@@ -2410,7 +2410,11 @@ public final class PurahWorkspaceStore {
             var merged = savedPods
             let savedIds = Set(savedPods.map(\.id))
             for var def in Self.defaultPods() where !savedIds.contains(def.id) {
-                def.isEnabled = false
+                if def.id == "ai" && !defaults.bool(forKey: "purah.didAutoInstallAIPlugin") {
+                    def.isEnabled = true
+                } else {
+                    def.isEnabled = false
+                }
                 merged.append(def)
             }
             self.pods = merged

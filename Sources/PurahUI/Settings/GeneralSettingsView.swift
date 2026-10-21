@@ -1,9 +1,15 @@
 // Sources/PurahUI/Settings/GeneralSettingsView.swift
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import PurahCore
 
 public struct GeneralSettingsView: View {
     public let store: PurahWorkspaceStore
+
+    @State private var showingResetAlert = false
+    @State private var statusMessage: String?
+    @State private var isErrorMessage = false
 
     private var theme: ThemeManager {
         ThemeManager.shared
@@ -104,11 +110,164 @@ public struct GeneralSettingsView: View {
                         KeyboardShortcutRecorderView(store: store, target: .sculptor)
                     }
                 }
+
+                // 4. Configuration & Backup Card
+                settingsCard(title: "general.config.card".localized, icon: "slider.horizontal.2.gobackward") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("general.config.subtitle".localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(nil)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                exportConfig()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.up")
+                                    Text("general.config.export".localized)
+                                }
+                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(palette.surfaceBackground.opacity(0.8))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.tactile)
+
+                            Button {
+                                importConfig()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.down")
+                                    Text("general.config.import".localized)
+                                }
+                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(palette.surfaceBackground.opacity(0.8))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.tactile)
+
+                            Spacer()
+
+                            Button {
+                                showingResetAlert = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                    Text("general.config.reset".localized)
+                                }
+                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Color.red.opacity(0.12))
+                                .foregroundColor(.red)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.red.opacity(0.4), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.tactile)
+                        }
+
+                        if let statusMessage {
+                            Text(statusMessage)
+                                .font(.caption2)
+                                .foregroundColor(isErrorMessage ? .red : palette.primaryAccent)
+                                .transition(.opacity)
+                        }
+                    }
+                }
             }
             .padding(24)
             .frame(width: 680)
         }
         .frame(minHeight: 560)
+        .alert(
+            "general.config.resetConfirmTitle".localized,
+            isPresented: $showingResetAlert
+        ) {
+            Button("general.config.reset".localized, role: .destructive) {
+                resetToDefaults()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("general.config.resetConfirmMessage".localized)
+        }
+    }
+
+    private func exportConfig() {
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.json]
+        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: "Purah-Config.json")
+
+        let response = savePanel.runModal()
+        guard response == .OK, let url = savePanel.url else { return }
+
+        PurahExportPathManager.updateLastDirectory(from: url)
+
+        do {
+            let data = try PurahConfigBackupManager.exportBackupData(from: store)
+            try data.write(to: url, options: .atomic)
+            withAnimation {
+                isErrorMessage = false
+                statusMessage = "Configuration exported successfully to \(url.lastPathComponent)"
+            }
+        } catch {
+            withAnimation {
+                isErrorMessage = true
+                statusMessage = "Export failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func importConfig() {
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = [.json]
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.allowsMultipleSelection = false
+        openPanel.directoryURL = PurahExportPathManager.resolveDefaultDirectory()
+
+        let response = openPanel.runModal()
+        guard response == .OK, let url = openPanel.url else { return }
+
+        PurahExportPathManager.updateLastDirectory(from: url)
+
+        do {
+            let data = try Data(contentsOf: url)
+            try PurahConfigBackupManager.importBackupData(data, into: store)
+            withAnimation {
+                isErrorMessage = false
+                statusMessage = "Configuration successfully imported from \(url.lastPathComponent)"
+            }
+        } catch {
+            withAnimation {
+                isErrorMessage = true
+                statusMessage = "Import failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func resetToDefaults() {
+        PurahConfigBackupManager.resetToFactoryDefaults(store: store)
+        withAnimation {
+            isErrorMessage = false
+            statusMessage = "Reset to factory defaults completed"
+        }
     }
 
     @ViewBuilder
