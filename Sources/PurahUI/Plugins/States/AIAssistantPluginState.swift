@@ -12,6 +12,29 @@ public enum AIDropZoneTarget: Sendable {
     case followUp
 }
 
+// MARK: - Pending File Permission Request
+public struct PendingFilePermissionRequest: Equatable, Sendable {
+    public let paths: [String]
+    public let prompt: String
+    public let role: AIRolePreset?
+    public let originalSelection: String?
+    public let includeHistory: Bool
+
+    public init(
+        paths: [String],
+        prompt: String,
+        role: AIRolePreset? = nil,
+        originalSelection: String? = nil,
+        includeHistory: Bool = false
+    ) {
+        self.paths = paths
+        self.prompt = prompt
+        self.role = role
+        self.originalSelection = originalSelection
+        self.includeHistory = includeHistory
+    }
+}
+
 @Observable
 @MainActor
 public final class AIAssistantPluginState: Sendable {
@@ -19,6 +42,10 @@ public final class AIAssistantPluginState: Sendable {
     public let repository: PurahDiskRepository<AIChatSession>
     public let storage: any PurahPluginStorage
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
+
+    // MARK: - File Permission Control
+    public var allowedFilePaths: Set<String> = []
+    public var pendingPermissionRequest: PendingFilePermissionRequest? = nil
 
     // MARK: - Provider Settings
     public var selectedProvider: AIProviderKind {
@@ -466,9 +493,71 @@ public final class AIAssistantPluginState: Sendable {
                 providerKind: self.selectedProvider
             )
             repository.insert(initialSession, at: 0)
+        if let storedAllowed = storage.codable(forKey: "allowedFilePaths", as: [String].self) {
+            self.allowedFilePaths = Set(storedAllowed)
+        } else {
+            self.allowedFilePaths = []
+        }
+
             self.sessions = repository.items
             self.activeSessionId = initialSession.id
         }
+    }
+
+    // MARK: - File Permission Helpers
+    public func isPathAllowed(_ path: String) -> Bool {
+        if allowedFilePaths.contains(path) { return true }
+        for allowed in allowedFilePaths {
+            let prefix = allowed.hasSuffix("/") ? allowed : allowed + "/"
+            if path.hasPrefix(prefix) { return true }
+        }
+        return false
+    }
+
+    public func allowPath(_ path: String) {
+        allowedFilePaths.insert(path)
+        storage.setCodable(Array(allowedFilePaths), forKey: "allowedFilePaths")
+    }
+
+    public func allowFolder(for path: String) {
+        let parent = (path as NSString).deletingLastPathComponent
+        allowedFilePaths.insert(parent)
+        storage.setCodable(Array(allowedFilePaths), forKey: "allowedFilePaths")
+    }
+
+    public func approvePendingPermission(allowFolder: Bool) {
+        guard let req = pendingPermissionRequest else { return }
+        for path in req.paths {
+            if allowFolder {
+                self.allowFolder(for: path)
+            } else {
+                self.allowPath(path)
+            }
+        }
+        self.pendingPermissionRequest = nil
+        sendPrompt(
+            req.prompt,
+            quickAction: nil,
+            role: req.role,
+            originalSelection: req.originalSelection,
+            includeHistory: req.includeHistory,
+            bypassFileCheck: true,
+            skipFileEnrichment: false
+        )
+    }
+
+    public func denyPendingPermission() {
+        guard let req = pendingPermissionRequest else { return }
+        self.pendingPermissionRequest = nil
+        sendPrompt(
+            req.prompt,
+            quickAction: nil,
+            role: req.role,
+            originalSelection: req.originalSelection,
+            includeHistory: req.includeHistory,
+            bypassFileCheck: true,
+            skipFileEnrichment: true
+        )
     }
 
     // MARK: - Lifecycle Mount & Unmount
@@ -871,10 +960,28 @@ public final class AIAssistantPluginState: Sendable {
         role: AIRolePreset? = nil,
         originalSelection: String? = nil,
         includeHistory: Bool = false,
-        customSystemPrompt: String? = nil
+        customSystemPrompt: String? = nil,
+        bypassFileCheck: Bool = false,
+        skipFileEnrichment: Bool = false
     ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
+
+        // Interactive local file access permission check
+        if !bypassFileCheck && !skipFileEnrichment {
+            let referencedPaths = AIAssistantService.extractReferencedLocalPaths(in: trimmed)
+            let unapprovedPaths = referencedPaths.filter { !self.isPathAllowed($0) }
+            if !unapprovedPaths.isEmpty {
+                self.pendingPermissionRequest = PendingFilePermissionRequest(
+                    paths: unapprovedPaths,
+                    prompt: trimmed,
+                    role: role,
+                    originalSelection: originalSelection,
+                    includeHistory: includeHistory
+                )
+                return
+            }
+        }
 
         stopStreaming()
         viewingStepIndex = nil
@@ -891,7 +998,17 @@ public final class AIAssistantPluginState: Sendable {
         let resolvedOriginal = originalSelection ?? (trimmed.isEmpty ? nil : trimmed)
 
         // Built-in skills local enrichment
-        let (enrichedPrompt, _) = AIAssistantService.enrichPromptWithLocalSkills(trimmed, skills: skillConfig)
+        let enrichedPrompt: String
+        if skipFileEnrichment {
+            enrichedPrompt = trimmed
+        } else {
+            let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+                trimmed,
+                skills: skillConfig,
+                allowedPaths: allowedFilePaths
+            )
+            enrichedPrompt = enriched
+        }
 
         var effectivePromptOverride = customSystemPrompt ?? role?.systemPrompt ?? quickAction?.buildSystemPrompt()
         if customSystemPrompt == nil {
@@ -1182,6 +1299,7 @@ public final class AIAssistantPluginState: Sendable {
 
                         Task { @MainActor [weak self] in
                             guard let self else { return }
+                            self.allowPath(filePath)
                             self.stopStreaming()
                             if target == .newSession {
                                 self.createNewSession()

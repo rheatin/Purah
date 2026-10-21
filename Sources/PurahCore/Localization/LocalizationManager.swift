@@ -514,7 +514,20 @@ public final class LocalizationManager {
             "ai.status.generatingStop": "Generating · Click to Stop",
             "ai.action.saveToNotesShort": "Save Note",
             "ai.drop.newSessionZone": "Drop Here: Start New Session",
-            "ai.drop.followUpZone": "Drop Here: Follow-up in Current Session"
+            "ai.drop.followUpZone": "Drop Here: Follow-up in Current Session",
+            "ai.permission.requestTitle": "Request to read local file:",
+            "ai.permission.allow": "✓ Allow",
+            "ai.permission.allowFolder": "Allow Folder",
+            "ai.permission.deny": "✕ Deny",
+            "ai.action.stop": "Stop",
+            "ai.stage1.runCurrentRole": "⌘↩ Run current role",
+            "ai.tooltip.saveNote": "Save Note",
+            "ai.tooltip.retry": "Retry",
+            "ai.stepped.clickToCopy": "Click to Copy",
+            "ai.stepped.copied": "✓ Copied!",
+            "ai.stepped.generating": "Thinking / Generating...",
+            "ai.stepped.inputPlaceholder": "Drop file/text or type & press ↩ for %@...",
+            "ai.stepped.pasteAndRun": "Paste & Run"
         ],
         .chinese: [
             "app.name": "Purah Pad",
@@ -939,7 +952,20 @@ public final class LocalizationManager {
             "ai.status.generatingStop": "生成中 · 点击停止",
             "ai.action.saveToNotesShort": "存笔记",
             "ai.drop.newSessionZone": "拖到此处：开启新对话处理",
-            "ai.drop.followUpZone": "拖到此处：追加到当前对话继续追问 (Follow-up)"
+            "ai.drop.followUpZone": "拖到此处：追加到当前对话继续追问 (Follow-up)",
+            "ai.permission.requestTitle": "请求读取本地文件：",
+            "ai.permission.allow": "✓ 允许读取",
+            "ai.permission.allowFolder": "始终允许该目录",
+            "ai.permission.deny": "✕ 仅发送文字",
+            "ai.action.stop": "停止",
+            "ai.stage1.runCurrentRole": "⌘↩ 运行当前角色",
+            "ai.tooltip.saveNote": "存笔记",
+            "ai.tooltip.retry": "重试",
+            "ai.stepped.clickToCopy": "点击复制",
+            "ai.stepped.copied": "✓ 已复制",
+            "ai.stepped.generating": "正在思考 / 生成中...",
+            "ai.stepped.inputPlaceholder": "拖入文件/文本或输入后按 ↩ 执行 %@...",
+            "ai.stepped.pasteAndRun": "粘贴并运行"
         ],
         .traditionalChinese: [
             "tab.general": "通用",

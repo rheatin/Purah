@@ -1290,7 +1290,7 @@ struct AIAssistantPluginTests {
         // 1. File test
         let promptWithFile = "Please inspect \(sampleFile.path) for details."
         let (enrichedFile, attachedSummary) = AIAssistantService.enrichPromptWithLocalSkills(promptWithFile, skills: skills)
-        #expect(enrichedFile.contains("[Built-in Skill: Local File Content of '\(sampleFile.path)']"))
+        #expect(enrichedFile.contains("[Attached Local File: '\(sampleFile.path)'"))
         #expect(enrichedFile.contains("Hello Purah Local Skill File Content"))
         #expect(attachedSummary.contains(sampleFile.lastPathComponent))
 
@@ -1304,6 +1304,55 @@ struct AIAssistantPluginTests {
         let (notEnriched, emptySummary) = AIAssistantService.enrichPromptWithLocalSkills(promptWithFile, skills: disabledSkills)
         #expect(notEnriched == promptWithFile)
         #expect(emptySummary.isEmpty)
+    }
+
+    @Test("AIAssistantService smart large file sampling and extractReferencedLocalPaths")
+    func testSmartLargeFileSamplingAndExtractPaths() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+        let largeFile = tmpDir.appendingPathComponent("purah_large_test_log.csv")
+        let row = "ColA,ColB,ColC,Value1234567890\n"
+        let repeatCount = (700 * 1024) / row.utf8.count
+        let content = String(repeating: row, count: repeatCount)
+        try content.write(to: largeFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: largeFile) }
+
+        // Test extractReferencedLocalPaths
+        let prompt = "Please analyze \(largeFile.path) right now."
+        let extracted = AIAssistantService.extractReferencedLocalPaths(in: prompt)
+        #expect(extracted.contains(largeFile.path))
+
+        // Test enrichPromptWithLocalSkills reads sample (> 512KB without skipping!)
+        var skills = AIBuiltInSkillConfig()
+        skills.enableFileReadSkill = true
+        let (enriched, summary) = AIAssistantService.enrichPromptWithLocalSkills(prompt, skills: skills)
+        #expect(enriched.contains("[Attached Local File: '\(largeFile.path)'"))
+        #expect(enriched.contains("ColA,ColB,ColC"))
+        #expect(summary.contains(largeFile.lastPathComponent))
+    }
+
+    @Test("AIAssistantPluginState interactive file access permission flow")
+    func testFileAccessPermissionFlow() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+        let fileA = tmpDir.appendingPathComponent("purah_perm_file_a.txt")
+        try "Content A".write(to: fileA, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: fileA) }
+
+        let storage = ScopedPluginStorage(pluginId: "ai_test_perm_\(UUID().uuidString)")
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_perm_\(UUID().uuidString)")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        #expect(state.pendingPermissionRequest == nil)
+        #expect(!state.isPathAllowed(fileA.path))
+
+        // Sending prompt referencing unapproved path triggers pendingPermissionRequest
+        state.sendPrompt("Inspect \(fileA.path)")
+        #expect(state.pendingPermissionRequest != nil)
+        #expect(state.pendingPermissionRequest?.paths.contains(fileA.path) == true)
+
+        // Approve permission
+        state.approvePendingPermission(allowFolder: false)
+        #expect(state.pendingPermissionRequest == nil)
+        #expect(state.isPathAllowed(fileA.path))
     }
 
     @Test("AIAssistantPluginState MCP server management and persistence")

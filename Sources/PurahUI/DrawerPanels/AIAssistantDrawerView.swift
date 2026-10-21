@@ -49,6 +49,13 @@ public struct AIAssistantSteppedDrawerView: View {
     @Bindable public var state: AIAssistantPluginState
     public let context: PurahPluginContext
 
+    @State private var roleInput: String = ""
+    @State private var roleOutput: String = ""
+    @State private var isRoleRunning: Bool = false
+    @State private var isCopiedFeedback: Bool = false
+    @State private var isSteppedDropTargeted: Bool = false
+    @State private var currentStreamTask: Task<Void, Never>? = nil
+
     public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
         self.role = role
         self.state = state
@@ -67,21 +74,20 @@ public struct AIAssistantSteppedDrawerView: View {
         let isExpanded = context.isExpanded || isPinned
         let barW = CGFloat(context.store.railBarWidth)
         let slotH = context.slotHeight
-        let expandedCardH = max(slotH, 245.0)
+        let cardH = max(slotH, 48.0)
         let drawerW = context.drawerWidth
         let edge = context.edge
         let roleColor = Color(hex: role.colorHex)
         let barRadius = min(barW / 2, 4)
-        let isRunning = state.isStreaming && (state.activeRole?.id == role.id || state.activeQuickAction?.id == role.id || state.selectedRoleId == role.id)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // 1. In-Rail Indicator Bar with flowing light spot when streaming
+            // 1. In-Rail Indicator Bar with flowing light spot when running
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: barRadius)
                     .fill(roleColor.opacity(isExpanded ? 0.96 : 0.75))
                     .frame(width: barW, height: slotH)
 
-                if isRunning {
+                if isRoleRunning {
                     TimelineView(.animation) { timeline in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                         let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
@@ -110,35 +116,387 @@ public struct AIAssistantSteppedDrawerView: View {
             }
             .frame(width: barW, height: slotH)
 
-            // 2. Expanded Floating Role Workbench Card
+            // 2. Expanded Floating Role Stepped Card (1:1 Co-Planar Height)
             ZStack {
-                AIAssistantRoleWorkbenchView(
-                    role: role,
-                    state: state,
-                    store: context.store,
-                    showRoleSwitcher: false,
-                    isPinned: isPinned,
-                    cardHeight: expandedCardH,
-                    onTogglePin: {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                            context.togglePin(subItemId)
+                VStack(alignment: .leading, spacing: 4) {
+                    // Minimal Top Header Strip (16pt tall)
+                    HStack(spacing: 5) {
+                        Image(systemName: role.systemIcon)
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(roleColor)
+
+                        Text(role.title)
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        if role.id == "translate" {
+                            Text("Auto / EN↔ZH")
+                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.60))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(3)
+                        }
+
+                        Spacer()
+
+                        if !roleOutput.isEmpty || !roleInput.isEmpty {
+                            Button {
+                                resetSteppedState()
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(Color.white.opacity(0.65))
+                                    .frame(width: 16, height: 16)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Reset / New Session")
+                        }
+
+                        if isRoleRunning {
+                            Button {
+                                stopSteppedRun()
+                            } label: {
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(Color(hex: "#F87171"))
+                                    .frame(width: 16, height: 16)
+                                    .background(Color(hex: "#EF4444").opacity(0.20))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Stop Generation")
+                        }
+
+                        PurahPinButton(isPinned: isPinned, tintColor: roleColor, size: 16) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                                context.togglePin(subItemId)
+                            }
+                        }
+                        .frame(width: 16, height: 16)
+                    }
+                    .frame(height: 16)
+
+                    // Single Unified Body Box
+                    ZStack(alignment: .bottomTrailing) {
+                        if isRoleRunning && roleOutput.isEmpty {
+                            VStack(spacing: 4) {
+                                AIShimmerSkeletonView(roleColor: roleColor)
+                                    .padding(.horizontal, 6)
+                                    .padding(.top, 2)
+                                Spacer()
+                                Text("ai.stepped.generating".localized)
+                                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                    .foregroundColor(Color.white.opacity(0.60))
+                                    .padding(.bottom, 4)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if !roleOutput.isEmpty {
+                            // Result Ready -> Click anywhere to copy!
+                            ScrollView(.vertical, showsIndicators: false) {
+                                Text(roleOutput)
+                                    .font(.system(size: 10.5, weight: .regular))
+                                    .lineSpacing(2)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(6)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                copyRoleOutput()
+                            }
+
+                            // Subtle bottom-right badge
+                            Text(isCopiedFeedback ? "ai.stepped.copied".localized : "ai.stepped.clickToCopy".localized)
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                .foregroundColor(isCopiedFeedback ? Color(hex: "#10B981") : Color.white.opacity(0.50))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.black.opacity(0.55))
+                                .cornerRadius(3)
+                                .padding(4)
+                                .allowsHitTesting(false)
+                        } else {
+                            // Input / Drop Box
+                            HStack(spacing: 4) {
+                                TextField(
+                                    String(format: "ai.stepped.inputPlaceholder".localized, role.title),
+                                    text: $roleInput
+                                )
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.white)
+                                .onSubmit {
+                                    runSingleTurn(input: roleInput)
+                                }
+
+                                Button {
+                                    if let pb = NSPasteboard.general.string(forType: .string), !pb.isEmpty {
+                                        roleInput = pb
+                                        runSingleTurn(input: pb)
+                                    } else if !roleInput.isEmpty {
+                                        runSingleTurn(input: roleInput)
+                                    }
+                                } label: {
+                                    Image(systemName: roleInput.isEmpty ? "doc.on.clipboard" : "arrow.up.circle.fill")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(roleColor)
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.plain)
+                                .help(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
+                            }
+                            .padding(.horizontal, 8)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
-                )
-
-                if state.isShowingHistoryPanel {
-                    AISessionHistoryManagerView(state: state, store: context.store)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                        .zIndex(20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(hex: "#141720"))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(
+                                isSteppedDropTargeted ? roleColor : roleColor.opacity(0.45),
+                                lineWidth: isSteppedDropTargeted ? 1.6 : 1.0
+                            )
+                    )
+                    .onDrop(of: [.fileURL, .utf8PlainText, .plainText], isTargeted: $isSteppedDropTargeted) { providers in
+                        return handleSteppedDrop(providers: providers)
+                    }
                 }
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(hex: "#181B24").opacity(0.96))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                )
+                .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 4)
             }
-            .frame(width: drawerW, height: expandedCardH)
+            .frame(width: drawerW, height: cardH)
             .offset(x: isExpanded ? (edge == .right ? (-barW - 6) : (barW + 6)) : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
             .opacity(isExpanded ? 1.0 : 0.0)
             .allowsHitTesting(isExpanded)
         }
         .frame(height: slotH, alignment: .top)
         .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+    }
+
+    private func resetSteppedState() {
+        currentStreamTask?.cancel()
+        currentStreamTask = nil
+        isRoleRunning = false
+        roleInput = ""
+        roleOutput = ""
+        isCopiedFeedback = false
+    }
+
+    private func stopSteppedRun() {
+        currentStreamTask?.cancel()
+        currentStreamTask = nil
+        isRoleRunning = false
+    }
+
+    private func copyRoleOutput() {
+        guard !roleOutput.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(roleOutput, forType: .string)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+        withAnimation(.easeInOut(duration: 0.15)) {
+            isCopiedFeedback = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isCopiedFeedback = false
+            }
+        }
+    }
+
+    private func runSingleTurn(input: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        isRoleRunning = true
+        roleOutput = ""
+        currentStreamTask?.cancel()
+
+        let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            trimmed,
+            skills: state.skillConfig,
+            allowedPaths: nil
+        )
+
+        var systemPrompt = role.systemPrompt
+        if role.id == "translate" {
+            if AITargetLanguage.isPrimarilyChinese(trimmed) {
+                systemPrompt = """
+                You are a professional translator. Translate the user's Chinese text into natural, fluent, idiomatic English.
+                CRITICAL RULES:
+                1. Your output MUST be in English ONLY. Do NOT output Chinese.
+                2. Output ONLY the English translation without any explanation, quotes, or conversational filler.
+                """
+            } else {
+                systemPrompt = """
+                You are a professional translator. Translate the user's text into natural, fluent Simplified Chinese (\u{7B80}\u{4F53}\u{4E2D}\u{6587}).
+                CRITICAL RULES:
+                1. Your output MUST be in Simplified Chinese ONLY.
+                2. Output ONLY the Chinese translation without any explanation, quotes, or conversational filler.
+                """
+            }
+        }
+
+        let userMsg = AIChatMessage(
+            role: .user,
+            content: enriched,
+            timestamp: Date(),
+            systemPromptOverride: systemPrompt,
+            roleTitle: role.title,
+            roleId: role.id
+        )
+
+        let provider = state.selectedProvider
+        let apiKey: String? = {
+            switch provider {
+            case .httpOpenAI: return state.openAIAPIKey
+            case .httpAnthropic: return state.anthropicAPIKey
+            default: return nil
+            }
+        }()
+        let endpoint: String? = {
+            switch provider {
+            case .httpOpenAI: return state.openAIBaseURL
+            case .httpOllama: return state.ollamaBaseURL
+            default: return nil
+            }
+        }()
+        let model: String? = {
+            switch provider {
+            case .httpOpenAI: return state.openAIModel
+            case .httpAnthropic: return state.anthropicModel
+            case .httpOllama: return state.ollamaModel
+            default: return nil
+            }
+        }()
+
+        currentStreamTask = Task { @MainActor in
+            do {
+                _ = try await AIAssistantService.shared.streamChat(
+                    messages: [userMsg],
+                    provider: provider,
+                    cliExecutable: state.selectedCLI,
+                    customCLIPath: state.customCLIPath,
+                    customCLIArguments: state.customCLIArguments,
+                    apiKey: apiKey,
+                    endpoint: endpoint,
+                    model: model,
+                    systemPromptOverride: systemPrompt,
+                    onChunk: { chunk in
+                        Task { @MainActor in
+                            self.roleOutput += chunk
+                        }
+                    }
+                )
+            } catch {
+                if !Task.isCancelled {
+                    roleOutput = "Error: \(error.localizedDescription)"
+                }
+            }
+            isRoleRunning = false
+        }
+    }
+
+    private func handleSteppedDrop(providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    let url: URL?
+                    if let directURL = item as? URL {
+                        url = directURL.standardizedFileURL
+                    } else if let data = item as? Data, let pathString = String(data: data, encoding: .utf8) {
+                        url = URL(fileURLWithPath: pathString).standardizedFileURL
+                    } else {
+                        url = nil
+                    }
+                    if let fileURL = url {
+                        let path = fileURL.path
+                        let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+                        let effectiveText = fileText.isEmpty ? path : "\(path)\n\n\(fileText)"
+                        Task { @MainActor in
+                            self.roleInput = path
+                            self.runSingleTurn(input: effectiveText)
+                        }
+                    }
+                }
+                return true
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                let typeId = provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) ? UTType.utf8PlainText.identifier : UTType.plainText.identifier
+                provider.loadItem(forTypeIdentifier: typeId, options: nil) { item, _ in
+                    let text = (item as? String) ?? (item as? Data).flatMap { String(data: $0, encoding: .utf8) }
+                    if let text, !text.isEmpty {
+                        Task { @MainActor in
+                            self.roleInput = text
+                            self.runSingleTurn(input: text)
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        return false
+    }
+}
+
+// MARK: - AI Workbench Split Drop Delegate
+public struct AIWorkbenchSplitDropDelegate: DropDelegate {
+    public let cardHeight: CGFloat
+    public let hasExistingConversation: Bool
+    @Binding public var activeDropZone: AIDropZoneTarget?
+    public let onPerformDrop: ([NSItemProvider], AIDropZoneTarget) -> Bool
+
+    public func validateDrop(info: DropInfo) -> Bool {
+        return true
+    }
+
+    public func dropEntered(info: DropInfo) {
+        updateTarget(for: info)
+    }
+
+    public func dropUpdated(info: DropInfo) -> DropProposal? {
+        updateTarget(for: info)
+        return DropProposal(operation: .copy)
+    }
+
+    private func updateTarget(for info: DropInfo) {
+        if !hasExistingConversation {
+            activeDropZone = .newSession
+        } else {
+            let isTopHalf = info.location.y < (cardHeight * 0.5)
+            activeDropZone = isTopHalf ? .newSession : .followUp
+        }
+    }
+
+    public func dropExited(info: DropInfo) {
+        activeDropZone = nil
+    }
+
+    public func performDrop(info: DropInfo) -> Bool {
+        let target: AIDropZoneTarget
+        if !hasExistingConversation {
+            target = .newSession
+        } else {
+            target = (info.location.y < (cardHeight * 0.5)) ? .newSession : .followUp
+        }
+        activeDropZone = nil
+        let providers = info.itemProviders(for: [.fileURL, .utf8PlainText, .plainText])
+        return onPerformDrop(providers, target)
     }
 }
 
@@ -155,10 +513,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     @FocusState private var isRefineEditorFocused: Bool
     @FocusState private var isSourceEditorFocused: Bool
 
-    @State private var isDropTargeted: Bool = false
-    @State private var isTopDropZoneTargeted: Bool = false
-    @State private var isBottomDropZoneTargeted: Bool = false
-    @State private var isBottomDropTargeted: Bool = false
+    @State private var activeDropZone: AIDropZoneTarget? = nil
     @State private var isHoveringSaveNotes: Bool = false
     @State private var isHoveringRetry: Bool = false
     @State private var inlineInput: String = ""
@@ -225,13 +580,20 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     public var body: some View {
-        Group {
-            if latestResult.isEmpty && !isRoleStreaming {
-                // Stage 1: Input Stage
-                stage1InputView
-            } else {
-                // Stage 2 & 3: Generating & Output Stage
-                stage2And3OutputView
+        VStack(spacing: 0) {
+            if let req = state.pendingPermissionRequest {
+                filePermissionBanner(req: req)
+                    .padding(.bottom, 6)
+            }
+
+            Group {
+                if latestResult.isEmpty && !isRoleStreaming {
+                    // Stage 1: Input Stage
+                    stage1InputView
+                } else {
+                    // Stage 2 & 3: Generating & Output Stage
+                    stage2And3OutputView
+                }
             }
         }
         .padding(showRoleSwitcher ? 0 : 8)
@@ -254,7 +616,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         )
         .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
         .overlay {
-            if isDropTargeted || isTopDropZoneTargeted || isBottomDropZoneTargeted {
+            if activeDropZone != nil {
                 if !latestResult.isEmpty || !sourceText.isEmpty {
                     splitDropOverlayView
                 } else {
@@ -262,33 +624,41 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
         }
-        .onDrop(of: [.utf8PlainText, .plainText, .fileURL], isTargeted: $isDropTargeted) { providers in
-            let target: AIDropZoneTarget = isBottomDropZoneTargeted ? .followUp : .newSession
-            return state.handleDroppedProviders(providers, target: target) {
-                if target == .newSession {
-                    if let dropped = state.stagedDropText, !dropped.isEmpty {
-                        state.currentInputText = dropped
-                        isEditingSource = true
-                        isSourceEditorFocused = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            isSourceEditorFocused = true
-                        }
-                    }
-                } else {
-                    if let dropped = state.stagedDropText, !dropped.isEmpty {
-                        inlineInput = dropped
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                            isRefiningOutput = true
+        .onDrop(
+            of: [.fileURL, .utf8PlainText, .plainText],
+            delegate: AIWorkbenchSplitDropDelegate(
+                cardHeight: showRoleSwitcher ? cardHeight : max(cardHeight, 245.0),
+                hasExistingConversation: !latestResult.isEmpty || !sourceText.isEmpty,
+                activeDropZone: $activeDropZone,
+                onPerformDrop: { providers, target in
+                    return state.handleDroppedProviders(providers, target: target) {
+                        if target == .newSession {
+                            if let dropped = state.stagedDropText, !dropped.isEmpty {
+                                state.currentInputText = dropped
+                            }
                             isEditingSource = false
-                        }
-                        isRefineEditorFocused = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isRefiningOutput = false
+                            isSourceEditorFocused = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                isSourceEditorFocused = true
+                            }
+                        } else {
+                            if let dropped = state.stagedDropText, !dropped.isEmpty {
+                                inlineInput = dropped + " "
+                            }
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                                isRefiningOutput = true
+                                isEditingSource = false
+                            }
                             isRefineEditorFocused = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                isRefineEditorFocused = true
+                            }
                         }
                     }
                 }
-            }
-        }
+            )
+        )
         .onAppear {
             if state.currentInputText.isEmpty {
                 if let staged = state.stagedDropText, !staged.isEmpty {
@@ -306,6 +676,80 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
         }
+    }
+
+    // MARK: - File Permission Banner
+    @ViewBuilder
+    private func filePermissionBanner(req: PendingFilePermissionRequest) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(Color(hex: "#F59E0B"))
+
+                Text("\("ai.permission.requestTitle".localized) \(req.paths.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+
+            Text(req.paths.joined(separator: ", "))
+                .font(.system(size: 8.5, design: .monospaced))
+                .foregroundColor(Color.white.opacity(0.60))
+                .lineLimit(1)
+
+            HStack(spacing: 5) {
+                Button {
+                    state.approvePendingPermission(allowFolder: false)
+                } label: {
+                    Text("ai.permission.allow".localized)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(hex: "#0F111A"))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color(hex: "#10B981"))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    state.approvePendingPermission(allowFolder: true)
+                } label: {
+                    Text("ai.permission.allowFolder".localized)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.12))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    state.denyPendingPermission()
+                } label: {
+                    Text("ai.permission.deny".localized)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(hex: "#1F1B12").opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(hex: "#F59E0B").opacity(0.50), lineWidth: 1.0)
+        )
     }
 
     // MARK: - Drop Target Overlay
@@ -334,21 +778,24 @@ public struct AIAssistantRoleWorkbenchView: View {
     // MARK: - Split 50/50 Dual-Zone Drop Overlay
     @ViewBuilder
     private var splitDropOverlayView: some View {
+        let isTopTargeted = activeDropZone == .newSession
+        let isBottomTargeted = activeDropZone == .followUp
+
         VStack(spacing: 8) {
             // 1. Top 50% Box: New Session
             ZStack {
                 RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                    .fill(isTopDropZoneTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+                    .fill(isTopTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
                 RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
                     .strokeBorder(
-                        style: StrokeStyle(lineWidth: isTopDropZoneTargeted ? 2.0 : 1.2, dash: [6, 4])
+                        style: StrokeStyle(lineWidth: isTopTargeted ? 2.0 : 1.2, dash: [6, 4])
                     )
-                    .foregroundColor(isTopDropZoneTargeted ? roleColor : Color.white.opacity(0.35))
+                    .foregroundColor(isTopTargeted ? roleColor : Color.white.opacity(0.35))
 
                 VStack(spacing: 5) {
                     Image(systemName: "plus.bubble.fill")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(isTopDropZoneTargeted ? roleColor : Color.white.opacity(0.85))
+                        .foregroundColor(isTopTargeted ? roleColor : Color.white.opacity(0.85))
                     Text("ai.drop.newSessionZone".localized)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
@@ -357,34 +804,21 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onDrop(of: [.fileURL, .utf8PlainText, .plainText], isTargeted: $isTopDropZoneTargeted) { providers in
-                return state.handleDroppedProviders(providers, target: .newSession) {
-                    if let dropped = state.stagedDropText, !dropped.isEmpty {
-                        state.currentInputText = dropped
-                        isEditingSource = true
-                        isSourceEditorFocused = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            isSourceEditorFocused = true
-                        }
-                    }
-                }
-            }
 
             // 2. Bottom 50% Box: Follow-up / Refine
             ZStack {
                 RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                    .fill(isBottomDropZoneTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+                    .fill(isBottomTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
                 RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
                     .strokeBorder(
-                        style: StrokeStyle(lineWidth: isBottomDropZoneTargeted ? 2.0 : 1.2, dash: [6, 4])
+                        style: StrokeStyle(lineWidth: isBottomTargeted ? 2.0 : 1.2, dash: [6, 4])
                     )
-                    .foregroundColor(isBottomDropZoneTargeted ? roleColor : Color.white.opacity(0.35))
+                    .foregroundColor(isBottomTargeted ? roleColor : Color.white.opacity(0.35))
 
                 VStack(spacing: 5) {
                     Image(systemName: "bubble.left.and.text.bubble.right.fill")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(isBottomDropZoneTargeted ? roleColor : Color.white.opacity(0.85))
+                        .foregroundColor(isBottomTargeted ? roleColor : Color.white.opacity(0.85))
                     Text("ai.drop.followUpZone".localized)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
@@ -393,47 +827,27 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onDrop(of: [.fileURL, .utf8PlainText, .plainText], isTargeted: $isBottomDropZoneTargeted) { providers in
-                return state.handleDroppedProviders(providers, target: .followUp) {
-                    if let dropped = state.stagedDropText, !dropped.isEmpty {
-                        inlineInput = dropped
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                            isRefiningOutput = true
-                            isEditingSource = false
-                        }
-                        isRefineEditorFocused = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            isRefineEditorFocused = true
-                        }
-                    }
-                }
-            }
         }
         .padding(6)
         .background(Color.black.opacity(0.60))
         .cornerRadius(showRoleSwitcher ? 10 : 14)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Stage 1: Input Stage (When latestResult.isEmpty && !isRoleStreaming)
     private var stage1InputView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // 1. Top: Interactive Source Content Box
-            ZStack(alignment: .bottomTrailing) {
-                ZStack(alignment: .center) {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.03))
-
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                        .foregroundColor(isDropTargeted ? roleColor : Color.white.opacity(0.18))
-
+            // 1. Top: Interactive Source Content Box (Unified with Follow-up style)
+            VStack(alignment: .leading, spacing: 5) {
+                // Inner recessed well around TextEditor
+                ZStack(alignment: .topLeading) {
                     TextEditor(text: $state.currentInputText)
+                        .focused($isSourceEditorFocused)
                         .font(.system(size: 11.5, weight: .regular))
                         .foregroundColor(.white)
                         .scrollContentBackground(.hidden)
                         .background(Color.clear)
-                        .padding(8)
+                        .padding(6)
 
                     if state.currentInputText.isEmpty {
                         VStack(spacing: 5) {
@@ -446,11 +860,23 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
                     }
                 }
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                )
 
+                // Bottom status row inside card
                 HStack(spacing: 5) {
+                    Text("ai.stage1.runCurrentRole".localized)
+                        .font(.system(size: 8.5))
+                        .foregroundColor(Color.white.opacity(0.45))
+
+                    Spacer()
+
                     if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button {
                             state.currentInputText = ""
@@ -488,9 +914,32 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .buttonStyle(.plain)
                         .help("Pin Drawer")
                     }
+
+                    // Hidden button for Command+Return shortcut
+                    Button {
+                        let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !text.isEmpty {
+                            state.sendPrompt(text, role: role, originalSelection: text)
+                        }
+                    } label: {
+                        EmptyView()
+                    }
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .buttonStyle(.plain)
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
                 }
-                .padding(8)
+                .frame(height: 20)
             }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(hex: "#141720"))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(roleColor.opacity(0.55), lineWidth: 1.2)
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 2. Bottom: Available Roles Bar
@@ -518,18 +967,17 @@ public struct AIAssistantRoleWorkbenchView: View {
                                     Text(r.title)
                                         .font(.system(size: 10, weight: (hasInput || isSelected) ? .bold : .medium, design: .rounded))
                                 }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(hasInput ? pillColor.opacity(0.24) : (isSelected ? pillColor.opacity(0.18) : Color.white.opacity(0.06)))
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(isSelected ? pillColor.opacity(0.30) : Color.white.opacity(0.08))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .stroke(hasInput ? pillColor.opacity(0.85) : (isSelected ? pillColor.opacity(0.60) : Color.white.opacity(0.12)), lineWidth: hasInput ? 1.2 : 1.0)
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .stroke(isSelected ? pillColor : Color.white.opacity(0.12), lineWidth: 0.8)
                                 )
-                                .foregroundColor(hasInput ? pillColor : (isSelected ? pillColor : Color.white.opacity(0.70)))
-                                .shadow(color: hasInput ? pillColor.opacity(0.35) : .clear, radius: 4, x: 0, y: 1)
+                                .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.85))
                             }
                             .buttonStyle(.plain)
                         }
@@ -549,9 +997,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .help("ai.topbar.configureRoles".localized)
                     }
                     .padding(.horizontal, 1)
-                    .padding(.vertical, 2)
                 }
             }
+            .frame(height: 38)
         }
     }
 
@@ -591,28 +1039,6 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             // 3. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
-                .overlay {
-                    if isBottomDropTargeted {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                            .foregroundColor(roleColor)
-                            .background(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(roleColor.opacity(0.12))
-                            )
-                    }
-                }
-                .onDrop(of: [UTType.utf8PlainText, UTType.plainText, UTType.fileURL], isTargeted: $isBottomDropTargeted) { providers in
-                    state.handleDroppedProviders(providers, target: .followUp) {
-                        if let dropped = state.stagedDropText, !dropped.isEmpty {
-                            inlineInput = dropped
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                                isRefiningOutput = true
-                                isEditingSource = false
-                            }
-                        }
-                    }
-                }
         }
     }
 
@@ -1076,33 +1502,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 4)
             }
-
-            Spacer(minLength: 2)
-
-            Button {
-                state.stopStreaming()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundColor(Color(hex: "#F87171"))
-                    Text("ai.status.generatingStop".localized)
-                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        .foregroundColor(Color(hex: "#FCA5A5"))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3.5)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color(hex: "#EF4444").opacity(0.18))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .stroke(Color(hex: "#EF4444").opacity(0.35), lineWidth: 0.8)
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Stop Generation")
         }
     }
 
@@ -1230,22 +1629,23 @@ public struct AIAssistantRoleWorkbenchView: View {
                         state.stopStreaming()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "stop.circle.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(Color(hex: "#F87171"))
-                            Text("ai.status.generatingStop".localized)
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text("ai.action.stop".localized)
                                 .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                                .foregroundColor(Color(hex: "#FCA5A5"))
                         }
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .foregroundColor(Color(hex: "#FCA5A5"))
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color(hex: "#EF4444").opacity(0.20))
+                                .fill(Color(hex: "#EF4444").opacity(0.25))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color(hex: "#EF4444").opacity(0.40), lineWidth: 0.9)
+                                .stroke(Color(hex: "#EF4444").opacity(0.50), lineWidth: 0.9)
                         )
                     }
                     .buttonStyle(.plain)
@@ -1265,6 +1665,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                             Text(state.capturedSelection != nil ? "ai.action.replaceSelection".localized : "ai.action.copyResult".localized)
                                 .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         }
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(
@@ -1295,6 +1697,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 6, weight: .bold))
                     }
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 7)
                     .frame(height: 24)
                     .background(
@@ -1312,28 +1716,41 @@ public struct AIAssistantRoleWorkbenchView: View {
                 Button {
                     saveToQuickNotes()
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "note.text.badge.plus")
-                            .font(.system(size: 9))
-                        if isHoveringSaveNotes {
-                            Text("ai.action.saveToNotesShort".localized)
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .transition(.opacity.combined(with: .move(edge: .leading)))
-                        }
-                    }
-                    .foregroundColor(Color.white.opacity(0.80))
-                    .padding(.horizontal, isHoveringSaveNotes ? 6 : 0)
-                    .frame(height: 24)
-                    .frame(minWidth: 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(isHoveringSaveNotes ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
-                    )
+                    Image(systemName: "note.text.badge.plus")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.white.opacity(0.80))
+                        .frame(width: 24, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isHoveringSaveNotes ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
+                        )
                 }
                 .buttonStyle(.plain)
+                .frame(width: 24, height: 24)
                 .onHover { isHovering in
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isHoveringSaveNotes = isHovering
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if isHoveringSaveNotes {
+                        Text("ai.tooltip.saveNote".localized)
+                            .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color(hex: "#10131A").opacity(0.95))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                            )
+                            .fixedSize()
+                            .offset(y: -26)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
                     }
                 }
                 .help("ai.action.saveToNotes".localized)
@@ -1342,28 +1759,41 @@ public struct AIAssistantRoleWorkbenchView: View {
                 Button {
                     retryGeneration()
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 9))
-                        if isHoveringRetry {
-                            Text("ai.action.retry".localized)
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .transition(.opacity.combined(with: .move(edge: .leading)))
-                        }
-                    }
-                    .foregroundColor(Color.white.opacity(0.80))
-                    .padding(.horizontal, isHoveringRetry ? 6 : 0)
-                    .frame(height: 24)
-                    .frame(minWidth: 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(isHoveringRetry ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
-                    )
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.white.opacity(0.80))
+                        .frame(width: 24, height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isHoveringRetry ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
+                        )
                 }
                 .buttonStyle(.plain)
+                .frame(width: 24, height: 24)
                 .onHover { isHovering in
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isHoveringRetry = isHovering
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if isHoveringRetry {
+                        Text("ai.tooltip.retry".localized)
+                            .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color(hex: "#10131A").opacity(0.95))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                            )
+                            .fixedSize()
+                            .offset(y: -26)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
                     }
                 }
                 .help("ai.action.retry".localized)

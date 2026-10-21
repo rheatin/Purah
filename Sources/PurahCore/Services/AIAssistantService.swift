@@ -1192,10 +1192,55 @@ public final class AIAssistantService {
         }
     }
 
-    // MARK: - Built-in Local Skills
+    // MARK: - Built-in Local Skills & File Access
+    public nonisolated static func extractReferencedLocalPaths(in text: String) -> [String] {
+        let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return []
+        }
+
+        let nsPrompt = text as NSString
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsPrompt.length))
+        var paths: [String] = []
+        var seen = Set<String>()
+
+        for match in matches {
+            let rawPath = nsPrompt.substring(with: match.range)
+            var expandedPath = (rawPath as NSString).expandingTildeInPath
+
+            var isDir: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
+                let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
+                let exp = (trimmed as NSString).expandingTildeInPath
+                if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
+                    expandedPath = exp
+                } else {
+                    continue
+                }
+            }
+
+            if !seen.contains(expandedPath) {
+                seen.insert(expandedPath)
+                paths.append(expandedPath)
+            }
+        }
+        return paths
+    }
+
+    public nonisolated static func isPathPermitted(_ path: String, allowedPaths: Set<String>?) -> Bool {
+        guard let allowedPaths else { return true }
+        if allowedPaths.contains(path) { return true }
+        for allowed in allowedPaths {
+            let prefix = allowed.hasSuffix("/") ? allowed : allowed + "/"
+            if path.hasPrefix(prefix) { return true }
+        }
+        return false
+    }
+
     public nonisolated static func enrichPromptWithLocalSkills(
         _ prompt: String,
-        skills: AIBuiltInSkillConfig
+        skills: AIBuiltInSkillConfig,
+        allowedPaths: Set<String>? = nil
     ) -> (enrichedPrompt: String, attachedFilesSummary: [String]) {
         guard skills.enableFileReadSkill || skills.enableDirectoryListSkill else {
             return (prompt, [])
@@ -1234,14 +1279,28 @@ public final class AIAssistantService {
             guard !processedPaths.contains(expandedPath) else { continue }
             processedPaths.insert(expandedPath)
 
+            // Permission guard if allowedPaths is provided
+            guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
+                continue
+            }
+
             if !isDir.boolValue && skills.enableFileReadSkill {
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath),
-                   let fileSize = attrs[.size] as? Int64,
-                   fileSize <= 512 * 1024,
-                   let data = try? Data(contentsOf: URL(fileURLWithPath: expandedPath), options: .mappedIfSafe),
-                   let fileContent = String(data: data, encoding: .utf8) {
-                    let truncated = String(fileContent.prefix(24_000))
-                    enrichedPrompt += "\n\n[Built-in Skill: Local File Content of '\(expandedPath)']:\n```\n\(truncated)\n```"
+                let url = URL(fileURLWithPath: expandedPath)
+                let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
+                let fileSize = (attrs?[.size] as? Int64) ?? 0
+                let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+
+                var sampleContent = ""
+                if let handle = try? FileHandle(forReadingFrom: url) {
+                    defer { try? handle.close() }
+                    if let data = try? handle.read(upToCount: 65_536) {
+                        let decoded = String(decoding: data, as: UTF8.self)
+                        sampleContent = String(decoded.prefix(16_000))
+                    }
+                }
+
+                if !sampleContent.isEmpty {
+                    enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
                     attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
                 }
             } else if isDir.boolValue && skills.enableDirectoryListSkill {
