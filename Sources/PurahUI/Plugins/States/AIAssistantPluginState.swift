@@ -1274,6 +1274,15 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     // MARK: - Drag & Drop Ingestion
+
+    /// Synchronous ingestion of the current drag pasteboard.
+    ///
+    /// Drop destinations must read `NSPasteboard(name: .drag)` during `performDrop`; the drag
+    /// pasteboard is torn down as soon as the callback returns, so asynchronous
+    /// `NSItemProvider.loadItem` work is only a fallback (see `handleDroppedProviders`).
+    ///
+    /// Accepted payloads, in priority order: file URLs, raw image data (Finder screenshots and
+    /// browser images), web URLs, then plain text — mirroring the Drop Shelf ingestion pipeline.
     @discardableResult
     public func ingestDropFromDrag(
         pasteboard: NSPasteboard = NSPasteboard(name: .drag),
@@ -1283,54 +1292,94 @@ public final class AIAssistantPluginState: Sendable {
         if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !fileURLs.isEmpty {
             var paths: [String] = []
+            var newAttachments: [AIAttachmentItem] = []
             for fileURL in fileURLs {
                 let filePath = fileURL.standardizedFileURL.path
                 self.allowPath(filePath)
                 if let attachment = AIAssistantService.shared.makeAttachment(from: fileURL) {
-                    if stagedAttachments.count < AIAttachmentBudget.maxAttachments {
-                        stagedAttachments.append(attachment)
-                    }
+                    newAttachments.append(attachment)
                 }
                 paths.append(filePath)
             }
             let pathsText = paths.map { "\($0) " }.joined()
+            stageDrop(text: pathsText, attachments: newAttachments, target: target)
+            return true
+        }
 
-            if target == .newSession {
-                self.createNewSession()
-                self.currentInputText = pathsText
-                self.stagedDropText = pathsText
-                self.isEditingSource = false
-                self.isRefiningOutput = false
-                self.focusRequestCounter += 1
-            } else {
-                self.refineInputText = pathsText
-                self.isEditingSource = false
-                self.isRefiningOutput = true
-                self.focusRequestCounter += 1
-            }
+        if let imageURL = Self.writeTransientImageFromPasteboard(pasteboard),
+           let attachment = AIAssistantService.shared.makeAttachment(from: imageURL) {
+            self.allowPath(imageURL.path)
+            stageDrop(text: "\(imageURL.path) ", attachments: [attachment], target: target)
+            return true
+        }
+
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           let webURL = urls.first(where: { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }) {
+            stageDrop(text: webURL.absoluteString, attachments: [], target: target)
             return true
         }
 
         if let str = pasteboard.string(forType: .string), !str.isEmpty {
-            if target == .newSession {
-                createNewSession()
-                currentInputText = str
-                stagedDropText = str
-                isEditingSource = false
-                isRefiningOutput = false
-                focusRequestCounter += 1
-            } else {
-                refineInputText = str
-                isEditingSource = false
-                isRefiningOutput = true
-                focusRequestCounter += 1
-            }
+            stageDrop(text: str, attachments: [], target: target)
             return true
         }
 
         return handleDroppedProviders(providers, target: target)
     }
 
+    /// Routes staged drop content to the New Session or Follow-up slot.
+    ///
+    /// Attachments are re-applied after `createNewSession()` because starting a session resets
+    /// `stagedAttachments`; without this the files were dropped but silently detached.
+    private func stageDrop(text: String, attachments: [AIAttachmentItem], target: AIDropZoneTarget) {
+        self.stopStreaming()
+        let budgetSlots = max(AIAttachmentBudget.maxAttachments - attachments.count, 0)
+
+        if target == .newSession {
+            self.createNewSession()
+            self.stagedAttachments = Array(attachments.prefix(AIAttachmentBudget.maxAttachments))
+            self.currentInputText = text
+            self.stagedDropText = text
+            self.isEditingSource = false
+            self.isRefiningOutput = false
+            self.isAwaitingRoleForDroppedContent = true
+        } else {
+            if self.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
+                self.stagedAttachments.append(contentsOf: attachments.prefix(budgetSlots))
+            }
+            self.refineInputText = text
+            self.stagedDropText = text
+            self.isEditingSource = false
+            self.isRefiningOutput = true
+            self.isAwaitingRoleForDroppedContent = false
+        }
+        self.focusRequestCounter += 1
+    }
+
+    /// Persists raw drag image data (`.png` / `.tiff`) into the plugin cache so it can be attached.
+    private static func writeTransientImageFromPasteboard(_ pasteboard: NSPasteboard) -> URL? {
+        let pngData: Data?
+        if let png = pasteboard.data(forType: .png) {
+            pngData = png
+        } else if let tiff = pasteboard.data(forType: .tiff) {
+            pngData = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) ?? tiff
+        } else {
+            pngData = nil
+        }
+        guard let data = pngData, !data.isEmpty else { return nil }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PurahAIDrops", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileURL = directory.appendingPathComponent("Drop_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).png")
+        guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        return fileURL
+    }
+
+    /// Asynchronous fallback for sources that only vend `NSItemProvider`s.
+    ///
+    /// Providers load on a background queue, so staging is funneled back through `stageDrop`
+    /// (which re-applies attachments after a new session is created).
     @discardableResult
     public func handleDroppedProviders(
         _ providers: [NSItemProvider],
@@ -1338,101 +1387,68 @@ public final class AIAssistantPluginState: Sendable {
         onStaged: (@MainActor () -> Void)? = nil
     ) -> Bool {
         var handled = false
+
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 handled = true
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { [weak self] item, _ in
-                    let url: URL?
-                    if let directURL = item as? URL {
-                        url = directURL.standardizedFileURL
-                    } else if let data = item as? Data, let pathString = String(data: data, encoding: .utf8) {
-                        if pathString.hasPrefix("file://"), let parsed = URL(string: pathString) {
-                            url = parsed.standardizedFileURL
-                        } else {
-                            url = URL(fileURLWithPath: pathString).standardizedFileURL
-                        }
-                    } else {
-                        url = nil
-                    }
-                    if let rawURL = url {
-                        let fileURL = rawURL.standardizedFileURL
-                        let filePath = fileURL.path
-                        let fileSize: Int64 = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
-                        let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
-                        let title = "\(filePath) (\(sizeStr))"
+                    guard let fileURL = Self.resolveFileURL(from: item) else { return }
+                    let filePath = fileURL.standardizedFileURL.path
+                    let fileSize: Int64 = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
+                    let attachment = AIAssistantService.shared.makeAttachment(from: fileURL)
 
-                        Task { @MainActor [weak self] in
-                            guard let self else { return }
-                            self.allowPath(filePath)
-                            self.stopStreaming()
-                            if let attachment = AIAssistantService.shared.makeAttachment(from: fileURL) {
-                                if self.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
-                                    self.stagedAttachments.append(attachment)
-                                }
-                            }
-                            self.stagedDropTitle = title
-
-                            if target == .newSession {
-                                self.createNewSession()
-                                self.currentInputText = "\(filePath) "
-                                self.stagedDropText = "\(filePath) "
-                                self.isEditingSource = false
-                                self.isRefiningOutput = false
-                                self.focusRequestCounter += 1
-                                self.isAwaitingRoleForDroppedContent = true
-                            } else {
-                                self.refineInputText = "\(filePath) "
-                                self.stagedDropText = "\(filePath) "
-                                self.isEditingSource = false
-                                self.isRefiningOutput = true
-                                self.focusRequestCounter += 1
-                                self.isAwaitingRoleForDroppedContent = false
-                            }
-                            onStaged?()
-                        }
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.allowPath(filePath)
+                        self.stagedDropTitle = "\(filePath) (\(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)))"
+                        self.stageDrop(
+                            text: "\(filePath) ",
+                            attachments: attachment.map { [$0] } ?? [],
+                            target: target
+                        )
+                        onStaged?()
                     }
                 }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier)
+                        || provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                 handled = true
-                let typeId = provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier) ? UTType.utf8PlainText.identifier : UTType.plainText.identifier
+                let typeId = provider.hasItemConformingToTypeIdentifier(UTType.utf8PlainText.identifier)
+                    ? UTType.utf8PlainText.identifier
+                    : UTType.plainText.identifier
                 provider.loadItem(forTypeIdentifier: typeId, options: nil) { [weak self] item, _ in
                     let text: String?
-                    if let s = item as? String {
-                        text = s
-                    } else if let data = item as? Data, let s = String(data: data, encoding: .utf8) {
-                        text = s
+                    if let string = item as? String {
+                        text = string
+                    } else if let data = item as? Data {
+                        text = String(data: data, encoding: .utf8)
                     } else {
                         text = nil
                     }
-                    if let str = text, !str.isEmpty {
-                        let title = "Dropped Text (\(str.count) chars)"
-                        Task { @MainActor [weak self] in
-                            guard let self else { return }
-                            self.stopStreaming()
-                            self.stagedDropTitle = title
-                            self.stagedDropText = str
+                    guard let str = text, !str.isEmpty else { return }
 
-                            if target == .newSession {
-                                self.createNewSession()
-                                self.currentInputText = str
-                                self.isEditingSource = false
-                                self.isRefiningOutput = false
-                                self.focusRequestCounter += 1
-                                self.isAwaitingRoleForDroppedContent = true
-                            } else {
-                                self.refineInputText = str
-                                self.isEditingSource = false
-                                self.isRefiningOutput = true
-                                self.focusRequestCounter += 1
-                                self.isAwaitingRoleForDroppedContent = false
-                            }
-                            onStaged?()
-                        }
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.stagedDropTitle = "Dropped Text (\(str.count) chars)"
+                        self.stageDrop(text: str, attachments: [], target: target)
+                        onStaged?()
                     }
                 }
             }
         }
         return handled
+    }
+
+    private nonisolated static func resolveFileURL(from item: NSSecureCoding?) -> URL? {
+        if let directURL = item as? URL {
+            return directURL.standardizedFileURL
+        }
+        if let data = item as? Data, let pathString = String(data: data, encoding: .utf8) {
+            if pathString.hasPrefix("file://"), let parsed = URL(string: pathString) {
+                return parsed.standardizedFileURL
+            }
+            return URL(fileURLWithPath: pathString).standardizedFileURL
+        }
+        return nil
     }
 
     // MARK: - Markdown Export
