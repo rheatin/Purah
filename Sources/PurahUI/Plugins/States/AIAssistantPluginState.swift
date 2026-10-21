@@ -1395,10 +1395,9 @@ public final class AIAssistantPluginState: Sendable {
                     guard let fileURL = Self.resolveFileURL(from: item) else { return }
                     let filePath = fileURL.standardizedFileURL.path
                     let fileSize: Int64 = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
-                    let attachment = AIAssistantService.shared.makeAttachment(from: fileURL)
-
                     Task { @MainActor [weak self] in
                         guard let self else { return }
+                        let attachment = AIAssistantService.shared.makeAttachment(from: fileURL)
                         self.allowPath(filePath)
                         self.stagedDropTitle = "\(filePath) (\(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)))"
                         self.stageDrop(
