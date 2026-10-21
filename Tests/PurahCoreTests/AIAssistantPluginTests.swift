@@ -1512,4 +1512,53 @@ struct AIAssistantPluginTests {
         #expect(state.isRefiningOutput == true)
         #expect(state.focusRequestCounter == initialFocus + 2)
     }
+
+    @Test("Dropped file keeps its attachment when the drop starts a new session")
+    func testDroppedFileAttachmentSurvivesNewSessionReset() throws {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_drop_file", defaults: UserDefaults(suiteName: "test_ai_drop_file_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_drop_file")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        // Starting a session resets `stagedAttachments`, so the drop payload has to be re-applied
+        // after `createNewSession()` or the file is silently dropped from the request.
+        state.stagedAttachments = []
+
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_drop_\(UUID().uuidString).txt")
+        try "attachment payload".write(to: fileURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        pb.writeObjects([fileURL as NSURL])
+
+        let handled = state.ingestDropFromDrag(pasteboard: pb, target: .newSession)
+
+        #expect(handled == true)
+        #expect(state.currentInputText.contains(fileURL.path))
+        #expect(state.stagedAttachments.compactMap(\.filePath) == [fileURL.path])
+    }
+
+    @Test("Dropped file stages into the follow-up composer with its attachment")
+    func testDroppedFileAppendsToFollowUpStaging() throws {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_drop_followup", defaults: UserDefaults(suiteName: "test_ai_drop_followup_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_drop_followup")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_follow_\(UUID().uuidString).txt")
+        try "follow-up payload".write(to: fileURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        pb.writeObjects([fileURL as NSURL])
+
+        let handled = state.ingestDropFromDrag(pasteboard: pb, target: .followUp)
+
+        #expect(handled == true)
+        #expect(state.isRefiningOutput == true)
+        #expect(state.refineInputText.contains(fileURL.path))
+        #expect(state.stagedAttachments.compactMap(\.filePath) == [fileURL.path])
+    }
 }
