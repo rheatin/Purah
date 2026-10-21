@@ -287,7 +287,7 @@ public final class AIAssistantService {
         }
 
         return AIAttachmentItem(
-            name: url.lastPathComponent,
+            name: url.path,
             kind: kind,
             filePath: url.path,
             textPreview: textPreview,

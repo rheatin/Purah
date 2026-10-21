@@ -106,7 +106,7 @@ struct AIAssistantPluginTests {
 
         let attachment = AIAssistantService.shared.makeAttachment(from: tempFile)
         #expect(attachment != nil)
-        #expect(attachment?.name == tempFile.lastPathComponent)
+        #expect(attachment?.name == tempFile.path)
         #expect(attachment?.kind == .text)
         #expect(attachment?.textPreview?.contains("Hello Purah AI") == true)
     }

@@ -1154,18 +1154,31 @@ public final class AIAssistantPluginState: Sendable {
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { [weak self] item, _ in
                     let url: URL?
                     if let directURL = item as? URL {
-                        url = directURL
+                        url = directURL.standardizedFileURL
                     } else if let data = item as? Data, let pathString = String(data: data, encoding: .utf8) {
-                        url = URL(fileURLWithPath: pathString)
+                        if pathString.hasPrefix("file://"), let parsed = URL(string: pathString) {
+                            url = parsed.standardizedFileURL
+                        } else {
+                            url = URL(fileURLWithPath: pathString).standardizedFileURL
+                        }
                     } else {
                         url = nil
                     }
-                    if let fileURL = url {
+                    if let rawURL = url {
+                        let fileURL = rawURL.standardizedFileURL
+                        let filePath = fileURL.path
                         let fileSize: Int64 = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
                         let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
-                        let fileName = fileURL.lastPathComponent
-                        let title = "\(fileName) (\(sizeStr))"
+                        let title = "\(filePath) (\(sizeStr))"
                         let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+                        let trimmed = fileText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let effectiveText: String = {
+                            if !trimmed.isEmpty {
+                                return "\(filePath)\n\n\(trimmed)"
+                            } else {
+                                return filePath
+                            }
+                        }()
 
                         Task { @MainActor [weak self] in
                             guard let self else { return }
@@ -1178,7 +1191,6 @@ public final class AIAssistantPluginState: Sendable {
                                     self.stagedAttachments.append(attachment)
                                 }
                             }
-                            let effectiveText = fileText.isEmpty ? (self.stagedAttachments.last?.textPreview ?? fileName) : fileText
                             self.stagedDropText = effectiveText
                             self.stagedDropTitle = title
 
