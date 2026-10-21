@@ -57,7 +57,7 @@ public final class AIAssistantService {
         if trimmed.isEmpty {
             return "ai.lang.autoToZh".localized
         }
-        let hasChinese = AITargetLanguage.containsCJK(trimmed)
+        let hasChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
         if roleId == "translate" {
             return hasChinese ? "ai.lang.zhToEn".localized : "ai.lang.enToZh".localized
         } else if roleId == "polish" || roleId == "grammar" {

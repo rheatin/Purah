@@ -1761,35 +1761,35 @@ public final class PurahWorkspaceStore {
                         let aboveGaps = Double(max(aboveCount - 1, 0)) * clusterGap
                         let minAboveSum = (0..<aboveCount).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                         let aboveNetSpace = max(anchorStartY - clusterGap - safeTop - aboveGaps, minAboveSum)
-                        let aboveWeightSum = max((0..<aboveCount).reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
-                        var aboveSpans = (0..<aboveCount).map { i in
-                            let minH = max(18.0, Double(clusters[i].count) * 18.0)
-                            return min(max(aboveNetSpace * (clusterWeights[i] / aboveWeightSum), minH), clusterMaxVisuals[i])
-                        }
-                        let aboveSum = aboveSpans.reduce(0.0, +)
-                        if aboveSum > aboveNetSpace && aboveSum > 0 {
-                            let scale = aboveNetSpace / aboveSum
-                            aboveSpans = aboveSpans.map { $0 * scale }
-                        } else if aboveSum < aboveNetSpace {
-                            let leftover = aboveNetSpace - aboveSum
-                            let uncapped = (0..<aboveCount).filter { aboveSpans[$0] < clusterMaxVisuals[$0] - 0.5 }
-                            if !uncapped.isEmpty {
-                                let uncappedWeight = max(uncapped.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
-                                for i in uncapped {
-                                    aboveSpans[i] = min(aboveSpans[i] + leftover * (clusterWeights[i] / uncappedWeight), clusterMaxVisuals[i])
-                                }
+                        let idleAboveSum = (0..<aboveCount).reduce(0.0) { $0 + idleClusterSpans[$1] }
+
+                        if idleAboveSum <= aboveNetSpace {
+                            let aboveSpans = (0..<aboveCount).map { idleClusterSpans[$0] }
+                            var curY = safeTop
+                            for i in 0..<aboveCount {
+                                clusterSpans[i] = aboveSpans[i]
+                                let remainingNeeded = ((i + 1)..<aboveCount).reduce(0.0) { $0 + aboveSpans[$1] + clusterGap } + aboveSpans[i]
+                                let targetY = min(max(idleClusterStartYs[i], curY), anchorStartY - clusterGap - remainingNeeded)
+                                clusterStartYs[i] = targetY
+                                curY = targetY + aboveSpans[i] + clusterGap
                             }
-                            let finalAboveSum = aboveSpans.reduce(0.0, +)
-                            if finalAboveSum < aboveNetSpace && aboveCount > 0 {
-                                let extraEach = (aboveNetSpace - finalAboveSum) / Double(aboveCount)
-                                for i in 0..<aboveCount { aboveSpans[i] += extraEach }
+                        } else {
+                            let scale = aboveNetSpace / max(idleAboveSum, 0.0001)
+                            var aboveSpans = (0..<aboveCount).map { i in
+                                let minH = max(18.0, Double(clusters[i].count) * 18.0)
+                                return max(idleClusterSpans[i] * scale, minH)
                             }
-                        }
-                        var curY = safeTop
-                        for i in 0..<aboveCount {
-                            clusterSpans[i] = aboveSpans[i]
-                            clusterStartYs[i] = curY
-                            curY += aboveSpans[i] + clusterGap
+                            let currentSum = aboveSpans.reduce(0.0, +)
+                            if currentSum > aboveNetSpace && currentSum > 0 {
+                                let secondScale = aboveNetSpace / currentSum
+                                aboveSpans = aboveSpans.map { $0 * secondScale }
+                            }
+                            var curY = safeTop
+                            for i in 0..<aboveCount {
+                                clusterSpans[i] = aboveSpans[i]
+                                clusterStartYs[i] = curY
+                                curY += aboveSpans[i] + clusterGap
+                            }
                         }
                     }
 
@@ -1799,36 +1799,33 @@ public final class PurahWorkspaceStore {
                         let belowGaps = Double(max(belowCount - 1, 0)) * clusterGap
                         let minBelowSum = belowIndices.reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                         let belowNetSpace = max(safeBottom - belowStart - belowGaps, minBelowSum)
-                        let belowWeightSum = max(belowIndices.reduce(0.0) { $0 + clusterWeights[$1] }, 0.0001)
-                        var belowSpans = belowIndices.map { i in
-                            let minH = max(18.0, Double(clusters[i].count) * 18.0)
-                            return min(max(belowNetSpace * (clusterWeights[i] / belowWeightSum), minH), clusterMaxVisuals[i])
-                        }
-                        let belowSum = belowSpans.reduce(0.0, +)
-                        if belowSum > belowNetSpace && belowSum > 0 {
-                            let scale = belowNetSpace / belowSum
-                            belowSpans = belowSpans.map { $0 * scale }
-                        } else if belowSum < belowNetSpace {
-                            let leftover = belowNetSpace - belowSum
-                            let uncappedOffsets = belowIndices.indices.filter { belowSpans[$0] < clusterMaxVisuals[belowIndices[$0]] - 0.5 }
-                            if !uncappedOffsets.isEmpty {
-                                let uncappedWeight = max(uncappedOffsets.reduce(0.0) { $0 + clusterWeights[belowIndices[$1]] }, 0.0001)
-                                for offset in uncappedOffsets {
-                                    let cI = belowIndices[offset]
-                                    belowSpans[offset] = min(belowSpans[offset] + leftover * (clusterWeights[cI] / uncappedWeight), clusterMaxVisuals[cI])
-                                }
+                        let idleBelowSum = belowIndices.reduce(0.0) { $0 + idleClusterSpans[$1] }
+
+                        if idleBelowSum <= belowNetSpace {
+                            let belowSpans = belowIndices.map { idleClusterSpans[$0] }
+                            var curY = belowStart
+                            for (offset, cI) in belowIndices.enumerated() {
+                                clusterSpans[cI] = belowSpans[offset]
+                                clusterStartYs[cI] = max(idleClusterStartYs[cI], curY)
+                                curY = clusterStartYs[cI] + clusterSpans[cI] + clusterGap
                             }
-                            let finalBelowSum = belowSpans.reduce(0.0, +)
-                            if finalBelowSum < belowNetSpace && belowCount > 0 {
-                                let extraEach = (belowNetSpace - finalBelowSum) / Double(belowCount)
-                                for offset in 0..<belowCount { belowSpans[offset] += extraEach }
+                        } else {
+                            let scale = belowNetSpace / max(idleBelowSum, 0.0001)
+                            var belowSpans = belowIndices.map { cI in
+                                let minH = max(18.0, Double(clusters[cI].count) * 18.0)
+                                return max(idleClusterSpans[cI] * scale, minH)
                             }
-                        }
-                        var curY = belowStart
-                        for (offset, cI) in belowIndices.enumerated() {
-                            clusterSpans[cI] = belowSpans[offset]
-                            clusterStartYs[cI] = curY
-                            curY += belowSpans[offset] + clusterGap
+                            let currentSum = belowSpans.reduce(0.0, +)
+                            if currentSum > belowNetSpace && currentSum > 0 {
+                                let secondScale = belowNetSpace / currentSum
+                                belowSpans = belowSpans.map { $0 * secondScale }
+                            }
+                            var curY = belowStart
+                            for (offset, cI) in belowIndices.enumerated() {
+                                clusterSpans[cI] = belowSpans[offset]
+                                clusterStartYs[cI] = curY
+                                curY += belowSpans[offset] + clusterGap
+                            }
                         }
                     }
                 } else {

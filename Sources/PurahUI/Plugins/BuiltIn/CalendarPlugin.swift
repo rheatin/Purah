@@ -27,10 +27,9 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
-            ProgressTimelineAmbientView(
-                progress: SystemCalendarSyncService.shared.todayProgress()
-            )
-            .frame(width: context.railWidth, height: context.slotHeight)
+            RoundedRectangle(cornerRadius: min(context.railWidth / 2, 4))
+                .fill(context.accentColor.opacity(0.88))
+                .frame(width: context.railWidth, height: context.slotHeight)
         )
     }
 

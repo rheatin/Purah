@@ -248,7 +248,7 @@ public final class AIAssistantPluginState: Sendable {
         let prevOutput = currentViewedAssistantMessage?.content ?? ""
         let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
         let refinementPrompt = "Previous output:\n\(prevOutput)\n\nUser refinement instruction: \(trimmed)\n\nPlease output the updated result directly following the instruction."
-        sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource)
+        sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
     }
 
     // MARK: - Initializer
@@ -647,7 +647,8 @@ public final class AIAssistantPluginState: Sendable {
         _ prompt: String,
         quickAction: AIQuickActionType? = nil,
         role: AIRolePreset? = nil,
-        originalSelection: String? = nil
+        originalSelection: String? = nil,
+        includeHistory: Bool = false
     ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
@@ -664,24 +665,35 @@ public final class AIAssistantPluginState: Sendable {
         let effectiveAction = quickAction ?? (role.flatMap { AIQuickActionType(rawValue: $0.id) })
         let effectiveRoleTitle = role?.title ?? effectiveAction?.title
         let effectiveRoleId = role?.id ?? effectiveAction?.id
+        let resolvedOriginal = originalSelection ?? (trimmed.isEmpty ? nil : trimmed)
 
         var effectivePromptOverride = role?.systemPrompt ?? quickAction?.buildSystemPrompt()
         if effectiveRoleId == "translate" {
-            let targetInstruction: String
-            switch translateTargetLanguage {
-            case .auto:
-                targetInstruction = "Auto (if source text contains Chinese, translate into natural English; if source is English or other languages, translate into Simplified Chinese)"
-            default:
-                targetInstruction = translateTargetLanguage.promptInstructionTargetName
+            if translateTargetLanguage == .auto {
+                if AITargetLanguage.isPrimarilyChinese(trimmed) {
+                    effectivePromptOverride = """
+                    You are a professional translator. Translate the user's Chinese text into natural, fluent, idiomatic English.
+                    CRITICAL RULES:
+                    1. Your output MUST be in English ONLY. Do NOT output Chinese.
+                    2. Output ONLY the English translation without any explanation, quotes, or conversational filler.
+                    """
+                } else {
+                    effectivePromptOverride = """
+                    You are a professional translator. Translate the user's text into natural, fluent Simplified Chinese (简体中文).
+                    CRITICAL RULES:
+                    1. Your output MUST be in Simplified Chinese ONLY.
+                    2. Output ONLY the Chinese translation without any explanation, quotes, or conversational filler.
+                    """
+                }
+            } else {
+                let targetLangName = translateTargetLanguage.promptInstructionTargetName
+                effectivePromptOverride = """
+                You are a professional translator. Translate the user's text into natural, fluent \(targetLangName).
+                CRITICAL RULES:
+                1. Your output MUST be in \(targetLangName) ONLY.
+                2. Output ONLY the \(targetLangName) translation without any explanation, quotes, or conversational filler.
+                """
             }
-            effectivePromptOverride = """
-            You are an expert, fluent multilingual translator. Translate the given text accurately and naturally into \(targetInstruction).
-            Strict output rules:
-            1. Output ONLY the translated text.
-            2. Do NOT add any preamble, conversational greeting, explanation, or notes.
-            3. Do NOT wrap the entire output in quotation marks.
-            4. Faithfully preserve formatting, lists, and code blocks.
-            """
         } else if effectiveRoleId == "polish" {
             let toneModifier: String
             switch selectedPolishTone {
@@ -695,18 +707,36 @@ public final class AIAssistantPluginState: Sendable {
             let langModifier: String
             switch polishTargetLanguage {
             case .auto:
-                langModifier = "Preserve the original language of the input text."
+                let isChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
+                if isChinese {
+                    langModifier = "CRITICAL LANGUAGE RULE: The input text is in Chinese. You MUST output the polished/corrected text in Chinese ONLY (保持中文润色，严禁翻译成英文或其他语言)."
+                } else {
+                    langModifier = "CRITICAL LANGUAGE RULE: The input text is in English (or non-Chinese). You MUST output the polished/corrected text in the EXACT SAME original language as the input (do NOT translate it into Chinese)."
+                }
             default:
                 langModifier = "Translate and polish into \(polishTargetLanguage.promptInstructionTargetName)."
             }
             effectivePromptOverride = """
             You are an elite prose and copy editor. Refine, polish, and elevate the provided text for clarity, rhythm, and elegance.
             Tone requirement: \(toneModifier)
-            Language requirement: \(langModifier)
+            \(langModifier)
             Strict output rules:
             1. Output ONLY the refined text.
             2. Do NOT add conversational preamble, pleasantries, or commentary.
             3. Preserve formatting and markdown structure where applicable.
+            """
+        } else if effectiveRoleId == "grammar" {
+            let isChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
+            let langModifier = isChinese
+                ? "CRITICAL LANGUAGE RULE: The input text is in Chinese. You MUST output the polished/corrected text in Chinese ONLY (保持中文润色，严禁翻译成英文或其他语言)."
+                : "CRITICAL LANGUAGE RULE: The input text is in English (or non-Chinese). You MUST output the polished/corrected text in the EXACT SAME original language as the input (do NOT translate it into Chinese)."
+            effectivePromptOverride = """
+            You are a meticulous professional proofreader. Fix all spelling, grammatical, punctuation, typographical, and syntax errors in the provided text.
+            \(langModifier)
+            Strict output rules:
+            1. Output ONLY the corrected text.
+            2. Do NOT add explanations or change the author's core voice.
+            3. Preserve all original layout, spacing, and casing where intentional.
             """
         }
 
@@ -716,7 +746,7 @@ public final class AIAssistantPluginState: Sendable {
             attachments: stagedAttachments,
             timestamp: Date(),
             quickAction: effectiveAction,
-            originalSelection: originalSelection,
+            originalSelection: resolvedOriginal,
             systemPromptOverride: effectivePromptOverride,
             roleTitle: effectiveRoleTitle,
             roleId: effectiveRoleId
@@ -730,7 +760,7 @@ public final class AIAssistantPluginState: Sendable {
             content: "",
             timestamp: Date(),
             quickAction: effectiveAction,
-            originalSelection: originalSelection,
+            originalSelection: resolvedOriginal,
             systemPromptOverride: effectivePromptOverride,
             roleTitle: effectiveRoleTitle,
             roleId: effectiveRoleId
@@ -756,7 +786,12 @@ public final class AIAssistantPluginState: Sendable {
         activeRole = role
         accumulatedStreamRaw = ""
 
-        let msgsToSend = Array(sessions[sessionIdx].messages.dropLast())
+        let msgsToSend: [AIChatMessage]
+        if includeHistory || effectiveRoleId == "ask" {
+            msgsToSend = Array(sessions[sessionIdx].messages.dropLast())
+        } else {
+            msgsToSend = [userMsg]
+        }
         let targetSessionId = activeSessionId
         let provider = selectedProvider
         let cli = selectedCLI

@@ -88,7 +88,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                 .background(context.accentColor.opacity(0.12))
                 .cornerRadius(4)
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize(horizontal: true, vertical: false)
         )
@@ -829,7 +830,8 @@ public struct AIAssistantPluginSettingsView: View {
                     )
                     .foregroundColor(.primary)
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize(horizontal: true, vertical: false)
                 .help("Select Model from detected list")

@@ -589,7 +589,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                     )
                     .foregroundColor(roleColor)
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
 
@@ -628,7 +629,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .background(Capsule().fill(roleColor.opacity(0.15)))
                         .foregroundColor(roleColor)
                     }
-                    .menuStyle(.borderlessButton)
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
                     .menuIndicator(.hidden)
                     .fixedSize()
                 }
@@ -662,7 +664,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .background(Capsule().fill(roleColor.opacity(0.15)))
                         .foregroundColor(roleColor)
                     }
-                    .menuStyle(.borderlessButton)
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
                     .menuIndicator(.hidden)
                     .fixedSize()
                 }
@@ -1055,7 +1058,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                     )
                     .foregroundColor(Color.white.opacity(0.85))
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
 
@@ -1099,29 +1103,25 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(roleColor)
                         Text("ai.composer.refineTrigger".localized)
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.92))
+                            .font(.system(size: 9.5, weight: .regular))
+                            .foregroundColor(Color.white.opacity(0.38))
                             .lineLimit(1)
                         Spacer(minLength: 2)
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(roleColor.opacity(0.9))
+                        Image(systemName: "return")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.28))
                     }
                     .padding(.horizontal, 8)
                     .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(LinearGradient(colors: [roleColor.opacity(0.20), Color.purple.opacity(0.14)], startPoint: .leading, endPoint: .trailing))
+                            .fill(Color.black.opacity(0.45))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(LinearGradient(colors: [roleColor.opacity(0.80), Color.cyan.opacity(0.55)], startPoint: .leading, endPoint: .trailing), lineWidth: 1.1)
+                            .stroke(Color.white.opacity(0.14), lineWidth: 0.9)
                     )
-                    .shadow(color: roleColor.opacity(0.25), radius: 4, x: 0, y: 1)
                 }
                 .buttonStyle(.plain)
             }

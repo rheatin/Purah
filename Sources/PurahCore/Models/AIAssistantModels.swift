@@ -244,7 +244,7 @@ public enum AITargetLanguage: String, Codable, CaseIterable, Sendable, Identifia
             if roleId == "translate" {
                 if sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     return "ai.lang.autoToZh".localized
-                } else if Self.containsCJK(sourceText) {
+                } else if Self.isPrimarilyChinese(sourceText) {
                     return "ai.lang.zhToEn".localized
                 } else {
                     return "ai.lang.enToZh".localized
@@ -257,6 +257,21 @@ public enum AITargetLanguage: String, Codable, CaseIterable, Sendable, Identifia
         default:
             return "→ \(shortLabel)"
         }
+    }
+
+    public static func isPrimarilyChinese(_ text: String) -> Bool {
+        var cjkCount = 0
+        var latinCount = 0
+        for scalar in text.unicodeScalars {
+            if (0x4E00...0x9FFF).contains(scalar.value) ||
+               (0x3400...0x4DBF).contains(scalar.value) ||
+               (0x20000...0x2A6DF).contains(scalar.value) {
+                cjkCount += 1
+            } else if (65...90).contains(scalar.value) || (97...122).contains(scalar.value) {
+                latinCount += 1
+            }
+        }
+        return cjkCount > 0 && Double(cjkCount) >= Double(latinCount) * 0.25
     }
 
     public static func containsCJK(_ text: String) -> Bool {

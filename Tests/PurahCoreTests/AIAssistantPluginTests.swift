@@ -915,6 +915,13 @@ struct AIAssistantPluginTests {
         #expect(AITargetLanguage.containsCJK("Hello World") == false)
         #expect(AITargetLanguage.containsCJK("\u{4E2D}\u{6587}") == true)
 
+        #expect(AITargetLanguage.isPrimarilyChinese("Hello World") == false)
+        #expect(AITargetLanguage.isPrimarilyChinese("\u{4E2D}\u{6587}") == true)
+        #expect(AITargetLanguage.isPrimarilyChinese("你好世界") == true)
+        #expect(AITargetLanguage.isPrimarilyChinese("Swift 并发模型 (Concurrency)") == true)
+        #expect(AITargetLanguage.isPrimarilyChinese("This is a full English sentence with no Chinese.") == false)
+        #expect(AITargetLanguage.isPrimarilyChinese("") == false)
+
         let auto = AITargetLanguage.auto
         #expect(!auto.displayName(for: "translate").isEmpty)
         #expect(!auto.displayName(for: "polish").isEmpty)
@@ -940,6 +947,63 @@ struct AIAssistantPluginTests {
         let en = AITargetLanguage.english
         #expect(en.promptInstructionTargetName == "English")
         #expect(en.shortLabel == "EN")
+    }
+
+    @Test("Auto-detect translation prompt direction (Chinese -> English vs Non-Chinese -> Simplified Chinese) and same-language polish")
+    func testAutoDetectTranslationAndPolishDirection() {
+        let isolated = UserDefaults(suiteName: "test_ai_lang_dir_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_lang_dir_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_lang_dir_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_lang_dir_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_lang_dir_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+        state.translateTargetLanguage = .auto
+
+        let translateRole = AIRolePreset.from(action: .translate)
+        let polishRole = AIRolePreset.from(action: .polish)
+        let grammarRole = AIRolePreset.from(action: .fixGrammar, isEnabled: true)
+
+        // 1. Chinese text under .auto translate -> English-only translation prompt
+        state.sendPrompt("这是一个测试句子，用于验证中英互译逻辑。", role: translateRole)
+        let zhTranslateMsg = state.latestUserMessage(for: "translate")
+        #expect(zhTranslateMsg != nil)
+        let zhPrompt = zhTranslateMsg?.systemPromptOverride ?? ""
+        #expect(zhPrompt.contains("English ONLY"))
+        #expect(zhPrompt.contains("Do NOT output Chinese"))
+        #expect(!zhPrompt.contains("Simplified Chinese ONLY"))
+
+        // 2. English text under .auto translate -> Simplified Chinese translation prompt
+        state.sendPrompt("This is a test sentence used to verify translation direction.", role: translateRole)
+        let enTranslateMsg = state.latestUserMessage(for: "translate")
+        #expect(enTranslateMsg != nil)
+        let enPrompt = enTranslateMsg?.systemPromptOverride ?? ""
+        #expect(enPrompt.contains("Simplified Chinese ONLY"))
+        #expect(enPrompt.contains("Chinese translation without any explanation"))
+        #expect(!enPrompt.contains("English ONLY"))
+
+        // 3. Chinese text under polish -> Chinese-only polish prompt
+        state.sendPrompt("这是一段需要润色的中文文本。", role: polishRole)
+        let zhPolishMsg = state.latestUserMessage(for: "polish")
+        #expect(zhPolishMsg != nil)
+        let zhPolishPrompt = zhPolishMsg?.systemPromptOverride ?? ""
+        #expect(zhPolishPrompt.contains("The input text is in Chinese"))
+        #expect(zhPolishPrompt.contains("保持中文润色，严禁翻译成英文或其他语言"))
+
+        // 4. English text under polish -> English same-language polish prompt
+        state.sendPrompt("This is an English paragraph that needs polishing.", role: polishRole)
+        let enPolishMsg = state.latestUserMessage(for: "polish")
+        #expect(enPolishMsg != nil)
+        let enPolishPrompt = enPolishMsg?.systemPromptOverride ?? ""
+        #expect(enPolishPrompt.contains("The input text is in English (or non-Chinese)"))
+        #expect(enPolishPrompt.contains("do NOT translate it into Chinese"))
+
+        // 5. Chinese text under grammar -> Chinese-only grammar prompt
+        state.sendPrompt("我这里有一个错别字需要修正。", role: grammarRole)
+        let zhGrammarMsg = state.latestUserMessage(for: "grammar")
+        #expect(zhGrammarMsg != nil)
+        let zhGrammarPrompt = zhGrammarMsg?.systemPromptOverride ?? ""
+        #expect(zhGrammarPrompt.contains("保持中文润色，严禁翻译成英文或其他语言"))
     }
 
     @Test("AIAssistantPluginState renameSession, promoteOutputToSource, and language persistence")
