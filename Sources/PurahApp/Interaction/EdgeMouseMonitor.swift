@@ -11,7 +11,7 @@ public final class EdgeMouseMonitor {
     private let store: PurahWorkspaceStore
     private weak var coordinator: ScreenEdgeCoordinator?
     private var velocityTracker = VelocityTracker()
-    private var pushAccumulator = PushForceAccumulator()
+    nonisolated(unsafe) internal var pushAccumulator = PushForceAccumulator()
     private let flingDetector = FlingIntentDetector()
     private var dwellTracker = DwellTracker(threshold: 0.16)
     private var globalMonitor: Any?
@@ -33,6 +33,12 @@ public final class EdgeMouseMonitor {
     private var isRunning: Bool = false
     public private(set) var isFrozen: Bool = false
     public static weak var shared: EdgeMouseMonitor?
+    nonisolated(unsafe) internal static var cachedScreenHorizontalEdges: [(minX: CGFloat, maxX: CGFloat)] = []
+
+    public static func updateCachedScreenEdges() {
+        let screens = NSScreen.screens
+        cachedScreenHorizontalEdges = screens.map { ($0.frame.minX, $0.frame.maxX) }
+    }
 
     /// Test hooks to mock screen visible frame and mouse location in headless unit tests
     public var customTargetVisibleRect: CGRect?
@@ -284,6 +290,7 @@ public final class EdgeMouseMonitor {
     private func setupEventTap() {
         guard !Self.isTestingEnvironment else { return }
         tearDownEventTap()
+        Self.updateCachedScreenEdges()
         let eventMask = (1 << CGEventType.mouseMoved.rawValue) | (1 << CGEventType.leftMouseDragged.rawValue)
         let observer = Unmanaged.passUnretained(self).toOpaque()
 
@@ -306,6 +313,37 @@ public final class EdgeMouseMonitor {
                 let dx = event.getDoubleValueField(.mouseEventDeltaX)
                 guard abs(dx) > 0.05 else { return Unmanaged.passUnretained(event) }
                 let pt = event.location
+
+                // Fast pre-filter: avoid hopping to MainActor for events in the middle of the screen
+                let isNearBorder: Bool = {
+                    let cached = EdgeMouseMonitor.cachedScreenHorizontalEdges
+                    if !cached.isEmpty {
+                        for border in cached {
+                            if abs(pt.x - border.minX) <= 80.0 || abs(pt.x - border.maxX) <= 80.0 {
+                                return true
+                            }
+                        }
+                        return false
+                    }
+                    var displayCount: UInt32 = 0
+                    if CGGetActiveDisplayList(0, nil, &displayCount) == .success && displayCount > 0 {
+                        var displays = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+                        if CGGetActiveDisplayList(displayCount, &displays, &displayCount) == .success {
+                            for i in 0..<Int(displayCount) {
+                                let bounds = CGDisplayBounds(displays[i])
+                                if abs(pt.x - bounds.minX) <= 80.0 || abs(pt.x - bounds.maxX) <= 80.0 {
+                                    return true
+                                }
+                            }
+                            return false
+                        }
+                    }
+                    return true
+                }()
+
+                if !isNearBorder && monitor.pushAccumulator.currentForce <= 0 {
+                    return Unmanaged.passUnretained(event)
+                }
 
                 if Thread.isMainThread {
                     MainActor.assumeIsolated {

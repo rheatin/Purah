@@ -98,9 +98,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         setupStatusItem()
 
-        // Start hardware audio tap so live ambient rhythm visualizers are instantly responsive
-        SystemAudioLiveMonitor.shared.start()
-
         // Post-launch memory optimization:
         // Automatically reclaim cold-start font caches, Nib decoders, and launch framebuffer dirt 1.5s after launch
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

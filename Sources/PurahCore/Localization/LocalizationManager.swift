@@ -115,6 +115,13 @@ public final class LocalizationManager {
             "general.display.card": "Display & Multi-Monitor",
             "general.display.title": "Multi-Display Target",
             "general.display.subtitle": "Choose which display hosts edge rails in multi-monitor setups",
+            "general.config.card": "Configuration & Backup",
+            "general.config.subtitle": "Export workspace layout, rail pods, shortcuts, and plugin preferences to JSON, or restore factory defaults.",
+            "general.config.export": "Export Config...",
+            "general.config.import": "Import Config...",
+            "general.config.reset": "Reset to Defaults",
+            "general.config.resetConfirmTitle": "Reset to Factory Defaults?",
+            "general.config.resetConfirmMessage": "This will reset all workspace pods, layout settings, shortcuts, and plugin preferences to their initial defaults. This action cannot be undone.",
 
             // Motion & Interaction Settings
             "motion.title": "Motion, Trigger Physics & Sensory Feedback",
@@ -553,6 +560,13 @@ public final class LocalizationManager {
             "general.display.card": "显示器与多屏幕",
             "general.display.title": "边缘轨宿主屏幕",
             "general.display.subtitle": "在多显示器环境下选择边缘导轨的激活屏幕",
+            "general.config.card": "配置管理与数据备份",
+            "general.config.subtitle": "将工作区布局、侧轨插槽、全局快捷键与插件偏好设置导出为 JSON 备份、从备份导入或恢复出厂默认值。",
+            "general.config.export": "导出配置...",
+            "general.config.import": "导入配置...",
+            "general.config.reset": "恢复出厂默认值",
+            "general.config.resetConfirmTitle": "确认恢复出厂设置？",
+            "general.config.resetConfirmMessage": "这将清除所有自定义侧轨布局、快捷键及插件偏好设置，恢复至初始状态。此操作不可撤销。",
 
             // 交互动效与通用设置
             "motion.title": "动效、边缘触发与感官反馈",

@@ -47,6 +47,9 @@ public final class SystemMusicSyncService {
     }
 
     public func stopListening() {
+        SystemAudioLiveMonitor.shared.stop()
+        playbackTimer?.invalidate()
+        playbackTimer = nil
         statusHeartbeatTimer?.invalidate()
         statusHeartbeatTimer = nil
         let center = DistributedNotificationCenter.default()
@@ -583,6 +586,12 @@ public final class SystemMusicSyncService {
     }
 
     private func updatePlaybackTimer(store: PurahWorkspaceStore?, isPlaying: Bool) {
+        if isPlaying {
+            SystemAudioLiveMonitor.shared.start()
+        } else {
+            SystemAudioLiveMonitor.shared.stop()
+        }
+
         playbackTimer?.invalidate()
         playbackTimer = nil
 

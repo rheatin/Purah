@@ -42,6 +42,8 @@ public final class PluginMarketManager: Sendable {
     @ObservationIgnored
     private let userDefaultsKey = "purah.installedPluginIds"
 
+    public static let defaultInstalledIds: Set<String> = Set(PurahWorkspaceStore.defaultPods().map(\.id))
+
     public init(
         store: PurahWorkspaceStore = PurahWorkspaceStore(),
         availableCatalog: [PurahPluginManifest] = PurahPluginManifest.fullCatalog,
@@ -53,19 +55,45 @@ public final class PluginMarketManager: Sendable {
         self.userDefaults = userDefaults
         self.lifecycleDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
 
+        let autoInstallAIKey = "purah.didAutoInstallAIPlugin"
+        let shouldAutoInstallAI = !userDefaults.bool(forKey: autoInstallAIKey)
+
         var resolvedInstalledIds: Set<String>
         if let saved = userDefaults.stringArray(forKey: userDefaultsKey) {
             resolvedInstalledIds = Set(saved)
+            if shouldAutoInstallAI {
+                resolvedInstalledIds.insert("ai")
+            }
             let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
             store.pods.removeAll { managedIds.contains($0.id) && !resolvedInstalledIds.contains($0.id) }
             resolvedInstalledIds.formUnion(store.pods.map(\.id))
             store.invalidateLayoutCache()
         } else {
             resolvedInstalledIds = Set(store.pods.map(\.id))
+            if shouldAutoInstallAI {
+                resolvedInstalledIds.insert("ai")
+            }
+        }
+
+        if shouldAutoInstallAI {
+            userDefaults.set(true, forKey: autoInstallAIKey)
+            resolvedInstalledIds.insert("ai")
+            if let index = store.pods.firstIndex(where: { $0.id == "ai" }) {
+                store.pods[index].isEnabled = true
+            } else if let defAI = PurahWorkspaceStore.defaultPods().first(where: { $0.id == "ai" }) {
+                var pod = defAI
+                pod.isEnabled = true
+                store.pods.append(pod)
+            }
+            store.invalidateLayoutCache()
         }
 
         self.installedPluginIds = resolvedInstalledIds
         self.enabledPluginIds = Set(store.pods.filter(\.isEnabled).map(\.id))
+        if shouldAutoInstallAI {
+            self.enabledPluginIds.insert("ai")
+            savePersistentState()
+        }
         loadPersistentState()
     }
 

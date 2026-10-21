@@ -9,6 +9,11 @@ import CoreGraphics
 public struct PushForceAccumulator: Sendable {
     /// Accumulated push force magnitude (points/pixels)
     public private(set) var accumulatedForce: Double = 0.0
+
+    /// Alias for accumulatedForce to query active push force state
+    public var currentForce: Double {
+        accumulatedForce
+    }
     /// Timestamp of the last valid outward motion delta
     public private(set) var lastPushTime: Date?
 
