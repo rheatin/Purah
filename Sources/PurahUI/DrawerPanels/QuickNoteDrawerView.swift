@@ -3183,7 +3183,7 @@ public struct QuickNoteDrawerView: View {
             .replacingOccurrences(of: ":", with: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let fileName = (sanitized.isEmpty ? "Note" : sanitized) + ".md"
-        savePanel.nameFieldStringValue = fileName
+        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
         if let mdType = UTType(filenameExtension: "md") {
             savePanel.allowedContentTypes = [mdType, .plainText]
         } else {
@@ -3192,6 +3192,7 @@ public struct QuickNoteDrawerView: View {
 
         let response = savePanel.runModal()
         if response == .OK, let url = savePanel.url {
+            PurahExportPathManager.updateLastDirectory(from: url)
             do {
                 try currentText.write(to: url, atomically: true, encoding: .utf8)
                 store.triggerControlHaptic(.alignment)

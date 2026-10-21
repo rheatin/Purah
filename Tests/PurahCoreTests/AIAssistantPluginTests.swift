@@ -1231,4 +1231,203 @@ struct AIAssistantPluginTests {
         #expect(finalState.openAIModel == "my-hosted-llama")
         #expect(finalState.fetchedModels[.httpOpenAI] == ["my-hosted-llama", "qwen-7b"])
     }
+
+    @Test("PurahExportPathManager resolves default, updates last directory, and configures save panel")
+    func testExportPathManager() throws {
+        let initialDir = PurahExportPathManager.resolveDefaultDirectory()
+        #expect(!initialDir.path.isEmpty)
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_test_export_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let testFileURL = tempDir.appendingPathComponent("session.md")
+        PurahExportPathManager.updateLastDirectory(from: testFileURL)
+        let resolved = PurahExportPathManager.resolveDefaultDirectory()
+        #expect(resolved.path == tempDir.path)
+
+        let panel = NSSavePanel()
+        PurahExportPathManager.configureSavePanel(panel, suggestedFileName: "export_test.md")
+        #expect(panel.nameFieldStringValue == "export_test.md")
+        #expect(panel.directoryURL?.path == tempDir.path)
+    }
+
+    @Test("AIMCPServerConfig and AIBuiltInSkillConfig model properties and serialization")
+    func testSkillAndMCPModels() {
+        let skillConfig = AIBuiltInSkillConfig(
+            enableFileReadSkill: true,
+            enableDirectoryListSkill: true,
+            enableShellSnippetSkill: false
+        )
+        #expect(skillConfig.enableFileReadSkill == true)
+        #expect(skillConfig.enableDirectoryListSkill == true)
+        #expect(skillConfig.enableShellSnippetSkill == false)
+
+        let serverConfig = AIMCPServerConfig(
+            name: "Filesystem",
+            command: "npx",
+            arguments: "-y @modelcontextprotocol/server-filesystem /tmp",
+            envJSON: "{\"FOO\":\"BAR\"}",
+            isEnabled: true
+        )
+        #expect(serverConfig.name == "Filesystem")
+        #expect(serverConfig.command == "npx")
+        #expect(serverConfig.arguments.contains("/tmp"))
+        #expect(serverConfig.isEnabled == true)
+    }
+
+    @Test("AIAssistantService enrichPromptWithLocalSkills reads file and lists directory")
+    func testEnrichPromptWithLocalSkills() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+        let sampleFile = tmpDir.appendingPathComponent("purah_test_skill_file.txt")
+        try "Hello Purah Local Skill File Content".write(to: sampleFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: sampleFile) }
+
+        var skills = AIBuiltInSkillConfig()
+        skills.enableFileReadSkill = true
+        skills.enableDirectoryListSkill = true
+
+        // 1. File test
+        let promptWithFile = "Please inspect \(sampleFile.path) for details."
+        let (enrichedFile, attachedSummary) = AIAssistantService.enrichPromptWithLocalSkills(promptWithFile, skills: skills)
+        #expect(enrichedFile.contains("[Built-in Skill: Local File Content of '\(sampleFile.path)']"))
+        #expect(enrichedFile.contains("Hello Purah Local Skill File Content"))
+        #expect(attachedSummary.contains(sampleFile.lastPathComponent))
+
+        // 2. Directory test
+        let promptWithDir = "What files are in \(tmpDir.path)?"
+        let (enrichedDir, _) = AIAssistantService.enrichPromptWithLocalSkills(promptWithDir, skills: skills)
+        #expect(enrichedDir.contains("[Built-in Skill: Directory Listing of '\(tmpDir.path)']"))
+
+        // 3. Disabled skill test
+        let disabledSkills = AIBuiltInSkillConfig(enableFileReadSkill: false, enableDirectoryListSkill: false)
+        let (notEnriched, emptySummary) = AIAssistantService.enrichPromptWithLocalSkills(promptWithFile, skills: disabledSkills)
+        #expect(notEnriched == promptWithFile)
+        #expect(emptySummary.isEmpty)
+    }
+
+    @Test("AIAssistantPluginState MCP server management and persistence")
+    func testStateMCPServerManagement() {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_mcp", defaults: UserDefaults(suiteName: "test_ai_mcp_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_mcp")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        #expect(state.mcpServers.isEmpty)
+        state.addMCPServer(name: "TestServer", command: "node", arguments: "server.js")
+        #expect(state.mcpServers.count == 1)
+        #expect(state.mcpServers[0].name == "TestServer")
+
+        var server = state.mcpServers[0]
+        server.arguments = "updated.js"
+        state.updateMCPServer(server)
+        #expect(state.mcpServers[0].arguments == "updated.js")
+
+        state.deleteMCPServer(id: server.id)
+        #expect(state.mcpServers.isEmpty)
+    }
+
+    @Test("AIAssistantPluginState switchRoleInTopBar preserves step history without re-executing prompt")
+    func testSwitchRoleInTopBarNavigation() {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_roleswitch", defaults: UserDefaults(suiteName: "test_ai_roleswitch_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_roleswitch")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        let session = AIChatSession(
+            id: UUID().uuidString,
+            title: "Test Session",
+            messages: [
+                AIChatMessage(role: .user, content: "What is Swift?", roleId: "ask"),
+                AIChatMessage(role: .assistant, content: "Swift is a language.", roleId: "ask"),
+                AIChatMessage(role: .user, content: "Hello", roleId: "translate"),
+                AIChatMessage(role: .assistant, content: "你好", roleId: "translate")
+            ],
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        state.sessions = [session]
+        state.activeSessionId = session.id
+
+        #expect(state.assistantSteps.count == 2)
+
+        // Switch to ask role - existing step index 0 should be selected without running new prompt
+        let askRole = AIRolePreset.from(action: .ask)
+        state.switchRoleInTopBar(to: askRole, sourceText: "Hello")
+        #expect(state.selectedRoleId == "ask")
+        #expect(state.viewingStepIndex == 0)
+        #expect(state.sessions[0].messages.count == 4) // No new prompt added
+    }
+
+    @Test("AIAssistantPluginState refineCurrentOutput handles new source translation vs refinement meta-instruction")
+    func testTranslateRefinementBehavior() {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_refine", defaults: UserDefaults(suiteName: "test_ai_refine_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_refine")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+        state.selectedRoleId = "translate"
+
+        let session = AIChatSession(
+            id: UUID().uuidString,
+            title: "Translate Session",
+            messages: [
+                AIChatMessage(role: .user, content: "Good morning", roleId: "translate"),
+                AIChatMessage(role: .assistant, content: "早上好", roleId: "translate")
+            ],
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        state.sessions = [session]
+        state.activeSessionId = session.id
+
+        // 1. User enters new text to translate like "今天天气好晴朗" (NOT a meta-instruction)
+        state.refineCurrentOutput(instruction: "今天天气好晴朗")
+        // Should treat as new source text to translate
+        #expect(state.currentInputText == "今天天气好晴朗")
+        let lastUser = state.sessions[0].messages.dropLast().last(where: { $0.role == .user })
+        #expect(lastUser?.content == "今天天气好晴朗")
+
+        // 2. User enters a refinement meta-instruction like "更口语化一点"
+        state.refineCurrentOutput(instruction: "更口语化一点")
+        let refinementUser = state.sessions[0].messages.dropLast().last(where: { $0.role == .user })
+        #expect(refinementUser?.content.contains("User refinement instruction:") == true)
+        #expect(refinementUser?.systemPromptOverride?.contains("You are a translator.") == true)
+    }
+
+    @Test("AIAssistantPluginState exportSessionMarkdown formats details, think block, and attachments")
+    func testExportSessionMarkdown() {
+        let storage = ScopedPluginStorage(pluginId: "ai_test_export", defaults: UserDefaults(suiteName: "test_ai_export_\(UUID().uuidString)")!)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_export")
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        let testSession = AIChatSession(
+            id: "export-1",
+            title: "Swift Concurrency Guide",
+            messages: [
+                AIChatMessage(
+                    role: .user,
+                    content: "Explain Sendable",
+                    attachments: [
+                        AIAttachmentItem(name: "guide.txt", kind: .text, byteSize: 1024)
+                    ],
+                    roleTitle: "User"
+                ),
+                AIChatMessage(
+                    role: .assistant,
+                    content: "Sendable guarantees thread safety.",
+                    reasoningContent: "Let me break down actor isolation.",
+                    roleTitle: "AI Assistant"
+                )
+            ],
+            createdAt: Date(),
+            updatedAt: Date(),
+            providerKind: .httpOpenAI
+        )
+
+        let md = state.exportSessionMarkdown(session: testSession)
+        #expect(md.contains("# Swift Concurrency Guide"))
+        #expect(md.contains("OpenAI Compatible"))
+        #expect(md.contains("Explain Sendable"))
+        #expect(md.contains("guide.txt"))
+        #expect(md.contains("<details>"))
+        #expect(md.contains("Let me break down actor isolation."))
+        #expect(md.contains("Sendable guarantees thread safety."))
+    }
 }

@@ -245,11 +245,13 @@ public struct DiagnosticReportView: View {
         let report = logger.generateReport(store: store)
         let savePanel = NSSavePanel()
         savePanel.title = "Export Purah Diagnostic Report"
-        savePanel.nameFieldStringValue = "Purah-Diagnostic-Report-\(Date().ISO8601Format()).log"
+        let fileName = "Purah-Diagnostic-Report-\(Date().ISO8601Format()).log"
+        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
         savePanel.allowedContentTypes = [.plainText]
 
         savePanel.begin { result in
             if result == .OK, let url = savePanel.url {
+                PurahExportPathManager.updateLastDirectory(from: url)
                 try? report.write(to: url, atomically: true, encoding: .utf8)
             }
         }

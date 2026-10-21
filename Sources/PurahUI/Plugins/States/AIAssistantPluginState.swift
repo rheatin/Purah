@@ -6,6 +6,12 @@ import Observation
 import PurahCore
 import UniformTypeIdentifiers
 
+// MARK: - Drop Zone Target
+public enum AIDropZoneTarget: Sendable {
+    case newSession
+    case followUp
+}
+
 @Observable
 @MainActor
 public final class AIAssistantPluginState: Sendable {
@@ -142,6 +148,18 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var skillConfig: AIBuiltInSkillConfig {
+        didSet {
+            storage.setCodable(skillConfig, forKey: "skillConfig")
+        }
+    }
+
+    public var mcpServers: [AIMCPServerConfig] {
+        didSet {
+            storage.setCodable(mcpServers, forKey: "mcpServers")
+        }
+    }
+
     public var currentInputText: String = ""
     public var isShowingHistoryPanel: Bool = false
     public var viewingStepIndex: Int? = nil
@@ -242,9 +260,78 @@ public final class AIAssistantPluginState: Sendable {
         sendPrompt(prevOutput, role: nextRole, originalSelection: prevOutput)
     }
 
+    public func switchRoleInTopBar(to role: AIRolePreset, sourceText: String = "") {
+        selectedRoleId = role.id
+
+        // Check if assistantSteps in active session ALREADY has a step matching role.id
+        if let existingIndex = assistantSteps.lastIndex(where: { step in
+            step.assistant.roleId == role.id ||
+            step.assistant.quickAction?.id == role.id ||
+            step.user?.roleId == role.id ||
+            step.user?.quickAction?.id == role.id
+        }) {
+            viewingStepIndex = existingIndex
+            return
+        }
+
+        // If no step for role exists yet in this session:
+        let trimmedSource = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveText = !trimmedSource.isEmpty ? trimmedSource : currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !effectiveText.isEmpty && role.isTransform {
+            sendPrompt(effectiveText, role: role, originalSelection: effectiveText)
+        }
+    }
+
+    private func isTranslateRefinementMetaInstruction(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let keywords = [
+            "\u{66F4}", "\u{6539}", "\u{6362}", "\u{8BED}\u{6C14}", "\u{53E3}\u{8BED}", "\u{6B63}\u{5F0F}", "\u{76F4}\u{8BD1}", "\u{610F}\u{8BD1}", "\u{4FDD}\u{7559}", "\u{672F}\u{8BED}",
+            "shorter", "longer", "formal", "casual", "literal", "idiomatic",
+            "rephrase", "tone", "change", "polite", "professional", "simplify",
+            "natural", "translate as", "don't translate", "keep"
+        ]
+        return keywords.contains { lower.contains($0) }
+    }
+
     public func refineCurrentOutput(instruction: String) {
         let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        if selectedRole.id == "translate" {
+            if !isTranslateRefinementMetaInstruction(trimmed) {
+                // Not a meta-instruction: treat as new source text to translate
+                currentInputText = trimmed
+                sendPrompt(trimmed, role: selectedRole, originalSelection: trimmed, includeHistory: false)
+                return
+            } else {
+                // Is a refinement instruction on the previous translation
+                let prevOutput = currentViewedAssistantMessage?.content ?? ""
+                let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
+                let refinementPrompt = """
+                Original source text:
+                \(origSource)
+
+                Previous translation:
+                \(prevOutput)
+
+                User refinement instruction: \(trimmed)
+                """
+                sendPrompt(
+                    refinementPrompt,
+                    role: selectedRole,
+                    originalSelection: origSource.isEmpty ? prevOutput : origSource,
+                    includeHistory: false,
+                    customSystemPrompt: """
+                    You are a translator. Apply the user's refinement instruction to the translation and output ONLY the updated translation. Never chat or answer conversationally.
+                    CRITICAL RULES:
+                    1. Output ONLY the updated translation without any explanation, quotes, or conversational filler.
+                    2. Never answer conversationally or say 'Sure' or 'Here is the translation'.
+                    """
+                )
+                return
+            }
+        }
+
         let prevOutput = currentViewedAssistantMessage?.content ?? ""
         let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
         let refinementPrompt = "Previous output:\n\(prevOutput)\n\nUser refinement instruction: \(trimmed)\n\nPlease output the updated result directly following the instruction."
@@ -339,6 +426,18 @@ public final class AIAssistantPluginState: Sendable {
             self.polishTargetLanguage = .auto
         }
 
+        if let storedSkills = storage.codable(forKey: "skillConfig", as: AIBuiltInSkillConfig.self) {
+            self.skillConfig = storedSkills
+        } else {
+            self.skillConfig = AIBuiltInSkillConfig()
+        }
+
+        if let storedMCP = storage.codable(forKey: "mcpServers", as: [AIMCPServerConfig].self) {
+            self.mcpServers = storedMCP
+        } else {
+            self.mcpServers = []
+        }
+
         if let storedModels = storage.codable(forKey: "fetchedModels", as: [String: [String]].self) {
             var loaded: [AIProviderKind: [String]] = [:]
             for (k, v) in storedModels {
@@ -413,6 +512,8 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(selectedPolishTone.rawValue, forKey: "selectedPolishTone")
         storage.set(translateTargetLanguage.rawValue, forKey: "translateTargetLanguage")
         storage.set(polishTargetLanguage.rawValue, forKey: "polishTargetLanguage")
+        storage.setCodable(skillConfig, forKey: "skillConfig")
+        storage.setCodable(mcpServers, forKey: "mcpServers")
         storage.setCodable(rolePresets, forKey: "rolePresets")
         storage.setCodable(enabledActions, forKey: "enabledActions")
         var rawModels: [String: [String]] = [:]
@@ -542,6 +643,127 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    // MARK: - MCP Servers Management
+    public func addMCPServer(
+        name: String,
+        command: String,
+        arguments: String = "",
+        envJSON: String = "{}",
+        isEnabled: Bool = true
+    ) {
+        let server = AIMCPServerConfig(
+            id: UUID().uuidString,
+            name: name,
+            command: command,
+            arguments: arguments,
+            envJSON: envJSON,
+            isEnabled: isEnabled
+        )
+        mcpServers.append(server)
+        save()
+    }
+
+    public func updateMCPServer(_ server: AIMCPServerConfig) {
+        if let idx = mcpServers.firstIndex(where: { $0.id == server.id }) {
+            mcpServers[idx] = server
+            save()
+        }
+    }
+
+    public func deleteMCPServer(id: String) {
+        if let idx = mcpServers.firstIndex(where: { $0.id == id }) {
+            mcpServers.remove(at: idx)
+            save()
+        }
+    }
+
+    @discardableResult
+    public func importMCPServersFromLocalConfig() -> Int {
+        var importedCount = 0
+        let fileManager = FileManager.default
+        let home = NSHomeDirectory()
+
+        let candidatePaths = [
+            (home as NSString).appendingPathComponent(".claude/claude_desktop_config.json"),
+            (home as NSString).appendingPathComponent("Library/Application Support/Claude/claude_desktop_config.json"),
+            (home as NSString).appendingPathComponent(".config/optimus/optimus.jsonc"),
+            (home as NSString).appendingPathComponent(".config/optimus/optimus.json")
+        ]
+
+        for path in candidatePaths {
+            guard fileManager.fileExists(atPath: path),
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let rawString = String(data: data, encoding: .utf8) else {
+                continue
+            }
+
+            let cleanedString: String
+            if path.hasSuffix(".jsonc") {
+                let lines = rawString.components(separatedBy: .newlines)
+                let strippedLines = lines.map { line -> String in
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("//") { return "" }
+                    return line
+                }
+                cleanedString = strippedLines.joined(separator: "\n")
+            } else {
+                cleanedString = rawString
+            }
+
+            guard let jsonData = cleanedString.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+                continue
+            }
+
+            let mcpDict = (json["mcpServers"] as? [String: Any]) ?? (json["mcp"] as? [String: Any])
+            guard let serversDict = mcpDict else { continue }
+
+            for (serverName, val) in serversDict {
+                guard let config = val as? [String: Any] else { continue }
+                let cmd = (config["command"] as? String) ?? ""
+                guard !cmd.isEmpty else { continue }
+
+                if mcpServers.contains(where: { $0.name.lowercased() == serverName.lowercased() }) {
+                    continue
+                }
+
+                let args: String
+                if let argsArray = config["args"] as? [String] {
+                    args = argsArray.joined(separator: " ")
+                } else if let argsStr = config["args"] as? String {
+                    args = argsStr
+                } else {
+                    args = ""
+                }
+
+                let envString: String
+                if let envObj = config["env"] as? [String: Any],
+                   let envData = try? JSONSerialization.data(withJSONObject: envObj, options: []),
+                   let envStr = String(data: envData, encoding: .utf8) {
+                    envString = envStr
+                } else {
+                    envString = "{}"
+                }
+
+                let newServer = AIMCPServerConfig(
+                    id: UUID().uuidString,
+                    name: serverName,
+                    command: cmd,
+                    arguments: args,
+                    envJSON: envString,
+                    isEnabled: true
+                )
+                mcpServers.append(newServer)
+                importedCount += 1
+            }
+        }
+
+        if importedCount > 0 {
+            save()
+        }
+        return importedCount
+    }
+
     // MARK: - Model Discovery
     public func availableModels(for provider: AIProviderKind) -> [String] {
         if let fetched = fetchedModels[provider], !fetched.isEmpty {
@@ -648,7 +870,8 @@ public final class AIAssistantPluginState: Sendable {
         quickAction: AIQuickActionType? = nil,
         role: AIRolePreset? = nil,
         originalSelection: String? = nil,
-        includeHistory: Bool = false
+        includeHistory: Bool = false,
+        customSystemPrompt: String? = nil
     ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
@@ -667,77 +890,82 @@ public final class AIAssistantPluginState: Sendable {
         let effectiveRoleId = role?.id ?? effectiveAction?.id
         let resolvedOriginal = originalSelection ?? (trimmed.isEmpty ? nil : trimmed)
 
-        var effectivePromptOverride = role?.systemPrompt ?? quickAction?.buildSystemPrompt()
-        if effectiveRoleId == "translate" {
-            if translateTargetLanguage == .auto {
-                if AITargetLanguage.isPrimarilyChinese(trimmed) {
-                    effectivePromptOverride = """
-                    You are a professional translator. Translate the user's Chinese text into natural, fluent, idiomatic English.
-                    CRITICAL RULES:
-                    1. Your output MUST be in English ONLY. Do NOT output Chinese.
-                    2. Output ONLY the English translation without any explanation, quotes, or conversational filler.
-                    """
+        // Built-in skills local enrichment
+        let (enrichedPrompt, _) = AIAssistantService.enrichPromptWithLocalSkills(trimmed, skills: skillConfig)
+
+        var effectivePromptOverride = customSystemPrompt ?? role?.systemPrompt ?? quickAction?.buildSystemPrompt()
+        if customSystemPrompt == nil {
+            if effectiveRoleId == "translate" {
+                if translateTargetLanguage == .auto {
+                    if AITargetLanguage.isPrimarilyChinese(trimmed) {
+                        effectivePromptOverride = """
+                        You are a professional translator. Translate the user's Chinese text into natural, fluent, idiomatic English.
+                        CRITICAL RULES:
+                        1. Your output MUST be in English ONLY. Do NOT output Chinese.
+                        2. Output ONLY the English translation without any explanation, quotes, or conversational filler.
+                        """
+                    } else {
+                        effectivePromptOverride = """
+                        You are a professional translator. Translate the user's text into natural, fluent Simplified Chinese (\u{7B80}\u{4F53}\u{4E2D}\u{6587}).
+                        CRITICAL RULES:
+                        1. Your output MUST be in Simplified Chinese ONLY.
+                        2. Output ONLY the Chinese translation without any explanation, quotes, or conversational filler.
+                        """
+                    }
                 } else {
+                    let targetLangName = translateTargetLanguage.promptInstructionTargetName
                     effectivePromptOverride = """
-                    You are a professional translator. Translate the user's text into natural, fluent Simplified Chinese (简体中文).
+                    You are a professional translator. Translate the user's text into natural, fluent \(targetLangName).
                     CRITICAL RULES:
-                    1. Your output MUST be in Simplified Chinese ONLY.
-                    2. Output ONLY the Chinese translation without any explanation, quotes, or conversational filler.
+                    1. Your output MUST be in \(targetLangName) ONLY.
+                    2. Output ONLY the \(targetLangName) translation without any explanation, quotes, or conversational filler.
                     """
                 }
-            } else {
-                let targetLangName = translateTargetLanguage.promptInstructionTargetName
+            } else if effectiveRoleId == "polish" {
+                let toneModifier: String
+                switch selectedPolishTone {
+                case .concise:
+                    toneModifier = "Deliver the revision in a concise, compact, and punchy tone without unnecessary words."
+                case .formal:
+                    toneModifier = "Deliver the revision in an authoritative, professional, and formal tone."
+                case .friendly:
+                    toneModifier = "Deliver the revision in a warm, empathetic, and friendly tone."
+                }
+                let langModifier: String
+                switch polishTargetLanguage {
+                case .auto:
+                    let isChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
+                    if isChinese {
+                        langModifier = "CRITICAL LANGUAGE RULE: The input text is in Chinese. You MUST output the polished/corrected text in Chinese ONLY (\u{4FDD}\u{6301}\u{4E2D}\u{6587}\u{6DA6}\u{8272}\u{FF0C}\u{4E25}\u{7981}\u{7FFB}\u{8BD1}\u{6210}\u{82F1}\u{6587}\u{6216}\u{5176}\u{4ED6}\u{8BED}\u{8A00})."
+                    } else {
+                        langModifier = "CRITICAL LANGUAGE RULE: The input text is in English (or non-Chinese). You MUST output the polished/corrected text in the EXACT SAME original language as the input (do NOT translate it into Chinese)."
+                    }
+                default:
+                    langModifier = "Translate and polish into \(polishTargetLanguage.promptInstructionTargetName)."
+                }
                 effectivePromptOverride = """
-                You are a professional translator. Translate the user's text into natural, fluent \(targetLangName).
-                CRITICAL RULES:
-                1. Your output MUST be in \(targetLangName) ONLY.
-                2. Output ONLY the \(targetLangName) translation without any explanation, quotes, or conversational filler.
+                You are an elite prose and copy editor. Refine, polish, and elevate the provided text for clarity, rhythm, and elegance.
+                Tone requirement: \(toneModifier)
+                \(langModifier)
+                Strict output rules:
+                1. Output ONLY the refined text.
+                2. Do NOT add conversational preamble, pleasantries, or commentary.
+                3. Preserve formatting and markdown structure where applicable.
+                """
+            } else if effectiveRoleId == "grammar" {
+                let isChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
+                let langModifier = isChinese
+                    ? "CRITICAL LANGUAGE RULE: The input text is in Chinese. You MUST output the polished/corrected text in Chinese ONLY (\u{4FDD}\u{6301}\u{4E2D}\u{6587}\u{6DA6}\u{8272}\u{FF0C}\u{4E25}\u{7981}\u{7FFB}\u{8BD1}\u{6210}\u{82F1}\u{6587}\u{6216}\u{5176}\u{4ED6}\u{8BED}\u{8A00})."
+                    : "CRITICAL LANGUAGE RULE: The input text is in English (or non-Chinese). You MUST output the polished/corrected text in the EXACT SAME original language as the input (do NOT translate it into Chinese)."
+                effectivePromptOverride = """
+                You are a meticulous professional proofreader. Fix all spelling, grammatical, punctuation, typographical, and syntax errors in the provided text.
+                \(langModifier)
+                Strict output rules:
+                1. Output ONLY the corrected text.
+                2. Do NOT add explanations or change the author's core voice.
+                3. Preserve all original layout, spacing, and casing where intentional.
                 """
             }
-        } else if effectiveRoleId == "polish" {
-            let toneModifier: String
-            switch selectedPolishTone {
-            case .concise:
-                toneModifier = "Deliver the revision in a concise, compact, and punchy tone without unnecessary words."
-            case .formal:
-                toneModifier = "Deliver the revision in an authoritative, professional, and formal tone."
-            case .friendly:
-                toneModifier = "Deliver the revision in a warm, empathetic, and friendly tone."
-            }
-            let langModifier: String
-            switch polishTargetLanguage {
-            case .auto:
-                let isChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
-                if isChinese {
-                    langModifier = "CRITICAL LANGUAGE RULE: The input text is in Chinese. You MUST output the polished/corrected text in Chinese ONLY (保持中文润色，严禁翻译成英文或其他语言)."
-                } else {
-                    langModifier = "CRITICAL LANGUAGE RULE: The input text is in English (or non-Chinese). You MUST output the polished/corrected text in the EXACT SAME original language as the input (do NOT translate it into Chinese)."
-                }
-            default:
-                langModifier = "Translate and polish into \(polishTargetLanguage.promptInstructionTargetName)."
-            }
-            effectivePromptOverride = """
-            You are an elite prose and copy editor. Refine, polish, and elevate the provided text for clarity, rhythm, and elegance.
-            Tone requirement: \(toneModifier)
-            \(langModifier)
-            Strict output rules:
-            1. Output ONLY the refined text.
-            2. Do NOT add conversational preamble, pleasantries, or commentary.
-            3. Preserve formatting and markdown structure where applicable.
-            """
-        } else if effectiveRoleId == "grammar" {
-            let isChinese = AITargetLanguage.isPrimarilyChinese(trimmed)
-            let langModifier = isChinese
-                ? "CRITICAL LANGUAGE RULE: The input text is in Chinese. You MUST output the polished/corrected text in Chinese ONLY (保持中文润色，严禁翻译成英文或其他语言)."
-                : "CRITICAL LANGUAGE RULE: The input text is in English (or non-Chinese). You MUST output the polished/corrected text in the EXACT SAME original language as the input (do NOT translate it into Chinese)."
-            effectivePromptOverride = """
-            You are a meticulous professional proofreader. Fix all spelling, grammatical, punctuation, typographical, and syntax errors in the provided text.
-            \(langModifier)
-            Strict output rules:
-            1. Output ONLY the corrected text.
-            2. Do NOT add explanations or change the author's core voice.
-            3. Preserve all original layout, spacing, and casing where intentional.
-            """
         }
 
         let userMsg = AIChatMessage(
@@ -788,9 +1016,15 @@ public final class AIAssistantPluginState: Sendable {
 
         let msgsToSend: [AIChatMessage]
         if includeHistory || effectiveRoleId == "ask" {
-            msgsToSend = Array(sessions[sessionIdx].messages.dropLast())
+            var history = Array(sessions[sessionIdx].messages.dropLast())
+            if let lastIdx = history.indices.last, history[lastIdx].role == .user {
+                history[lastIdx].content = enrichedPrompt
+            }
+            msgsToSend = history
         } else {
-            msgsToSend = [userMsg]
+            var single = userMsg
+            single.content = enrichedPrompt
+            msgsToSend = [single]
         }
         let targetSessionId = activeSessionId
         let provider = selectedProvider
@@ -910,6 +1144,7 @@ public final class AIAssistantPluginState: Sendable {
     @discardableResult
     public func handleDroppedProviders(
         _ providers: [NSItemProvider],
+        target: AIDropZoneTarget = .newSession,
         onStaged: (@MainActor () -> Void)? = nil
     ) -> Bool {
         var handled = false
@@ -935,6 +1170,9 @@ public final class AIAssistantPluginState: Sendable {
                         Task { @MainActor [weak self] in
                             guard let self else { return }
                             self.stopStreaming()
+                            if target == .newSession {
+                                self.createNewSession()
+                            }
                             if let attachment = AIAssistantService.shared.makeAttachment(from: fileURL) {
                                 if self.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
                                     self.stagedAttachments.append(attachment)
@@ -943,7 +1181,13 @@ public final class AIAssistantPluginState: Sendable {
                             let effectiveText = fileText.isEmpty ? (self.stagedAttachments.last?.textPreview ?? fileName) : fileText
                             self.stagedDropText = effectiveText
                             self.stagedDropTitle = title
-                            self.isAwaitingRoleForDroppedContent = true
+
+                            if target == .newSession {
+                                self.currentInputText = effectiveText
+                                self.isAwaitingRoleForDroppedContent = true
+                            } else {
+                                self.isAwaitingRoleForDroppedContent = false
+                            }
                             onStaged?()
                         }
                     }
@@ -965,9 +1209,18 @@ public final class AIAssistantPluginState: Sendable {
                         Task { @MainActor [weak self] in
                             guard let self else { return }
                             self.stopStreaming()
+                            if target == .newSession {
+                                self.createNewSession()
+                            }
                             self.stagedDropText = str
                             self.stagedDropTitle = title
-                            self.isAwaitingRoleForDroppedContent = true
+
+                            if target == .newSession {
+                                self.currentInputText = str
+                                self.isAwaitingRoleForDroppedContent = true
+                            } else {
+                                self.isAwaitingRoleForDroppedContent = false
+                            }
                             onStaged?()
                         }
                     }
@@ -975,5 +1228,55 @@ public final class AIAssistantPluginState: Sendable {
             }
         }
         return handled
+    }
+
+    // MARK: - Markdown Export
+    public func exportSessionMarkdown(session: AIChatSession) -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
+
+        var md = "# \(session.title)\n\n"
+        md += "- **Created**: \(dateFormatter.string(from: session.createdAt))\n"
+        md += "- **Updated**: \(dateFormatter.string(from: session.updatedAt))\n"
+        md += "- **Provider**: \(session.providerKind.displayName)\n\n"
+        md += "---\n\n"
+
+        for message in session.messages {
+            let roleHeader: String
+            switch message.role {
+            case .user:
+                let roleName = message.roleTitle ?? message.quickAction?.title ?? "User"
+                roleHeader = "### 👤 \(roleName)"
+            case .assistant:
+                let roleName = message.roleTitle ?? message.quickAction?.title ?? "AI Assistant"
+                roleHeader = "### 🤖 \(roleName)"
+            case .system:
+                roleHeader = "### ⚙️ System"
+            }
+
+            md += "\(roleHeader) (\(dateFormatter.string(from: message.timestamp)))\n\n"
+
+            if let reasoning = message.reasoningContent, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                md += "<details>\n<summary>Thinking Process</summary>\n\n\(reasoning)\n\n</details>\n\n"
+            }
+
+            if !message.content.isEmpty {
+                md += "\(message.content)\n\n"
+            }
+
+            if !message.attachments.isEmpty {
+                md += "**Attachments:**\n"
+                for att in message.attachments {
+                    let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(att.byteSize), countStyle: .file)
+                    md += "- `\(att.name)` (\(sizeStr))\n"
+                }
+                md += "\n"
+            }
+
+            md += "---\n\n"
+        }
+
+        return md
     }
 }

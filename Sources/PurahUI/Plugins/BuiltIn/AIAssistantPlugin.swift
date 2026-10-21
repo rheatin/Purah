@@ -343,6 +343,11 @@ public struct AIAssistantPluginSettingsView: View {
     @State private var newRolePrompt: String = ""
     @State private var newRoleIsTransform: Bool = false
 
+    @State private var isAddingMCPServer: Bool = false
+    @State private var newServerName: String = ""
+    @State private var newServerCommand: String = ""
+    @State private var newServerArgs: String = ""
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -360,7 +365,10 @@ public struct AIAssistantPluginSettingsView: View {
             // Card 2: Rail Mode & Role Prompts Manager
             rolesAndPromptsCard
 
-            // Card 3: Session History & Retention
+            // Card 3: Built-in Skills & MCP Servers
+            skillsAndMCPServersCard
+
+            // Card 4: Session History & Retention
             sessionRetentionCard
         }
         .padding(10)
@@ -1213,7 +1221,302 @@ public struct AIAssistantPluginSettingsView: View {
         )
     }
 
-    // MARK: - Card 3: Session History & Retention
+    // MARK: - Card 3: Built-in Skills & MCP Servers
+    @ViewBuilder
+    private var skillsAndMCPServersCard: some View {
+        PurahPluginSettingsCard(
+            title: "Built-in Skills & MCP Servers",
+            subtitle: "Extend AI capabilities with local filesystem intelligence and Model Context Protocol",
+            icon: "puzzlepiece.extension.fill",
+            iconColor: palette.primaryAccent
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                // 1. Built-in Local Skills Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Built-in Local Skills")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    VStack(spacing: 8) {
+                        Toggle(isOn: $state.skillConfig.enableFileReadSkill) {
+                            VStack(alignment: .leading, spacing: 1.5) {
+                                Text("Auto-Read Local File Paths")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                Text("Automatically reads local files (e.g. ~/Documents/script.py) referenced in prompts")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Divider().opacity(0.3)
+
+                        Toggle(isOn: $state.skillConfig.enableDirectoryListSkill) {
+                            VStack(alignment: .leading, spacing: 1.5) {
+                                Text("Auto-Inspect Directories")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                Text("Lists folder contents when a local directory path is referenced")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Divider().opacity(0.3)
+
+                        Toggle(isOn: $state.skillConfig.enableShellSnippetSkill) {
+                            VStack(alignment: .leading, spacing: 1.5) {
+                                Text("Shell & Clipboard Context")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                Text("Permits AI to read relevant clipboard text and local shell context")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
+                    .padding(10)
+                    .background(Color.primary.opacity(0.03))
+                    .cornerRadius(8)
+                }
+
+                Divider().opacity(0.4)
+
+                // 2. MCP Servers Section
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1.5) {
+                            Text("MCP Servers")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Model Context Protocol stdio servers")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            let count = state.importMCPServersFromLocalConfig()
+                            if count > 0 {
+                                store.onCapacityWarningToast?("Imported \(count) MCP server(s)")
+                            } else {
+                                store.onCapacityWarningToast?("No new MCP servers found in local configs")
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.system(size: 8.5))
+                                Text("Import Local Config")
+                                    .font(.system(size: 9.5, weight: .medium))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3.5)
+                            .background(Color.primary.opacity(0.06))
+                            .cornerRadius(5)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                isAddingMCPServer.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: isAddingMCPServer ? "minus" : "plus")
+                                    .font(.system(size: 8.5, weight: .bold))
+                                Text(isAddingMCPServer ? "Close" : "+ Add Server")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3.5)
+                            .background(palette.primaryAccent.opacity(0.18))
+                            .foregroundColor(palette.primaryAccent)
+                            .cornerRadius(5)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if isAddingMCPServer {
+                        addMCPServerForm
+                    }
+
+                    if state.mcpServers.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "tray")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Text("No MCP servers configured yet. Click '+ Add Server' or 'Import Local Config'.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(6)
+                    } else {
+                        VStack(spacing: 6) {
+                            ForEach(state.mcpServers) { server in
+                                mcpServerRow(server: server)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mcpServerRow(server: AIMCPServerConfig) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Toggle("", isOn: Binding(
+                get: { server.isEnabled },
+                set: { newValue in
+                    var updated = server
+                    updated.isEnabled = newValue
+                    state.updateMCPServer(updated)
+                }
+            ))
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(server.name)
+                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    Text(server.isEnabled ? "ACTIVE" : "DISABLED")
+                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background((server.isEnabled ? Color.green : Color.secondary).opacity(0.15))
+                        .foregroundColor(server.isEnabled ? .green : .secondary)
+                        .cornerRadius(3)
+                }
+
+                let commandLine = "\(server.command) \(server.arguments)".trimmingCharacters(in: .whitespaces)
+                Text(commandLine)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            Button {
+                state.deleteMCPServer(id: server.id)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(Color.red.opacity(0.75))
+                    .frame(width: 20, height: 20)
+                    .background(Color.red.opacity(0.08))
+                    .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+            .help("Delete MCP Server")
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.035))
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+        )
+    }
+
+    @ViewBuilder
+    private var addMCPServerForm: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Add New MCP Server")
+                .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                .foregroundColor(palette.primaryAccent)
+
+            HStack(spacing: 8) {
+                Text("Name")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 60, alignment: .leading)
+
+                customInputCapsule {
+                    TextField("Server Name (e.g. filesystem)", text: $newServerName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10))
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text("Command")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 60, alignment: .leading)
+
+                customInputCapsule {
+                    TextField("Executable / Command (e.g. npx)", text: $newServerCommand)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10, design: .monospaced))
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text("Arguments")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 60, alignment: .leading)
+
+                customInputCapsule {
+                    TextField("Arguments (e.g. -y @modelcontextprotocol/server-filesystem)", text: $newServerArgs)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10, design: .monospaced))
+                }
+            }
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        isAddingMCPServer = false
+                        newServerName = ""
+                        newServerCommand = ""
+                        newServerArgs = ""
+                    }
+                }
+                .buttonStyle(.tactile)
+                .font(.system(size: 9.5))
+
+                Button("Add Server") {
+                    guard !newServerName.trimmingCharacters(in: .whitespaces).isEmpty,
+                          !newServerCommand.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    state.addMCPServer(
+                        name: newServerName.trimmingCharacters(in: .whitespaces),
+                        command: newServerCommand.trimmingCharacters(in: .whitespaces),
+                        arguments: newServerArgs.trimmingCharacters(in: .whitespaces)
+                    )
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        isAddingMCPServer = false
+                        newServerName = ""
+                        newServerCommand = ""
+                        newServerArgs = ""
+                    }
+                }
+                .buttonStyle(.tactile)
+                .font(.system(size: 9.5))
+                .disabled(newServerName.trimmingCharacters(in: .whitespaces).isEmpty || newServerCommand.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(10)
+        .background(palette.primaryAccent.opacity(0.06))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.primaryAccent.opacity(0.25), lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Card 4: Session History & Retention
     @ViewBuilder
     private var sessionRetentionCard: some View {
         settingsSectionCard(

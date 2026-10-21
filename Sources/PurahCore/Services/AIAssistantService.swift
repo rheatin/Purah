@@ -1191,4 +1191,68 @@ public final class AIAssistantService {
             return fallbackClaudeModels
         }
     }
+
+    // MARK: - Built-in Local Skills
+    public nonisolated static func enrichPromptWithLocalSkills(
+        _ prompt: String,
+        skills: AIBuiltInSkillConfig
+    ) -> (enrichedPrompt: String, attachedFilesSummary: [String]) {
+        guard skills.enableFileReadSkill || skills.enableDirectoryListSkill else {
+            return (prompt, [])
+        }
+
+        let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return (prompt, [])
+        }
+
+        let nsPrompt = prompt as NSString
+        let matches = regex.matches(in: prompt, options: [], range: NSRange(location: 0, length: nsPrompt.length))
+        guard !matches.isEmpty else {
+            return (prompt, [])
+        }
+
+        var enrichedPrompt = prompt
+        var attachedFilesSummary: [String] = []
+        var processedPaths = Set<String>()
+
+        for match in matches {
+            let rawPath = nsPrompt.substring(with: match.range)
+            var expandedPath = (rawPath as NSString).expandingTildeInPath
+
+            var isDir: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
+                let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
+                let exp = (trimmed as NSString).expandingTildeInPath
+                if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
+                    expandedPath = exp
+                } else {
+                    continue
+                }
+            }
+
+            guard !processedPaths.contains(expandedPath) else { continue }
+            processedPaths.insert(expandedPath)
+
+            if !isDir.boolValue && skills.enableFileReadSkill {
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath),
+                   let fileSize = attrs[.size] as? Int64,
+                   fileSize <= 512 * 1024,
+                   let data = try? Data(contentsOf: URL(fileURLWithPath: expandedPath), options: .mappedIfSafe),
+                   let fileContent = String(data: data, encoding: .utf8) {
+                    let truncated = String(fileContent.prefix(24_000))
+                    enrichedPrompt += "\n\n[Built-in Skill: Local File Content of '\(expandedPath)']:\n```\n\(truncated)\n```"
+                    attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
+                }
+            } else if isDir.boolValue && skills.enableDirectoryListSkill {
+                if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
+                    let sortedEntries = entries.sorted()
+                    let limitedEntries = Array(sortedEntries.prefix(60))
+                    enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
+                }
+            }
+        }
+
+        return (enrichedPrompt, attachedFilesSummary)
+    }
 }

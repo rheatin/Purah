@@ -152,7 +152,15 @@ public struct AIAssistantRoleWorkbenchView: View {
     public let cardHeight: CGFloat
     public let onTogglePin: () -> Void
 
+    @FocusState private var isRefineEditorFocused: Bool
+    @FocusState private var isSourceEditorFocused: Bool
+
     @State private var isDropTargeted: Bool = false
+    @State private var isTopDropZoneTargeted: Bool = false
+    @State private var isBottomDropZoneTargeted: Bool = false
+    @State private var isBottomDropTargeted: Bool = false
+    @State private var isHoveringSaveNotes: Bool = false
+    @State private var isHoveringRetry: Bool = false
     @State private var inlineInput: String = ""
     @State private var isRefiningOutput: Bool = false
     @State private var isEditingSource: Bool = false
@@ -246,15 +254,38 @@ public struct AIAssistantRoleWorkbenchView: View {
         )
         .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
         .overlay {
-            if isDropTargeted {
-                dropOverlayView
+            if isDropTargeted || isTopDropZoneTargeted || isBottomDropZoneTargeted {
+                if !latestResult.isEmpty || !sourceText.isEmpty {
+                    splitDropOverlayView
+                } else {
+                    dropOverlayView
+                }
             }
         }
         .onDrop(of: [.utf8PlainText, .plainText, .fileURL], isTargeted: $isDropTargeted) { providers in
-            state.handleDroppedProviders(providers) {
-                if let dropped = state.stagedDropText, !dropped.isEmpty {
-                    state.currentInputText = dropped
-                    isEditingSource = true
+            let target: AIDropZoneTarget = isBottomDropZoneTargeted ? .followUp : .newSession
+            return state.handleDroppedProviders(providers, target: target) {
+                if target == .newSession {
+                    if let dropped = state.stagedDropText, !dropped.isEmpty {
+                        state.currentInputText = dropped
+                        isEditingSource = true
+                        isSourceEditorFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isSourceEditorFocused = true
+                        }
+                    }
+                } else {
+                    if let dropped = state.stagedDropText, !dropped.isEmpty {
+                        inlineInput = dropped
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                            isRefiningOutput = true
+                            isEditingSource = false
+                        }
+                        isRefineEditorFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isRefineEditorFocused = true
+                        }
+                    }
                 }
             }
         }
@@ -298,6 +329,90 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    // MARK: - Split 50/50 Dual-Zone Drop Overlay
+    @ViewBuilder
+    private var splitDropOverlayView: some View {
+        VStack(spacing: 8) {
+            // 1. Top 50% Box: New Session
+            ZStack {
+                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
+                    .fill(isTopDropZoneTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: isTopDropZoneTargeted ? 2.0 : 1.2, dash: [6, 4])
+                    )
+                    .foregroundColor(isTopDropZoneTargeted ? roleColor : Color.white.opacity(0.35))
+
+                VStack(spacing: 5) {
+                    Image(systemName: "plus.bubble.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(isTopDropZoneTargeted ? roleColor : Color.white.opacity(0.85))
+                    Text("ai.drop.newSessionZone".localized)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onDrop(of: [.fileURL, .utf8PlainText, .plainText], isTargeted: $isTopDropZoneTargeted) { providers in
+                return state.handleDroppedProviders(providers, target: .newSession) {
+                    if let dropped = state.stagedDropText, !dropped.isEmpty {
+                        state.currentInputText = dropped
+                        isEditingSource = true
+                        isSourceEditorFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isSourceEditorFocused = true
+                        }
+                    }
+                }
+            }
+
+            // 2. Bottom 50% Box: Follow-up / Refine
+            ZStack {
+                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
+                    .fill(isBottomDropZoneTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+                RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: isBottomDropZoneTargeted ? 2.0 : 1.2, dash: [6, 4])
+                    )
+                    .foregroundColor(isBottomDropZoneTargeted ? roleColor : Color.white.opacity(0.35))
+
+                VStack(spacing: 5) {
+                    Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(isBottomDropZoneTargeted ? roleColor : Color.white.opacity(0.85))
+                    Text("ai.drop.followUpZone".localized)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onDrop(of: [.fileURL, .utf8PlainText, .plainText], isTargeted: $isBottomDropZoneTargeted) { providers in
+                return state.handleDroppedProviders(providers, target: .followUp) {
+                    if let dropped = state.stagedDropText, !dropped.isEmpty {
+                        inlineInput = dropped
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                            isRefiningOutput = true
+                            isEditingSource = false
+                        }
+                        isRefineEditorFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isRefineEditorFocused = true
+                        }
+                    }
+                }
+            }
+        }
+        .padding(6)
+        .background(Color.black.opacity(0.60))
+        .cornerRadius(showRoleSwitcher ? 10 : 14)
     }
 
     // MARK: - Stage 1: Input Stage (When latestResult.isEmpty && !isRoleStreaming)
@@ -441,6 +556,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     // MARK: - Stage 2 & 3: Generating & Output Stage
+    @ViewBuilder
     private var stage2And3OutputView: some View {
         VStack(alignment: .leading, spacing: 6) {
             // 1. Top 3-in-1 Compact Status Bar (24pt when collapsed, spring-expands to ~96pt when isEditingSource)
@@ -475,6 +591,28 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             // 3. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
+                .overlay {
+                    if isBottomDropTargeted {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                            .foregroundColor(roleColor)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(roleColor.opacity(0.12))
+                            )
+                    }
+                }
+                .onDrop(of: [UTType.utf8PlainText, UTType.plainText, UTType.fileURL], isTargeted: $isBottomDropTargeted) { providers in
+                    state.handleDroppedProviders(providers, target: .followUp) {
+                        if let dropped = state.stagedDropText, !dropped.isEmpty {
+                            inlineInput = dropped
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                                isRefiningOutput = true
+                                isEditingSource = false
+                            }
+                        }
+                    }
+                }
         }
     }
 
@@ -485,6 +623,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             // Expanded Source Editing Card (~96pt)
             VStack(alignment: .leading, spacing: 5) {
                 TextEditor(text: $state.currentInputText)
+                    .focused($isSourceEditorFocused)
                     .font(.system(size: 11, weight: .regular))
                     .foregroundColor(.white)
                     .scrollContentBackground(.hidden)
@@ -495,6 +634,12 @@ public struct AIAssistantRoleWorkbenchView: View {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Color.black.opacity(0.30))
                     )
+                    .onAppear {
+                        isSourceEditorFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isSourceEditorFocused = true
+                        }
+                    }
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
@@ -545,17 +690,14 @@ public struct AIAssistantRoleWorkbenchView: View {
             )
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
         } else {
-            // Collapsed 3-in-1 Compact Status Bar (height: 24pt)
-            HStack(spacing: 5) {
+            // Collapsed 3-in-1 Compact Status Bar (height: 22pt)
+            HStack(spacing: 4) {
                 // Role Menu Pill ([🌐 Translate ▾])
                 Menu {
                     ForEach(state.enabledRoles) { r in
                         Button {
-                            state.selectedRoleId = r.id
                             let textToRun = !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? sourceText : state.currentInputText
-                            if !textToRun.isEmpty {
-                                state.sendPrompt(textToRun, role: r, originalSelection: textToRun)
-                            }
+                            state.switchRoleInTopBar(to: r, sourceText: textToRun)
                         } label: {
                             HStack {
                                 Image(systemName: r.systemIcon)
@@ -582,9 +724,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                             .font(.system(size: 6, weight: .bold))
                     }
                     .padding(.horizontal, 6)
-                    .padding(.vertical, 2.5)
+                    .frame(height: 22)
                     .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
                             .fill(roleColor.opacity(0.18))
                     )
                     .foregroundColor(roleColor)
@@ -625,8 +767,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .font(.system(size: 6, weight: .bold))
                         }
                         .padding(.horizontal, 5)
-                        .padding(.vertical, 2.5)
-                        .background(Capsule().fill(roleColor.opacity(0.15)))
+                        .frame(height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                .fill(roleColor.opacity(0.15))
+                        )
                         .foregroundColor(roleColor)
                     }
                     .menuStyle(.button)
@@ -660,8 +805,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .font(.system(size: 6, weight: .bold))
                         }
                         .padding(.horizontal, 5)
-                        .padding(.vertical, 2.5)
-                        .background(Capsule().fill(roleColor.opacity(0.15)))
+                        .frame(height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                .fill(roleColor.opacity(0.15))
+                        )
                         .foregroundColor(roleColor)
                     }
                     .menuStyle(.button)
@@ -678,6 +826,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                             isEditingSource = true
                             isRefiningOutput = false
                         }
+                        isSourceEditorFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isSourceEditorFocused = true
+                        }
                     } label: {
                         HStack(spacing: 3.5) {
                             RoundedRectangle(cornerRadius: 1)
@@ -692,10 +844,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .font(.system(size: 7.5))
                                 .foregroundColor(Color.white.opacity(0.55))
                         }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 6)
+                        .frame(height: 22)
                         .background(
-                            Capsule().fill(Color.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
                         )
                     }
                     .buttonStyle(.plain)
@@ -715,7 +868,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 7.5, weight: .bold))
                                 .foregroundColor(state.effectiveStepIndex > 0 ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
-                                .frame(width: 15, height: 18)
+                                .frame(width: 14, height: 22)
                         }
                         .buttonStyle(.plain)
                         .disabled(state.effectiveStepIndex <= 0)
@@ -732,15 +885,15 @@ public struct AIAssistantRoleWorkbenchView: View {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 7.5, weight: .bold))
                                 .foregroundColor(state.effectiveStepIndex < state.totalStepsCount - 1 ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
-                                .frame(width: 15, height: 18)
+                                .frame(width: 14, height: 22)
                         }
                         .buttonStyle(.plain)
                         .disabled(state.effectiveStepIndex >= state.totalStepsCount - 1)
                     }
-                    .padding(.horizontal, 3)
-                    .padding(.vertical, 1)
+                    .padding(.horizontal, 4)
+                    .frame(height: 22)
                     .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
                             .fill(Color.white.opacity(0.06))
                     )
                 }
@@ -752,9 +905,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 9))
                         .foregroundColor(Color.white.opacity(0.75))
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
                         .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
                                 .fill(Color.white.opacity(0.06))
                         )
                 }
@@ -769,9 +922,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                         Image(systemName: isPinned ? "pin.fill" : "pin")
                             .font(.system(size: 9))
                             .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                            .frame(width: 20, height: 20)
+                            .frame(width: 22, height: 22)
                             .background(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
                                     .fill(Color.white.opacity(0.06))
                             )
                     }
@@ -779,7 +932,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .help("Pin Drawer")
                 }
             }
-            .frame(height: 24)
+            .frame(height: 22)
             .simultaneousGesture(
                 TapGesture().onEnded {
                     if isRefiningOutput {
@@ -796,33 +949,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     @ViewBuilder
     private var centerOutputStage: some View {
         if isRoleStreaming && latestResult.isEmpty {
-            // Generating Shimmer Skeleton
-            VStack(alignment: .leading, spacing: 6) {
-                AIShimmerSkeletonView(roleColor: roleColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 4)
-
-                Spacer()
-
-                Button {
-                    state.stopStreaming()
-                } label: {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .controlSize(.mini)
-                        Text("ai.status.generating".localized)
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3.5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(roleColor.opacity(0.18))
-                    )
-                    .foregroundColor(roleColor)
-                }
-                .buttonStyle(.plain)
-            }
+            generatingStateView
         } else {
             // Output view
             VStack(alignment: .leading, spacing: 4) {
@@ -895,6 +1022,90 @@ public struct AIAssistantRoleWorkbenchView: View {
         }
     }
 
+    // MARK: - Generating State View
+    @ViewBuilder
+    private var generatingStateView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let reasoning = lastAssistantMsg?.reasoningContent, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text("💭")
+                            .font(.system(size: 9.5))
+                        Text("ai.thought.process".localized)
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.85))
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
+
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical, showsIndicators: true) {
+                            Text(reasoning)
+                                .font(.system(size: 9.5, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.70))
+                                .lineSpacing(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(6)
+                                .id("streamingReasoningAnchor")
+                        }
+                        .background(Color.black.opacity(0.35))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(roleColor.opacity(0.30), lineWidth: 0.8)
+                        )
+                        .onChange(of: reasoning) { _, _ in
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
+                            }
+                        }
+                        .onAppear {
+                            proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
+                        }
+                    }
+                }
+                .frame(maxHeight: 120)
+
+                AIShimmerSingleLineView(roleColor: roleColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 2)
+            } else {
+                AIShimmerSkeletonView(roleColor: roleColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+            }
+
+            Spacer(minLength: 2)
+
+            Button {
+                state.stopStreaming()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundColor(Color(hex: "#F87171"))
+                    Text("ai.status.generatingStop".localized)
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(Color(hex: "#FCA5A5"))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color(hex: "#EF4444").opacity(0.18))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(Color(hex: "#EF4444").opacity(0.35), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Stop Generation")
+        }
+    }
+
     // MARK: - Collapsible Reasoning View
     @ViewBuilder
     private func collapsibleReasoningView(reasoning: String) -> some View {
@@ -944,11 +1155,18 @@ public struct AIAssistantRoleWorkbenchView: View {
                 // Top row (height: 44pt): TextEditor
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $inlineInput)
+                        .focused($isRefineEditorFocused)
                         .font(.system(size: 11))
                         .foregroundColor(.white)
                         .scrollContentBackground(.hidden)
                         .background(Color.clear)
                         .frame(height: 44)
+                        .onAppear {
+                            isRefineEditorFocused = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                isRefineEditorFocused = true
+                            }
+                        }
 
                     if inlineInput.isEmpty {
                         Text("ai.composer.refinePlaceholder".localized)
@@ -1007,29 +1225,56 @@ public struct AIAssistantRoleWorkbenchView: View {
         } else {
             // Collapsed Single 24pt Row
             HStack(spacing: 5) {
-                // 1. Primary Pill (Replace Selection / Copy Result)
-                Button {
-                    if state.capturedSelection != nil {
-                        replaceSelection()
-                    } else {
-                        copyResult()
+                if isRoleStreaming {
+                    Button {
+                        state.stopStreaming()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.circle.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color(hex: "#F87171"))
+                            Text("ai.status.generatingStop".localized)
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                .foregroundColor(Color(hex: "#FCA5A5"))
+                        }
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color(hex: "#EF4444").opacity(0.20))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(hex: "#EF4444").opacity(0.40), lineWidth: 0.9)
+                        )
                     }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: state.capturedSelection != nil ? "arrow.triangle.2.circlepath" : "doc.on.doc.fill")
-                            .font(.system(size: 8.5, weight: .bold))
-                        Text(state.capturedSelection != nil ? "ai.action.replaceSelection".localized : "ai.action.copyResult".localized)
-                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .buttonStyle(.plain)
+                    .help("Stop Generation")
+                } else {
+                    // 1. Primary Pill (Replace Selection / Copy Result)
+                    Button {
+                        if state.capturedSelection != nil {
+                            replaceSelection()
+                        } else {
+                            copyResult()
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: state.capturedSelection != nil ? "arrow.triangle.2.circlepath" : "doc.on.doc.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text(state.capturedSelection != nil ? "ai.action.replaceSelection".localized : "ai.action.copyResult".localized)
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        }
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(roleColor)
+                        )
+                        .foregroundColor(Color(hex: "#0F111A"))
                     }
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(roleColor)
-                    )
-                    .foregroundColor(Color(hex: "#0F111A"))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 // 2. Chain Next Role Menu Pill ([→ Process Next ▾])
                 Menu {
@@ -1067,32 +1312,60 @@ public struct AIAssistantRoleWorkbenchView: View {
                 Button {
                     saveToQuickNotes()
                 } label: {
-                    Image(systemName: "note.text.badge.plus")
-                        .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.80))
-                        .frame(width: 24, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.07))
-                        )
+                    HStack(spacing: 3) {
+                        Image(systemName: "note.text.badge.plus")
+                            .font(.system(size: 9))
+                        if isHoveringSaveNotes {
+                            Text("ai.action.saveToNotesShort".localized)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .transition(.opacity.combined(with: .move(edge: .leading)))
+                        }
+                    }
+                    .foregroundColor(Color.white.opacity(0.80))
+                    .padding(.horizontal, isHoveringSaveNotes ? 6 : 0)
+                    .frame(height: 24)
+                    .frame(minWidth: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isHoveringSaveNotes ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
+                    )
                 }
                 .buttonStyle(.plain)
+                .onHover { isHovering in
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isHoveringSaveNotes = isHovering
+                    }
+                }
                 .help("ai.action.saveToNotes".localized)
 
                 // 4. Retry
                 Button {
                     retryGeneration()
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.80))
-                        .frame(width: 24, height: 24)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.07))
-                        )
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9))
+                        if isHoveringRetry {
+                            Text("ai.action.retry".localized)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .transition(.opacity.combined(with: .move(edge: .leading)))
+                        }
+                    }
+                    .foregroundColor(Color.white.opacity(0.80))
+                    .padding(.horizontal, isHoveringRetry ? 6 : 0)
+                    .frame(height: 24)
+                    .frame(minWidth: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isHoveringRetry ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
+                    )
                 }
                 .buttonStyle(.plain)
+                .onHover { isHovering in
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isHoveringRetry = isHovering
+                    }
+                }
                 .help("ai.action.retry".localized)
 
                 // 5. Expandable Refine Trigger Pill ([✨ Refine / Follow-up... ⬆])
@@ -1100,6 +1373,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                         isRefiningOutput = true
                         isEditingSource = false
+                    }
+                    isRefineEditorFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isRefineEditorFocused = true
                     }
                 } label: {
                     HStack(spacing: 4) {
@@ -1441,6 +1718,20 @@ public struct AISessionHistoryManagerView: View {
                     .buttonStyle(.plain)
                     .help("Favorite")
 
+                    // Export button
+                    Button {
+                        exportSession(session)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(width: 20, height: 20)
+                            .background(Color.white.opacity(0.04))
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Export Markdown")
+
                     // Delete button
                     Button {
                         state.deleteSession(id: session.id)
@@ -1472,6 +1763,34 @@ public struct AISessionHistoryManagerView: View {
         state.renameSession(id: id, newTitle: renameDraft)
         renamingSessionId = nil
         renameDraft = ""
+    }
+
+    private func exportSession(_ session: AIChatSession) {
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsHiddenFiles = false
+        savePanel.level = .modalPanel
+        let rawTitle = session.title
+        let sanitized = rawTitle
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fileName = (sanitized.isEmpty ? "ChatSession" : sanitized) + ".md"
+        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
+        if let mdType = UTType(filenameExtension: "md") {
+            savePanel.allowedContentTypes = [mdType, .plainText]
+        } else {
+            savePanel.allowedContentTypes = [.plainText]
+        }
+
+        let response = savePanel.runModal()
+        if response == .OK, let url = savePanel.url {
+            PurahExportPathManager.updateLastDirectory(from: url)
+            let mdContent = state.exportSessionMarkdown(session: session)
+            try? mdContent.write(to: url, atomically: true, encoding: .utf8)
+            store.onCapacityWarningToast?("📤 Exported to \(url.lastPathComponent)")
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+        }
     }
 
     private func relativeTimeString(from date: Date) -> String {
@@ -1530,5 +1849,42 @@ private struct AIShimmerSkeletonView: View {
             .frame(width: w, height: 7)
         }
         .frame(height: 7)
+    }
+}
+
+// MARK: - Single Line Shimmer Skeleton View
+private struct AIShimmerSingleLineView: View {
+    let roleColor: Color
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
+
+            GeometryReader { geo in
+                let w = geo.size.width * 0.72
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: max(0, phase - 0.25)),
+                                    .init(color: roleColor.opacity(0.40), location: phase),
+                                    .init(color: .white.opacity(0.60), location: min(1, phase + 0.1)),
+                                    .init(color: roleColor.opacity(0.40), location: min(1, phase + 0.2)),
+                                    .init(color: .clear, location: min(1, phase + 0.4))
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+                .frame(width: w, height: 6)
+            }
+            .frame(height: 6)
+        }
     }
 }

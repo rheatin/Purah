@@ -692,3 +692,47 @@ public enum AITextDiffEngine {
         return tokens
     }
 }
+
+// MARK: - MCP Server Configuration
+public struct AIMCPServerConfig: Identifiable, Codable, Equatable, Sendable {
+    public var id: String
+    public var name: String
+    public var command: String
+    public var arguments: String
+    public var envJSON: String
+    public var isEnabled: Bool
+
+    public init(
+        id: String = UUID().uuidString,
+        name: String,
+        command: String,
+        arguments: String = "",
+        envJSON: String = "{}",
+        isEnabled: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.command = command
+        self.arguments = arguments
+        self.envJSON = envJSON
+        self.isEnabled = isEnabled
+    }
+}
+
+// MARK: - Built-in Skill Configuration
+public struct AIBuiltInSkillConfig: Codable, Equatable, Sendable {
+    public var enableFileReadSkill: Bool
+    public var enableDirectoryListSkill: Bool
+    public var enableShellSnippetSkill: Bool
+
+    public init(
+        enableFileReadSkill: Bool = true,
+        enableDirectoryListSkill: Bool = true,
+        enableShellSnippetSkill: Bool = true
+    ) {
+        self.enableFileReadSkill = enableFileReadSkill
+        self.enableDirectoryListSkill = enableDirectoryListSkill
+        self.enableShellSnippetSkill = enableShellSnippetSkill
+    }
+}
+

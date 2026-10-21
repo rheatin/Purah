@@ -510,7 +510,11 @@ public final class LocalizationManager {
             "ai.composer.collapse": "Collapse",
             "ai.topbar.configureRoles": "Configure Roles...",
             "ai.source.editSource": "Edit Source",
-            "ai.stage1.availableRoles": "Available Roles:"
+            "ai.stage1.availableRoles": "Available Roles:",
+            "ai.status.generatingStop": "Generating · Click to Stop",
+            "ai.action.saveToNotesShort": "Save Note",
+            "ai.drop.newSessionZone": "Drop Here: Start New Session",
+            "ai.drop.followUpZone": "Drop Here: Follow-up in Current Session"
         ],
         .chinese: [
             "app.name": "Purah Pad",
@@ -931,7 +935,11 @@ public final class LocalizationManager {
             "ai.composer.collapse": "收起",
             "ai.topbar.configureRoles": "配置指令角色...",
             "ai.source.editSource": "编辑原文",
-            "ai.stage1.availableRoles": "可用指令角色："
+            "ai.stage1.availableRoles": "可用指令角色：",
+            "ai.status.generatingStop": "生成中 · 点击停止",
+            "ai.action.saveToNotesShort": "存笔记",
+            "ai.drop.newSessionZone": "拖到此处：开启新对话处理",
+            "ai.drop.followUpZone": "拖到此处：追加到当前对话继续追问 (Follow-up)"
         ],
         .traditionalChinese: [
             "tab.general": "通用",
@@ -1077,7 +1085,11 @@ public final class LocalizationManager {
             "ai.composer.collapse": "收起",
             "ai.topbar.configureRoles": "配置指令角色...",
             "ai.source.editSource": "編輯原文",
-            "ai.stage1.availableRoles": "可用指令角色："
+            "ai.stage1.availableRoles": "可用指令角色：",
+            "ai.status.generatingStop": "生成中 · 點擊停止",
+            "ai.action.saveToNotesShort": "存筆記",
+            "ai.drop.newSessionZone": "拖到此處：開啟新對話處理",
+            "ai.drop.followUpZone": "拖到此處：追加到當前對話繼續追問 (Follow-up)"
         ],
         .japanese: [
             "tab.general": "一般",
