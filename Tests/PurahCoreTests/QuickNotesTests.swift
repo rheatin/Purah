@@ -1008,4 +1008,21 @@ struct QuickNotesTests {
         #expect("notes.export".localized.isEmpty == false)
         #expect("notes.exportHelp".localized.isEmpty == false)
     }
+
+    @Test("BottomAnchorMaxYPreferenceKey and FloatingScrollToBottomButton initialize properly")
+    @MainActor
+    func testBottomAnchorAndFloatingScrollButton() {
+        var preferenceVal: CGFloat = 100
+        BottomAnchorMaxYPreferenceKey.reduce(value: &preferenceVal) { 250 }
+        #expect(preferenceVal == 250)
+        #expect(BottomAnchorMaxYPreferenceKey.defaultValue == 0)
+
+        var didClick = false
+        let button = FloatingScrollToBottomButton(accentColor: .blue) {
+            didClick = true
+        }
+        #expect(button.accentColor == .blue)
+        button.action()
+        #expect(didClick == true)
+    }
 }

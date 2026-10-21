@@ -50,6 +50,45 @@ public struct MarkdownTipsPopoverView: View {
     }
 }
 
+/// Preference key tracking the maximum Y coordinate of the bottom anchor in a scroll area.
+public struct BottomAnchorMaxYPreferenceKey: PreferenceKey {
+    public static let defaultValue: CGFloat = 0
+    public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// Floating circular scroll-to-bottom button matching the Purah design system.
+public struct FloatingScrollToBottomButton: View {
+    public let accentColor: Color
+    public let action: () -> Void
+
+    public init(accentColor: Color, action: @escaping () -> Void) {
+        self.accentColor = accentColor
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#181B24").opacity(0.95))
+                    .frame(width: 26, height: 26)
+                Circle()
+                    .stroke(accentColor.opacity(0.75), lineWidth: 1.2)
+                    .frame(width: 26, height: 26)
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(accentColor)
+            }
+            .shadow(color: Color.black.opacity(0.4), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .padding(10)
+        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+    }
+}
+
 /// Interactive rich Markdown preview supporting live checklist toggling,
 /// tables, fenced code blocks with copy, headings, quotes, and click-to-edit transition.
 public struct InteractiveMarkdownPreviewView: View {
@@ -58,6 +97,11 @@ public struct InteractiveMarkdownPreviewView: View {
     public let accentColor: Color
     public let onToggleChecklist: (Int) -> Void
     public let onRequestEdit: () -> Void
+
+    @State private var followsTail: Bool = true
+    @State private var isScrolledUp: Bool = false
+    @State private var isHoveringScrollArea: Bool = false
+    @State private var scrollMonitor: Any? = nil
 
     public init(
         markdown: String,
@@ -117,32 +161,101 @@ public struct InteractiveMarkdownPreviewView: View {
     }
 
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(alignment: .leading, spacing: 6) {
-                let blocks = parseBlocks(from: markdown)
-                if blocks.isEmpty || blocks.allSatisfy({ isBlockEmpty($0) }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "pencil.line")
-                            .font(.system(size: 11))
-                            .foregroundColor(accentColor.opacity(0.75))
-                        Text("notes.empty".localized)
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundColor(.secondary.opacity(0.5))
+        GeometryReader { outerGeo in
+            ScrollViewReader { scrollProxy in
+                ZStack(alignment: .bottomTrailing) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            let blocks = parseBlocks(from: markdown)
+                            if blocks.isEmpty || blocks.allSatisfy({ isBlockEmpty($0) }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "pencil.line")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(accentColor.opacity(0.75))
+                                    Text("notes.empty".localized)
+                                        .font(.system(size: 11, design: .rounded))
+                                        .foregroundColor(.secondary.opacity(0.5))
+                                }
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                ForEach(blocks) { block in
+                                    renderBlock(block)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+
+                            Color.clear
+                                .frame(height: 1)
+                                .id("markdownBottomAnchor")
+                                .background(
+                                    GeometryReader { geo in
+                                        Color.clear.preference(
+                                            key: BottomAnchorMaxYPreferenceKey.self,
+                                            value: geo.frame(in: .named("markdownPreviewScroll")).maxY
+                                        )
+                                    }
+                                )
+                        }
+                        .padding(6)
+                        .frame(maxWidth: .infinity, minHeight: max(80, outerGeo.size.height), alignment: .topLeading)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onRequestEdit()
+                        }
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    ForEach(blocks) { block in
-                        renderBlock(block)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    .coordinateSpace(name: "markdownPreviewScroll")
+                    .onHover { hovering in
+                        isHoveringScrollArea = hovering
+                    }
+                    .onPreferenceChange(BottomAnchorMaxYPreferenceKey.self) { bottomMaxY in
+                        guard bottomMaxY > 0 && outerGeo.size.height > 0 else { return }
+                        if bottomMaxY > outerGeo.size.height + 24 {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                isScrolledUp = true
+                            }
+                        } else if bottomMaxY <= outerGeo.size.height + 14 {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                isScrolledUp = false
+                            }
+                            followsTail = true
+                        }
+                    }
+                    .onChange(of: markdown) { _, _ in
+                        if followsTail {
+                            scrollProxy.scrollTo("markdownBottomAnchor", anchor: .bottom)
+                        }
+                    }
+                    .onAppear {
+                        if !PurahWorkspaceStore.isTestingEnvironment && scrollMonitor == nil {
+                            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                                if isHoveringScrollArea && event.scrollingDeltaY > 1.0 {
+                                    followsTail = false
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                        isScrolledUp = true
+                                    }
+                                }
+                                return event
+                            }
+                        }
+                    }
+                    .onDisappear {
+                        if let monitor = scrollMonitor {
+                            NSEvent.removeMonitor(monitor)
+                            scrollMonitor = nil
+                        }
+                    }
+
+                    if isScrolledUp {
+                        FloatingScrollToBottomButton(accentColor: accentColor) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                followsTail = true
+                                isScrolledUp = false
+                                scrollProxy.scrollTo("markdownBottomAnchor", anchor: .bottom)
+                            }
+                        }
                     }
                 }
-            }
-            .padding(6)
-            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                onRequestEdit()
             }
         }
     }
