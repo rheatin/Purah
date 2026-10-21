@@ -160,10 +160,17 @@ public struct AIAssistantPlugin: PurahPodPlugin {
 
     // MARK: - Capability Provider & Layout
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
-    public var supportedDropTypes: [UTType] { [.fileURL, .utf8PlainText, .png, .tiff, .pdf] }
+    public var supportedDropTypes: [UTType] { AIWorkbenchSplitDropDelegate.acceptedTypes }
 
     public func onDrop(providers: [NSItemProvider], context: PurahPluginContext) -> Bool {
-        state.handleDroppedProviders(providers) {
+        // Rail drops have no 50/50 split: they always stage into a new session.
+        // The synchronous pasteboard path is preferred because the drag pasteboard is only valid
+        // inside the drop callback.
+        if state.ingestDropFromDrag(target: .newSession) {
+            context.requestExpand()
+            return true
+        }
+        return state.handleDroppedProviders(providers) {
             context.requestExpand()
         }
     }
