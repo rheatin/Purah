@@ -130,3 +130,123 @@ struct PurahConfigBackupTests {
         #expect(defaults.bool(forKey: "purah.didAutoInstallAIPlugin") == true)
     }
 }
+
+@Suite("Onboarding & Launch At Login Tests")
+@MainActor
+struct OnboardingAndLaunchAtLoginTests {
+
+    @Test("startInteractiveOnboarding disables all pods and enters live editing")
+    func testStartInteractiveOnboarding() {
+        let suite = "test_onboarding_start_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        #expect(store.pods.contains(where: { $0.isEnabled }))
+
+        store.startInteractiveOnboarding(clearAllPods: true)
+
+        #expect(store.isOnboardingGuideActive == true)
+        #expect(store.isLiveRailEditingMode == true)
+        #expect(store.onboardingStep == .mountPods)
+        #expect(store.pods.allSatisfy { !$0.isEnabled })
+        #expect(store.leftRailPage == 0)
+        #expect(store.rightRailPage == 0)
+    }
+
+    @Test("Step navigation and rehearsal mechanisms")
+    func testStepNavigationAndRehearsals() {
+        let suite = "test_onboarding_nav_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        store.startInteractiveOnboarding(clearAllPods: true)
+        #expect(store.onboardingStep == .mountPods)
+
+        store.nextOnboardingStep()
+        #expect(store.onboardingStep == .decomposeDemo)
+
+        store.nextOnboardingStep()
+        #expect(store.onboardingStep == .stackDemo)
+
+        store.previousOnboardingStep()
+        #expect(store.onboardingStep == .decomposeDemo)
+
+        store.skipCurrentOnboardingStep()
+        #expect(store.onboardingStep == .stackDemo)
+
+        // Test sample pods mounting rehearsal
+        store.rehearseMountSamplePods()
+        #expect(store.pods.contains(where: { $0.id == "vitals" && $0.isEnabled && $0.edge == .left }))
+        #expect(store.pods.contains(where: { $0.id == "shelf" && $0.isEnabled && $0.edge == .left }))
+        #expect(store.pods.contains(where: { $0.id == "calendar" && $0.isEnabled && $0.edge == .right }))
+        #expect(store.pods.contains(where: { $0.id == "scripts" && $0.isEnabled && $0.edge == .right }))
+
+        // Test stack merge rehearsal
+        store.rehearseStackMerge()
+        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(leftPods.count >= 2)
+        let groupIds = leftPods.compactMap(\.majorGroupId)
+        #expect(!groupIds.isEmpty)
+
+        // Test pagination flip rehearsal
+        store.rehearsePaginationFlip()
+        #expect(store.isRightTopPortalRevealed == true)
+        #expect(store.isRightBottomPortalRevealed == true)
+
+        // Step 6 anti-touch calibration sets rehearsal breathing flag for live testing
+        store.selectOnboardingStep(.antiTouchCalibration)
+        #expect(store.onboardingStep == .antiTouchCalibration)
+        #expect(store.isRehearsingBreathingInSculptor == true)
+
+        // Complete onboarding
+        store.finishOnboarding(useRecommendedLayout: true)
+        #expect(store.hasCompletedOnboarding == true)
+        #expect(store.isOnboardingGuideActive == false)
+        #expect(store.isLiveRailEditingMode == false)
+        #expect(store.isRehearsingBreathingInSculptor == false)
+        #expect(store.pods.contains(where: { $0.isEnabled }))
+    }
+
+    @Test("Skip all onboarding restores defaults and completes onboarding")
+    func testSkipAllOnboardingAndLoadDefaults() {
+        let suite = "test_onboarding_skip_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        store.startInteractiveOnboarding(clearAllPods: true)
+        #expect(store.isOnboardingGuideActive == true)
+
+        store.skipAllOnboardingAndLoadDefaults()
+        #expect(store.hasCompletedOnboarding == true)
+        #expect(store.isOnboardingGuideActive == false)
+        #expect(store.isLiveRailEditingMode == false)
+        #expect(store.pods.contains(where: { $0.id == "vitals" && $0.isEnabled }))
+    }
+
+    @Test("Reset to factory defaults with triggerOnboarding enters onboarding")
+    func testResetToFactoryDefaultsWithOnboarding() {
+        let suite = "test_reset_onboarding_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        PurahConfigBackupManager.resetToFactoryDefaults(store: store, defaults: defaults, triggerOnboarding: true)
+
+        #expect(store.isOnboardingGuideActive == true)
+        #expect(store.isLiveRailEditingMode == true)
+        #expect(store.onboardingStep == .mountPods)
+        #expect(store.pods.allSatisfy { !$0.isEnabled })
+    }
+
+    @Test("LaunchAtLoginService sets and saves preference")
+    func testLaunchAtLoginService() {
+        let service = LaunchAtLoginService.shared
+
+        service.setEnabled(true)
+        #expect(service.isEnabled == true)
+        #expect(UserDefaults.standard.bool(forKey: "purah.launchAtLogin") == true)
+
+        service.setEnabled(false)
+        #expect(service.isEnabled == false)
+        #expect(UserDefaults.standard.bool(forKey: "purah.launchAtLogin") == false)
+    }
+}

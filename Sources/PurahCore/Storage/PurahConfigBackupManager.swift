@@ -152,7 +152,7 @@ public enum PurahConfigBackupManager {
         store.onWindowsRebuildNeeded?()
     }
 
-    public static func resetToFactoryDefaults(store: PurahWorkspaceStore, defaults: UserDefaults = .standard) {
+    public static func resetToFactoryDefaults(store: PurahWorkspaceStore, defaults: UserDefaults = .standard, triggerOnboarding: Bool = false) {
         let dict = defaults.dictionaryRepresentation()
         for key in dict.keys where key.hasPrefix("purah.") {
             defaults.removeObject(forKey: key)
@@ -179,6 +179,10 @@ public enum PurahConfigBackupManager {
         defaults.synchronize()
         store.invalidateLayoutCache()
         store.onWindowsRebuildNeeded?()
+
+        if triggerOnboarding {
+            store.startInteractiveOnboarding(clearAllPods: true)
+        }
     }
 
     private static func convertToConfigValue(_ value: Any) -> PurahConfigValue? {

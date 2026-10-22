@@ -107,6 +107,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
 
         DiagnosticLogger.shared.info("Lifecycle", "Application launch completed successfully")
+
+        if !store.hasCompletedOnboarding && !PurahWorkspaceStore.isTestingEnvironment {
+            DispatchQueue.main.async {
+                self.store.startInteractiveOnboarding(clearAllPods: true)
+            }
+        }
     }
 
     @objc public func toggleFreezeMode() {

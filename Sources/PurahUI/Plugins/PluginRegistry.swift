@@ -57,6 +57,15 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         store.setMarketManager(market)
         market.lifecycleDelegate = self
         PluginMarketManager.globalLifecycleDelegate = self
+
+        store.onDecomposedStateSync = { [weak self] podId, isDecomp in
+            if podId == "scripts", let p = self?.plugin(for: "scripts") as? ScriptRunwayPlugin {
+                p.state.isDecomposed = isDecomp
+            }
+            if podId == "vitals", let p = self?.plugin(for: "vitals") as? HardwareVitalsPlugin {
+                p.state.isDecomposed = isDecomp
+            }
+        }
         for plugin in catalogPlugins.values {
             let id = plugin.manifest.id
             if market.isInstalled(id: id) {

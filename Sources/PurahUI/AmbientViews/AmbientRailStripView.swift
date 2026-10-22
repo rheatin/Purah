@@ -28,7 +28,7 @@ public struct AmbientRailStripView: View {
             let pageCount = pages.count
             let currentPage = min(max(store.currentRailPage(for: edge), 0), max(pageCount - 1, 0))
 
-            if store.isLiveRailEditingMode {
+            if store.isLiveRailEditingMode && !store.isRehearsingBreathingInSculptor {
                 LiveRailSculptorStripView(edge: edge, store: store, totalHeight: totalHeight)
             } else {
                 ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {

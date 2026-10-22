@@ -27,6 +27,8 @@ public protocol PurahPodCapabilityProvider: Sendable {
     /// Ergonomic policy defining chip height bounds, maximum visible items, and overflow behavior.
     var decomposedPolicy: PurahDecomposedPolicy { get }
     func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy
+
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore)
 }
 
 public extension PurahPodCapabilityProvider {
@@ -34,6 +36,8 @@ public extension PurahPodCapabilityProvider {
     var subItemCount: Int { 0 }
     var subItemTitles: [String] { [] }
     var decomposedPolicy: PurahDecomposedPolicy { .standardComposite }
+
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {}
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         isDecomposed

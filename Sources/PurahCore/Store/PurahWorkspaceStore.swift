@@ -24,6 +24,17 @@ public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifiable {
+    case mountPods = 0          // Step 1: Empty Rails -> Mount Pods to Left & Right
+    case decomposeDemo = 1      // Step 2: Decompose Mode -> Composite vs Stepped Chips
+    case stackDemo = 2          // Step 3: Stack Mode -> Merge Pods & Auto-Disable Decompose
+    case pageDemo = 3           // Step 4: Multi-Page Deck -> +Page & Top/Bottom Portals
+    case breathingDemo = 4      // Step 5: Dynamic Breathing -> Compact & In-Place Accordion
+    case antiTouchCalibration = 5 // Step 6: Anti-Accidental Touch -> Dwell vs Push Force & Sensitivity
+
+    public var id: Int { rawValue }
+}
+
 @Observable
 @MainActor
 public final class PurahWorkspaceStore {
@@ -43,6 +54,17 @@ public final class PurahWorkspaceStore {
     public var isDynamicBreathingEnabled: Bool = true
     public var isAlwaysCompactBreathing: Bool = false
     public var onToast: ((String, String?) -> Void)? = nil
+
+    public var isOnboardingGuideActive: Bool = false
+    public var onboardingStep: OnboardingGuideStep = .mountPods
+    public var isRehearsingBreathingInSculptor: Bool = false
+    @ObservationIgnored private var onboardingRehearsalTask: Task<Void, Never>? = nil
+    public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
+
+    public var hasCompletedOnboarding: Bool {
+        get { userDefaults.bool(forKey: "purah.hasCompletedOnboarding") }
+        set { userDefaults.set(newValue, forKey: "purah.hasCompletedOnboarding") }
+    }
 
     public var railWidth: Double {
         Double(railBarWidth)
@@ -97,6 +119,11 @@ public final class PurahWorkspaceStore {
             externalDragScreenLocation = nil
             externalDragTargetEdge = nil
             externalDragTargetPodId = nil
+            if isOnboardingGuideActive {
+                isOnboardingGuideActive = false
+                hasCompletedOnboarding = true
+                cancelOnboardingRehearsal()
+            }
         }
         isLiveRailEditingMode = enabled
         invalidateLayoutCache()
@@ -1301,7 +1328,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func isBreathingActive(for edge: MountEdge, totalHeight: Double? = nil) -> Bool {
-        guard !isLiveRailEditingMode && isDynamicBreathingEnabled else { return false }
+        guard (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled else { return false }
         if isAlwaysCompactBreathing { return true }
         let refH = totalHeight ?? lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: refH)
@@ -1638,7 +1665,7 @@ public final class PurahWorkspaceStore {
         let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
         let sumStandard = standardSpans.reduce(0.0, +)
         let sumMinRequired = clusterMinFloors.reduce(0.0, +)
-        let isBreathingActiveOnPage = !isLiveRailEditingMode && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
+        let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
 
         let clusterWeights = clusters.map { cl in cl.reduce(0.0) { $0 + max($1.range.length, 0.035) } }
 
@@ -2443,6 +2470,10 @@ public final class PurahWorkspaceStore {
     public func loadPersistentState() {
         let defaults = userDefaults
 
+        if defaults.data(forKey: "purah.pods") != nil && defaults.object(forKey: "purah.hasCompletedOnboarding") == nil {
+            defaults.set(true, forKey: "purah.hasCompletedOnboarding")
+        }
+
         if let data = defaults.data(forKey: "purah.pods"),
            let savedPods = try? JSONDecoder().decode([SlotPod].self, from: data),
            !savedPods.isEmpty {
@@ -3042,6 +3073,219 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
+    }
+
+    // MARK: - Interactive Onboarding Guide & Live Rehearsal Engine
+
+    public func cancelOnboardingRehearsal() {
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = nil
+        isRehearsingBreathingInSculptor = false
+        isAlwaysCompactBreathing = false
+        dismissActiveDrawer()
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func startInteractiveOnboarding(clearAllPods: Bool = true) {
+        cancelOnboardingRehearsal()
+        if clearAllPods {
+            for i in pods.indices {
+                pods[i].isEnabled = false
+                pods[i].majorGroupId = nil
+                pods[i].pageIndex = 0
+            }
+            leftRailPage = 0
+            rightRailPage = 0
+        }
+        onboardingStep = .mountPods
+        isOnboardingGuideActive = true
+        setLiveRailEditingMode(true)
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func selectOnboardingStep(_ step: OnboardingGuideStep) {
+        cancelOnboardingRehearsal()
+        onboardingStep = step
+        if step == .antiTouchCalibration {
+            isRehearsingBreathingInSculptor = true
+        }
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func nextOnboardingStep() {
+        if let next = OnboardingGuideStep(rawValue: onboardingStep.rawValue + 1) {
+            selectOnboardingStep(next)
+        } else {
+            finishOnboarding(useRecommendedLayout: false)
+        }
+    }
+
+    public func skipCurrentOnboardingStep() {
+        if let next = OnboardingGuideStep(rawValue: onboardingStep.rawValue + 1) {
+            selectOnboardingStep(next)
+        } else {
+            finishOnboarding(useRecommendedLayout: false)
+        }
+    }
+
+    public func previousOnboardingStep() {
+        if let prev = OnboardingGuideStep(rawValue: onboardingStep.rawValue - 1) {
+            selectOnboardingStep(prev)
+        }
+    }
+
+    public func skipAllOnboardingAndLoadDefaults() {
+        finishOnboarding(useRecommendedLayout: true)
+    }
+
+    public func finishOnboarding(useRecommendedLayout: Bool = false) {
+        cancelOnboardingRehearsal()
+        if useRecommendedLayout || !pods.contains(where: \.isEnabled) {
+            pods = PurahWorkspaceStore.defaultPods()
+            autoLayoutAll()
+        }
+        hasCompletedOnboarding = true
+        isOnboardingGuideActive = false
+        setLiveRailEditingMode(false)
+        savePersistentState()
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func rehearseMountSamplePods() {
+        mountPod(id: "vitals", to: .left)
+        mountPod(id: "shelf", to: .left)
+        mountPod(id: "calendar", to: .right)
+        mountPod(id: "scripts", to: .right)
+        normalizePageRanges(for: .left)
+        normalizePageRanges(for: .right)
+        _ = triggerControlHaptic(.alignment)
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func rehearseDecomposeDemo(decomposed: Bool? = nil) {
+        if !pods.contains(where: { $0.id == "scripts" && $0.isEnabled }) {
+            mountPod(id: "scripts", to: .right)
+        }
+        splitPodFromMajorGroup(id: "scripts")
+        if !pods.contains(where: { $0.id == "vitals" && $0.isEnabled }) {
+            mountPod(id: "vitals", to: .left)
+        }
+        splitPodFromMajorGroup(id: "vitals")
+
+        let newVal = decomposed ?? !_isScriptsDecomposed
+        _isScriptsDecomposed = newVal
+        _isVitalsDecomposed = newVal
+        capabilityProvider(for: "scripts")?.setDecomposed(newVal, store: self)
+        capabilityProvider(for: "vitals")?.setDecomposed(newVal, store: self)
+        onDecomposedStateSync?("scripts", newVal)
+        onDecomposedStateSync?("vitals", newVal)
+
+        isRehearsingBreathingInSculptor = true
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+        _ = triggerControlHaptic(.alignment)
+
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            self.isRehearsingBreathingInSculptor = false
+            self.invalidateLayoutCache()
+            self.onWindowsRebuildNeeded?()
+        }
+    }
+
+    public func rehearseStackMerge() {
+        isRehearsingBreathingInSculptor = false
+        var leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        if leftPods.count < 2 {
+            mountPod(id: "vitals", to: .left)
+            mountPod(id: "shelf", to: .left)
+            normalizePageRanges(for: .left)
+            leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        }
+        if leftPods.count >= 2 {
+            addPodToMajorGroup(podId: leftPods[1].id, targetPodId: leftPods[0].id)
+        }
+        _ = triggerControlHaptic(.alignment)
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func rehearsePaginationFlip() {
+        isRehearsingBreathingInSculptor = false
+        var rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+        if rightPods.count < 2 {
+            mountPod(id: "calendar", to: .right)
+            mountPod(id: "scripts", to: .right)
+            normalizePageRanges(for: .right)
+            rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+        }
+        if let last = rightPods.last {
+            setPodPage(id: last.id, pageIndex: 1)
+        }
+        isRightTopPortalRevealed = true
+        isRightBottomPortalRevealed = true
+        setRailPage(1, for: .right)
+        _ = triggerControlHaptic(.levelChange)
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            self.setRailPage(0, for: .right)
+            self.invalidateLayoutCache()
+            self.onWindowsRebuildNeeded?()
+        }
+    }
+
+    public func rehearseDynamicBreathing() {
+        var leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        if leftPods.count < 3 {
+            mountPod(id: "vitals", to: .left)
+            mountPod(id: "shelf", to: .left)
+            mountPod(id: "notes", to: .left)
+            mountPod(id: "clipboard", to: .left)
+            normalizePageRanges(for: .left)
+            leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        }
+        isDynamicBreathingEnabled = true
+        isAlwaysCompactBreathing = true
+        isRehearsingBreathingInSculptor = true
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+
+        let podIds = leftPods.map(\.id)
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = Task { @MainActor in
+            for podId in podIds {
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                    self.hoveredPodId = podId
+                    self.activeDrawerPodId = podId
+                    self.activeDrawerItemId = podId
+                    self.invalidateLayoutCache()
+                }
+                self.onWindowsRebuildNeeded?()
+                try? await Task.sleep(nanoseconds: 650_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard !Task.isCancelled else { return }
+            self.dismissActiveDrawer()
+            self.isAlwaysCompactBreathing = false
+            self.isRehearsingBreathingInSculptor = false
+            self.invalidateLayoutCache()
+            self.onWindowsRebuildNeeded?()
+        }
     }
 
     private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double, isEnabled: Bool = true) {
