@@ -1437,4 +1437,95 @@ struct DrawerInteractionUITests {
         calPlugin.state.overflowStrategy = .continuousStream
         #expect(calPlugin.adaptiveDrawerWidth(store: store) == 360.0)
     }
+
+    @Test("Calendar stepped mode with 0 events expands composite drawer on hover and respects minimumDrawerHeight >= 140")
+    @MainActor
+    func testCalendarEmptySteppedModeExpandsDrawer() {
+        let suiteName = "test_cal_empty_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.loadPersistentState()
+
+        let storage = ScopedPluginStorage(pluginId: "calendar_test_\(UUID().uuidString)")
+        let state = CalendarPluginState(storage: storage)
+        state.overflowStrategy = CalendarOverflowStrategy.smartFold
+        state.events = []
+
+        let calPlugin = CalendarPlugin(state: state)
+        PluginRegistry.shared.register(calPlugin)
+        store.registerCapabilityProvider(calPlugin)
+
+        // 1. Initial mount in stepped mode (.smartFold) with state.events = [] (0 events)
+        calPlugin.onMount(store: store)
+        state.events = []
+        store._calendarEvents = []
+
+        // 2. Disable calendar pod and re-enable calendar pod (store.togglePodEnabled(id: "calendar") twice)
+        store.togglePodEnabled(id: "calendar")
+        #expect(store.pods.first(where: { $0.id == "calendar" })?.isEnabled == false)
+        store.togglePodEnabled(id: "calendar")
+        #expect(store.pods.first(where: { $0.id == "calendar" })?.isEnabled == true)
+
+        // Ensure state.events is empty
+        state.events = []
+        store._calendarEvents = []
+
+        // 3. Verify store.minimumDrawerHeight(for: "calendar") >= 140.0
+        let minH = store.minimumDrawerHeight(for: "calendar")
+        #expect(minH >= 140.0, "Empty Calendar drawer must enforce minimumDrawerHeight >= 140pt, got \(minH)")
+
+        // 4. Simulate EdgeMouseMonitor.activatePodDrawer on the calendar layout item when state.events is empty (subItemCount == 0)
+        let monitor = EdgeMouseMonitor(store: store)
+        let edge = store.pods.first(where: { $0.id == "calendar" })?.edge ?? .right
+        let layout = store.resolvedPhysicalLayout(for: edge, totalHeight: 900.0)
+        guard let calendarItem = layout.first(where: { $0.pod.id == "calendar" }) else {
+            Issue.record("Calendar layout item not found")
+            return
+        }
+
+        #expect(calPlugin.subItemCount(store: store) == 0)
+        #expect(monitor.actualOccupiedHeight(for: calendarItem) == CGFloat(calendarItem.spanH))
+
+        let topY = CGFloat(calendarItem.startY) + 4.0
+        monitor.activatePodDrawer(candidate: calendarItem.pod, matched: calendarItem, currentWindowY: topY, edge: edge)
+
+        // Assert that store.activeDrawerPodId == "calendar" (the drawer expands!)
+        #expect(store.activeDrawerPodId == "calendar", "Calendar drawer must expand even when events list is empty")
+        #expect(store.activeDrawerItemId == "calendar", "Empty Calendar drawer must activate composite drawer with podId as activeDrawerItemId")
+
+        // 5. Verify activeDrawerCardFrames includes the expanded composite drawer frame
+        let frames = store.activeDrawerCardFrames(for: edge, totalHeight: 900.0)
+        #expect(!frames.isEmpty, "Active drawer card frames must contain composite drawer frame when subItemCount == 0")
+
+        // 6. Verify loadSampleEvents populates events and invalidates layout cache
+        var didRebuildWindows = false
+        store.onWindowsRebuildNeeded = { didRebuildWindows = true }
+        state.loadSampleEvents(into: store)
+        #expect(!state.events.isEmpty, "loadSampleEvents must populate default sample events")
+        #expect(store._calendarEvents == state.events, "Store _calendarEvents must sync with state.events")
+        #expect(didRebuildWindows, "loadSampleEvents must trigger windows rebuild")
+    }
+
+    @Test("Todo stepped mode with 0 incomplete tasks respects minimumDrawerHeight >= 130")
+    @MainActor
+    func testTodoEmptySteppedModeExpandsDrawer() {
+        let isolated = UserDefaults(suiteName: "test_todo_empty_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.loadPersistentState()
+
+        let storage = ScopedPluginStorage(pluginId: "todo_test_\(UUID().uuidString)")
+        let state = TodoPluginState(storage: storage)
+        state.todos = []
+
+        let todoPlugin = TodoPlugin(state: state)
+        PluginRegistry.shared.register(todoPlugin)
+        store.registerCapabilityProvider(todoPlugin)
+
+        todoPlugin.onMount(store: store)
+        state.todos = []
+        store._todos = []
+
+        let minH = store.minimumDrawerHeight(for: "todo")
+        #expect(minH >= 130.0, "Empty Todo drawer must enforce minimumDrawerHeight >= 130pt, got \(minH)")
+    }
 }

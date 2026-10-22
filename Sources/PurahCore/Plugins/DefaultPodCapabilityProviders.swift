@@ -24,6 +24,9 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if store.calendarOverflowStrategy == .continuousStream || store._calendarEvents.isEmpty {
+            return 140.0
+        }
         let maxEvents = max(store.calendarMaxRailEvents, 1)
         let minChipH: CGFloat = 40.0
         let spacing: CGFloat = 2.5
@@ -66,6 +69,9 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
         max(minimumDrawerHeight(store: store), 250.0)
     }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if store._todos.filter({ !$0.isCompleted }).isEmpty {
+            return 130.0
+        }
         let maxTasks = max(store.todoMaxRailTasks, 1)
         let minChipH: CGFloat = 32.0
         let spacing: CGFloat = 2.5

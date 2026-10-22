@@ -452,7 +452,8 @@ public final class EdgeMouseMonitor {
         let isDynamicAccordion = store.isBreathingActive(for: item.pod.edge)
         if !isSharedMajorSubBar,
            store.isPodDecomposed(item.pod.id),
-           let provider = store.capabilityProvider(for: item.pod.id) {
+           let provider = store.capabilityProvider(for: item.pod.id),
+           provider.subItemCount(store: store) > 0 {
             let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
             let minChipH = policy.minChipHeight
@@ -882,7 +883,8 @@ public final class EdgeMouseMonitor {
 
         if !isSharedMajorSubBar,
            let provider = store.capabilityProvider(for: candidate.id),
-           provider.isDecomposed(store: store) {
+           provider.isDecomposed(store: store),
+           provider.subItemCount(store: store) > 0 {
             let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
             let minChipH = policy.minChipHeight

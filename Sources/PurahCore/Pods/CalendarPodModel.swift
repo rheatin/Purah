@@ -1,7 +1,7 @@
 // Sources/PurahCore/Pods/CalendarPodModel.swift
 import Foundation
 
-public struct CalendarEventItem: Identifiable, Codable, Sendable {
+public struct CalendarEventItem: Identifiable, Codable, Sendable, Equatable {
     public let id: String
     public var title: String
     public var location: String

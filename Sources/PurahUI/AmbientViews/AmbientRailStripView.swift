@@ -104,7 +104,7 @@ public struct AmbientRailStripView: View {
 
                     VStack(alignment: edge == .left ? .leading : .trailing, spacing: 0) {
                         if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
-                            if !isSharedMajorSubBar && plugin.supportedDrawerModes.contains(.stepped) && store.isPodDecomposed(pod.id) {
+                            if !isSharedMajorSubBar && plugin.supportedDrawerModes.contains(.stepped) && store.isPodDecomposed(pod.id) && !plugin.steppedItems(context: context).isEmpty {
                                 SteppedRailContainerView(
                                     plugin: plugin,
                                     pod: pod,

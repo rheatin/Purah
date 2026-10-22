@@ -87,7 +87,7 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if state.overflowStrategy == .continuousStream {
+        if state.overflowStrategy == .continuousStream || state.events.isEmpty {
             return 140.0
         }
         return decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count)
@@ -112,6 +112,16 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
+        if state.events.isEmpty {
+            if !store._calendarEvents.isEmpty {
+                store._calendarEvents = []
+            }
+            return []
+        }
+        if store._calendarEvents.isEmpty {
+            store._calendarEvents = state.events
+            return state.events
+        }
         var combined = state.events
         for e in store._calendarEvents {
             if !combined.contains(where: { $0.id == e.id }) {

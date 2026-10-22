@@ -995,4 +995,80 @@ struct HighDensityOverflowTests {
             "Stacked 'music' inside a Shared Major Pod shares the full Major Stack drawer (drawerSpanH >= 150pt, got \(stackedMusic.drawerSpanH)pt)"
         )
     }
+
+    @Test("Left rail with 4 pods on 960pt screen does not trigger dynamic breathing or layout shift on hover")
+    func testLeftRailFourPodsNoBreathingOrHoverShift() throws {
+        let suiteName = "test_left_rail_four_pods_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+
+        // Simulate user's legacy plist state: vitals, clipboard, shelf, notes on left rail
+        // where shelf and notes had legacy major_left_1 and overlapping ranges
+        let defaults = PurahWorkspaceStore.defaultPods()
+        var legacyPods: [SlotPod] = []
+        for id in ["vitals", "clipboard", "shelf", "notes"] {
+            if var pod = defaults.first(where: { $0.id == id }) {
+                pod.edge = .left
+                pod.isEnabled = true
+                if id == "vitals" {
+                    pod.range = NormalizedRange(start: 0.02, length: 0.28)
+                } else if id == "clipboard" {
+                    pod.range = NormalizedRange(start: 0.02, length: 0.35)
+                } else if id == "shelf" {
+                    pod.range = NormalizedRange(start: 0.38, length: 0.26)
+                    pod.majorGroupId = "major_left_1"
+                } else if id == "notes" {
+                    pod.range = NormalizedRange(start: 0.65, length: 0.28)
+                    pod.majorGroupId = "major_left_1"
+                }
+                legacyPods.append(pod)
+            }
+        }
+        let encoded = try JSONEncoder().encode(legacyPods)
+        isolated.set(encoded, forKey: "purah.pods")
+        isolated.set(false, forKey: "purah.didRepairLegacyAutoStacks_v1")
+
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.loadPersistentState()
+
+        // 1. Verify migration repaired legacy major_left_1
+        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(leftPods.count == 4)
+        #expect(leftPods.allSatisfy { $0.majorGroupId == nil }, "Legacy auto-stack major_left_1 must be cleared")
+
+        // 2. Verify ranges were normalized and do not overlap
+        let sorted = leftPods.sorted { $0.range.start < $1.range.start }
+        for i in 1..<sorted.count {
+            #expect(sorted[i].range.start >= sorted[i - 1].range.end - 0.005, "Ranges must not overlap after normalization")
+        }
+        let totalLengthSum = sorted.reduce(0.0) { $0 + $1.range.length }
+        #expect(totalLengthSum <= 0.96, "Total length sum must be bounded <= 0.96")
+
+        // 3. On 900pt~1000pt screen, isBreathingActive must be false
+        for testH in [900.0, 960.0, 1000.0] {
+            #expect(
+                !store.isBreathingActive(for: .left, totalHeight: testH),
+                "isBreathingActive must be false when screen space is sufficient for 4 pods on \(testH)pt screen"
+            )
+        }
+
+        let totalHeight = 960.0
+        let layoutBefore = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(layoutBefore.count == 4)
+
+        // 4. Hover shelf: activateDrawer(podId: "shelf")
+        store.activateDrawer(podId: "shelf")
+        #expect(store.activeDrawerPodId == "shelf")
+        #expect(store.activeDrawerItemId == "shelf")
+
+        let layoutAfter = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(layoutAfter.count == 4)
+
+        // 5. Verify resolvedPhysicalLayout before and after are identical:
+        // ZERO startY shift, ZERO spanH change, ZERO dynamic expansion!
+        for (itemBefore, itemAfter) in zip(layoutBefore, layoutAfter) {
+            #expect(itemBefore.pod.id == itemAfter.pod.id)
+            #expect(abs(itemBefore.startY - itemAfter.startY) < 0.001, "Pod \(itemBefore.pod.id) startY must not shift on hover (before: \(itemBefore.startY), after: \(itemAfter.startY))")
+            #expect(abs(itemBefore.spanH - itemAfter.spanH) < 0.001, "Pod \(itemBefore.pod.id) spanH must not expand on hover (before: \(itemBefore.spanH), after: \(itemAfter.spanH))")
+        }
+    }
 }
