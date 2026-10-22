@@ -109,15 +109,17 @@ public struct ScriptRunwayDrawerView: View {
                                 } label: {
                                     HStack(spacing: 3.5) {
                                         Image(systemName: "play.fill")
-                                            .font(.system(size: 7))
+                                            .font(.system(size: 7, weight: .bold))
                                         Text("Run")
-                                            .font(.system(size: 8.5, weight: .bold))
+                                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
                                     }
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3.5)
-                                    .background(scriptColor)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .fill(scriptColor)
+                                    )
+                                    .foregroundColor(scriptColor.highContrastInk)
                                 }
                                 .buttonStyle(.tactile)
                                 .fixedSize()

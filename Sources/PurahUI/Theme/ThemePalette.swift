@@ -109,4 +109,15 @@ public extension Color {
         let b = Int(round(rgbColor.blueComponent * 255))
         return String(format: "#%02X%02X%02X", r, g, b)
     }
+
+    /// Returns deep slate-black (#0F111A) for medium/bright accent fills, or crisp white for very dark fills.
+    var highContrastInk: Color {
+        if let srgb = NSColor(self).usingColorSpace(.sRGB) {
+            let luminance = 0.2126 * srgb.redComponent + 0.7152 * srgb.greenComponent + 0.0722 * srgb.blueComponent
+            if luminance < 0.28 {
+                return .white
+            }
+        }
+        return Color(red: 0.059, green: 0.067, blue: 0.102)
+    }
 }

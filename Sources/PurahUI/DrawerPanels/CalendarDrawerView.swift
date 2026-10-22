@@ -154,13 +154,9 @@ public struct CalendarDrawerView: View {
                             .padding(.vertical, 4)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(podColor.opacity(0.24))
+                                    .fill(podColor)
                             )
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .stroke(podColor.opacity(0.75), lineWidth: 1.0)
-                            )
-                            .foregroundColor(podColor)
+                            .foregroundColor(podColor.highContrastInk)
                             .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                         }
                         .buttonStyle(.tactile)
