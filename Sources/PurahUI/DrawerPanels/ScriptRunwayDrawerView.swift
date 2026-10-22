@@ -43,17 +43,11 @@ public struct ScriptRunwayDrawerView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 5) {
-                                    Text(action.name)
-                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-
-                                    Spacer(minLength: 4)
-
-                                    badgeForType(action.commandType, color: scriptColor)
-                                }
+                                Text(action.name)
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
 
                                 Text(action.description.isEmpty ? action.command : action.description)
                                     .font(.system(size: 9, design: .monospaced))
@@ -61,6 +55,10 @@ public struct ScriptRunwayDrawerView: View {
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
+
+                            Spacer(minLength: 4)
+
+                            badgeForType(action.commandType, color: scriptColor)
 
                             if isThisRunning {
                                 HStack(spacing: 4) {
