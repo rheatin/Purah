@@ -3237,17 +3237,23 @@ public struct QuickNoteDrawerView: View {
             } label: {
                 HStack(spacing: 3) {
                     Image(systemName: isExported ? "checkmark" : "square.and.arrow.up")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8, weight: .semibold))
                     Text("notes.export".localized)
-                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .font(.system(size: 8, weight: .semibold, design: .rounded))
                 }
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(4)
-                .foregroundColor(isExported ? .green : .secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
+                )
+                .foregroundColor(isExported ? .green : .primary.opacity(0.88))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tactile)
             .help("notes.exportHelp".localized)
 
             Button {
@@ -3264,18 +3270,20 @@ public struct QuickNoteDrawerView: View {
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 8))
+                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc.fill")
+                        .font(.system(size: 8, weight: .bold))
                     Text(isCopied ? "notes.copied".localized : "notes.copy".localized)
-                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
                 }
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(4)
-                .foregroundColor(isCopied ? .green : .secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isCopied ? Color.green : noteColor)
+                )
+                .foregroundColor(isCopied ? Color(red: 0.059, green: 0.067, blue: 0.102) : noteColor.highContrastInk)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tactile)
             .help("Copy note text to clipboard")
 
             Text("\(wordCount)w · \(currentText.count)c")

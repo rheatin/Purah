@@ -14,10 +14,8 @@ let package = Package(
             name: "SwiftTerm",
             path: "Sources/SwiftTerm",
             exclude: [
-                "Mac/README.md"
-            ],
-            resources: [
-                .process("Apple/Metal/Shaders.metal")
+                "Mac/README.md",
+                "Apple/Metal/Shaders.metal"
             ],
             swiftSettings: [
                 .unsafeFlags(["-Xfrontend", "-strict-concurrency=minimal"])

@@ -25,6 +25,10 @@ public final class TodoPluginState: Sendable {
         set { scope = newValue }
     }
 
+    public var incompleteTodos: [TodoItem] {
+        todos.filter { !$0.isCompleted }
+    }
+
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "todo")) {
         self.storage = storage
         self.scope = storage.codable(forKey: "scope", as: RemindersScope.self) ?? .allIncomplete

@@ -811,9 +811,8 @@ public struct CalendarItemDrawerView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Capsule(style: .continuous).fill(calColor.opacity(0.24)))
-            .overlay(Capsule(style: .continuous).stroke(calColor.opacity(0.75), lineWidth: 1.0))
-            .foregroundColor(calColor)
+            .background(Capsule(style: .continuous).fill(calColor))
+            .foregroundColor(calColor.highContrastInk)
             .modifier(OptionalGlow(color: calColor, enabled: isOngoing || isAlerting))
         }
         .buttonStyle(.tactile)

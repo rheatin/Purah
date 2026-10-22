@@ -318,3 +318,62 @@ public struct PurahStoragePolicySection: View {
         }
     }
 }
+
+public struct PurahStackedDecomposeNoticeView: View {
+    public let podId: String
+    public let store: PurahWorkspaceStore
+
+    public init(podId: String, store: PurahWorkspaceStore) {
+        self.podId = podId
+        self.store = store
+    }
+
+    public var body: some View {
+        if store.isInSharedMajorPod(podId: podId) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up.trianglebadge.exclamationmark.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.stacked.decomposeDisabled.title".localized)
+                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    Text("settings.stacked.decomposeDisabled.subtitle".localized)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 6)
+
+                Button {
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                        store.splitPodFromMajorGroup(id: podId)
+                    }
+                } label: {
+                    Text("settings.stacked.unstackNow".localized)
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color.orange)
+                        )
+                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                }
+                .buttonStyle(.tactile)
+                .fixedSize()
+            }
+            .padding(9)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.orange.opacity(0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+            )
+        }
+    }
+}

@@ -260,15 +260,17 @@ public struct DropShelfDrawerView: View {
                             Image(systemName: "archivebox.fill")
                                 .font(.system(size: 8.5, weight: .bold))
                             Text("ZIP")
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
-                        .background(shelfColor.opacity(0.16))
-                        .foregroundColor(shelfColor)
-                        .cornerRadius(4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(shelfColor)
+                        )
+                        .foregroundColor(shelfColor.highContrastInk)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                     .help("dropshelf.zipHelp".localized)
 
                     let allSelected = !state.files.isEmpty && state.selectedFileIds.count == state.files.count
@@ -288,11 +290,17 @@ public struct DropShelfDrawerView: View {
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
-                        .background(allSelected ? shelfColor.opacity(0.22) : Color.secondary.opacity(0.12))
-                        .foregroundColor(allSelected ? shelfColor : .secondary)
-                        .cornerRadius(4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(allSelected ? shelfColor.opacity(0.22) : Color.primary.opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .stroke(allSelected ? shelfColor.opacity(0.55) : Color.primary.opacity(0.10), lineWidth: 0.6)
+                        )
+                        .foregroundColor(allSelected ? shelfColor : .primary.opacity(0.85))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
 
                     Button("dropshelf.clearAll".localized) {
                         state.clear()

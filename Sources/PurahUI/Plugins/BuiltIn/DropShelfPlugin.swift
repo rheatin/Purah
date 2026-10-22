@@ -54,6 +54,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 250.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 360.0 }
 
     public var supportedDropTypes: [UTType] {

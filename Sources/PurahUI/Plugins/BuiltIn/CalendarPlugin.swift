@@ -87,10 +87,21 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if state.overflowStrategy == .continuousStream {
+        if !isDecomposed(store: store) || state.events.isEmpty {
             return 140.0
         }
         return decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count)
+    }
+
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 260.0)
+    }
+
+    public func acknowledgeAllAlerts(context: PurahPluginContext) {
+        for event in state.events where (event.isOngoing || event.isImminent(leadTime: state.alertLeadTime)) {
+            state.acknowledgeAlert(id: event.id)
+            context.acknowledgeAlert(event.id)
+        }
     }
 
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
@@ -101,6 +112,16 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
+        if state.events.isEmpty {
+            if !store._calendarEvents.isEmpty {
+                store._calendarEvents = []
+            }
+            return []
+        }
+        if store._calendarEvents.isEmpty {
+            store._calendarEvents = state.events
+            return state.events
+        }
         var combined = state.events
         for e in store._calendarEvents {
             if !combined.contains(where: { $0.id == e.id }) {
@@ -125,7 +146,8 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.overflowStrategy != .continuousStream && store.calendarOverflowStrategy != .continuousStream
+        if store.isInSharedMajorPod(podId: manifest.id) { return false }
+        return state.overflowStrategy != .continuousStream && store.calendarOverflowStrategy != .continuousStream
     }
 
     private func resolvedSubItemHeaders(store: PurahWorkspaceStore) -> [(id: String, title: String)] {
@@ -185,7 +207,8 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        resolvedSubItemHeaders(store: store).count
+        guard isDecomposed(store: store) else { return 0 }
+        return resolvedSubItemHeaders(store: store).count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
@@ -430,6 +453,11 @@ public struct CalendarPluginSettingsView: View {
                         }
                     }
 
+                    PurahStackedDecomposeNoticeView(podId: "calendar", store: store)
+
+                    let isStacked = store.isInSharedMajorPod(podId: "calendar")
+                    let effectiveStrategy = isStacked ? CalendarOverflowStrategy.continuousStream : state.overflowStrategy
+
                     // 3-Tile Strategy Selector
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Overflow Strategy & Density")
@@ -437,7 +465,7 @@ public struct CalendarPluginSettingsView: View {
 
                         HStack(spacing: 8) {
                             ForEach(CalendarOverflowStrategy.allCases) { strategy in
-                                let isSelected = state.overflowStrategy == strategy
+                                let isSelected = effectiveStrategy == strategy
                                 Button {
                                     withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
                                         state.overflowStrategy = strategy
@@ -467,13 +495,15 @@ public struct CalendarPluginSettingsView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .disabled(isStacked)
+                        .opacity(isStacked ? 0.55 : 1.0)
 
-                        Text(state.overflowStrategy.subtitle)
+                        Text(effectiveStrategy.subtitle)
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
 
-                    if state.overflowStrategy == .smartFold {
+                    if !isStacked && state.overflowStrategy == .smartFold {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
                                 Text("Max Rail Events")

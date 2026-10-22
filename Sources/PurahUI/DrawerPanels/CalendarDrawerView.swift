@@ -30,22 +30,7 @@ public struct CalendarDrawerView: View {
     public var body: some View {
         Group {
             if state.events.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 26))
-                        .foregroundColor(palette.borderColor)
-
-                    Text("calendar.empty.title".localized)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                    Text("calendar.empty.subtitle".localized)
-                        .font(.system(size: 10))
-                        .foregroundColor(.gray)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                emptyStateView()
             } else if let activeEvent = state.events.first(where: { $0.id == store.activeDrawerItemId }) {
                 // Single event drawer mode
                 singleEventCard(event: activeEvent)
@@ -154,13 +139,9 @@ public struct CalendarDrawerView: View {
                             .padding(.vertical, 4)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(podColor.opacity(0.24))
+                                    .fill(podColor)
                             )
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .stroke(podColor.opacity(0.75), lineWidth: 1.0)
-                            )
-                            .foregroundColor(podColor)
+                            .foregroundColor(podColor.highContrastInk)
                             .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                         }
                         .buttonStyle(.tactile)
@@ -253,78 +234,192 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    // MARK: - Full Agenda Event List (Chrono Timeline View)
+    // MARK: - Top Summary Bar
     @ViewBuilder
-    private func agendaListView() -> some View {
+    private func topSummaryBar() -> some View {
         let todayBadgeText = Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()).uppercased()
 
-        VStack(alignment: .leading, spacing: 8) {
-            // Top Summary Bar
-            HStack(spacing: 6) {
-                Text(todayBadgeText)
-                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    .foregroundColor(podColor)
-                    .lineLimit(1)
+        HStack(spacing: 5) {
+            Text(todayBadgeText)
+                .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                .foregroundColor(podColor)
+                .lineLimit(1)
 
-                Text("\(state.events.count)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(podColor)
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 1.5)
-                    .background(Capsule().fill(podColor.opacity(0.16)))
+            Text(state.scope.title.uppercased())
+                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                .foregroundColor(podColor.opacity(0.85))
+                .padding(.horizontal, 4.5)
+                .padding(.vertical, 1.5)
+                .background(Capsule().fill(podColor.opacity(0.12)))
 
-                Spacer(minLength: 4)
+            Text("\(state.events.count)")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundColor(podColor)
+                .padding(.horizontal, 5.5)
+                .padding(.vertical, 1.5)
+                .background(Capsule().fill(podColor.opacity(0.16)))
 
-                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
-                    Button {
-                        Task {
-                            let granted = await PermissionManager.shared.requestCalendarAccess()
-                            if granted {
-                                state.syncEvents(into: store)
-                                SystemCalendarSyncService.shared.syncEvents(into: store)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 7.5, weight: .semibold))
-                            Text("Connect")
-                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                        }
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 6.5)
-                        .padding(.vertical, 2.5)
-                        .background(Capsule().fill(Color.orange.opacity(0.14)))
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                    .help("Using sample events. Click to connect system Apple Calendar")
-                }
+            Spacer(minLength: 4)
 
+            if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
                 Button {
-                    openInSystemCalendar()
-                } label: {
-                    HStack(spacing: 3.5) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 8.5, weight: .semibold))
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 7.5, weight: .bold))
+                    Task {
+                        let granted = await PermissionManager.shared.requestCalendarAccess()
+                        if granted {
+                            state.syncEvents(into: store)
+                            SystemCalendarSyncService.shared.syncEvents(into: store)
+                        }
                     }
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3.5)
-                    .background(Capsule().fill(palette.surfaceBackground))
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 7.5, weight: .semibold))
+                        Text("Connect")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 6.5)
+                    .padding(.vertical, 2.5)
+                    .background(Capsule().fill(Color.orange.opacity(0.14)))
                     .overlay(
                         Capsule()
-                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                            .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
                     )
                 }
                 .buttonStyle(.tactile)
-                .help("Open Apple Calendar")
+                .help("Using sample events. Click to connect system Apple Calendar")
             }
+
+            Button {
+                openInSystemCalendar()
+            } label: {
+                HStack(spacing: 3.5) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 8.5, weight: .semibold))
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 7.5, weight: .bold))
+                }
+                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(Capsule().fill(palette.surfaceBackground))
+                .overlay(
+                    Capsule()
+                        .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.tactile)
+            .help("Open Apple Calendar")
+        }
+    }
+
+    // MARK: - Empty State View
+    @ViewBuilder
+    private func emptyStateView() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            topSummaryBar()
+
+            VStack(spacing: 8) {
+                Spacer()
+
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 26))
+                    .foregroundColor(palette.borderColor)
+
+                VStack(spacing: 3) {
+                    Text("calendar.empty.title".localized)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                    Text("Scope: \(state.scope.title)")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(podColor.opacity(0.85))
+                }
+
+                // Inline Scope Selector Pills
+                HStack(spacing: 4) {
+                    ForEach(CalendarTimeScope.allCases) { scopeCase in
+                        let isSelected = state.scope == scopeCase
+                        Button {
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                                state.scope = scopeCase
+                                state.save()
+                                store.calendarScope = scopeCase
+                                state.syncEvents(into: store)
+                            }
+                        } label: {
+                            Text(scopeCase.title)
+                                .font(.system(size: 9, weight: isSelected ? .bold : .medium, design: .rounded))
+                                .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : Color.white) : Color.gray)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule()
+                                        .fill(isSelected ? podColor.opacity(0.22) : palette.surfaceBackground.opacity(0.6))
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(isSelected ? podColor.opacity(0.45) : palette.borderColor.opacity(0.3), lineWidth: 0.7)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+
+                HStack(spacing: 8) {
+                    Button {
+                        openInSystemCalendar()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 9))
+                            Text("Open Calendar")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4.5)
+                        .background(Capsule().fill(palette.surfaceBackground))
+                        .overlay(
+                            Capsule()
+                                .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+
+                    Button {
+                        state.loadSampleEvents(into: store)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.plus")
+                                .font(.system(size: 9))
+                            Text("Load Sample Events")
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(podColor)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4.5)
+                        .background(Capsule().fill(podColor.opacity(0.12)))
+                        .overlay(
+                            Capsule()
+                                .stroke(podColor.opacity(0.35), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: - Full Agenda Event List (Chrono Timeline View)
+    @ViewBuilder
+    private func agendaListView() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            topSummaryBar()
 
             // Chrono Event Cards
             ScrollView(.vertical, showsIndicators: true) {

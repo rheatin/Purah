@@ -74,12 +74,17 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let isDecomp = isDecomposed(store: store)
-        if isDecomp {
-            return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledMetrics.count)
+        if !isDecomposed(store: store) {
+            return 300.0
         }
-        return 300.0
+        return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledMetrics.count)
     }
+
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 260.0)
+    }
+
+    public var usesAdaptiveTelemetryColor: Bool { true }
 
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         360.0
@@ -99,7 +104,8 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.isDecomposed && store._isVitalsDecomposed
+        if store.isInSharedMajorPod(podId: manifest.id) { return false }
+        return state.isDecomposed && store._isVitalsDecomposed
     }
 
     public var subItemCount: Int {
@@ -253,6 +259,10 @@ public struct VitalsPluginSettingsView: View {
                 iconColor: Color(hex: "#34C759")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
+                    PurahStackedDecomposeNoticeView(podId: "vitals", store: store)
+
+                    let isStacked = store.isInSharedMajorPod(podId: "vitals")
+
                     // Switch sub-card for decomposition
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -265,7 +275,7 @@ public struct VitalsPluginSettingsView: View {
                         }
                         Spacer()
                         Toggle("", isOn: Binding(
-                            get: { state.isDecomposed },
+                            get: { !isStacked && state.isDecomposed },
                             set: {
                                 state.isDecomposed = $0
                                 state.save()
@@ -278,6 +288,7 @@ public struct VitalsPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .disabled(isStacked)
                     }
                     .padding(9)
                     .background(
@@ -289,7 +300,7 @@ public struct VitalsPluginSettingsView: View {
                             .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
                     )
 
-                    if state.isDecomposed {
+                    if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text("Visible Sub-Metrics")

@@ -195,7 +195,7 @@ public struct PluginCenterSettingsView: View {
 
                                 Spacer()
 
-                                if podId == "vitals" {
+                                if PluginRegistry.shared.plugin(for: podId)?.usesAdaptiveTelemetryColor == true || podId == "vitals" {
                                     HStack(spacing: 6) {
                                         HStack(spacing: 3) {
                                             Circle().fill(Color(red: 0.0, green: 0.90, blue: 0.60)).frame(width: 5, height: 5)

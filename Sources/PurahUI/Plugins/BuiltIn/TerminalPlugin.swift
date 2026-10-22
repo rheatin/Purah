@@ -58,6 +58,10 @@ public struct TerminalPlugin: PurahPodPlugin {
         120.0
     }
 
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        280.0
+    }
+
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         520.0
     }

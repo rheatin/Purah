@@ -149,6 +149,20 @@ public final class CalendarPluginState: Sendable {
         }
     }
 
+    public func loadSampleEvents(into store: PurahWorkspaceStore? = nil) {
+        let targetStore = store ?? boundStore
+        let sample = Self.defaultEvents(for: self.scope)
+        self.events = sample
+        self.isUsingRealCalendar = false
+        self.save()
+        if let targetStore {
+            targetStore.isUsingRealCalendar = false
+            targetStore._calendarEvents = sample
+            targetStore.invalidateLayoutCache()
+            targetStore.onWindowsRebuildNeeded?()
+        }
+    }
+
     public func syncEvents(into store: PurahWorkspaceStore? = nil) {
         if let store {
             self.boundStore = store
@@ -171,8 +185,8 @@ public final class CalendarPluginState: Sendable {
             self.events = sample
             targetStore?._calendarEvents = sample
             self.save()
+            targetStore?.invalidateLayoutCache()
             if hasChanged {
-                targetStore?.invalidateLayoutCache()
                 targetStore?.onWindowsRebuildNeeded?()
             }
             return
@@ -205,8 +219,8 @@ public final class CalendarPluginState: Sendable {
                     targetStore.calendarScope = currentScope
                     targetStore.isUsingRealCalendar = true
                     targetStore._calendarEvents = deduplicated
+                    targetStore.invalidateLayoutCache()
                     if hasChanged {
-                        targetStore.invalidateLayoutCache()
                         targetStore.onWindowsRebuildNeeded?()
                     }
                 }

@@ -128,6 +128,7 @@ public struct MusicPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 110.0 }
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 295.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 360.0 }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {

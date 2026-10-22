@@ -104,7 +104,7 @@ public struct AmbientRailStripView: View {
 
                     VStack(alignment: edge == .left ? .leading : .trailing, spacing: 0) {
                         if let plugin = PluginRegistry.shared.plugin(for: pod.id) {
-                            if !isSharedMajorSubBar && plugin.supportedDrawerModes.contains(.stepped) && store.isPodDecomposed(pod.id) {
+                            if !isSharedMajorSubBar && plugin.supportedDrawerModes.contains(.stepped) && store.isPodDecomposed(pod.id) && !plugin.steppedItems(context: context).isEmpty {
                                 SteppedRailContainerView(
                                     plugin: plugin,
                                     pod: pod,
@@ -240,12 +240,7 @@ public struct AmbientRailStripView: View {
         for sub in plugin.steppedItems(context: context) where sub.state == .alerting {
             context.acknowledgeAlert(sub.id)
         }
-        if let calPlugin = plugin as? CalendarPlugin {
-            for event in calPlugin.state.events where (event.isOngoing || event.isImminent(leadTime: calPlugin.state.alertLeadTime)) {
-                calPlugin.state.acknowledgeAlert(id: event.id)
-                store.acknowledgeAlert(id: event.id)
-            }
-        }
+        plugin.acknowledgeAllAlerts(context: context)
     }
 
     // MARK: - Plugin Pod Rendering
