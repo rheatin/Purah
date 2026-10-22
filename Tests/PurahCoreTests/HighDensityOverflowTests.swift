@@ -1071,4 +1071,83 @@ struct HighDensityOverflowTests {
             #expect(abs(itemBefore.spanH - itemAfter.spanH) < 0.001, "Pod \(itemBefore.pod.id) spanH must not expand on hover (before: \(itemBefore.spanH), after: \(itemAfter.spanH))")
         }
     }
+
+    @Test("Stacked mode enforces isDecomposed == false and subItemCount == 0 across all decomposable pods, and restores state when unstacked")
+    func testStackedModeDisablesDecomposition() throws {
+        let suiteName = "test_stacked_decompose_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // Bind UI plugins so all capabilities including Clipboard are registered
+        PluginRegistry.shared.bindStore(store)
+
+        if let vitalsPlugin = PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin {
+            vitalsPlugin.state.isDecomposed = true
+        }
+        if let scriptsPlugin = PluginRegistry.shared.plugin(for: "scripts") as? ScriptRunwayPlugin {
+            scriptsPlugin.state.isDecomposed = true
+        }
+        if let aiPlugin = PluginRegistry.shared.plugin(for: "ai") as? AIAssistantPlugin {
+            aiPlugin.state.isDecomposed = true
+        }
+        if let clipboardPlugin = PluginRegistry.shared.plugin(for: "clipboard") as? ClipboardPlugin {
+            clipboardPlugin.state.isDecomposed = true
+        }
+
+        // Seed data for decomposable pods
+        store._calendarEvents = [CalendarEventItem(title: "Design Review", startTime: Date(), endTime: Date().addingTimeInterval(3600))]
+        store._todos = [TodoItem(title: "Complete audit")]
+        store._vitalsEnabledMetrics = [.cpu, .ram]
+        store._aiRolePresets = [AIRolePreset(id: "coder", title: "Coder", systemIcon: "terminal", systemPrompt: "code", isEnabled: true)]
+        store.calendarOverflowStrategy = .smartFold
+        store._isVitalsDecomposed = true
+        store._isScriptsDecomposed = true
+        store._isAIDecomposed = true
+
+        let testPods: [(id: String, partnerId: String, edge: MountEdge, expectedMinHeight: CGFloat)] = [
+            ("vitals", "shelf", .left, 300.0),
+            ("scripts", "shelf", .left, 160.0),
+            ("clipboard", "shelf", .left, 150.0),
+            ("calendar", "music", .right, 140.0),
+            ("todo", "music", .right, 130.0),
+            ("ai", "music", .right, 260.0)
+        ]
+
+        for (podId, partnerId, edge, expectedMinH) in testPods {
+            // Ensure both pod and partner are on the same edge and enabled
+            if let pIdx = store.pods.firstIndex(where: { $0.id == podId }) {
+                store.pods[pIdx].edge = edge
+                store.pods[pIdx].isEnabled = true
+                store.pods[pIdx].majorGroupId = nil
+            }
+            if let partnerIdx = store.pods.firstIndex(where: { $0.id == partnerId }) {
+                store.pods[partnerIdx].edge = edge
+                store.pods[partnerIdx].isEnabled = true
+                store.pods[partnerIdx].majorGroupId = nil
+            }
+
+            let provider = try #require(store.capabilityProvider(for: podId))
+
+            // 1. Initially unstacked: must be decomposed
+            #expect(store.isInSharedMajorPod(podId: podId) == false)
+            #expect(store.isPodDecomposed(podId) == true, "\(podId) must be decomposed when unstacked")
+            #expect(provider.isDecomposed(store: store) == true, "\(podId) provider must report decomposed when unstacked")
+            #expect(provider.subItemCount(store: store) > 0, "\(podId) must have subItemCount > 0 when unstacked")
+
+            // 2. Stack into shared Major Group with partner pod
+            store.addPodToMajorGroup(podId: podId, targetPodId: partnerId)
+            #expect(store.isInSharedMajorPod(podId: podId) == true, "\(podId) must be in shared major pod after stacking")
+            #expect(store.isPodDecomposed(podId) == false, "\(podId) must disable decomposition in store when stacked")
+            #expect(provider.isDecomposed(store: store) == false, "\(podId) provider must report isDecomposed == false when stacked")
+            #expect(provider.subItemCount(store: store) == 0, "\(podId) subItemCount must be 0 when stacked")
+            #expect(provider.minimumDrawerHeight(store: store) == expectedMinH, "\(podId) composite min height must be \(expectedMinH) when stacked")
+
+            // 3. Unstack: split from major group
+            store.splitPodFromMajorGroup(id: podId)
+            #expect(store.isInSharedMajorPod(podId: podId) == false, "\(podId) must no longer be in shared major pod")
+            #expect(store.isPodDecomposed(podId) == true, "\(podId) decomposition must be restored when unstacked")
+            #expect(provider.isDecomposed(store: store) == true, "\(podId) provider must report decomposed when unstacked")
+            #expect(provider.subItemCount(store: store) > 0, "\(podId) subItemCount must be restored when unstacked")
+        }
+    }
 }

@@ -74,11 +74,10 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        let isDecomp = isDecomposed(store: store)
-        if isDecomp {
-            return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledActions.count)
+        if !isDecomposed(store: store) {
+            return 160.0
         }
-        return 160.0
+        return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledActions.count)
     }
 
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -106,7 +105,8 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        state.isDecomposed && store._isScriptsDecomposed
+        if store.isInSharedMajorPod(podId: manifest.id) { return false }
+        return state.isDecomposed && store._isScriptsDecomposed
     }
 
     public var subItemCount: Int {
@@ -118,8 +118,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
-        guard isDecomp else { return 0 }
+        guard isDecomposed(store: store) else { return 0 }
         let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         return actions.count
     }
@@ -287,6 +286,10 @@ public struct ScriptsPluginSettingsView: View {
                 iconColor: Color(hex: "#FF9F0A")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
+                    PurahStackedDecomposeNoticeView(podId: "scripts", store: store)
+
+                    let isStacked = store.isInSharedMajorPod(podId: "scripts")
+
                     // Switch sub-card for decomposition
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -299,7 +302,7 @@ public struct ScriptsPluginSettingsView: View {
                         }
                         Spacer()
                         Toggle("", isOn: Binding(
-                            get: { state.isDecomposed },
+                            get: { !isStacked && state.isDecomposed },
                             set: {
                                 state.isDecomposed = $0
                                 state.save()
@@ -310,6 +313,7 @@ public struct ScriptsPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .disabled(isStacked)
                     }
                     .padding(9)
                     .background(
@@ -321,7 +325,7 @@ public struct ScriptsPluginSettingsView: View {
                             .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
                     )
 
-                    if state.isDecomposed {
+                    if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("Visible Stepped Action Chips")

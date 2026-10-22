@@ -1370,7 +1370,8 @@ public final class PurahWorkspaceStore {
     }
 
     public func isPodDecomposed(_ id: String) -> Bool {
-        capabilityProvider(for: id)?.isDecomposed(store: self) ?? false
+        if isInSharedMajorPod(podId: id) { return false }
+        return capabilityProvider(for: id)?.isDecomposed(store: self) ?? false
     }
 
     public func maxVisualHeight(for podId: String, totalHeight: Double) -> Double {

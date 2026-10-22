@@ -68,7 +68,10 @@ public struct ClipboardPlugin: PurahPodPlugin {
     public var podId: String { "clipboard" }
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
     public var isDecomposed: Bool { state.isDecomposed }
-    public func isDecomposed(store: PurahWorkspaceStore) -> Bool { state.isDecomposed }
+    public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        if store.isInSharedMajorPod(podId: manifest.id) { return false }
+        return state.isDecomposed
+    }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
@@ -84,7 +87,10 @@ public struct ClipboardPlugin: PurahPodPlugin {
         decomposedPolicy
     }
 
-    public func subItemCount(store: PurahWorkspaceStore) -> Int { max(min(state.items.count, store.clipboardMaxRailItems), 1) }
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        guard isDecomposed(store: store) else { return 0 }
+        return max(min(state.items.count, store.clipboardMaxRailItems), 1)
+    }
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
         if state.items.isEmpty { return "clipboard-empty" }
         guard index >= 0 && index < state.items.count else { return nil }
@@ -99,11 +105,10 @@ public struct ClipboardPlugin: PurahPodPlugin {
         itemId.hasPrefix("clipboard-") || itemId == "clipboard"
     }
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if isDecomposed(store: store) {
-            return decomposedPolicy.calculateMinimumHeight(activeCount: state.items.count)
-        } else {
+        if !isDecomposed(store: store) {
             return 150.0
         }
+        return decomposedPolicy.calculateMinimumHeight(activeCount: state.items.count)
     }
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 280.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 380.0 }
@@ -1067,6 +1072,10 @@ public struct ClipboardPluginSettingsView: View {
                 iconColor: palette.primaryAccent
             ) {
                 VStack(alignment: .leading, spacing: 10) {
+                    PurahStackedDecomposeNoticeView(podId: "clipboard", store: store)
+
+                    let isStacked = store.isInSharedMajorPod(podId: "clipboard")
+
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Decomposed Rail Chips")
@@ -1078,7 +1087,7 @@ public struct ClipboardPluginSettingsView: View {
                         }
                         Spacer()
                         Toggle("", isOn: Binding(
-                            get: { state.isDecomposed },
+                            get: { !isStacked && state.isDecomposed },
                             set: {
                                 state.isDecomposed = $0
                                 state.save()
@@ -1087,6 +1096,7 @@ public struct ClipboardPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .disabled(isStacked)
                     }
                     .padding(9)
                     .background(
@@ -1098,35 +1108,37 @@ public struct ClipboardPluginSettingsView: View {
                             .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
                     )
 
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Text("Max In-Rail Items")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            Spacer()
-                            Text("\(store.clipboardMaxRailItems) Chips")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(Color(hex: "#FF9F0A"))
-                        }
-
-                        Slider(value: Binding(
-                            get: { Double(store.clipboardMaxRailItems) },
-                            set: {
-                                store.clipboardMaxRailItems = Int($0)
-                                store.savePersistentState()
+                    if !isStacked && state.isDecomposed {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Max In-Rail Items")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("\(store.clipboardMaxRailItems) Chips")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(Color(hex: "#FF9F0A"))
                             }
-                        ), in: 2...8, step: 1)
 
-                        Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
+                            Slider(value: Binding(
+                                get: { Double(store.clipboardMaxRailItems) },
+                                set: {
+                                    store.clipboardMaxRailItems = Int($0)
+                                    store.savePersistentState()
+                                }
+                            ), in: 2...8, step: 1)
+
+                            Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
                     }
-                    .padding(9)
-                    .background(Color.primary.opacity(0.025))
-                    .cornerRadius(7)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
-                    )
                 }
             }
 

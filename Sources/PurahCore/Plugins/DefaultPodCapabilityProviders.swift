@@ -9,7 +9,8 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     var decomposedPolicy: PurahDecomposedPolicy { .calendarDefault }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        store.calendarOverflowStrategy != .continuousStream
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        return store.calendarOverflowStrategy != .continuousStream
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
@@ -24,7 +25,7 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store.calendarOverflowStrategy == .continuousStream || store._calendarEvents.isEmpty {
+        if !isDecomposed(store: store) || store.calendarOverflowStrategy == .continuousStream || store._calendarEvents.isEmpty {
             return 140.0
         }
         let maxEvents = max(store.calendarMaxRailEvents, 1)
@@ -43,7 +44,8 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store._calendarEvents.count
+        guard isDecomposed(store: store) else { return 0 }
+        return store._calendarEvents.count
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
@@ -64,12 +66,15 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     var decomposedPolicy: PurahDecomposedPolicy { .todoDefault }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 340.0 }
-    func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        return true
+    }
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         max(minimumDrawerHeight(store: store), 250.0)
     }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store._todos.filter({ !$0.isCompleted }).isEmpty {
+        if !isDecomposed(store: store) || store._todos.filter({ !$0.isCompleted }).isEmpty {
             return 130.0
         }
         let maxTasks = max(store.todoMaxRailTasks, 1)
@@ -88,7 +93,8 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        min(store._todos.count, store.todoMaxRailTasks)
+        guard isDecomposed(store: store) else { return 0 }
+        return min(store._todos.count, store.todoMaxRailTasks)
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
@@ -119,15 +125,16 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        store._isVitalsDecomposed
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        return store._isVitalsDecomposed
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store._isVitalsDecomposed {
-            let count = max(store._vitalsEnabledMetrics.count, 1)
-            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        if !isDecomposed(store: store) {
+            return 300.0
         }
-        return 300.0
+        let count = max(store._vitalsEnabledMetrics.count, 1)
+        return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
     }
 
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -147,7 +154,8 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store._isVitalsDecomposed ? store._vitalsEnabledMetrics.count : 0
+        guard isDecomposed(store: store) else { return 0 }
+        return store._vitalsEnabledMetrics.count
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
@@ -168,7 +176,8 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     var decomposedPolicy: PurahDecomposedPolicy { .scriptsDefault }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        store._isScriptsDecomposed
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        return store._isScriptsDecomposed
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
@@ -179,11 +188,11 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store._isScriptsDecomposed {
-            let count = max(store.scriptsEnabledActions.count, 1)
-            return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
+        if !isDecomposed(store: store) {
+            return 160.0
         }
-        return 160.0
+        let count = max(store.scriptsEnabledActions.count, 1)
+        return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
     }
 
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -199,16 +208,17 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
-        store._isScriptsDecomposed ? store.scriptsEnabledActions.count : 0
+        guard isDecomposed(store: store) else { return 0 }
+        return store.scriptsEnabledActions.count
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store._isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
+        guard isDecomposed(store: store), store.scriptsEnabledActions.indices.contains(index) else { return nil }
         return "scripts-\(store.scriptsEnabledActions[index].id)"
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        guard store._isScriptsDecomposed, store.scriptsEnabledActions.indices.contains(index) else { return nil }
+        guard isDecomposed(store: store), store.scriptsEnabledActions.indices.contains(index) else { return nil }
         return store.scriptsEnabledActions[index].name
     }
 }
@@ -240,21 +250,22 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        store._isAIDecomposed
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        return store._isAIDecomposed
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        store._isAIDecomposed ? 390.0 : 420.0
+        isDecomposed(store: store) ? 390.0 : 420.0
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if store._isAIDecomposed {
-            let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
-            let count = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
-            let effectiveCount = max(count, 1)
-            return CGFloat(effectiveCount) * 52.0 + CGFloat(effectiveCount - 1) * 2.5
+        if !isDecomposed(store: store) {
+            return 260.0
         }
-        return 260.0
+        let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
+        let count = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
+        let effectiveCount = max(count, 1)
+        return CGFloat(effectiveCount) * 52.0 + CGFloat(effectiveCount - 1) * 2.5
     }
 
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -271,22 +282,24 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
     }
 
     func subItemCount(store: PurahWorkspaceStore) -> Int {
+        guard isDecomposed(store: store) else { return 0 }
         let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
-        let count = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
-        return store._isAIDecomposed ? count : 0
+        return min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
     }
 
     func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        guard isDecomposed(store: store) else { return nil }
         let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
         let maxCount = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
-        guard store._isAIDecomposed, index >= 0, index < maxCount else { return nil }
+        guard index >= 0, index < maxCount else { return nil }
         return "ai-\(enabledRoles[index].id)"
     }
 
     func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
+        guard isDecomposed(store: store) else { return nil }
         let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
         let maxCount = min(enabledRoles.count, max(store.aiMaxRailRoles, 1))
-        guard store._isAIDecomposed, index >= 0, index < maxCount else { return nil }
+        guard index >= 0, index < maxCount else { return nil }
         return enabledRoles[index].title
     }
 }
@@ -307,6 +320,16 @@ struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
         self.minHeight = minHeight
         self.adaptiveWidth = adaptiveWidth
         self.preferredHeight = preferredHeight
+    }
+
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        return false
+    }
+
+    func subItemCount(store: PurahWorkspaceStore) -> Int {
+        guard isDecomposed(store: store) else { return 0 }
+        return 0
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {

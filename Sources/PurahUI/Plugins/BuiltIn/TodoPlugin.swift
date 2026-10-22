@@ -72,7 +72,7 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if state.incompleteTodos.isEmpty {
+        if !isDecomposed(store: store) || state.incompleteTodos.isEmpty {
             return 130.0
         }
         return decomposedPolicy.calculateMinimumHeight(activeCount: state.todos.count)
@@ -107,7 +107,8 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
-        true
+        if store.isInSharedMajorPod(podId: manifest.id) { return false }
+        return true
     }
 
     public var subItemCount: Int {
@@ -121,7 +122,8 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
-        min(effectiveTodos(store: store).count, store.todoMaxRailTasks)
+        guard isDecomposed(store: store) else { return 0 }
+        return min(effectiveTodos(store: store).count, store.todoMaxRailTasks)
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
@@ -312,6 +314,10 @@ public struct TodoPluginSettingsView: View {
                         }
                     }
 
+                    PurahStackedDecomposeNoticeView(podId: "todo", store: store)
+
+                    let isStacked = store.isInSharedMajorPod(podId: "todo")
+
                     // Max Visible Tasks Slider
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
@@ -350,6 +356,8 @@ public struct TodoPluginSettingsView: View {
                         RoundedRectangle(cornerRadius: 7)
                             .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
                     )
+                    .disabled(isStacked)
+                    .opacity(isStacked ? 0.55 : 1.0)
 
                     // Footer bar
                     HStack(spacing: 8) {
