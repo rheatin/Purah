@@ -81,6 +81,10 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         return 160.0
     }
 
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 240.0)
+    }
+
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "scripts") {
             return 360.0

@@ -75,6 +75,10 @@ public struct TodoPlugin: PurahPodPlugin {
         decomposedPolicy.calculateMinimumHeight(activeCount: state.todos.count)
     }
 
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 250.0)
+    }
+
     private func effectiveTodos(store: PurahWorkspaceStore) -> [TodoItem] {
         var combined = state.todos
         for t in store._todos {

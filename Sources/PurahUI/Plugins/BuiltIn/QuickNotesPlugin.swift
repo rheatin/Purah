@@ -66,6 +66,7 @@ public struct QuickNotesPlugin: PurahPodPlugin {
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 130.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 320.0 }
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 280.0 }
 }
 
 // MARK: - Drop Shelf Plugin

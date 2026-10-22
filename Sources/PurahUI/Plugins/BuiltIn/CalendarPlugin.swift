@@ -93,6 +93,17 @@ public struct CalendarPlugin: PurahPodPlugin {
         return decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count)
     }
 
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 260.0)
+    }
+
+    public func acknowledgeAllAlerts(context: PurahPluginContext) {
+        for event in state.events where (event.isOngoing || event.isImminent(leadTime: state.alertLeadTime)) {
+            state.acknowledgeAlert(id: event.id)
+            context.acknowledgeAlert(event.id)
+        }
+    }
+
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         if !isDecomposed(store: store) || store.isInSharedMajorPod(podId: "calendar") {
             return 360.0

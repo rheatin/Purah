@@ -81,6 +81,12 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         return 300.0
     }
 
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 260.0)
+    }
+
+    public var usesAdaptiveTelemetryColor: Bool { true }
+
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         360.0
     }

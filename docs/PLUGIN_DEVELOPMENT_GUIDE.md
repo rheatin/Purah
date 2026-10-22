@@ -19,6 +19,23 @@ Purah 由三大解耦模块构成：
 4. **默认拆解原则 (Default Decomposed)**：所有支持多子项的插件（如指标、待办、日程），默认均处于 `isDecomposed = true` 的在轨拆解展开状态。
 5. **呼吸感界面哲学 (Breathing UI)**：善用微透明毛玻璃、柔和光晕、空状态占位符及舒适的留白，杜绝压抑的灰盒感。
 
+### 双轨开发模式对照表 (Two Development Tracks)
+
+Purah 提供两种层级的插件开发路径，分别针对外部独立生态开发者与核心宿主贡献者：
+
+| 维度 | 模式 A：独立外部插件开发 (推荐第三方开发者) | 模式 B：宿主内置插件开发 (适合 Purah 核心贡献者) |
+| :--- | :--- | :--- |
+| **适用人群** | 第三方开发者、社区创作者、独立工具集 | Purah 核心维护者、官方深度内置功能研发 |
+| **工程依赖** | **完全零宿主依赖**，无需克隆 Purah 主仓库，仅依赖 Apple 原生 `SwiftUI` & `AppKit` | 强依赖 `PurahCore` 与 `PurahUI` 模块 |
+| **开发方式** | 新建标准独立 Swift Package (`.dynamic` library)，拷入单文件 `PurahExternalPluginSDK.swift`（见 `Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift`） | 在 Purah 源码树 `Sources/PurahUI/Plugins/BuiltIn/` 下新增 Swift 文件 |
+| **接入契约** | C-ABI 导出符号 (`@_cdecl`) + `PurahExternalContext` + `PurahHostBridge.shared` | 实现 `PurahPodPlugin` 与 `PurahPodCapabilityProvider` 协议 |
+| **功能支持** | 编写 `RailView`、`DrawerView`、`SettingsView`，读取 `PurahExternalContext`（边缘方向、尺寸、深浅色、沙盒目录），调用 `PurahHostBridge.shared`（`expand`、`dismiss`、`togglePin`、`showToast`、`showWarning`、`openSettings`、`performHaptic`、`requestLayoutRecalculation`） | 直接利用 SwiftUI 原生视图及全部内置组件套件 (`PurahAdaptiveTierDrawer`、`PurahFluidWaveformBarView` 等) |
+| **调试与热载** | 打开 Purah 设置面板点击 **`Dev: Load Package...`**，自动 JIT 极速编译、挂载与保存自动单键热重载 | 重新构建运行整个 Purah 宿主应用 (`./run.sh` 或 Xcode) |
+| **分发形式** | 编译为单个 `.dylib` 动态库或直接分发源码 Package 文件夹 | 合并入主分支并跟随宿主版本打包分发 |
+
+- **模式 A 详见**：[9.2 动态 SPM 插件架构与 ABI C 桥接引擎](#92-动态-spm-插件架构与-abi-c-桥接引擎-纯-swift-零依赖) 及内置完整示例 `Examples/PurahExamplePlugin/`。
+- **模式 B 详见**：[3. 插件核心协议 (`PurahPodPlugin`)](#3-插件核心协议-purahpodplugin) 及内置示例 [8. 倒数日插件范例](#8-完整插件开发范例倒数日纪念插件-countdownplugin)。
+
 ---
 
 ## 2. 插件元数据清单 (`PurahPluginManifest`)
@@ -85,6 +102,14 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
     /// 插件自主声明在 Adaptive 模式下的最佳自适应宽度（例如音乐 360pt, 剪贴板 380pt, 终端 520pt）；返回 nil 则使用 Base 通用算法
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
+    /// 插件自主声明在展开卡片抽屉或动态手风琴伸展时的理想高度（默认返回 max(minimumDrawerHeight * 1.5, 240.0)）
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
+
+    // MARK: - 告警与变色机制 (Alerts & Adaptive Color)
+    /// 声明轨条是否启用自适应动态遥测着色（如硬件监视器根据 CPU/RAM 负载动态显示绿/黄/红状态色）
+    var usesAdaptiveTelemetryColor: Bool { get }
+    /// 用户在轨条或抽屉上发生交互或显式悬停确认时触发，用于批量清除该插件产生的所有注意力告警
+    func acknowledgeAllAlerts(context: PurahPluginContext)
 
     // MARK: - 统一在轨拆解人机策略 (Decomposed Policy)
     /// 声明拆解模式下的在轨数量上限、芯片高度上下限、间隙及溢出折叠策略
@@ -92,12 +117,15 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 }
 ```
 
-### 默认协议扩展 (Protocol Extensions)
+### 默认协议扩展与新增定制能力 (Protocol Extensions & Customization)
 协议为几乎所有可选能力提供了合理默认值：
 - 单抽屉插件只需实现 `makeRailBarView` 与 `makeDrawerView`。
 - 如果支持在轨拆解（如多条目/多指标），声明 `supportedDrawerModes: [.stepped]` 并实现 `steppedItems(context:)`。
 - **在轨拆解策略 (`PurahDecomposedPolicy`)**：支持拆解的插件可重写 `decomposedPolicy`，开箱即用支持最高在轨显示数量、子芯片最低/最高高度保护、自动算高及 `+N More` 智能折叠胶囊，底座容器自动精准适配。
-- **自适应宽度自主宣告**：底座（Base Store）遵循开闭原则，不硬编码具体插件宽度。插件只需重写 `adaptiveDrawerWidth(store:)` 返回专属宽度（如 `360.0`），即可在用户切换为自适应模式时享受专属最佳排版。
+- **自适应宽度自主宣告 (`adaptiveDrawerWidth`)**：底座（Base Store）遵循开闭原则，不硬编码具体插件宽度。插件只需重写 `adaptiveDrawerWidth(store:)` 返回专属宽度（如 `360.0`），即可在用户切换为自适应模式时享受专属最佳排版。
+- **首选抽屉展开高度 (`preferredDrawerHeight`)**：插件通过 `preferredDrawerHeight(store:) -> CGFloat` 自主声明展开抽屉或动态手风琴（Dynamic Accordion）弹性伸展时的黄金高度（如音乐 295pt、终端/剪贴板 280pt、AI 助手 320pt）。宿主排版引擎利用物理弹簧将轨条与抽屉平滑伸展至此高度，保证内部复杂组件拥有充裕的纵向展示空间。
+- **自适应遥测变色 (`usesAdaptiveTelemetryColor`)**：布尔属性（默认 `false`）。当声明为 `true`（如硬件指标 Hardware Vitals）时，轨条与设置面板将优先采用动态遥测变色逻辑（红黄绿健康阈值），而不会被用户偏好的单一静态主题色强行压制。
+- **全量告警消光回调 (`acknowledgeAllAlerts`)**：当用户点击轨条芯片、滑开抽屉或进行显式交互时，宿主将调用此方法通知插件消光。插件应在此重置内部未读提醒、清除告警气泡或标记通知为已读状态。
 
 ---
 
@@ -409,7 +437,7 @@ store.marketManager.install(id: "countdown")
 
 为了让第三方开发者以最轻量的方式开发插件，Purah 提供了 **纯 Swift 6 / SwiftUI 零依赖动态载入方案**。插件**完全不需要引入庞大的宿主工程依赖**，仅需系统原生的 `SwiftUI` 与 `AppKit`，即可在 1 秒内完成编译并动态挂载！
 
-#### 标准插件工程结构 (`Package.swift`)：
+#### 1. 标准插件工程结构 (`Package.swift`)：
 ```swift
 // swift-tools-version: 6.0
 import PackageDescription
@@ -426,25 +454,222 @@ let package = Package(
 )
 ```
 
-#### 导出的核心 ABI C 接口：
+#### 2. 单文件外部插件 SDK (`PurahExternalPluginSDK.swift`)
+第三方开发者无需引入任何包依赖，只需将 `Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift` 单文件拷贝到插件的目标工程目录下，即可开箱即用享受完整的类型安全环境：
+- **`PurahExternalContext`**：自动从宿主注入的 JSON 解析环境信息：
+  - `pluginId`: 插件唯一标识符；
+  - `edge`: 当前所在屏幕边缘 (`"left"` 或 `"right"`)；
+  - `railWidth`: 轨条物理宽度（通常 8pt ~ 12pt）；
+  - `slotHeight`: 物理轨条分配到的高度；
+  - `drawerWidth`: 抽屉展开宽度；
+  - `isExpanded`: 是否正处于展开状态；
+  - `isPinned`: 是否被图钉常驻；
+  - `isDark`: 是否处于深色模式；
+  - `accentColorHex`: 品牌特征色十六进制字串；
+  - `storageDirectoryPath`: 宿主为该插件分配的独立物理沙盒数据目录绝对路径（位于 `~/Library/Application Support/Purah/Plugins/<pluginId>/`）。
+- **`PurahHostBridge.shared`**：全局宿主行为桥接器，在插件内任意位置可直接向宿主申请动作调度：
+  - `expand(pluginId:)`: 请求展开抽屉卡片；
+  - `dismiss(pluginId:)`: 请求收起抽屉卡片；
+  - `togglePin(pluginId:)`: 切换当前卡片图钉固定/取消固定；
+  - `showToast(pluginId:message:)`: 在屏幕上方弹出灵动 Toast 提示；
+  - `showWarning(pluginId:message:)`: 触发人机工程容量警告或醒目横幅；
+  - `openSettings(pluginId:)`: 打开本插件的专属设置面板；
+  - `performHaptic(pluginId:type:)`: 触发 Mac 触控板触觉反馈 (`"alignment"` 或 `"levelChange"`)；
+  - `requestLayoutRecalculation(pluginId:)`: 申请宿主排版引擎重新测算与布局。
+- **`PurahViewHost.retain(...)`**：便捷导出辅助函数，将任意遵循 SwiftUI `View` 的组件包装为 `NSHostingView` 并安全保留指针返回给 C-ABI。
+
+#### 3. 完整 C-ABI 入口函数规范对照表
+宿主通过 Darwin 动态链接器 (`dlsym`) 自动发现并挂载插件导出的 `@_cdecl` C 接口：
+
+| C-ABI 导出符号名 | 函数签名 | 必须 / 可选 | 作用与调度时机 |
+| :--- | :--- | :--- | :--- |
+| `purahPluginManifestJSON` | `() -> UnsafePointer<CChar>` | **必须** | 导出插件静态 JSON 清单元数据 (包含 id, displayName, defaultDrawerWidth 等) |
+| `purahSetHostActionBridge` | `(PurahABIHostActionCallback) -> Void` | 推荐 | 宿主注入动作回调派发器，打通 `PurahHostBridge.shared` 双向交互 |
+| `purahCreateRailViewWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer` | 推荐 | 接收上下文 JSON 指针，返回轨条卡片的 `NSView` 指针（优先于无上下文版） |
+| `purahCreateRailView` | `() -> UnsafeMutableRawPointer` | 可选 | 无上下文版轨条视图工厂（向后兼容回退） |
+| `purahCreateDrawerViewWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer` | 推荐 | 接收上下文 JSON 指针，返回展开抽屉卡片的 `NSView` 指针（优先于无上下文版） |
+| `purahCreateDrawerView` | `() -> UnsafeMutableRawPointer` | 可选 | 无上下文版抽屉展开视图工厂（向后兼容回退） |
+| `purahCreateSettingsViewWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer` | 推荐 | 接收上下文 JSON 指针，返回设置页面 `NSView` 指针 |
+| `purahCreateSettingsView` | `() -> UnsafeMutableRawPointer` | 可选 | 无上下文版设置视图工厂 |
+| `purahCreateHeaderAccessoryView` | `() -> UnsafeMutableRawPointer` | 可选 | 导出位于抽屉标题右侧的徽标/副标签视图指针 |
+| `purahCreateHeaderTrailingView` | `() -> UnsafeMutableRawPointer` | 可选 | 导出位于设置与 Pin 按钮左侧的工具栏微型视图指针 |
+| `purahOnRailBarTap` | `() -> Void` | 可选 | 轨条被点击时的即时动作触发回调 |
+| `purahOnMount` | `() -> Void` | 可选 | 插件被挂载至边轨时的生命周期通知 |
+| `purahOnUnmount` | `() -> Void` | 可选 | 插件从边轨卸载时的生命周期通知 |
+
+#### 4. 完整独立外部插件实战范例 (Focus Zen Counter)
+
+以下为使用 `PurahExternalPluginSDK.swift` 构建的完整第三方独立插件实现（包含轨条、抽屉、顶栏插槽、独立设置面板以及通过 `PurahHostBridge.shared` 触发宿主 Toast / 图钉固定）：
+
 ```swift
 import SwiftUI
 import AppKit
 
-// 1. 声明静态 JSON 清单
+// MARK: - 插件独立状态容器
+@MainActor
+final class ZenCounterState: ObservableObject {
+    static let shared = ZenCounterState()
+
+    @Published var count: Int = 0
+    @Published var targetGoal: Int = 10 {
+        didSet { UserDefaults.standard.set(targetGoal, forKey: "purah.plugin.com.example.focus.targetGoal") }
+    }
+    @Published var stepSize: Int = 1 {
+        didSet { UserDefaults.standard.set(stepSize, forKey: "purah.plugin.com.example.focus.stepSize") }
+    }
+
+    init() {
+        self.count = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.currentCount")
+        let savedGoal = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.targetGoal")
+        self.targetGoal = savedGoal > 0 ? savedGoal : 10
+        let savedStep = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.stepSize")
+        self.stepSize = savedStep > 0 ? savedStep : 1
+    }
+
+    func increment() {
+        count += stepSize
+        UserDefaults.standard.set(count, forKey: "purah.plugin.com.example.focus.currentCount")
+    }
+
+    func reset() {
+        count = 0
+        UserDefaults.standard.set(count, forKey: "purah.plugin.com.example.focus.currentCount")
+    }
+}
+
+// MARK: - 轨条视图
+struct ZenRailView: View {
+    @ObservedObject private var state = ZenCounterState.shared
+    let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(accentColor)
+            Text("\(state.count)")
+                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                .foregroundColor(.white)
+        }
+        .frame(width: 8, height: 60)
+        .background(accentColor.opacity(0.85))
+        .clipShape(Capsule())
+    }
+}
+
+// MARK: - 抽屉卡片视图
+struct ZenDrawerView: View {
+    @ObservedObject private var state = ZenCounterState.shared
+    let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(accentColor.opacity(0.15))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(accentColor)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(state.count)")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        Text("/ \(state.targetGoal)")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Text("Completed Focus Cycles")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(10)
+            .background(Color.primary.opacity(0.035))
+            .cornerRadius(8)
+
+            // 触觉控制按钮
+            HStack(spacing: 8) {
+                Button("Add +\(state.stepSize)") {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                    state.increment()
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(accentColor)
+                .foregroundColor(.white)
+                .cornerRadius(6)
+
+                Button("Reset") {
+                    state.reset()
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(6)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+// MARK: - 独立设置视图 (演示 PurahHostBridge 调用)
+struct ZenSettingsView: View {
+    @ObservedObject private var state = ZenCounterState.shared
+    private let pluginId = "com.example.focus"
+    private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill").foregroundColor(accentColor)
+                Text("Zen Counter Configuration").font(.system(size: 12, weight: .semibold))
+            }
+            Divider()
+
+            Stepper("Daily Goal: \(state.targetGoal)", value: $state.targetGoal, in: 1...100)
+            Stepper("Step Size: +\(state.stepSize)", value: $state.stepSize, in: 1...10)
+
+            Divider()
+
+            // 演示通过 PurahHostBridge 呼叫宿主 Toast 与 Pin 切换
+            HStack(spacing: 8) {
+                Button("Test Host Toast") {
+                    PurahHostBridge.shared.showToast(pluginId: pluginId, message: "Target goal: \(state.targetGoal) cycles")
+                    PurahHostBridge.shared.performHaptic(pluginId: pluginId, type: "levelChange")
+                }
+                Button("Toggle Pin") {
+                    PurahHostBridge.shared.togglePin(pluginId: pluginId)
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .frame(minWidth: 260, minHeight: 200)
+    }
+}
+
+// MARK: - ABI C 导出入口
 private let manifestJSON = """
 {
-    "id": "com.myname.custom",
-    "displayName": "My Plugin",
-    "systemIcon": "star.fill",
-    "author": "Community Developer",
+    "id": "com.example.focus",
+    "displayName": "Zen Counter",
+    "systemIcon": "flame.fill",
+    "author": "Purah Community",
     "version": "1.0.0",
-    "description": "Zero-dependency pure SwiftUI dynamic plugin",
+    "description": "Dynamic SPM example plugin: ambient habit counter & focus tracking",
     "defaultEdge": "right",
     "preferredZone": "goldenAction",
     "ergonomicWeight": 30.0,
     "minLengthRatio": 0.15,
-    "defaultColorHex": "#FF9F0A",
+    "defaultColorHex": "#FF6B6B",
     "defaultDrawerWidth": 290.0,
     "category": "Lightweight",
     "permissions": []
@@ -456,41 +681,82 @@ public func purahPluginManifestJSON() -> UnsafePointer<CChar> {
     return (manifestJSON as NSString).utf8String!
 }
 
-// 2. 导出轨条小视图 (返回 NSHostingView 原生指针)
 @MainActor
 @_cdecl("purahCreateRailView")
 public func purahCreateRailView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: MyRailView())
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(ZenRailView())
 }
 
-// 3. 导出抽屉展开卡片视图
+@MainActor
+@_cdecl("purahCreateRailViewWithContext")
+public func purahCreateRailViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    return PurahViewHost.retain(ZenRailView())
+}
+
 @MainActor
 @_cdecl("purahCreateDrawerView")
 public func purahCreateDrawerView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: MyDrawerView())
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(ZenDrawerView())
 }
 
-// 4. (可选) 导出顶栏副标题徽章
+@MainActor
+@_cdecl("purahCreateDrawerViewWithContext")
+public func purahCreateDrawerViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    return PurahViewHost.retain(ZenDrawerView())
+}
+
+@MainActor
+@_cdecl("purahCreateSettingsView")
+public func purahCreateSettingsView() -> UnsafeMutableRawPointer {
+    PurahViewHost.retain(ZenSettingsView())
+}
+
+@MainActor
+@_cdecl("purahCreateSettingsViewWithContext")
+public func purahCreateSettingsViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    return PurahViewHost.retain(ZenSettingsView())
+}
+
 @MainActor
 @_cdecl("purahCreateHeaderAccessoryView")
 public func purahCreateHeaderAccessoryView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: Text("PRO").font(.system(size: 8, weight: .bold)))
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(Text("ZEN").font(.system(size: 7.5, weight: .bold)))
 }
 
-// 5. (可选) 轨条点击回调
+@MainActor
+@_cdecl("purahCreateHeaderTrailingView")
+public func purahCreateHeaderTrailingView() -> UnsafeMutableRawPointer {
+    PurahViewHost.retain(
+        Button("+1") { ZenCounterState.shared.increment() }
+            .font(.system(size: 8, weight: .bold))
+    )
+}
+
 @MainActor
 @_cdecl("purahOnRailBarTap")
 public func purahOnRailBarTap() {
-    // 处理一键触发逻辑
+    ZenCounterState.shared.increment()
+}
+
+@MainActor
+@_cdecl("purahOnMount")
+public func purahOnMount() {
+    // 挂载通知
+}
+
+@MainActor
+@_cdecl("purahOnUnmount")
+public func purahOnUnmount() {
+    // 卸载通知
 }
 ```
 
 ---
 
-### 8.3 本地开发验证与热重载工作流 (Local Development & Hot Reload)
+### 9.3 本地开发验证与热重载工作流 (Local Development & Hot Reload)
 
 Purah 内置了直通开发者的即时编译工具链，参考仓库内置的完整范例：**`Examples/PurahExamplePlugin`**：
 

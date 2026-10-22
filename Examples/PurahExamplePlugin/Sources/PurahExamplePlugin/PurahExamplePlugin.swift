@@ -6,19 +6,34 @@ import AppKit
 @MainActor
 final class ZenCounterState: ObservableObject {
     static let shared = ZenCounterState()
+
     @Published var count: Int = 0
+    @Published var targetGoal: Int = 10 {
+        didSet {
+            UserDefaults.standard.set(targetGoal, forKey: "purah.plugin.com.example.focus.targetGoal")
+        }
+    }
+    @Published var stepSize: Int = 1 {
+        didSet {
+            UserDefaults.standard.set(stepSize, forKey: "purah.plugin.com.example.focus.stepSize")
+        }
+    }
 
     init() {
         self.count = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.currentCount")
+        let savedGoal = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.targetGoal")
+        self.targetGoal = savedGoal > 0 ? savedGoal : 10
+        let savedStep = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.stepSize")
+        self.stepSize = savedStep > 0 ? savedStep : 1
     }
 
     func increment() {
-        count += 1
+        count += stepSize
         UserDefaults.standard.set(count, forKey: "purah.plugin.com.example.focus.currentCount")
     }
 
     func decrement() {
-        count = max(count - 1, 0)
+        count = max(count - stepSize, 0)
         UserDefaults.standard.set(count, forKey: "purah.plugin.com.example.focus.currentCount")
     }
 
@@ -68,9 +83,14 @@ struct ZenDrawerView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(state.count)")
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
-                        .foregroundColor(.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(state.count)")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .foregroundColor(.primary)
+                        Text("/ \(state.targetGoal)")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                     Text("Completed Focus Cycles")
                         .font(.system(size: 9.5, weight: .medium))
                         .foregroundColor(.secondary)
@@ -172,7 +192,7 @@ struct ZenHeaderTrailingView: View {
             HStack(spacing: 2) {
                 Image(systemName: "plus")
                     .font(.system(size: 8, weight: .bold))
-                Text("1")
+                Text("\(state.stepSize)")
                     .font(.system(size: 8, weight: .bold, design: .monospaced))
             }
             .padding(.horizontal, 4.5)
@@ -182,7 +202,95 @@ struct ZenHeaderTrailingView: View {
             .cornerRadius(3.5)
         }
         .buttonStyle(.plain)
-        .help("Quick increment +1")
+        .help("Quick increment +\(state.stepSize)")
+    }
+}
+
+struct ZenSettingsView: View {
+    @ObservedObject private var state = ZenCounterState.shared
+    private let pluginId = "com.example.focus"
+    private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .foregroundColor(accentColor)
+                    .font(.system(size: 14, weight: .bold))
+                Text("Zen Counter Configuration")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+            }
+
+            Divider()
+
+            // Daily Target Goal
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Daily Target Goal")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    Text("\(state.targetGoal) cycles")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(accentColor)
+                }
+
+                Stepper("", value: $state.targetGoal, in: 1...100)
+                    .labelsHidden()
+            }
+
+            // Step Size
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Increment Step Size")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    Text("+\(state.stepSize)")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(accentColor)
+                }
+
+                Stepper("", value: $state.stepSize, in: 1...10)
+                    .labelsHidden()
+            }
+
+            Divider()
+
+            // Host Actions Test Controls
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Host SDK Bridge Actions")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 8) {
+                    Button {
+                        PurahHostBridge.shared.showToast(pluginId: pluginId, message: "Target goal saved: \(state.targetGoal) cycles")
+                        PurahHostBridge.shared.performHaptic(pluginId: pluginId, type: "levelChange")
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                            Text("Test Toast")
+                        }
+                        .font(.system(size: 10, weight: .medium))
+                    }
+
+                    Button {
+                        PurahHostBridge.shared.togglePin(pluginId: pluginId)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pin")
+                            Text("Toggle Pin")
+                        }
+                        .font(.system(size: 10, weight: .medium))
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .frame(minWidth: 260, minHeight: 220)
     }
 }
 
@@ -216,33 +324,68 @@ public func purahPluginManifestJSON() -> UnsafePointer<CChar> {
 @MainActor
 @_cdecl("purahCreateRailView")
 public func purahCreateRailView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: ZenRailView())
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(ZenRailView())
+}
+
+@MainActor
+@_cdecl("purahCreateRailViewWithContext")
+public func purahCreateRailViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    return PurahViewHost.retain(ZenRailView())
 }
 
 @MainActor
 @_cdecl("purahCreateDrawerView")
 public func purahCreateDrawerView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: ZenDrawerView())
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(ZenDrawerView())
+}
+
+@MainActor
+@_cdecl("purahCreateDrawerViewWithContext")
+public func purahCreateDrawerViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    return PurahViewHost.retain(ZenDrawerView())
+}
+
+@MainActor
+@_cdecl("purahCreateSettingsView")
+public func purahCreateSettingsView() -> UnsafeMutableRawPointer {
+    PurahViewHost.retain(ZenSettingsView())
+}
+
+@MainActor
+@_cdecl("purahCreateSettingsViewWithContext")
+public func purahCreateSettingsViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    return PurahViewHost.retain(ZenSettingsView())
 }
 
 @MainActor
 @_cdecl("purahCreateHeaderAccessoryView")
 public func purahCreateHeaderAccessoryView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: ZenHeaderAccessoryView())
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(ZenHeaderAccessoryView())
 }
 
 @MainActor
 @_cdecl("purahCreateHeaderTrailingView")
 public func purahCreateHeaderTrailingView() -> UnsafeMutableRawPointer {
-    let host = NSHostingView(rootView: ZenHeaderTrailingView())
-    return Unmanaged.passRetained(host).toOpaque()
+    PurahViewHost.retain(ZenHeaderTrailingView())
 }
 
 @MainActor
 @_cdecl("purahOnRailBarTap")
 public func purahOnRailBarTap() {
     ZenCounterState.shared.increment()
+}
+
+@MainActor
+@_cdecl("purahOnMount")
+public func purahOnMount() {
+    // Optional mount lifecycle hook
+}
+
+@MainActor
+@_cdecl("purahOnUnmount")
+public func purahOnUnmount() {
+    // Optional unmount lifecycle hook
 }

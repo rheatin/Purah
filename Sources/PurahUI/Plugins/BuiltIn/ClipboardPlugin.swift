@@ -105,6 +105,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
             return 150.0
         }
     }
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 280.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 380.0 }
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store.pinnedDrawerItemIds.contains { $0.hasPrefix("clipboard-") }

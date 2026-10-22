@@ -41,6 +41,12 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     // 8. Custom Header Slots (Accessories next to title & Trailing tools before settings/pin)
     @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
     @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
+
+    // 9. Adaptive Telemetry Color
+    var usesAdaptiveTelemetryColor: Bool { get }
+
+    // 10. Alert Management
+    func acknowledgeAllAlerts(context: PurahPluginContext)
 }
 
 public extension PurahPodPlugin {
@@ -68,6 +74,9 @@ public extension PurahPodPlugin {
     func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
     func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? { nil }
     func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? { nil }
+
+    var usesAdaptiveTelemetryColor: Bool { false }
+    func acknowledgeAllAlerts(context: PurahPluginContext) {}
 
     func dynamicBarColor(context: PurahPluginContext) -> Color? { nil }
     var supportedDrawerModes: Set<PurahDrawerMode> { [.composite] }

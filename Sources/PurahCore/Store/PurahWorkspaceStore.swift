@@ -30,6 +30,10 @@ public final class PurahWorkspaceStore {
     public var pods: [SlotPod] = []
     public var activeDrawerPodId: String? = nil
     public var activeDrawerItemId: String? = nil
+    public var activePodId: String? {
+        get { activeDrawerPodId }
+        set { activeDrawerPodId = newValue }
+    }
     public var hoveredPodId: String? = nil
     @ObservationIgnored private var pendingHoverPodId: String? = nil
     public var isDrawerPinned: Bool = false
@@ -38,6 +42,11 @@ public final class PurahWorkspaceStore {
     public var currentPreset: PodPreset = .balanced
     public var isDynamicBreathingEnabled: Bool = true
     public var isAlwaysCompactBreathing: Bool = false
+    public var onToast: ((String, String?) -> Void)? = nil
+
+    public var railWidth: Double {
+        Double(railBarWidth)
+    }
 
     public func setDynamicBreathingEnabled(_ enabled: Bool) {
         isDynamicBreathingEnabled = enabled
@@ -770,6 +779,10 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
     }
 
+    public func togglePin(for id: String) {
+        togglePinItem(id: id)
+    }
+
     public static var isTestingEnvironment: Bool {
         NSClassFromString("XCTest") != nil ||
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
@@ -1272,30 +1285,10 @@ public final class PurahWorkspaceStore {
            customPref >= Double(minH) {
             return CGFloat(customPref)
         }
-        switch podId {
-        case "notes":
-            return 280.0
-        case "terminal":
-            return 280.0
-        case "clipboard":
-            return 280.0
-        case "ai":
-            return 320.0
-        case "calendar":
-            return max(minH, 260.0)
-        case "todo":
-            return max(minH, 250.0)
-        case "vitals":
-            return max(minH, 260.0)
-        case "scripts":
-            return max(minH, 240.0)
-        case "shelf":
-            return 250.0
-        case "music":
-            return 295.0
-        default:
-            return max(minH * 1.5, 240.0)
+        if let provider = capabilityProviders[podId] {
+            return max(minH, provider.preferredDrawerHeight(store: self))
         }
+        return max(minH * 1.5, 240.0)
     }
 
     // MARK: - Rail Capacity & Ergonomic Height Budget
@@ -1556,6 +1549,11 @@ public final class PurahWorkspaceStore {
 
     public func invalidateLayoutCache() {
         cachedResolvedLayouts.removeAll()
+    }
+
+    public func recalculateLayout() {
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
     }
 
     private func calculateSubSpans(for cluster: [SlotPod], clusterSpan: Double, subGap: Double = 3.0) -> [Double] {
@@ -2388,11 +2386,11 @@ public final class PurahWorkspaceStore {
         registerCapabilityProvider(DefaultVitalsCapabilityProvider())
         registerCapabilityProvider(DefaultScriptsCapabilityProvider())
         registerCapabilityProvider(DefaultAICapabilityProvider())
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0, adaptiveWidth: 360.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 120.0, adaptiveWidth: 520.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "clipboard", minHeight: 150.0, adaptiveWidth: 380.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "music", minHeight: 110.0, adaptiveWidth: 360.0, preferredHeight: 295.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0, preferredHeight: 250.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0, preferredHeight: 280.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 120.0, adaptiveWidth: 520.0, preferredHeight: 280.0))
+        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "clipboard", minHeight: 150.0, adaptiveWidth: 380.0, preferredHeight: 280.0))
     }
 
     // MARK: - Local Persistence

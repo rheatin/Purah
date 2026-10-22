@@ -240,12 +240,7 @@ public struct AmbientRailStripView: View {
         for sub in plugin.steppedItems(context: context) where sub.state == .alerting {
             context.acknowledgeAlert(sub.id)
         }
-        if let calPlugin = plugin as? CalendarPlugin {
-            for event in calPlugin.state.events where (event.isOngoing || event.isImminent(leadTime: calPlugin.state.alertLeadTime)) {
-                calPlugin.state.acknowledgeAlert(id: event.id)
-                store.acknowledgeAlert(id: event.id)
-            }
-        }
+        plugin.acknowledgeAllAlerts(context: context)
     }
 
     // MARK: - Plugin Pod Rendering

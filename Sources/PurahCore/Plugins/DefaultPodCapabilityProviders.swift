@@ -19,6 +19,10 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
         return 310.0
     }
 
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 260.0)
+    }
+
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let maxEvents = max(store.calendarMaxRailEvents, 1)
         let minChipH: CGFloat = 40.0
@@ -58,6 +62,9 @@ struct DefaultTodoCapabilityProvider: PurahPodCapabilityProvider {
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 340.0 }
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { true }
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 250.0)
+    }
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         let maxTasks = max(store.todoMaxRailTasks, 1)
         let minChipH: CGFloat = 32.0
@@ -117,6 +124,10 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
         return 300.0
     }
 
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 260.0)
+    }
+
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         360.0
     }
@@ -167,6 +178,10 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
             return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
         }
         return 160.0
+    }
+
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        max(minimumDrawerHeight(store: store), 240.0)
     }
 
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
@@ -236,6 +251,10 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
         return 260.0
     }
 
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        320.0
+    }
+
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         let enabledRoles = store._aiRolePresets.filter(\.isEnabled)
         return enabledRoles.contains { store.isItemPinned(id: "ai-\($0.id)") }
@@ -271,15 +290,17 @@ struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
     let podId: String
     let minHeight: CGFloat
     let adaptiveWidth: CGFloat?
+    let preferredHeight: CGFloat?
 
     var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(maxRailItems: 1, minChipHeight: minHeight, maxChipHeight: 800.0, spacing: 0.0, overflowStrategy: .truncate)
     }
 
-    init(podId: String, minHeight: CGFloat, adaptiveWidth: CGFloat? = nil) {
+    init(podId: String, minHeight: CGFloat, adaptiveWidth: CGFloat? = nil, preferredHeight: CGFloat? = nil) {
         self.podId = podId
         self.minHeight = minHeight
         self.adaptiveWidth = adaptiveWidth
+        self.preferredHeight = preferredHeight
     }
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -288,5 +309,12 @@ struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         adaptiveWidth
+    }
+
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        if let preferredHeight {
+            return preferredHeight
+        }
+        return max(minHeight * 1.5, 240.0)
     }
 }

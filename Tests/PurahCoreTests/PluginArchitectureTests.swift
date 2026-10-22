@@ -1252,6 +1252,12 @@ struct PluginArchitectureTests {
         #expect(headerAccessory != nil)
         let headerTrailing = plugin.makeHeaderTrailingView(context: context)
         #expect(headerTrailing != nil)
+        let settingsView = plugin.makeSettingsView(store: store)
+        #expect(settingsView != nil)
+
+        // Verify lifecycle calls
+        plugin.onMount(store: store)
+        plugin.onUnmount(store: store)
 
         // Clean uninstallation
         store.marketManager.uninstall(id: "com.example.focus")
@@ -1388,5 +1394,103 @@ struct PluginArchitectureTests {
 
         // Clean up
         registry.unregister(id: spy.manifest.id, store: store)
+    }
+
+    @Test("Preferred drawer height autonomously delegates to capability providers")
+    func testPreferredDrawerHeightDelegation() {
+        let store = PurahWorkspaceStore()
+
+        #expect(store.preferredDrawerHeight(for: "notes") == 280.0)
+        #expect(store.preferredDrawerHeight(for: "terminal") == 280.0)
+        #expect(store.preferredDrawerHeight(for: "clipboard") == 280.0)
+        #expect(store.preferredDrawerHeight(for: "ai") == 320.0)
+        #expect(store.preferredDrawerHeight(for: "shelf") == 250.0)
+        #expect(store.preferredDrawerHeight(for: "music") == 295.0)
+
+        struct MockCustomProvider: PurahPodCapabilityProvider {
+            let podId: String = "custom_test_pod"
+            func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 345.0 }
+        }
+
+        store.registerCapabilityProvider(MockCustomProvider())
+        #expect(store.preferredDrawerHeight(for: "custom_test_pod") == 345.0)
+    }
+
+    @Test("Plugin adaptive telemetry color and alert acknowledgment protocol requirements")
+    func testPluginAdaptiveTelemetryColorAndAlertAcknowledgment() {
+        let vitals = HardwareVitalsPlugin()
+        #expect(vitals.usesAdaptiveTelemetryColor == true)
+
+        let notes = QuickNotesPlugin()
+        #expect(notes.usesAdaptiveTelemetryColor == false)
+
+        let calendar = CalendarPlugin()
+        let store = PurahWorkspaceStore()
+        let pod = store.pods.first(where: { $0.id == "calendar" })!
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 80.0,
+            drawerWidth: 320.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        calendar.acknowledgeAllAlerts(context: context)
+    }
+
+    @Test("PurahABIContextPayload serialization and Host Action bridge routing")
+    func testPurahABIContextPayloadAndHostActionBridge() {
+        let store = PurahWorkspaceStore()
+        PluginDynamicLoader.shared.registerStore(store)
+
+        let payload = PurahABIContextPayload(
+            pluginId: "com.test.sdk",
+            edge: "right",
+            railWidth: 8.0,
+            slotHeight: 60.0,
+            drawerWidth: 300.0,
+            isExpanded: false,
+            isPinned: false,
+            isDark: true,
+            accentColorHex: "#FF6B6B",
+            storageDirectoryPath: "/tmp/purah_test"
+        )
+
+        let encoded = try? JSONEncoder().encode(payload)
+        #expect(encoded != nil)
+        let decoded = try? JSONDecoder().decode(PurahABIContextPayload.self, from: encoded!)
+        #expect(decoded?.pluginId == "com.test.sdk")
+        #expect(decoded?.edge == "right")
+
+        var toastMessage: String?
+        store.onToast = { msg, _ in toastMessage = msg }
+
+        PluginDynamicLoader.shared.handleExternalPluginAction(
+            pluginId: "com.test.sdk",
+            action: "showToast",
+            payload: "Hello from ABI!"
+        )
+        #expect(toastMessage == "Hello from ABI!")
+
+        PluginDynamicLoader.shared.handleExternalPluginAction(
+            pluginId: "com.test.sdk",
+            action: "togglePin",
+            payload: nil
+        )
+        #expect(store.isItemPinned(id: "com.test.sdk") == true)
+
+        PluginDynamicLoader.shared.handleExternalPluginAction(
+            pluginId: "com.test.sdk",
+            action: "expand",
+            payload: nil
+        )
+        #expect(store.activeDrawerPodId == "com.test.sdk")
     }
 }

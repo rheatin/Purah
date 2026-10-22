@@ -205,6 +205,10 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         return 260.0
     }
 
+    public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        320.0
+    }
+
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         isDecomposed(store: store) ? 390.0 : 420.0
     }
