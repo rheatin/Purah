@@ -74,7 +74,31 @@ START_TIME=$(date +%s)
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}🧹 Cleaning build artifacts...${RESET}"
     swift package clean
-    rm -rf build/
+    rm -rf build/ .build/out
+fi
+
+# Self-heal stale XCBuild intermediates referencing unmounted cryptex/MetalToolchain or .metal compilation
+if [ -d ".build/out" ]; then
+    HAS_STALE_METAL=false
+    # Check for stale CompileMetalFile tasks or .metal compiler invocation
+    if grep -rq "CompileMetalFile" .build/out/Intermediates.noindex 2>/dev/null || \
+       grep -rq "Metal.xctoolchain/usr/bin/metal" .build/out/Intermediates.noindex 2>/dev/null || \
+       [ -n "$(find .build/out -name "*.air" 2>/dev/null)" ]; then
+        HAS_STALE_METAL=true
+    else
+        # Check if any cached MetalToolchain path in XCBuildData points to an unmounted/non-existent cryptex
+        for toolchain_path in $(strings .build/out/Intermediates.noindex/XCBuildData/*.xcbuilddata/attachments/* 2>/dev/null | grep -oE '/var/run/com\.apple\.security\.cryptexd/mnt/com\.apple\.MobileAsset\.MetalToolchain-[^/ ]+' | sort -u); do
+            if [ ! -e "$toolchain_path" ]; then
+                HAS_STALE_METAL=true
+                break
+            fi
+        done
+    fi
+
+    if [ "$HAS_STALE_METAL" = true ]; then
+        echo -e "${YELLOW}🧹 Detected stale MetalToolchain build artifacts in .build/out, self-healing...${RESET}"
+        rm -rf .build/out
+    fi
 fi
 
 # 1. Compile Swift package with strict concurrency
