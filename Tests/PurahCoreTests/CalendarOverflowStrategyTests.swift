@@ -235,4 +235,82 @@ struct CalendarOverflowStrategyTests {
         state.acknowledgeAlert(id: event.id)
         #expect(state.isAlertAcknowledged(id: event.id))
     }
+
+    @Test("Calendar status badges distinguish ongoing, imminent, and ended events")
+    @MainActor
+    func testCalendarEventStatusBadges() {
+        let state = CalendarPluginState()
+        state.overflowStrategy = .smartFold
+        state.maxRailEvents = 5
+        state.alertLeadTime = .fifteenMinutes
+
+        let now = Date()
+        let pastEvent = CalendarEventItem(
+            id: "past_1",
+            title: "Past Meeting",
+            location: "Room A",
+            startTime: now.addingTimeInterval(-3600),
+            endTime: now.addingTimeInterval(-1800)
+        )
+        let ongoingEvent = CalendarEventItem(
+            id: "ongoing_1",
+            title: "Ongoing Standup",
+            location: "Zoom",
+            startTime: now.addingTimeInterval(-600),
+            endTime: now.addingTimeInterval(1200)
+        )
+        let imminentEvent = CalendarEventItem(
+            id: "imminent_1",
+            title: "Imminent Review",
+            location: "Room B",
+            startTime: now.addingTimeInterval(600), // in 10 mins
+            endTime: now.addingTimeInterval(2400)
+        )
+
+        state.events = [pastEvent, ongoingEvent, imminentEvent]
+
+        let store = PurahWorkspaceStore()
+        store._calendarEvents = []
+        let calPod = store.pods.first(where: { $0.id == "calendar" })!
+        let plugin = CalendarPlugin(state: state)
+        let context = PurahPluginContext(
+            pod: calPod,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 180.0,
+            drawerWidth: 280.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .orange,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        let items = plugin.steppedItems(context: context)
+        let ongoingSub = items.first(where: { $0.id == "ongoing_1" })
+        let imminentSub = items.first(where: { $0.id == "imminent_1" })
+        let pastSub = items.first(where: { $0.id == "past_1" })
+
+        #expect(ongoingSub?.badge == "calendar.status.now".localized)
+        #expect(ongoingSub?.state == .ongoing)
+
+        let expectedMinutes = max(Int(ceil(imminentEvent.startTime.timeIntervalSince(now) / 60.0)), 1)
+        #expect(imminentSub?.badge == String(format: "calendar.status.inMinutes".localized, expectedMinutes))
+
+        #expect(pastSub?.badge == "calendar.status.ended".localized)
+        #expect(pastSub?.state == .inactive)
+    }
+
+    @Test("PurahWorkspaceStore calendarAlertLeadTime persists and defaults to fifteenMinutes")
+    @MainActor
+    func testStoreCalendarAlertLeadTime() {
+        let store = PurahWorkspaceStore()
+        #expect(store.calendarAlertLeadTime == .fifteenMinutes)
+        store.calendarAlertLeadTime = .thirtyMinutes
+        #expect(store.calendarAlertLeadTime == .thirtyMinutes)
+        store.calendarAlertLeadTime = .fifteenMinutes
+    }
 }

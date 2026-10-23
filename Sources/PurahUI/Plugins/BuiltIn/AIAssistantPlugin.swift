@@ -222,6 +222,11 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         return state.isDecomposed && store._isAIDecomposed
     }
 
+    public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        state.isDecomposed = decomposed
+        state.save()
+    }
+
     public var subItemCount: Int {
         state.isDecomposed ? min(state.enabledRoles.count, max(state.maxRailRoles, 1)) : 0
     }

@@ -114,7 +114,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             return
         }
         let winPoint = event.locationInWindow
-        if store.isLiveRailEditingMode {
+        if isSculptStripMode {
             let sculptW: CGFloat = 215.0
             let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
             if isInsideSculptStrip {
@@ -167,6 +167,10 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         NSEvent.pressedMouseButtons & 0x1 != 0
     }
 
+    private var isSculptStripMode: Bool {
+        store.isLiveRailEditingMode && !store.isRehearsingBreathingInSculptor
+    }
+
     public override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         guard !store.isRailsFrozen else { return }
@@ -175,7 +179,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         store.onLocalMouseMove?(event)
 
         let winPoint = event.locationInWindow
-        if store.isLiveRailEditingMode {
+        if isSculptStripMode {
             let sculptW: CGFloat = 215.0
             let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
             if let panel = self.window as? NSPanel {
@@ -214,7 +218,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let mouseLoc = NSEvent.mouseLocation
         if let win = self.window, win.frame.contains(mouseLoc) {
             let winPoint = win.convertPoint(fromScreen: mouseLoc)
-            if store.isLiveRailEditingMode {
+            if isSculptStripMode {
                 let sculptW: CGFloat = 215.0
                 let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
                 if isInsideSculptStrip {
@@ -239,7 +243,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     public override func hitTest(_ point: NSPoint) -> NSView? {
         guard !store.isRailsFrozen else { return nil }
         let bounds = self.bounds
-        if store.isLiveRailEditingMode {
+        if isSculptStripMode {
             let sculptW: CGFloat = 215.0
             let isInsideSculptStrip = (edge == .right) ? (point.x >= bounds.maxX - sculptW) : (point.x <= bounds.minX + sculptW)
             if isInsideSculptStrip {

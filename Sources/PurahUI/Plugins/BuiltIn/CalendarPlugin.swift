@@ -150,6 +150,11 @@ public struct CalendarPlugin: PurahPodPlugin {
         return state.overflowStrategy != .continuousStream && store.calendarOverflowStrategy != .continuousStream
     }
 
+    public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        state.overflowStrategy = decomposed ? .smartFold : .continuousStream
+        store.calendarOverflowStrategy = decomposed ? .smartFold : .continuousStream
+    }
+
     private func resolvedSubItemHeaders(store: PurahWorkspaceStore) -> [(id: String, title: String)] {
         guard state.overflowStrategy != .continuousStream else { return [] }
         let currentTime = CACurrentMediaTime()
@@ -269,12 +274,22 @@ public struct CalendarPlugin: PurahPodPlugin {
             let isAcknowledged = state.isAlertAcknowledged(id: event.id) || context.store.isAlertAcknowledged(id: event.id)
             let isAlerting = (isOngoing || isImminent) && state.isEventGlowAlertEnabled && !isAcknowledged
             let itemState: RailItemActivityState = isOngoing ? .ongoing : (isAlerting ? .alerting : (isPast ? .inactive : .normal))
+            let badgeText: String? = {
+                if isOngoing {
+                    return "calendar.status.now".localized
+                } else if isImminent {
+                    return String(format: "calendar.status.inMinutes".localized, max(Int(ceil(event.startTime.timeIntervalSince(now) / 60.0)), 1))
+                } else if isPast {
+                    return "calendar.status.ended".localized
+                }
+                return nil
+            }()
             return PurahPluginSubItem(
                 id: event.id,
                 title: event.title,
                 subtitle: event.location,
                 systemIcon: "calendar",
-                badge: isOngoing ? "NOW" : (isAlerting ? "SOON" : nil),
+                badge: badgeText,
                 state: itemState,
                 gaugeRatio: nil,
                 gaugeStyle: .none,

@@ -1,11 +1,32 @@
 // Sources/PurahCore/Models/EdgeTriggerSensitivity.swift
 import Foundation
 
-public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable {
+public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable, Identifiable {
     case agile = "agile"         // 80ms dwell, 180ms exit grace, 260 pt/s push force
     case balanced = "balanced"   // 150ms dwell, 280ms exit grace, 36px barrier (Recommended default)
     case cautious = "cautious"   // 400ms dwell, 400ms exit grace, 52px barrier (Strict anti-accidental)
     case custom = "custom"       // Fine-tuned by calibration instrument (up to 1000ms)
+
+    public var id: String { rawValue }
+
+    public var shortName: String {
+        switch self {
+        case .agile: return "Agile"
+        case .balanced: return "Balanced"
+        case .cautious: return "Deliberate"
+        case .custom: return "Custom"
+        }
+    }
+
+    @MainActor
+    public var localizedShortName: String {
+        switch self {
+        case .agile: return "trigger.sensitivity.short.agile".localized
+        case .balanced: return "trigger.sensitivity.short.balanced".localized
+        case .cautious: return "trigger.sensitivity.short.deliberate".localized
+        case .custom: return "trigger.sensitivity.short.custom".localized
+        }
+    }
 
     public var displayName: String {
         switch self {

@@ -24,6 +24,17 @@ public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifiable {
+    case mountPods = 0          // Step 1: Empty Rails -> Mount Pods to Left & Right
+    case decomposeDemo = 1      // Step 2: Decompose Mode -> Composite vs Stepped Chips
+    case stackDemo = 2          // Step 3: Stack Mode -> Merge Pods & Auto-Disable Decompose
+    case pageDemo = 3           // Step 4: Multi-Page Deck -> +Page & Top/Bottom Portals
+    case breathingDemo = 4      // Step 5: Dynamic Breathing -> Compact & In-Place Accordion
+    case antiTouchCalibration = 5 // Step 6: Anti-Accidental Touch -> Dwell vs Push Force & Sensitivity
+
+    public var id: Int { rawValue }
+}
+
 @Observable
 @MainActor
 public final class PurahWorkspaceStore {
@@ -44,15 +55,66 @@ public final class PurahWorkspaceStore {
     public var isAlwaysCompactBreathing: Bool = false
     public var onToast: ((String, String?) -> Void)? = nil
 
+    public var isOnboardingGuideActive: Bool = false
+    public var onboardingStep: OnboardingGuideStep = .mountPods
+    public var isRehearsingBreathingInSculptor: Bool = false
+    @ObservationIgnored private var onboardingRehearsalTask: Task<Void, Never>? = nil
+    public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
+
+    public var onboardingDidToggleDecompose: Bool = false
+    public var onboardingDidCreateStack: Bool = false
+    public var onboardingDidCreatePage: Bool = false
+    public var onboardingDidSwitchPage: Bool = false
+    public var onboardingBreathingHoveredPods: Set<String> = []
+    public var onboardingDidSwitchTriggerMode: Bool = false
+    public var onboardingDidTriggerEdgeDrawer: Bool = false
+
+    public enum OnboardingGateTelemetryState: String, Sendable {
+        case idle
+        case dwelling
+        case pushing
+        case suppressedFling
+        case opened
+    }
+
+    public var onboardingGateState: OnboardingGateTelemetryState = .idle
+    public var onboardingGateProgress: Double = 0.0
+    public var onboardingGateCurrentValue: Int = 0
+    public var onboardingGateTargetValue: Int = 150
+
+    public var isCurrentOnboardingMissionCompleted: Bool {
+        switch onboardingStep {
+        case .mountPods:
+            return pods.contains { $0.edge == .left && $0.isEnabled } && pods.contains { $0.edge == .right && $0.isEnabled }
+        case .decomposeDemo:
+            return onboardingDidToggleDecompose
+        case .stackDemo:
+            return onboardingDidCreateStack || pods.contains { $0.isEnabled && isInSharedMajorPod(podId: $0.id) }
+        case .pageDemo:
+            return onboardingDidCreatePage && onboardingDidSwitchPage
+        case .breathingDemo:
+            return isDynamicBreathingEnabled && onboardingBreathingHoveredPods.count >= 2
+        case .antiTouchCalibration:
+            return onboardingDidTriggerEdgeDrawer
+        }
+    }
+
+    public var hasCompletedOnboarding: Bool {
+        get { userDefaults.bool(forKey: "purah.hasCompletedOnboarding") }
+        set { userDefaults.set(newValue, forKey: "purah.hasCompletedOnboarding") }
+    }
+
     public var railWidth: Double {
         Double(railBarWidth)
     }
 
     public func setDynamicBreathingEnabled(_ enabled: Bool) {
         isDynamicBreathingEnabled = enabled
+        if isOnboardingGuideActive {
+            onboardingDidCreateStack = true
+        }
         invalidateLayoutCache()
         savePersistentState()
-        notifyCapacityWarningIfNeeded()
         onWindowsRebuildNeeded?()
     }
 
@@ -97,6 +159,11 @@ public final class PurahWorkspaceStore {
             externalDragScreenLocation = nil
             externalDragTargetEdge = nil
             externalDragTargetPodId = nil
+            if isOnboardingGuideActive {
+                isOnboardingGuideActive = false
+                hasCompletedOnboarding = true
+                cancelOnboardingRehearsal()
+            }
         }
         isLiveRailEditingMode = enabled
         invalidateLayoutCache()
@@ -180,17 +247,13 @@ public final class PurahWorkspaceStore {
             triggerControlHaptic(.alignment)
         }
 
-        let screenH = max(Double(availableScreenHeight(for: targetEdge)), 600.0)
-        let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
-        if pages.count > 1 {
-            setRailPage(pages.count - 1, for: targetEdge)
-            DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(targetEdge)")
-            onCapacityWarningToast?("layout.toast.pageOverflow".localized)
-        } else if isBreathingActive(for: targetEdge, totalHeight: screenH) {
-            if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
-                lastCapacityAlertTime = Date()
-                DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(targetEdge)")
-                onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+        if !isDynamicBreathingEnabled {
+            let screenH = max(Double(availableScreenHeight(for: targetEdge)), 600.0)
+            let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
+            if pages.count > 1 {
+                setRailPage(pages.count - 1, for: targetEdge)
+                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(targetEdge)")
+                onCapacityWarningToast?("layout.toast.pageOverflow".localized)
             }
         }
     }
@@ -232,12 +295,17 @@ public final class PurahWorkspaceStore {
         edge == .left ? leftRailPage : rightRailPage
     }
 
+    @ObservationIgnored private var isSettingPodPage: Bool = false
+
     public func setRailPage(_ page: Int, for edge: MountEdge) {
         let clamped = max(page, 0)
         if edge == .left {
             leftRailPage = clamped
         } else {
             rightRailPage = clamped
+        }
+        if isOnboardingGuideActive && !isSettingPodPage {
+            onboardingDidSwitchPage = true
         }
         DiagnosticLogger.shared.info("Store", "Rail page switched: edge=\(edge), page=\(clamped)")
         invalidateLayoutCache()
@@ -248,17 +316,22 @@ public final class PurahWorkspaceStore {
         let clamped = max(0, pageIndex)
         let edge = pods[idx].edge
         pods[idx].pageIndex = clamped
+        if isOnboardingGuideActive && clamped >= 1 {
+            onboardingDidCreatePage = true
+        }
         let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
         let minPt = Double(minimumDrawerHeight(for: id))
         pods[idx].range.length = max(minPt / screenH, 0.10)
         normalizePageRanges(for: edge)
+        isSettingPodPage = true
         setRailPage(clamped, for: edge)
+        isSettingPodPage = false
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
     }
 
-    private func normalizePageRanges(for edge: MountEdge) {
+    public func normalizePageRanges(for edge: MountEdge) {
         let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
         let groupedByPage = Dictionary(grouping: enabledIndices, by: { max(0, pods[$0].pageIndex) })
         let pageCount = groupedByPage.count
@@ -331,6 +404,9 @@ public final class PurahWorkspaceStore {
         }
         if let nxtIdx = pods.firstIndex(where: { $0.id == nextPod.id }) {
             pods[nxtIdx].majorGroupId = groupId
+        }
+        if isOnboardingGuideActive {
+            onboardingDidCreateStack = true
         }
         invalidateLayoutCache()
         savePersistentState()
@@ -503,6 +579,9 @@ public final class PurahWorkspaceStore {
             }
         }
 
+        if isOnboardingGuideActive {
+            onboardingDidCreateStack = true
+        }
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -795,6 +874,18 @@ public final class PurahWorkspaceStore {
 
     public func activateDrawer(podId: String, itemId: String? = nil) {
         DiagnosticLogger.shared.info("Store", "Drawer activated: podId=\(podId), itemId=\(itemId ?? podId)")
+        if isOnboardingGuideActive {
+            if onboardingStep == .breathingDemo {
+                onboardingBreathingHoveredPods.insert(podId)
+            } else if onboardingStep == .antiTouchCalibration {
+                onboardingDidTriggerEdgeDrawer = true
+                onboardingGateState = .opened
+                onboardingGateProgress = 1.0
+                onboardingGateCurrentValue = onboardingGateTargetValue
+            } else if onboardingStep == .decomposeDemo {
+                onboardingDidToggleDecompose = true
+            }
+        }
         if dismissAlertOnHover {
             acknowledgeAllAlerts(forPodId: podId)
             if let itemId {
@@ -841,6 +932,11 @@ public final class PurahWorkspaceStore {
         activeDrawerPodId = nil
         activeDrawerItemId = nil
         hoveredPodId = nil
+        if isOnboardingGuideActive && onboardingStep == .antiTouchCalibration {
+            onboardingGateState = .idle
+            onboardingGateProgress = 0.0
+            onboardingGateCurrentValue = 0
+        }
         invalidateLayoutCache()
     }
 
@@ -1205,6 +1301,19 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public var calendarAlertLeadTime: CalendarAlertLeadTime {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            return storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "alertLeadTime")
+        }
+    }
+
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
     public var drawerWidthMode: DrawerWidthMode = .fixed
@@ -1301,7 +1410,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func isBreathingActive(for edge: MountEdge, totalHeight: Double? = nil) -> Bool {
-        guard !isLiveRailEditingMode && isDynamicBreathingEnabled else { return false }
+        guard (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled else { return false }
         if isAlwaysCompactBreathing { return true }
         let refH = totalHeight ?? lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: refH)
@@ -1316,12 +1425,13 @@ public final class PurahWorkspaceStore {
         let totalClusterGaps = Double(max(clusters.count - 1, 0)) * clusterGap
         let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
 
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
         let clusterMinFloors: [Double] = clusters.map { cluster in
             if cluster.count == 1 {
                 let pod = cluster[0]
-                return (isLiveRailEditingMode || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                return Double(minimumDrawerHeight(for: pod.id))
             } else {
-                let hasManualResize = isLiveRailEditingMode || cluster.contains(where: { $0.minLength <= 0.06 })
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
                 return hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
             }
         }
@@ -1338,7 +1448,7 @@ public final class PurahWorkspaceStore {
 
     public func notifyCapacityWarningIfNeeded() {
         let now = Date()
-        if let last = lastCapacityAlertTime, now.timeIntervalSince(last) < 6.0 {
+        if !Self.isTestingEnvironment, let last = lastCapacityAlertTime, now.timeIntervalSince(last) < 6.0 {
             return
         }
         for edge in [MountEdge.left, MountEdge.right] {
@@ -1386,9 +1496,11 @@ public final class PurahWorkspaceStore {
     }
 
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
         let minStandalone = CGFloat(standaloneMinimumRailHeight(for: pod.id))
         let podHeight = max(pod.range.length * totalHeight, minStandalone)
-        if isLiveRailEditingMode || pod.minLength <= 0.06 {
+        let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
+        if isSculptingRails || isShortened {
             return podHeight
         }
         let minReserved = minimumDrawerHeight(for: pod.id)
@@ -1474,12 +1586,13 @@ public final class PurahWorkspaceStore {
                 let clusterNeeded: Double
                 if !isDynamicBreathingEnabled {
                     if cluster.count >= 2 {
-                        let sumSub = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 24.0) }
-                        let gaps = Double(cluster.count - 1) * 3.0
-                        clusterNeeded = max(sumSub + gaps, 155.0)
+                        let hasManual = (isLiveRailEditingMode && !isRehearsingBreathingInSculptor) || cluster.contains(where: { $0.minLength <= 0.06 && ($0.range.length * totalHeight < Double(minimumDrawerHeight(for: $0.id)) - 1.0) })
+                        clusterNeeded = hasManual ? max(96.0, Double(cluster.count) * 24.0) : max(155.0, Double(cluster.count) * 48.0)
                     } else {
                         let pod = cluster[0]
-                        clusterNeeded = max(pod.range.length * totalHeight, Double(minimumDrawerHeight(for: pod.id)))
+                        let isSculpting = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
+                        let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
+                        clusterNeeded = (isSculpting || isShortened) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
                     }
                 } else {
                     if cluster.count >= 2 {
@@ -1599,7 +1712,8 @@ public final class PurahWorkspaceStore {
         let pagePods = pages[pageIdx]
         guard !pagePods.isEmpty else { return [] }
 
-        let safeTop = isLiveRailEditingMode ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
+        let safeTop = isSculptingRails ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
         let safeBottom = pages.count > 1 ? (totalHeight - 48.0) : (totalHeight - 16.0)
         let availableH = max(safeBottom - safeTop, 160.0)
 
@@ -1613,7 +1727,8 @@ public final class PurahWorkspaceStore {
         for (_, cluster) in clusters.enumerated() {
             if cluster.count == 1 {
                 let pod = cluster[0]
-                let minFloor = (isLiveRailEditingMode || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
+                let minFloor = (isSculptingRails || isShortened) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
                 let maxVis = maxVisualHeight(for: pod.id, totalHeight: totalHeight)
                 let span = min(max(pod.range.length * totalHeight, minFloor), max(maxVis, minFloor))
                 standardSpans.append(span)
@@ -1623,7 +1738,7 @@ public final class PurahWorkspaceStore {
                 let subGap = 3.0
                 let totalSubGaps = Double(cluster.count - 1) * subGap
                 let sumSubLengths = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 22.0) } + totalSubGaps
-                let hasManualResize = isLiveRailEditingMode || cluster.contains(where: { $0.minLength <= 0.06 })
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 && ($0.range.length * totalHeight < Double(minimumDrawerHeight(for: $0.id)) - 1.0) })
                 let clusterMinFloor = hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
                 let span = max(sumSubLengths, clusterMinFloor)
                 standardSpans.append(span)
@@ -1637,8 +1752,15 @@ public final class PurahWorkspaceStore {
         let totalClusterGaps = Double(max(clusters.count - 1, 0)) * clusterGap
         let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
         let sumStandard = standardSpans.reduce(0.0, +)
-        let sumMinRequired = clusterMinFloors.reduce(0.0, +)
-        let isBreathingActiveOnPage = !isLiveRailEditingMode && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
+        let sumMinRequired = clusters.reduce(0.0) { acc, cluster in
+            if cluster.count == 1 {
+                return acc + Double(minimumDrawerHeight(for: cluster[0].id))
+            } else {
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
+                return acc + (hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0)
+            }
+        }
+        let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
 
         let clusterWeights = clusters.map { cl in cl.reduce(0.0) { $0 + max($1.range.length, 0.035) } }
 
@@ -1653,7 +1775,7 @@ public final class PurahWorkspaceStore {
             if cluster.count == 1 {
                 let pod = cluster[0]
                 let pref = Double(preferredDrawerHeight(for: pod.id))
-                preferredExpandedSpans.append(min(pref, clusterMaxVisuals[cIdx]))
+                preferredExpandedSpans.append(max(pref, clusterMaxVisuals[cIdx]))
             } else {
                 let activeSub = cluster.first(where: { isPodExpanded($0) }) ?? cluster[0]
                 let pref = Double(preferredDrawerHeight(for: activeSub.id))
@@ -1716,8 +1838,16 @@ public final class PurahWorkspaceStore {
                 idleClusterSpans = standardSpans
             }
 
+            if !isAlwaysCompactBreathing {
+                let sumIdle = idleClusterSpans.reduce(0.0, +)
+                if sumIdle > 0 && abs(sumIdle - netAvailable) > 0.001 {
+                    let scale = netAvailable / sumIdle
+                    idleClusterSpans = idleClusterSpans.map { $0 * scale }
+                }
+            }
+
             idleClusterStartYs = []
-            if sumStandard > netAvailable || isAlwaysCompactBreathing {
+            if !isAlwaysCompactBreathing || sumStandard > netAvailable || isAlwaysCompactBreathing {
                 var curY = safeTop
                 for span in idleClusterSpans {
                     idleClusterStartYs.append(curY)
@@ -1754,10 +1884,10 @@ public final class PurahWorkspaceStore {
             let fullClusterSpans: [Double] = clusters.indices.map { cIdx in
                 if clusters[cIdx].count == 1 {
                     let pod = clusters[cIdx][0]
-                    return max(idleClusterSpans[cIdx], min(Double(preferredDrawerHeight(for: pod.id)), clusterMaxVisuals[cIdx]))
+                    return max(idleClusterSpans[cIdx], Double(preferredDrawerHeight(for: pod.id)))
                 } else {
                     let activeSub = clusters[cIdx].first(where: { isPodExpanded($0) }) ?? clusters[cIdx][0]
-                    return max(idleClusterSpans[cIdx], min(Double(preferredDrawerHeight(for: activeSub.id)), clusterMaxVisuals[cIdx]), 180.0)
+                    return max(idleClusterSpans[cIdx], Double(preferredDrawerHeight(for: activeSub.id)), 180.0)
                 }
             }
 
@@ -1939,34 +2069,47 @@ public final class PurahWorkspaceStore {
                     } else {
                         clusterSpans = clusterMinFloors
                     }
+                    let currentSum = clusterSpans.reduce(0.0, +)
+                    if currentSum > 0 && abs(currentSum - netAvailable) > 0.001 {
+                        let scale = netAvailable / currentSum
+                        clusterSpans = clusterSpans.map { $0 * scale }
+                    }
                 } else {
                     let scale = netAvailable / sumStandard
                     clusterSpans = standardSpans.map { $0 * scale }
                 }
             }
-            var curY = safeTop
-            for cIdx in 0..<clusters.count {
-                let desired = clusters[cIdx][0].range.start * totalHeight
-                let startY = max(desired, curY)
-                clusterStartYs[cIdx] = startY
-                curY = startY + clusterSpans[cIdx] + clusterGap
-            }
-            if let lastStart = clusterStartYs.last, let lastSpan = clusterSpans.last {
-                let overflow = (lastStart + lastSpan) - safeBottom
-                if overflow > 0 {
-                    var targetBottom = safeBottom
-                    for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
-                        let maxAllowed = targetBottom - clusterSpans[cIdx]
-                        clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowed)
-                        targetBottom = clusterStartYs[cIdx] - clusterGap
+            if sumStandard > netAvailable {
+                var curY = safeTop
+                for cIdx in 0..<clusters.count {
+                    clusterStartYs[cIdx] = curY
+                    curY += clusterSpans[cIdx] + clusterGap
+                }
+            } else {
+                var curY = safeTop
+                for cIdx in 0..<clusters.count {
+                    let desired = clusters[cIdx][0].range.start * totalHeight
+                    let startY = max(desired, curY)
+                    clusterStartYs[cIdx] = startY
+                    curY = startY + clusterSpans[cIdx] + clusterGap
+                }
+                if let lastStart = clusterStartYs.last, let lastSpan = clusterSpans.last {
+                    let overflow = (lastStart + lastSpan) - safeBottom
+                    if overflow > 0 {
+                        var targetBottom = safeBottom
+                        for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
+                            let maxAllowed = targetBottom - clusterSpans[cIdx]
+                            clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowed)
+                            targetBottom = clusterStartYs[cIdx] - clusterGap
+                        }
                     }
                 }
-            }
-            for cIdx in 0..<clusters.count {
-                if cIdx == 0 {
-                    clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
-                } else {
-                    clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + clusterSpans[cIdx - 1] + clusterGap)
+                for cIdx in 0..<clusters.count {
+                    if cIdx == 0 {
+                        clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
+                    } else {
+                        clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + clusterSpans[cIdx - 1] + clusterGap)
+                    }
                 }
             }
         }
@@ -2443,6 +2586,10 @@ public final class PurahWorkspaceStore {
     public func loadPersistentState() {
         let defaults = userDefaults
 
+        if defaults.data(forKey: "purah.pods") != nil && defaults.object(forKey: "purah.hasCompletedOnboarding") == nil {
+            defaults.set(true, forKey: "purah.hasCompletedOnboarding")
+        }
+
         if let data = defaults.data(forKey: "purah.pods"),
            let savedPods = try? JSONDecoder().decode([SlotPod].self, from: data),
            !savedPods.isEmpty {
@@ -2685,32 +2832,168 @@ public final class PurahWorkspaceStore {
         defaults.set(customPushForceThreshold, forKey: "purah.customPushForceThreshold")
         defaults.set(customPushResistanceBarrier, forKey: "purah.customPushResistanceBarrier")
         defaults.synchronize()
-        notifyCapacityWarningIfNeeded()
     }
 
     public func autoLayoutAll() {
-        // Dynamically update each pod's minLength to reflect capability provider's minimum required height
+        // 1. Reset Manual Overrides & Update Minimum Floors
         for idx in pods.indices {
-            let pod = pods[idx]
-            let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
+            pods[idx].preferredExpandedHeight = nil
+            let screenH = max(Double(availableScreenHeight(for: pods[idx].edge)), 600.0)
+            pods[idx].minLength = isDynamicBreathingEnabled ? max(28.0 / screenH, 0.035) : max(Double(minimumDrawerHeight(for: pods[idx].id)) / screenH, 0.07)
+        }
+
+        // 2. Smart Page & Stack Consolidation per Edge (.left, .right)
+        for edge in [MountEdge.left, .right] {
+            let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
+            let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
+            guard !enabledIndices.isEmpty else { continue }
+
+            // Group enabledIndices into Stack-preserving clusters
+            var clusters: [[Int]] = []
+            var visitedGroupIds = Set<String>()
+            var visitedIndices = Set<Int>()
+
+            for idx in enabledIndices {
+                if visitedIndices.contains(idx) { continue }
+                if let groupId = pods[idx].majorGroupId {
+                    if !visitedGroupIds.contains(groupId) {
+                        visitedGroupIds.insert(groupId)
+                        let groupIndices = enabledIndices.filter { pods[$0].majorGroupId == groupId }
+                        let sortedGroup = groupIndices.sorted { pods[$0].range.start < pods[$1].range.start }
+                        clusters.append(sortedGroup)
+                        visitedIndices.formUnion(sortedGroup)
+                    }
+                } else {
+                    clusters.append([idx])
+                    visitedIndices.insert(idx)
+                }
+            }
+
+            // Sort clusters ergonomically by (firstPod.preferredZone, -clusterAvgWeight, firstPod.range.start)
+            clusters.sort { c1, c2 in
+                let p1 = pods[c1[0]]
+                let p2 = pods[c2[0]]
+                if p1.preferredZone != p2.preferredZone {
+                    return p1.preferredZone < p2.preferredZone
+                }
+                let w1 = c1.reduce(0.0) { $0 + pods[$1].ergonomicWeight } / Double(c1.count)
+                let w2 = c2.reduce(0.0) { $0 + pods[$1].ergonomicWeight } / Double(c2.count)
+                if w1 != w2 {
+                    return w1 > w2
+                }
+                return p1.range.start < p2.range.start
+            }
+
+            // Assign pageIndex based on isDynamicBreathingEnabled
             if isDynamicBreathingEnabled {
-                pods[idx].minLength = max(28.0 / screenH, 0.035)
+                let compactFloorSum = clusters.reduce(0.0) { sum, cluster in
+                    sum + (cluster.count >= 2 ? Double(cluster.count) * 26.0 : 42.0) + 8.0
+                }
+                let pageBudget = max(screenH - 96.0, 260.0)
+                if compactFloorSum <= pageBudget {
+                    for cluster in clusters {
+                        for idx in cluster {
+                            pods[idx].pageIndex = 0
+                        }
+                    }
+                    setRailPage(0, for: edge)
+                } else {
+                    var curPage = 0
+                    var curPageHeight = 0.0
+                    for cluster in clusters {
+                        let clusterH = (cluster.count >= 2 ? Double(cluster.count) * 26.0 : 42.0) + 8.0
+                        if curPageHeight > 0 && curPageHeight + clusterH > pageBudget {
+                            curPage += 1
+                            curPageHeight = 0.0
+                        }
+                        for idx in cluster {
+                            pods[idx].pageIndex = curPage
+                        }
+                        curPageHeight += clusterH
+                    }
+                    setRailPage(min(currentRailPage(for: edge), curPage), for: edge)
+                }
             } else {
-                let minPt = Double(minimumDrawerHeight(for: pod.id))
-                pods[idx].minLength = max(minPt / screenH, 0.07)
+                let pageBudget = max(screenH - 96.0, 260.0)
+                var curPage = 0
+                var curPageHeight = 0.0
+                for cluster in clusters {
+                    let clusterRequiredH: Double
+                    if cluster.count >= 2 {
+                        clusterRequiredH = max(155.0, Double(cluster.count) * 48.0)
+                    } else {
+                        clusterRequiredH = Double(minimumDrawerHeight(for: pods[cluster[0]].id))
+                    }
+                    let clusterTotalH = clusterRequiredH + 8.0
+                    if curPageHeight > 0 && curPageHeight + clusterTotalH > pageBudget {
+                        curPage += 1
+                        curPageHeight = 0.0
+                    }
+                    for idx in cluster {
+                        pods[idx].pageIndex = curPage
+                    }
+                    curPageHeight += clusterTotalH
+                }
+                setRailPage(min(currentRailPage(for: edge), curPage), for: edge)
+            }
+
+            // Distribute Full-Rail Golden Proportions Within Each Page
+            let sortedPodIndices = clusters.flatMap { $0 }
+            let pageIndices = Array(Set(sortedPodIndices.map { pods[$0].pageIndex })).sorted()
+            var groupedByPage: [(Int, [Int])] = []
+            for page in pageIndices {
+                let pagePods = sortedPodIndices.filter { pods[$0].pageIndex == page }
+                groupedByPage.append((page, pagePods))
+            }
+
+            let pageCount = groupedByPage.count
+            let safeStart = pageCount > 1 ? (48.0 / screenH) : 0.02
+            let safeTotalSpan = pageCount > 1 ? ((screenH - 96.0) / screenH) : 0.94
+            let gap = 8.0 / screenH
+
+            for (_, pagePodIndices) in groupedByPage {
+                let totalGaps = Double(max(pagePodIndices.count - 1, 0)) * gap
+                let usableSpan = max(safeTotalSpan - totalGaps, Double(pagePodIndices.count) * 0.05)
+
+                var weights: [Double] = []
+                var minRatios: [Double] = []
+                for idx in pagePodIndices {
+                    let prefH = Double(preferredDrawerHeight(for: pods[idx].id))
+                    let minH = Double(minimumDrawerHeight(for: pods[idx].id))
+                    let weight = max(pods[idx].ergonomicWeight, 15.0) * max(prefH, minH)
+                    weights.append(weight)
+                    minRatios.append(minH / screenH)
+                }
+
+                let totalWeight = max(weights.reduce(0.0, +), 1.0)
+                let sumMinRatios = minRatios.reduce(0.0, +)
+
+                var lengths: [Double] = []
+                if sumMinRatios <= usableSpan {
+                    let surplus = usableSpan - sumMinRatios
+                    for i in pagePodIndices.indices {
+                        let len = minRatios[i] + surplus * (weights[i] / totalWeight)
+                        lengths.append(len)
+                    }
+                } else {
+                    for i in pagePodIndices.indices {
+                        let len = usableSpan * (weights[i] / totalWeight)
+                        lengths.append(len)
+                    }
+                }
+
+                var curStart = safeStart
+                for (offset, idx) in pagePodIndices.enumerated() {
+                    let len = lengths[offset]
+                    pods[idx].range = NormalizedRange(start: curStart, length: len)
+                    curStart += len + gap
+                }
             }
         }
 
-        pods = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(
-            pods: pods,
-            reassignEdges: false,
-            availableHeight: Double(availableScreenHeight(for: .left))
-        )
-        normalizePageRanges(for: .left)
-        normalizePageRanges(for: .right)
         invalidateLayoutCache()
         savePersistentState()
-        notifyCapacityWarningIfNeeded()
+        onWindowsRebuildNeeded?()
     }
 
     public func togglePodEnabled(id: String) {
@@ -2719,22 +3002,16 @@ public final class PurahWorkspaceStore {
         if !pod.isEnabled {
             pods[index].isEnabled = true
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if isDynamicBreathingEnabled {
-                pods[index].minLength = max(28.0 / screenH, 0.035)
-            } else {
+            if !isDynamicBreathingEnabled {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[index].minLength = max(minPt / screenH, 0.07)
             }
-            let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
-            if pages.count > 1 {
-                setRailPage(pages.count - 1, for: pod.edge)
-                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(pod.edge)")
-                onCapacityWarningToast?("layout.toast.pageOverflow".localized)
-            } else if isBreathingActive(for: pod.edge, totalHeight: screenH) {
-                if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
-                    lastCapacityAlertTime = Date()
-                    DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(pod.edge)")
-                    onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+            if !isDynamicBreathingEnabled {
+                let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
+                if pages.count > 1 {
+                    setRailPage(pages.count - 1, for: pod.edge)
+                    DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(pod.edge)")
+                    onCapacityWarningToast?("layout.toast.pageOverflow".localized)
                 }
             }
             onPodEnabledChanged?(id, true)
@@ -3042,6 +3319,341 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
+    }
+
+    // MARK: - Interactive Onboarding Guide & Live Rehearsal Engine
+
+    public func cancelOnboardingRehearsal() {
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = nil
+        isRehearsingBreathingInSculptor = false
+        isAlwaysCompactBreathing = false
+        dismissActiveDrawer()
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func startInteractiveOnboarding(clearAllPods: Bool = true) {
+        cancelOnboardingRehearsal()
+        onboardingDidToggleDecompose = false
+        onboardingDidCreateStack = false
+        onboardingDidCreatePage = false
+        onboardingDidSwitchPage = false
+        onboardingBreathingHoveredPods.removeAll()
+        onboardingDidSwitchTriggerMode = false
+        onboardingDidTriggerEdgeDrawer = false
+        if clearAllPods {
+            for i in pods.indices {
+                pods[i].isEnabled = false
+                pods[i].majorGroupId = nil
+                pods[i].pageIndex = 0
+            }
+            leftRailPage = 0
+            rightRailPage = 0
+        }
+        onboardingStep = .mountPods
+        isOnboardingGuideActive = true
+        setLiveRailEditingMode(true)
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func selectOnboardingStep(_ step: OnboardingGuideStep) {
+        cancelOnboardingRehearsal()
+        onboardingStep = step
+        switch step {
+        case .mountPods:
+            isRehearsingBreathingInSculptor = false
+        case .decomposeDemo:
+            isRehearsingBreathingInSculptor = false
+            mountPod(id: "vitals", to: .left)
+            splitPodFromMajorGroup(id: "vitals")
+            mountPod(id: "scripts", to: .right)
+            splitPodFromMajorGroup(id: "scripts")
+            _isVitalsDecomposed = false
+            capabilityProvider(for: "vitals")?.setDecomposed(false, store: self)
+            onDecomposedStateSync?("vitals", false)
+            normalizePageRanges(for: .left)
+            normalizePageRanges(for: .right)
+        case .stackDemo:
+            isRehearsingBreathingInSculptor = false
+            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+            if leftPods.count < 2 {
+                mountPod(id: "vitals", to: .left)
+                mountPod(id: "shelf", to: .left)
+                normalizePageRanges(for: .left)
+            }
+            if !onboardingDidCreateStack {
+                let currentLeft = pods.filter { $0.edge == .left && $0.isEnabled }
+                let stackedCount = currentLeft.filter { isInSharedMajorPod(podId: $0.id) }.count
+                if stackedCount == currentLeft.count || stackedCount > 0 {
+                    resetMajorGroups(for: .left)
+                }
+            }
+        case .pageDemo:
+            isRehearsingBreathingInSculptor = false
+            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+            if rightPods.count < 2 {
+                mountPod(id: "calendar", to: .right)
+                mountPod(id: "scripts", to: .right)
+                mountPod(id: "todo", to: .right)
+                normalizePageRanges(for: .right)
+            }
+        case .breathingDemo:
+            onboardingBreathingHoveredPods.removeAll()
+            let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+            setRailPage(0, for: .left)
+            for id in leftDemoIds {
+                mountPod(id: id, to: .left)
+                if let idx = pods.firstIndex(where: { $0.id == id }) {
+                    pods[idx].pageIndex = 0
+                }
+            }
+            resetMajorGroups(for: .left)
+            normalizePageRanges(for: .left)
+            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+            if rightPods.count < 2 {
+                mountPod(id: "calendar", to: .right)
+                mountPod(id: "todo", to: .right)
+            }
+            normalizePageRanges(for: .right)
+            isAlwaysCompactBreathing = false
+            isRehearsingBreathingInSculptor = true
+        case .antiTouchCalibration:
+            dismissActiveDrawer()
+            if edgeTriggerSensitivity == .custom || edgeTriggerSensitivity == .agile {
+                edgeTriggerSensitivity = .balanced
+            }
+            onboardingDidTriggerEdgeDrawer = false
+            onboardingGateState = .idle
+            onboardingGateProgress = 0.0
+            onboardingGateCurrentValue = 0
+            onboardingGateTargetValue = Int(activeInitialDwellSeconds * 1000)
+            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+            if leftPods.count < 2 {
+                mountPod(id: "vitals", to: .left)
+                mountPod(id: "shelf", to: .left)
+            }
+            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+            if rightPods.count < 2 {
+                mountPod(id: "calendar", to: .right)
+                mountPod(id: "scripts", to: .right)
+            }
+            normalizePageRanges(for: .left)
+            normalizePageRanges(for: .right)
+            isAlwaysCompactBreathing = false
+            isRehearsingBreathingInSculptor = true
+        }
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func togglePodDecomposedInSculptor(podId: String) {
+        let current = isPodDecomposed(podId)
+        let next = !current
+        switch podId {
+        case "vitals":
+            _isVitalsDecomposed = next
+            capabilityProvider(for: "vitals")?.setDecomposed(next, store: self)
+        case "scripts":
+            _isScriptsDecomposed = next
+            capabilityProvider(for: "scripts")?.setDecomposed(next, store: self)
+        case "ai":
+            _isAIDecomposed = next
+            capabilityProvider(for: "ai")?.setDecomposed(next, store: self)
+        case "clipboard":
+            let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: userDefaults)
+            storage.set(next, forKey: "isDecomposed")
+            capabilityProvider(for: "clipboard")?.setDecomposed(next, store: self)
+        case "calendar":
+            let nextStrategy: CalendarOverflowStrategy = (calendarOverflowStrategy == .smartFold) ? .continuousStream : .smartFold
+            calendarOverflowStrategy = nextStrategy
+            capabilityProvider(for: "calendar")?.setDecomposed(nextStrategy == .smartFold, store: self)
+        default:
+            capabilityProvider(for: podId)?.setDecomposed(next, store: self)
+        }
+        onDecomposedStateSync?(podId, next)
+        onboardingDidToggleDecompose = true
+        _ = triggerControlHaptic(.alignment)
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func nextOnboardingStep() {
+        if let next = OnboardingGuideStep(rawValue: onboardingStep.rawValue + 1) {
+            selectOnboardingStep(next)
+        } else {
+            finishOnboarding(useRecommendedLayout: false)
+        }
+    }
+
+    public func skipCurrentOnboardingStep() {
+        if let next = OnboardingGuideStep(rawValue: onboardingStep.rawValue + 1) {
+            selectOnboardingStep(next)
+        } else {
+            finishOnboarding(useRecommendedLayout: false)
+        }
+    }
+
+    public func previousOnboardingStep() {
+        if let prev = OnboardingGuideStep(rawValue: onboardingStep.rawValue - 1) {
+            selectOnboardingStep(prev)
+        }
+    }
+
+    public func skipAllOnboardingAndLoadDefaults() {
+        finishOnboarding(useRecommendedLayout: true)
+    }
+
+    public func finishOnboarding(useRecommendedLayout: Bool = false) {
+        cancelOnboardingRehearsal()
+        if useRecommendedLayout || !pods.contains(where: \.isEnabled) {
+            pods = PurahWorkspaceStore.defaultPods()
+            autoLayoutAll()
+        }
+        hasCompletedOnboarding = true
+        isOnboardingGuideActive = false
+        setLiveRailEditingMode(false)
+        savePersistentState()
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func rehearseMountSamplePods() {
+        mountPod(id: "vitals", to: .left)
+        mountPod(id: "shelf", to: .left)
+        mountPod(id: "calendar", to: .right)
+        mountPod(id: "scripts", to: .right)
+        normalizePageRanges(for: .left)
+        normalizePageRanges(for: .right)
+        _ = triggerControlHaptic(.alignment)
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func rehearseDecomposeDemo(decomposed: Bool? = nil) {
+        if !pods.contains(where: { $0.id == "scripts" && $0.isEnabled }) {
+            mountPod(id: "scripts", to: .right)
+        }
+        splitPodFromMajorGroup(id: "scripts")
+        if !pods.contains(where: { $0.id == "vitals" && $0.isEnabled }) {
+            mountPod(id: "vitals", to: .left)
+        }
+        splitPodFromMajorGroup(id: "vitals")
+
+        let newVal = decomposed ?? !_isScriptsDecomposed
+        _isScriptsDecomposed = newVal
+        _isVitalsDecomposed = newVal
+        capabilityProvider(for: "scripts")?.setDecomposed(newVal, store: self)
+        capabilityProvider(for: "vitals")?.setDecomposed(newVal, store: self)
+        onDecomposedStateSync?("scripts", newVal)
+        onDecomposedStateSync?("vitals", newVal)
+        onboardingDidToggleDecompose = true
+
+        isRehearsingBreathingInSculptor = true
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+        _ = triggerControlHaptic(.alignment)
+
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            self.isRehearsingBreathingInSculptor = false
+            self.invalidateLayoutCache()
+            self.onWindowsRebuildNeeded?()
+        }
+    }
+
+    public func rehearseStackMerge() {
+        isRehearsingBreathingInSculptor = false
+        var leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        if leftPods.count < 2 {
+            mountPod(id: "vitals", to: .left)
+            mountPod(id: "shelf", to: .left)
+            normalizePageRanges(for: .left)
+            leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        }
+        if leftPods.count >= 2 {
+            addPodToMajorGroup(podId: leftPods[1].id, targetPodId: leftPods[0].id)
+        }
+        _ = triggerControlHaptic(.alignment)
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func rehearsePaginationFlip() {
+        isRehearsingBreathingInSculptor = false
+        var rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+        if rightPods.count < 2 {
+            mountPod(id: "calendar", to: .right)
+            mountPod(id: "scripts", to: .right)
+            normalizePageRanges(for: .right)
+            rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+        }
+        if let last = rightPods.last {
+            setPodPage(id: last.id, pageIndex: 1)
+        }
+        isRightTopPortalRevealed = true
+        isRightBottomPortalRevealed = true
+        setRailPage(1, for: .right)
+        _ = triggerControlHaptic(.levelChange)
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            self.setRailPage(0, for: .right)
+            self.invalidateLayoutCache()
+            self.onWindowsRebuildNeeded?()
+        }
+    }
+
+    public func rehearseDynamicBreathing() {
+        let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+        setRailPage(0, for: .left)
+        for id in leftDemoIds {
+            mountPod(id: id, to: .left)
+            if let idx = pods.firstIndex(where: { $0.id == id }) {
+                pods[idx].pageIndex = 0
+            }
+        }
+        resetMajorGroups(for: .left)
+        normalizePageRanges(for: .left)
+        isDynamicBreathingEnabled = true
+        isAlwaysCompactBreathing = false
+        isRehearsingBreathingInSculptor = true
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+
+        let demoExpandIds = Array(leftDemoIds.prefix(3))
+        onboardingRehearsalTask?.cancel()
+        onboardingRehearsalTask = Task { @MainActor in
+            for podId in demoExpandIds {
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                    self.hoveredPodId = podId
+                    self.activeDrawerPodId = podId
+                    self.activeDrawerItemId = podId
+                    self.onboardingBreathingHoveredPods.insert(podId)
+                    self.invalidateLayoutCache()
+                }
+                self.onWindowsRebuildNeeded?()
+                try? await Task.sleep(nanoseconds: 650_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard !Task.isCancelled else { return }
+            self.dismissActiveDrawer()
+            self.isAlwaysCompactBreathing = false
+            self.isRehearsingBreathingInSculptor = false
+            self.invalidateLayoutCache()
+            self.onWindowsRebuildNeeded?()
+        }
     }
 
     private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double, isEnabled: Bool = true) {

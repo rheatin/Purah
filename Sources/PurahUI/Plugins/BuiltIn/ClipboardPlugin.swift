@@ -73,6 +73,11 @@ public struct ClipboardPlugin: PurahPodPlugin {
         return state.isDecomposed
     }
 
+    public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        state.isDecomposed = decomposed
+        state.save()
+    }
+
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
             maxRailItems: state.maxRailItems,

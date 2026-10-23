@@ -499,4 +499,52 @@ struct PurahWorkspaceStoreTests {
         #expect(isolated.object(forKey: "purah.vitals.isDecomposed") == nil)
         #expect(isolated.object(forKey: "purah.scripts.isDecomposed") == nil)
     }
+
+    @Test("Onboarding Step 6 Anti-Touch Calibration initializes live gate telemetry and handles drawer states")
+    func testOnboardingStep6GateTelemetry() {
+        let isolated = UserDefaults(suiteName: "test_gate_telemetry_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.isOnboardingGuideActive = true
+        store.edgeTriggerSensitivity = .agile
+        store.edgeTriggerMode = .hoverDwell
+
+        // Enter Step 6: must force .balanced sensitivity, reset gate state and target value to 150ms
+        store.selectOnboardingStep(.antiTouchCalibration)
+        #expect(store.edgeTriggerSensitivity == .balanced)
+        #expect(store.onboardingGateState == .idle)
+        #expect(store.onboardingGateProgress == 0.0)
+        #expect(store.onboardingGateCurrentValue == 0)
+        #expect(store.onboardingGateTargetValue == 150)
+
+        // Activating a drawer sets state to .opened and progress to 1.0
+        store.activateDrawer(podId: "vitals")
+        #expect(store.onboardingDidTriggerEdgeDrawer == true)
+        #expect(store.onboardingGateState == .opened)
+        #expect(store.onboardingGateProgress == 1.0)
+        #expect(store.onboardingGateCurrentValue == 150)
+
+        // Dismissing drawer resets gate back to .idle
+        store.dismissActiveDrawer()
+        #expect(store.onboardingGateState == .idle)
+        #expect(store.onboardingGateProgress == 0.0)
+        #expect(store.onboardingGateCurrentValue == 0)
+    }
+
+    @Test("Onboarding Step 2 and Step 6 localized strings exist across EN, zh-Hans, zh-Hant")
+    func testOnboardingLocalizedStrings() {
+        let requiredKeys = [
+            "onboarding.step2.arrowPrompt",
+            "onboarding.step2.heroButton.toChips",
+            "onboarding.step2.heroButton.toBar",
+            "onboarding.step6.gate.title",
+            "onboarding.step6.gate.idle",
+            "onboarding.step6.gate.dwelling",
+            "onboarding.step6.gate.pushing",
+            "onboarding.step6.gate.suppressedFling",
+            "onboarding.step6.gate.opened"
+        ]
+        for key in requiredKeys {
+            #expect(!key.localized.isEmpty && key.localized != key, "Missing localization for \(key)")
+        }
+    }
 }

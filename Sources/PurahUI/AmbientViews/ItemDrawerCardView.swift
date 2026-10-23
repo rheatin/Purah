@@ -253,7 +253,7 @@ public struct CalendarItemDrawerView: View {
         let cardH = isExpanded ? max(height, event.url != nil ? 38.0 : 34.0) : max(height, 6.0)
         let isPast = event.isPast
         let isOngoing = event.isOngoing
-        let isImminent = event.isImminent
+        let isImminent = event.isImminent(leadTime: store.calendarAlertLeadTime)
         let isAcknowledged = store.isAlertAcknowledged(id: event.id)
         let isAlerting = (isOngoing || isImminent) && store.isEventGlowAlertEnabled && !isAcknowledged
         let calColor: Color = {
@@ -266,16 +266,26 @@ public struct CalendarItemDrawerView: View {
         let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
         let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
 
+        let railBarColor: Color = {
+            if isPast {
+                return Color.secondary.opacity(0.22)
+            } else if isOngoing || isImminent {
+                return (isImminent && !isOngoing) ? Color.orange : calColor
+            } else {
+                return calColor.opacity(0.85)
+            }
+        }()
+
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Rail-anchored indicator bar (co-planar flush height with dynamic attention beacon)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85)))
+                .fill(railBarColor)
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
                 .dynamicAttentionBeacon(
                     isAlerting: isAlerting,
                     edge: edge,
                     baseWidth: CGFloat(store.railBarWidth),
-                    color: calColor,
+                    color: (isImminent && !isOngoing) ? Color.orange : calColor,
                     alertStyle: store.alertStyle,
                     onHoverDismiss: {
                         if store.dismissAlertOnHover {
@@ -362,8 +372,9 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func compactEventCard(isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         HStack(spacing: 8) {
-            statusBeacon(isPast: isPast, isAlerting: isAlerting, calColor: calColor)
+            statusBeacon(isPast: isPast, isAlerting: isAlerting, calColor: (isImminent && !isOngoing) ? Color.orange : calColor)
 
             VStack(alignment: .leading, spacing: 1) {
                 Button {
@@ -372,29 +383,45 @@ public struct CalendarItemDrawerView: View {
                     HStack(spacing: 4) {
                         Text(event.title)
                             .purahTitle(size: 11, weight: isOngoing ? .bold : .semibold, design: .rounded)
-                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                            .strikethrough(isPast, color: .secondary.opacity(0.6))
+                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.5 : 1.0))
                             .lineLimit(1)
 
                         if isOngoing {
                             HStack(spacing: 3) {
                                 Circle()
-                                    .fill(Color.white)
+                                    .fill(calColor.highContrastInk)
                                     .frame(width: 3.5, height: 3.5)
-                                Text("NOW")
+                                Text("calendar.status.now".localized)
                                     .purahBadge(size: 8, weight: .heavy, design: .rounded)
                             }
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(calColor))
-                            .foregroundColor(.white)
+                            .foregroundColor(calColor.highContrastInk)
                             .shadow(color: calColor.opacity(0.6), radius: 3)
                         } else if isImminent {
-                            Text("SOON")
-                                .purahBadge(size: 8, weight: .bold, design: .rounded)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1.5)
-                                .background(Capsule().fill(calColor.opacity(0.25)))
-                                .foregroundColor(calColor)
+                            HStack(spacing: 2.5) {
+                                Image(systemName: "clock.fill")
+                                    .font(.system(size: 7, weight: .bold))
+                                Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                            }
+                            .padding(.horizontal, 5.5)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.orange))
+                            .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                            .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                        } else if isPast {
+                            HStack(spacing: 2.5) {
+                                Image(systemName: "checkmark")
+                                Text("calendar.status.ended".localized)
+                            }
+                            .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.6))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(Color.primary.opacity(0.04)))
                         }
                     }
                 }
@@ -403,7 +430,7 @@ public struct CalendarItemDrawerView: View {
 
                 Text("\(formattedTime(event: event)) · \(event.location)")
                     .font(palette.fontMono)
-                    .foregroundColor(isPast ? calColor.opacity(0.35) : .gray)
+                    .foregroundColor(isPast ? .secondary.opacity(0.45) : .gray)
                     .lineLimit(1)
             }
 
@@ -422,33 +449,49 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func standardEventCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         VStack(alignment: .leading, spacing: cardH > 95.0 ? 6 : 4) {
             // Row 1: Header (Category + Status + Pin)
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundColor(calColor)
+                    .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
 
                 categoryTag(calColor: calColor, isPast: isPast)
                 sampleConnectBadge()
 
                 if isOngoing {
                     HStack(spacing: 3) {
-                        Circle().fill(Color.white).frame(width: 3.5, height: 3.5)
-                        Text("NOW")
+                        Circle().fill(calColor.highContrastInk).frame(width: 3.5, height: 3.5)
+                        Text("calendar.status.now".localized)
                             .purahBadge(size: 7.5, weight: .heavy, design: .rounded)
                     }
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
                     .background(Capsule().fill(calColor))
-                    .foregroundColor(.white)
+                    .foregroundColor(calColor.highContrastInk)
                 } else if isImminent {
-                    Text("SOON")
-                        .purahBadge(size: 7.5, weight: .bold, design: .rounded)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(calColor.opacity(0.22)))
-                        .foregroundColor(calColor)
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 7, weight: .bold))
+                        Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                            .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    }
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.orange))
+                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                } else if isPast {
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "checkmark")
+                        Text("calendar.status.ended".localized)
+                    }
+                    .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(Color.primary.opacity(0.04)))
                 }
 
                 Spacer()
@@ -467,7 +510,8 @@ public struct CalendarItemDrawerView: View {
                     } label: {
                         Text(event.title)
                             .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                            .strikethrough(isPast, color: .secondary.opacity(0.6))
+                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.5 : 1.0))
                             .lineLimit(cardH > 85.0 ? 2 : 1)
                             .multilineTextAlignment(.leading)
                     }
@@ -476,11 +520,11 @@ public struct CalendarItemDrawerView: View {
                     HStack(spacing: 5) {
                         Image(systemName: "clock.fill")
                             .font(.system(size: 8))
-                            .foregroundColor(calColor)
+                            .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
                         Text(formattedTime(event: event))
                             .font(palette.fontMono)
                             .font(.system(size: 8.5))
-                            .foregroundColor(isPast ? calColor.opacity(0.35) : .secondary)
+                            .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
 
                         if !event.location.isEmpty && event.location != "Apple Calendar" {
                             Text("•")
@@ -506,33 +550,49 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func flagshipEventCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
+        let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         VStack(alignment: .leading, spacing: cardH > 220.0 ? 8 : 5) {
             // Row 1: Header (Icon + Category Pill + Status Pill + Pin)
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(calColor)
+                    .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
 
                 categoryTag(calColor: calColor, isPast: isPast)
                 sampleConnectBadge()
 
                 if isOngoing {
                     HStack(spacing: 3) {
-                        Circle().fill(Color.white).frame(width: 3.5, height: 3.5)
-                        Text("NOW")
+                        Circle().fill(calColor.highContrastInk).frame(width: 3.5, height: 3.5)
+                        Text("calendar.status.now".localized)
                             .purahBadge(size: 8, weight: .heavy, design: .rounded)
                     }
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
                     .background(Capsule().fill(calColor))
-                    .foregroundColor(.white)
+                    .foregroundColor(calColor.highContrastInk)
                 } else if isImminent {
-                    Text("SOON")
-                        .purahBadge(size: 8, weight: .bold, design: .rounded)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Capsule().fill(calColor.opacity(0.22)))
-                        .foregroundColor(calColor)
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 7, weight: .bold))
+                        Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                            .purahBadge(size: 8, weight: .heavy, design: .rounded)
+                    }
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.orange))
+                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                } else if isPast {
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "checkmark")
+                        Text("calendar.status.ended".localized)
+                    }
+                    .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(Color.primary.opacity(0.04)))
                 }
 
                 Spacer()
@@ -550,7 +610,8 @@ public struct CalendarItemDrawerView: View {
                 } label: {
                     Text(event.title)
                         .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : Color.white)
+                        .strikethrough(isPast, color: .secondary.opacity(0.6))
+                        .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.5 : 1.0))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
@@ -559,21 +620,21 @@ public struct CalendarItemDrawerView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "clock.fill")
                         .font(.system(size: 8.5))
-                        .foregroundColor(calColor)
+                        .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
                     Text(formattedTime(event: event))
                         .font(palette.fontMono)
                         .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
                 }
 
                 if !event.location.isEmpty && event.location != "Apple Calendar" {
                     HStack(spacing: 5) {
                         Image(systemName: "mappin.and.ellipse")
                             .font(.system(size: 8.5))
-                            .foregroundColor(calColor)
+                            .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
                         Text(event.location)
                             .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
                             .lineLimit(1)
                     }
                 }
@@ -584,18 +645,17 @@ public struct CalendarItemDrawerView: View {
             if isOngoing {
                 eventProgressBar(calColor: calColor)
             } else if isImminent {
-                let startMins = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
                 HStack(spacing: 4) {
-                    Image(systemName: "hourglass")
+                    Image(systemName: "clock.fill")
                         .font(.system(size: 8))
-                        .foregroundColor(calColor)
-                    Text(String(format: "Starts in %d min", startMins))
-                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                        .foregroundColor(calColor)
+                        .foregroundColor(Color.orange)
+                    Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.orange)
                 }
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
-                .background(Capsule().fill(calColor.opacity(0.12)))
+                .background(Capsule().fill(Color.orange.opacity(0.12)))
             }
 
             // Meeting Agenda / Notes (only when card is spacious enough: cardH >= 210.0)
@@ -806,7 +866,7 @@ public struct CalendarItemDrawerView: View {
             HStack(spacing: 4) {
                 Image(systemName: "video.fill")
                     .font(.system(size: 10, weight: .bold))
-                Text("Join")
+                Text("calendar.action.join".localized)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
             }
             .padding(.horizontal, 8)
@@ -836,9 +896,13 @@ public struct CalendarItemDrawerView: View {
                     }
                     .frame(width: 14, height: 14)
                 }
+            } else if isPast {
+                Circle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 6, height: 6)
             } else {
                 Circle()
-                    .fill(calColor.opacity(isPast ? 0.35 : 1.0))
+                    .fill(calColor)
                     .frame(width: 6, height: 6)
             }
         }

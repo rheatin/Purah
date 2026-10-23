@@ -1150,4 +1150,80 @@ struct HighDensityOverflowTests {
             #expect(provider.subItemCount(store: store) > 0, "\(podId) subItemCount must be restored when unstacked")
         }
     }
+
+    @Test("Dynamic Breathing progressive squeezing vs Page 2 overflow when disabled with 7 pods on left rail")
+    func testDynamicBreathingFullRailSqueezingAndPageOverflowWhenDisabled() throws {
+        let suiteName = "test_breathing_squeezing_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        let demoPodIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+        store.setRailPage(0, for: .left)
+        for id in demoPodIds {
+            store.mountPod(id: id, to: .left)
+            if let idx = store.pods.firstIndex(where: { $0.id == id }) {
+                store.pods[idx].pageIndex = 0
+            }
+        }
+        store.resetMajorGroups(for: .left)
+        store.normalizePageRanges(for: .left)
+
+        let totalHeight = 900.0
+
+        // 1) With 7 pods on .left and isDynamicBreathingEnabled == false:
+        // overflows to Page 2 instead of squeezing below minimumDrawerHeight
+        store.isDynamicBreathingEnabled = false
+        store.invalidateLayoutCache()
+
+        let pagedPodsDisabled = store.paginatedPods(for: .left, totalHeight: totalHeight)
+        #expect(pagedPodsDisabled.count == 2, "With Dynamic Breathing disabled, 7 pods exceeding height budget must overflow to Page 2")
+
+        // 2) With 7 pods on .left and isDynamicBreathingEnabled == true (and isAlwaysCompactBreathing == false):
+        // paginatedPods count == 1 and resolvedPhysicalLayout spans entire rail from safeTop (~16pt) to safeBottom (~884pt) when idle,
+        // and hovering a pod expands it to preferredDrawerHeight
+        store.isDynamicBreathingEnabled = true
+        store.isAlwaysCompactBreathing = false
+        store.invalidateLayoutCache()
+
+        let pagedPodsEnabled = store.paginatedPods(for: .left, totalHeight: totalHeight)
+        #expect(pagedPodsEnabled.count == 1, "With Dynamic Breathing enabled, all 7 pods must fit on Page 1")
+
+        let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(idleLayout.count == 7)
+
+        let firstItem = try #require(idleLayout.first)
+        let lastItem = try #require(idleLayout.last)
+
+        #expect(abs(firstItem.startY - 16.0) < 1.0, "First idle pod must start at safeTop (~16pt)")
+        #expect(abs((lastItem.startY + lastItem.spanH) - 884.0) < 1.0, "Last idle pod must end at safeBottom (~884pt)")
+
+        for i in 0..<idleLayout.count {
+            let item = idleLayout[i]
+            #expect(item.spanH >= 35.0, "Idle pods must have progressive squeezed span")
+            if i > 0 {
+                let prev = idleLayout[i - 1]
+                #expect(item.startY >= (prev.startY + prev.spanH - 0.01), "Idle pods must not overlap")
+            }
+        }
+
+        // Hover a pod (e.g. "vitals") -> expands to preferredDrawerHeight
+        let targetId = "vitals"
+        let preferredH = Double(store.preferredDrawerHeight(for: targetId))
+        store.activateDrawer(podId: targetId)
+
+        let activeLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        let expandedItem = try #require(activeLayout.first(where: { $0.pod.id == targetId }))
+
+        #expect(expandedItem.spanH >= min(preferredH - 1.0, 240.0), "Hovered pod must expand in-place to preferredDrawerHeight")
+
+        for i in 0..<activeLayout.count {
+            let item = activeLayout[i]
+            #expect(item.startY >= 15.0)
+            #expect((item.startY + item.spanH) <= totalHeight - 15.0)
+            if i > 0 {
+                let prev = activeLayout[i - 1]
+                #expect(item.startY >= (prev.startY + prev.spanH - 0.01), "Pods during expansion must remain non-overlapping")
+            }
+        }
+    }
 }

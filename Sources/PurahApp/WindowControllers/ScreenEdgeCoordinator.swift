@@ -106,6 +106,7 @@ public final class ScreenEdgeCoordinator {
         self.activeScreen = screen
 
         let isLiveEditing = store.isLiveRailEditingMode
+        let isSculptingRails = isLiveEditing && !store.isRehearsingBreathingInSculptor
         let leftEnabled = isLiveEditing || store.pods.contains { $0.edge == .left && $0.isEnabled }
         let rightEnabled = isLiveEditing || store.pods.contains { $0.edge == .right && $0.isEnabled }
 
@@ -117,7 +118,7 @@ public final class ScreenEdgeCoordinator {
                 let win = AmbientRailWindow(edge: .left, screen: screen, store: store)
                 leftRailWindow = win
             }
-            if isLiveEditing {
+            if isSculptingRails {
                 leftRailWindow?.setExpanded(true)
                 leftRailWindow?.setInteractive(true)
             } else if !store.hasPinnedItem(on: .left) && store.activePod?.edge != .left {
@@ -137,7 +138,7 @@ public final class ScreenEdgeCoordinator {
                 let win = AmbientRailWindow(edge: .right, screen: screen, store: store)
                 rightRailWindow = win
             }
-            if isLiveEditing {
+            if isSculptingRails {
                 rightRailWindow?.setExpanded(true)
                 rightRailWindow?.setInteractive(true)
             } else if !store.hasPinnedItem(on: .right) && store.activePod?.edge != .right {
@@ -152,8 +153,8 @@ public final class ScreenEdgeCoordinator {
 
         if isLiveEditing {
             let visibleRect = screen.visibleFrame
-            let dockWidth: CGFloat = 720
-            let dockHeight: CGFloat = 96
+            let dockWidth: CGFloat = store.isOnboardingGuideActive ? 780 : 720
+            let dockHeight: CGFloat = store.isOnboardingGuideActive ? 285 : 96
             let dockX = visibleRect.midX - (dockWidth * 0.5)
             let dockY = visibleRect.maxY - dockHeight - 14
             let dockFrame = NSRect(x: dockX, y: dockY, width: dockWidth, height: dockHeight)

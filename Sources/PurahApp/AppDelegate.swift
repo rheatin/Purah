@@ -107,6 +107,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
 
         DiagnosticLogger.shared.info("Lifecycle", "Application launch completed successfully")
+
+        if !store.hasCompletedOnboarding && !PurahWorkspaceStore.isTestingEnvironment {
+            DispatchQueue.main.async {
+                self.store.startInteractiveOnboarding(clearAllPods: true)
+            }
+        }
     }
 
     @objc public func toggleFreezeMode() {
@@ -282,13 +288,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     @objc private func autoLayout() {
         store.autoLayoutAll()
         coordinator?.rebuildWindows()
-    }
-
-    @objc private func selectPreset(_ sender: NSMenuItem) {
-        guard let preset = sender.representedObject as? PodPreset else { return }
-        store.applyPreset(preset)
-        coordinator?.rebuildWindows()
-        rebuildMenu()
     }
 
     @objc private func changeLanguage(_ sender: NSMenuItem) {

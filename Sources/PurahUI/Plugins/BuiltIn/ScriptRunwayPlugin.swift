@@ -104,6 +104,10 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         state.isDecomposed
     }
 
+    public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        state.isDecomposed = decomposed
+    }
+
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         if store.isInSharedMajorPod(podId: manifest.id) { return false }
         return state.isDecomposed && store._isScriptsDecomposed

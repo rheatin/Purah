@@ -96,7 +96,61 @@ public struct GeneralSettingsView: View {
                     }
                 }
 
-                // 3. Global Hotkeys & Freeze Mode Card
+                // 3. Startup & Interactive Guide Card
+                settingsCard(title: "general.startup.card".localized, icon: "sparkles") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Launch at Login
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("general.startup.launchAtLogin.title".localized)
+                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                Text("general.startup.launchAtLogin.subtitle".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { LaunchAtLoginService.shared.isEnabled },
+                                set: { LaunchAtLoginService.shared.setEnabled($0) }
+                            ))
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                        }
+
+                        Divider()
+
+                        // Interactive Panoramic Guide
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("general.startup.onboarding.title".localized)
+                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                Text("general.startup.onboarding.subtitle".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                store.startInteractiveOnboarding(clearAllPods: true)
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "sparkles")
+                                    Text("general.startup.onboarding.button".localized)
+                                }
+                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .background(palette.primaryAccent)
+                                .foregroundColor(.black)
+                                .cornerRadius(7)
+                            }
+                            .buttonStyle(.tactile)
+                        }
+                    }
+                }
+
+                // 4. Global Hotkeys & Freeze Mode Card
                 settingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill") {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("interaction.hotkeys.description".localized)
@@ -263,7 +317,7 @@ public struct GeneralSettingsView: View {
     }
 
     private func resetToDefaults() {
-        PurahConfigBackupManager.resetToFactoryDefaults(store: store)
+        PurahConfigBackupManager.resetToFactoryDefaults(store: store, triggerOnboarding: true)
         withAnimation {
             isErrorMessage = false
             statusMessage = "Reset to factory defaults completed"

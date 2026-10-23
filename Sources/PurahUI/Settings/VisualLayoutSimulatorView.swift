@@ -80,47 +80,6 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
-                // Capacity Overload Warning Banner
-                if store.capacityRatio(for: .left) > 1.0 || store.capacityRatio(for: .right) > 1.0 {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.title3)
-                            .foregroundColor(.orange)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Rail Capacity Overload Warning")
-                                .font(.subheadline.weight(.bold))
-                                .foregroundColor(.orange)
-
-                            if store.capacityRatio(for: .left) > 1.0 {
-                                let req = Int(store.totalRequiredHeight(for: .left))
-                                let avail = Int(store.availableScreenHeight(for: .left))
-                                let pct = Int(store.capacityRatio(for: .left) * 100)
-                                Text("• Left Rail requires \(req)pt (available: \(avail)pt · \(pct)% used). Bottom chips may be crowded. Consider reducing decomposed sub-items or assigning modules to the right rail.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if store.capacityRatio(for: .right) > 1.0 {
-                                let req = Int(store.totalRequiredHeight(for: .right))
-                                let avail = Int(store.availableScreenHeight(for: .right))
-                                let pct = Int(store.capacityRatio(for: .right) * 100)
-                                Text("• Right Rail requires \(req)pt (available: \(avail)pt · \(pct)% used). Bottom chips may be crowded. Consider reducing decomposed sub-items or assigning modules to the left rail.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(Color.orange.opacity(0.12))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.orange.opacity(0.4), lineWidth: 1)
-                    )
-                }
-
                 // 1. Mini Screen Simulation (Top Primary Focus)
                 ScreenSimulationCanvas(store: store)
 
@@ -130,41 +89,7 @@ public struct VisualLayoutSimulatorView: View {
                 // 3. Rail Module Assembly Card
                 moduleAssemblyCard
 
-                // 3. Presets Card
-                settingsCard(title: "simulator.presets".localized, icon: "sparkle") {
-                    HStack(spacing: 12) {
-                        ForEach(PodPreset.allCases) { preset in
-                            Button {
-                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
-                                    store.applyPreset(preset)
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(preset.defaultTitle)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(store.currentPreset == preset ? palette.primaryAccent : (palette.style == .native ? Color.primary : .white))
-                                        .lineLimit(1)
-                                    Text(preset.defaultDescription)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(3)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                .padding(12)
-                                .frame(maxWidth: .infinity, minHeight: 75, alignment: .topLeading)
-                                .background(store.currentPreset == preset ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor).opacity(0.4))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(store.currentPreset == preset ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: 1.5)
-                                )
-                            }
-                            .buttonStyle(.tactile)
-                        }
-                    }
-                }
-
-                // 3. Rail & Drawer Geometry Card
+                // 4. Rail & Drawer Geometry Card
                 settingsCard(title: "layout.geometry.title".localized, icon: "ruler.fill") {
                     VStack(spacing: 16) {
                         // Rail bar width

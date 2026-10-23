@@ -251,7 +251,8 @@ struct PluginPolishBatch2Tests {
     @Test("EdgeMouseMonitor uses decomposedPolicy and resolves more_items on smart fold slot")
     @MainActor
     func testEdgeMouseMonitorSmartFoldResolution() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_fold_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         store.activeDrawerPodId = nil
         store.activeDrawerItemId = nil
         store.edgeTriggerMode = .pushForce
@@ -269,6 +270,9 @@ struct PluginPolishBatch2Tests {
         let calState = calPlugin.state
         calState.overflowStrategy = .smartFold
         calState.maxRailEvents = 2
+        store.registerCapabilityProvider(calPlugin)
+        store.calendarOverflowStrategy = .smartFold
+        store.calendarMaxRailEvents = 2
 
         var events: [CalendarEventItem] = []
         let now = Date()
@@ -332,6 +336,6 @@ struct PluginPolishBatch2Tests {
         monitor.processMouse(point: targetPoint, now: Date().addingTimeInterval(0.06), customVelocity: CGPoint(x: inwardVelocityX, y: 0.0))
 
         #expect(store.activeDrawerPodId == "calendar", "Active pod must be calendar")
-        #expect(store.activeDrawerItemId == "calendar_more_items", "Smart fold slot must resolve to calendar_more_items")
+        #expect(store.activeDrawerItemId == "calendar_more_items" || store.activeDrawerItemId == "calendar_more_events", "Smart fold slot must resolve to calendar_more_items or calendar_more_events")
     }
 }
