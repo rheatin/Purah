@@ -249,4 +249,80 @@ struct OnboardingAndLaunchAtLoginTests {
         #expect(service.isEnabled == false)
         #expect(UserDefaults.standard.bool(forKey: "purah.launchAtLogin") == false)
     }
+
+    @Test("Hands-on interactive mission completion flags and prerequisite staging")
+    func testHandsOnMissionCompletionAndPrerequisiteStaging() {
+        let suite = "test_onboarding_missions_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        store.startInteractiveOnboarding(clearAllPods: true)
+        #expect(store.onboardingStep == .mountPods)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+
+        // Step 1: Mount pods on both sides
+        store.mountPod(id: "vitals", to: .left)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+        store.mountPod(id: "calendar", to: .right)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+
+        // Step 2: Decompose demo
+        store.selectOnboardingStep(.decomposeDemo)
+        #expect(store.pods.contains(where: { $0.id == "vitals" && $0.isEnabled && $0.edge == .left }))
+        #expect(store.pods.contains(where: { $0.id == "scripts" && $0.isEnabled && $0.edge == .right }))
+        #expect(store.isPodDecomposed("vitals") == false)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+
+        store.togglePodDecomposedInSculptor(podId: "vitals")
+        #expect(store.onboardingDidToggleDecompose == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+
+        // Step 3: Stack demo
+        store.selectOnboardingStep(.stackDemo)
+        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(leftPods.count >= 2)
+        #expect(store.onboardingDidCreateStack == false)
+
+        store.addPodToMajorGroup(podId: leftPods[1].id, targetPodId: leftPods[0].id)
+        #expect(store.onboardingDidCreateStack == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+
+        // Step 4: Page demo
+        store.selectOnboardingStep(.pageDemo)
+        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+        #expect(rightPods.count >= 2)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+
+        store.setPodPage(id: rightPods[0].id, pageIndex: 1)
+        #expect(store.onboardingDidCreatePage == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+
+        store.setRailPage(1, for: .right)
+        #expect(store.onboardingDidSwitchPage == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+
+        // Step 5: Breathing demo
+        store.selectOnboardingStep(.breathingDemo)
+        #expect(store.isDynamicBreathingEnabled == true)
+        #expect(store.isAlwaysCompactBreathing == true)
+        #expect(store.isRehearsingBreathingInSculptor == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+
+        store.activateDrawer(podId: "vitals")
+        #expect(store.onboardingBreathingHoveredPods.count == 1)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+        store.activateDrawer(podId: "shelf")
+        #expect(store.onboardingBreathingHoveredPods.count >= 2)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+
+        // Step 6: Anti-touch calibration
+        store.selectOnboardingStep(.antiTouchCalibration)
+        #expect(store.isAlwaysCompactBreathing == false)
+        #expect(store.isRehearsingBreathingInSculptor == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == false)
+
+        store.activateDrawer(podId: "vitals")
+        #expect(store.onboardingDidTriggerEdgeDrawer == true)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+    }
 }

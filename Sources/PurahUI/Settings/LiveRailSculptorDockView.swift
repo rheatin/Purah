@@ -147,65 +147,76 @@ public struct LiveRailSculptorDockView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(unmounted) { pod in
-                                let podColor = palette.podColor(for: pod.id, store: store)
-                                let isBeingDragged = (store.externalDraggedPodId == pod.id)
-                                HStack(spacing: 5) {
-                                    Image(systemName: pod.systemIcon)
-                                        .font(.system(size: 10.5, weight: .semibold))
-                                        .foregroundColor(podColor)
+                                 let podColor = palette.podColor(for: pod.id, store: store)
+                                 let isBeingDragged = (store.externalDraggedPodId == pod.id)
+                                 let isOnboardingDockPulse = store.isOnboardingGuideActive && (store.onboardingStep == .mountPods || store.onboardingStep == .stackDemo)
+                                 HStack(spacing: 5) {
+                                     Image(systemName: pod.systemIcon)
+                                         .font(.system(size: 10.5, weight: .semibold))
+                                         .foregroundColor(podColor)
 
-                                    Text(pod.name)
-                                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
+                                     Text(pod.name)
+                                         .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                         .foregroundColor(.white)
+                                         .lineLimit(1)
 
-                                    Button {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.mountPod(id: pod.id, to: .left)
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                    } label: {
-                                        Text("+L")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .foregroundColor(palette.primaryAccent)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(palette.primaryAccent.opacity(0.18))
-                                            .cornerRadius(4)
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("Mount \(pod.name) to Left Rail")
+                                     Button {
+                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                             store.mountPod(id: pod.id, to: .left)
+                                             store.triggerControlHaptic(.alignment)
+                                         }
+                                     } label: {
+                                         Text("+L")
+                                             .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                             .foregroundColor(palette.primaryAccent)
+                                             .padding(.horizontal, 5)
+                                             .padding(.vertical, 2)
+                                             .background(palette.primaryAccent.opacity(0.18))
+                                             .cornerRadius(4)
+                                     }
+                                     .buttonStyle(.tactile)
+                                     .help("Mount \(pod.name) to Left Rail")
 
-                                    Button {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                            store.mountPod(id: pod.id, to: .right)
-                                            store.triggerControlHaptic(.alignment)
-                                        }
-                                    } label: {
-                                        Text("+R")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .foregroundColor(palette.primaryAccent)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(palette.primaryAccent.opacity(0.18))
-                                            .cornerRadius(4)
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("Mount \(pod.name) to Right Rail")
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(isBeingDragged ? podColor.opacity(0.26) : Color.white.opacity(0.08))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                                .stroke(
-                                                    isBeingDragged ? Color.orange : podColor.opacity(0.45),
-                                                    lineWidth: isBeingDragged ? 1.6 : 1.0
-                                                )
-                                        )
-                                )
+                                     Button {
+                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                             store.mountPod(id: pod.id, to: .right)
+                                             store.triggerControlHaptic(.alignment)
+                                         }
+                                     } label: {
+                                         Text("+R")
+                                             .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                             .foregroundColor(palette.primaryAccent)
+                                             .padding(.horizontal, 5)
+                                             .padding(.vertical, 2)
+                                             .background(palette.primaryAccent.opacity(0.18))
+                                             .cornerRadius(4)
+                                     }
+                                     .buttonStyle(.tactile)
+                                     .help("Mount \(pod.name) to Right Rail")
+
+                                     if isOnboardingDockPulse {
+                                         Text("onboarding.dock.dragHint".localized)
+                                             .font(.system(size: 8, weight: .bold, design: .rounded))
+                                             .foregroundColor(palette.primaryAccent)
+                                             .padding(.horizontal, 4)
+                                             .padding(.vertical, 1.5)
+                                             .background(palette.primaryAccent.opacity(0.18))
+                                             .cornerRadius(3)
+                                     }
+                                 }
+                                 .padding(.horizontal, 8)
+                                 .padding(.vertical, 5)
+                                 .background(
+                                     RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                         .fill(isBeingDragged ? podColor.opacity(0.26) : Color.white.opacity(0.08))
+                                         .overlay(
+                                             RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                 .stroke(
+                                                     isBeingDragged ? Color.orange : (isOnboardingDockPulse ? palette.primaryAccent.opacity(0.85) : podColor.opacity(0.45)),
+                                                     lineWidth: (isBeingDragged || isOnboardingDockPulse) ? 1.6 : 1.0
+                                                 )
+                                         )
+                                 )
                                 .scaleEffect(isBeingDragged ? 1.04 : 1.0)
                                 .contentShape(Rectangle())
                                 .gesture(
@@ -420,7 +431,57 @@ public struct LiveRailSculptorDockView: View {
         }
     }
 
-    // MARK: - Step Body Card
+    // MARK: - Step Body Card & Hands-On Mission HUD
+
+    @ViewBuilder
+    private func missionBox<Content: View>(isCompleted: Bool, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: isCompleted ? "checkmark.circle.fill" : "target")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundColor(isCompleted ? .green : palette.primaryAccent)
+                Text("onboarding.mission.title".localized)
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .foregroundColor(isCompleted ? .green : palette.primaryAccent)
+
+                Spacer()
+
+                Text(isCompleted ? "onboarding.mission.completed".localized : "onboarding.mission.pending".localized)
+                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    .foregroundColor(isCompleted ? .black : palette.primaryAccent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(isCompleted ? Color.green : palette.primaryAccent.opacity(0.18))
+                    .clipShape(Capsule())
+            }
+
+            content()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(isCompleted ? Color.green.opacity(0.4) : palette.primaryAccent.opacity(0.25), lineWidth: 0.8)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func missionCheckItem(isDone: Bool, text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundColor(isDone ? .green : .secondary)
+
+            Text(text)
+                .font(.system(size: 9.5, weight: isDone ? .semibold : .regular, design: .rounded))
+                .foregroundColor(isDone ? .white : .secondary)
+                .lineLimit(2)
+        }
+    }
 
     @ViewBuilder
     private var onboardingStepBodyCard: some View {
@@ -429,7 +490,9 @@ public struct LiveRailSculptorDockView: View {
             case .mountPods:
                 let leftCount = store.pods.filter { $0.edge == .left && $0.isEnabled }.count
                 let rightCount = store.pods.filter { $0.edge == .right && $0.isEnabled }.count
+                let isStepDone = (leftCount >= 1 && rightCount >= 1)
 
+                // Top Row: Title + Subtitle + Auto-Demo
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("onboarding.step1.title".localized)
@@ -441,36 +504,43 @@ public struct LiveRailSculptorDockView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
-                    HStack(spacing: 6) {
-                        Text("Left: \(leftCount) · Right: \(rightCount)")
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                            .foregroundColor(palette.primaryAccent)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3.5)
-                            .background(palette.primaryAccent.opacity(0.14))
-                            .clipShape(Capsule())
-
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                store.rehearseMountSamplePods()
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "sparkles")
-                                Text("onboarding.step1.autoMount".localized)
-                            }
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.12))
-                            .cornerRadius(6)
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            store.rehearseMountSamplePods()
                         }
-                        .buttonStyle(.tactile)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                            Text("onboarding.autoDemo".localized)
+                        }
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.12))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.tactile)
+                }
+
+                // Bottom Interactive Mission Box
+                missionBox(isCompleted: isStepDone) {
+                    HStack(spacing: 16) {
+                        missionCheckItem(
+                            isDone: leftCount >= 1,
+                            text: String(format: "onboarding.step1.missionLeft".localized, leftCount)
+                        )
+                        missionCheckItem(
+                            isDone: rightCount >= 1,
+                            text: String(format: "onboarding.step1.missionRight".localized, rightCount)
+                        )
+                        Spacer()
                     }
                 }
 
             case .decomposeDemo:
+                let isDone = store.onboardingDidToggleDecompose
+
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("onboarding.step2.title".localized)
@@ -482,58 +552,76 @@ public struct LiveRailSculptorDockView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
-                    HStack(spacing: 6) {
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                store.rehearseDecomposeDemo(decomposed: false)
-                            }
-                        } label: {
-                            Text("onboarding.step2.composite".localized)
-                                .font(.system(size: 9.5, weight: !store._isScriptsDecomposed ? .bold : .medium, design: .rounded))
-                                .foregroundColor(!store._isScriptsDecomposed ? palette.primaryAccent : .secondary)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 4)
-                                .background(!store._isScriptsDecomposed ? palette.primaryAccent.opacity(0.18) : Color.white.opacity(0.08))
-                                .cornerRadius(5)
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            store.rehearseDecomposeDemo()
                         }
-                        .buttonStyle(.tactile)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                            Text("onboarding.autoDemo".localized)
+                        }
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.12))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.tactile)
+                }
 
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                store.rehearseDecomposeDemo(decomposed: true)
-                            }
-                        } label: {
-                            Text("onboarding.step2.decomposed".localized)
-                                .font(.system(size: 9.5, weight: store._isScriptsDecomposed ? .bold : .medium, design: .rounded))
-                                .foregroundColor(store._isScriptsDecomposed ? palette.primaryAccent : .secondary)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 4)
-                                .background(store._isScriptsDecomposed ? palette.primaryAccent.opacity(0.18) : Color.white.opacity(0.08))
-                                .cornerRadius(5)
-                        }
-                        .buttonStyle(.tactile)
+                missionBox(isCompleted: isDone) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        missionCheckItem(
+                            isDone: isDone,
+                            text: "onboarding.step2.mission".localized
+                        )
 
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                store.rehearseDecomposeDemo()
+                        HStack(spacing: 8) {
+                            let isVitalsDecomp = store.isPodDecomposed("vitals")
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.togglePodDecomposedInSculptor(podId: "vitals")
+                                }
+                            } label: {
+                                Text(isVitalsDecomp ? "onboarding.step2.capsuleButton.bar".localized : "onboarding.step2.capsuleButton.chips".localized)
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundColor(isVitalsDecomp ? palette.primaryAccent : .white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(isVitalsDecomp ? palette.primaryAccent.opacity(0.20) : Color.white.opacity(0.12))
+                                    .cornerRadius(5)
                             }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "sparkles")
-                                Text("onboarding.step2.rehearse".localized)
+                            .buttonStyle(.tactile)
+
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.isRehearsingBreathingInSculptor.toggle()
+                                    store.onWindowsRebuildNeeded?()
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: store.isRehearsingBreathingInSculptor ? "eye.fill" : "hammer.fill")
+                                    Text("onboarding.step2.toggleLiveTest".localized)
+                                }
+                                .font(.system(size: 9, weight: .medium, design: .rounded))
+                                .foregroundColor(store.isRehearsingBreathingInSculptor ? palette.primaryAccent : .secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(store.isRehearsingBreathingInSculptor ? palette.primaryAccent.opacity(0.16) : Color.white.opacity(0.08))
+                                .cornerRadius(5)
                             }
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.12))
-                            .cornerRadius(6)
+                            .buttonStyle(.tactile)
+
+                            Spacer()
                         }
-                        .buttonStyle(.tactile)
                     }
                 }
 
             case .stackDemo:
+                let isDone = store.isCurrentOnboardingMissionCompleted
+
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("onboarding.step3.title".localized)
@@ -551,8 +639,8 @@ public struct LiveRailSculptorDockView: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "square.stack.3d.up.fill")
-                            Text("onboarding.step3.rehearse".localized)
+                            Image(systemName: "sparkles")
+                            Text("onboarding.autoDemo".localized)
                         }
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
@@ -564,7 +652,41 @@ public struct LiveRailSculptorDockView: View {
                     .buttonStyle(.tactile)
                 }
 
+                missionBox(isCompleted: isDone) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        missionCheckItem(
+                            isDone: isDone,
+                            text: "onboarding.step3.mission".localized
+                        )
+
+                        HStack(spacing: 5) {
+                            if isDone {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundColor(.green)
+                                Text("onboarding.step3.statusSuccess".localized)
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundColor(.green)
+                            } else if store.externalDraggedPodId != nil || store.isDraggingFromDrawer {
+                                Image(systemName: "flame.fill")
+                                    .foregroundColor(.orange)
+                                Text("onboarding.step3.statusDragging".localized)
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundColor(.orange)
+                            } else {
+                                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                                    .foregroundColor(.secondary)
+                                Text("onboarding.step3.statusHint".localized)
+                                    .font(.system(size: 9, weight: .regular, design: .rounded))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+
             case .pageDemo:
+                let isDone = store.isCurrentOnboardingMissionCompleted
+
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("onboarding.step4.title".localized)
@@ -582,8 +704,8 @@ public struct LiveRailSculptorDockView: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "book.pages.fill")
-                            Text("onboarding.step4.rehearse".localized)
+                            Image(systemName: "sparkles")
+                            Text("onboarding.autoDemo".localized)
                         }
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
@@ -595,7 +717,24 @@ public struct LiveRailSculptorDockView: View {
                     .buttonStyle(.tactile)
                 }
 
+                missionBox(isCompleted: isDone) {
+                    HStack(spacing: 16) {
+                        missionCheckItem(
+                            isDone: store.onboardingDidCreatePage,
+                            text: "onboarding.step4.missionCreate".localized
+                        )
+                        missionCheckItem(
+                            isDone: store.onboardingDidSwitchPage,
+                            text: "onboarding.step4.missionSwitch".localized
+                        )
+                        Spacer()
+                    }
+                }
+
             case .breathingDemo:
+                let hoveredCount = store.onboardingBreathingHoveredPods.count
+                let isDone = (hoveredCount >= 2)
+
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("onboarding.step5.title".localized)
@@ -613,8 +752,8 @@ public struct LiveRailSculptorDockView: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "lungs.fill")
-                            Text("onboarding.step5.rehearse".localized)
+                            Image(systemName: "sparkles")
+                            Text("onboarding.autoDemo".localized)
                         }
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
@@ -626,8 +765,20 @@ public struct LiveRailSculptorDockView: View {
                     .buttonStyle(.tactile)
                 }
 
+                missionBox(isCompleted: isDone) {
+                    HStack(spacing: 8) {
+                        missionCheckItem(
+                            isDone: isDone,
+                            text: String(format: "onboarding.step5.mission".localized, min(hoveredCount, 2))
+                        )
+                        Spacer()
+                    }
+                }
+
             case .antiTouchCalibration:
-                VStack(alignment: .leading, spacing: 6) {
+                let isDone = store.onboardingDidTriggerEdgeDrawer
+
+                VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("onboarding.step6.title".localized)
@@ -644,6 +795,7 @@ public struct LiveRailSculptorDockView: View {
                             Button {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                     store.edgeTriggerMode = .hoverDwell
+                                    store.onboardingDidSwitchTriggerMode = true
                                     store.savePersistentState()
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -661,6 +813,7 @@ public struct LiveRailSculptorDockView: View {
                             Button {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                     store.edgeTriggerMode = .pushForce
+                                    store.onboardingDidSwitchTriggerMode = true
                                     store.savePersistentState()
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -699,13 +852,25 @@ public struct LiveRailSculptorDockView: View {
                         }
                     }
 
-                    HStack(spacing: 4) {
-                        Image(systemName: "hand.point.up.left.and.text.fill")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(palette.primaryAccent)
-                        Text("onboarding.step6.livePrompt".localized)
-                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                            .foregroundColor(palette.primaryAccent)
+                    missionBox(isCompleted: isDone) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(palette.primaryAccent)
+                                Text(store.edgeTriggerMode == .hoverDwell ? "onboarding.step6.descDwell".localized : "onboarding.step6.descBarrier".localized)
+                                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                                    .foregroundColor(palette.primaryAccent)
+                            }
+
+                            missionCheckItem(
+                                isDone: isDone,
+                                text: String(
+                                    format: "onboarding.step6.mission".localized,
+                                    isDone ? "onboarding.step6.statusTested".localized : "onboarding.step6.statusWaiting".localized
+                                )
+                            )
+                        }
                     }
                 }
             }

@@ -61,6 +61,31 @@ public final class PurahWorkspaceStore {
     @ObservationIgnored private var onboardingRehearsalTask: Task<Void, Never>? = nil
     public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
 
+    public var onboardingDidToggleDecompose: Bool = false
+    public var onboardingDidCreateStack: Bool = false
+    public var onboardingDidCreatePage: Bool = false
+    public var onboardingDidSwitchPage: Bool = false
+    public var onboardingBreathingHoveredPods: Set<String> = []
+    public var onboardingDidSwitchTriggerMode: Bool = false
+    public var onboardingDidTriggerEdgeDrawer: Bool = false
+
+    public var isCurrentOnboardingMissionCompleted: Bool {
+        switch onboardingStep {
+        case .mountPods:
+            return pods.contains { $0.edge == .left && $0.isEnabled } && pods.contains { $0.edge == .right && $0.isEnabled }
+        case .decomposeDemo:
+            return onboardingDidToggleDecompose
+        case .stackDemo:
+            return onboardingDidCreateStack || pods.contains { $0.isEnabled && isInSharedMajorPod(podId: $0.id) }
+        case .pageDemo:
+            return onboardingDidCreatePage && onboardingDidSwitchPage
+        case .breathingDemo:
+            return onboardingBreathingHoveredPods.count >= 2
+        case .antiTouchCalibration:
+            return onboardingDidTriggerEdgeDrawer
+        }
+    }
+
     public var hasCompletedOnboarding: Bool {
         get { userDefaults.bool(forKey: "purah.hasCompletedOnboarding") }
         set { userDefaults.set(newValue, forKey: "purah.hasCompletedOnboarding") }
@@ -72,9 +97,11 @@ public final class PurahWorkspaceStore {
 
     public func setDynamicBreathingEnabled(_ enabled: Bool) {
         isDynamicBreathingEnabled = enabled
+        if isOnboardingGuideActive {
+            onboardingDidCreateStack = true
+        }
         invalidateLayoutCache()
         savePersistentState()
-        notifyCapacityWarningIfNeeded()
         onWindowsRebuildNeeded?()
     }
 
@@ -259,12 +286,17 @@ public final class PurahWorkspaceStore {
         edge == .left ? leftRailPage : rightRailPage
     }
 
+    @ObservationIgnored private var isSettingPodPage: Bool = false
+
     public func setRailPage(_ page: Int, for edge: MountEdge) {
         let clamped = max(page, 0)
         if edge == .left {
             leftRailPage = clamped
         } else {
             rightRailPage = clamped
+        }
+        if isOnboardingGuideActive && !isSettingPodPage {
+            onboardingDidSwitchPage = true
         }
         DiagnosticLogger.shared.info("Store", "Rail page switched: edge=\(edge), page=\(clamped)")
         invalidateLayoutCache()
@@ -275,11 +307,16 @@ public final class PurahWorkspaceStore {
         let clamped = max(0, pageIndex)
         let edge = pods[idx].edge
         pods[idx].pageIndex = clamped
+        if isOnboardingGuideActive && clamped >= 1 {
+            onboardingDidCreatePage = true
+        }
         let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
         let minPt = Double(minimumDrawerHeight(for: id))
         pods[idx].range.length = max(minPt / screenH, 0.10)
         normalizePageRanges(for: edge)
+        isSettingPodPage = true
         setRailPage(clamped, for: edge)
+        isSettingPodPage = false
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -358,6 +395,9 @@ public final class PurahWorkspaceStore {
         }
         if let nxtIdx = pods.firstIndex(where: { $0.id == nextPod.id }) {
             pods[nxtIdx].majorGroupId = groupId
+        }
+        if isOnboardingGuideActive {
+            onboardingDidCreateStack = true
         }
         invalidateLayoutCache()
         savePersistentState()
@@ -530,6 +570,9 @@ public final class PurahWorkspaceStore {
             }
         }
 
+        if isOnboardingGuideActive {
+            onboardingDidCreateStack = true
+        }
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -822,6 +865,15 @@ public final class PurahWorkspaceStore {
 
     public func activateDrawer(podId: String, itemId: String? = nil) {
         DiagnosticLogger.shared.info("Store", "Drawer activated: podId=\(podId), itemId=\(itemId ?? podId)")
+        if isOnboardingGuideActive {
+            if onboardingStep == .breathingDemo {
+                onboardingBreathingHoveredPods.insert(podId)
+            } else if onboardingStep == .antiTouchCalibration {
+                onboardingDidTriggerEdgeDrawer = true
+            } else if onboardingStep == .decomposeDemo {
+                onboardingDidToggleDecompose = true
+            }
+        }
         if dismissAlertOnHover {
             acknowledgeAllAlerts(forPodId: podId)
             if let itemId {
@@ -3102,6 +3154,13 @@ public final class PurahWorkspaceStore {
 
     public func startInteractiveOnboarding(clearAllPods: Bool = true) {
         cancelOnboardingRehearsal()
+        onboardingDidToggleDecompose = false
+        onboardingDidCreateStack = false
+        onboardingDidCreatePage = false
+        onboardingDidSwitchPage = false
+        onboardingBreathingHoveredPods.removeAll()
+        onboardingDidSwitchTriggerMode = false
+        onboardingDidTriggerEdgeDrawer = false
         if clearAllPods {
             for i in pods.indices {
                 pods[i].isEnabled = false
@@ -3122,10 +3181,102 @@ public final class PurahWorkspaceStore {
     public func selectOnboardingStep(_ step: OnboardingGuideStep) {
         cancelOnboardingRehearsal()
         onboardingStep = step
-        if step == .antiTouchCalibration {
+        switch step {
+        case .mountPods:
+            isRehearsingBreathingInSculptor = false
+        case .decomposeDemo:
+            isRehearsingBreathingInSculptor = false
+            mountPod(id: "vitals", to: .left)
+            splitPodFromMajorGroup(id: "vitals")
+            mountPod(id: "scripts", to: .right)
+            splitPodFromMajorGroup(id: "scripts")
+            _isVitalsDecomposed = false
+            capabilityProvider(for: "vitals")?.setDecomposed(false, store: self)
+            onDecomposedStateSync?("vitals", false)
+            normalizePageRanges(for: .left)
+            normalizePageRanges(for: .right)
+        case .stackDemo:
+            isRehearsingBreathingInSculptor = false
+            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+            if leftPods.count < 2 {
+                mountPod(id: "vitals", to: .left)
+                mountPod(id: "shelf", to: .left)
+                normalizePageRanges(for: .left)
+            }
+            if !onboardingDidCreateStack {
+                let currentLeft = pods.filter { $0.edge == .left && $0.isEnabled }
+                let stackedCount = currentLeft.filter { isInSharedMajorPod(podId: $0.id) }.count
+                if stackedCount == currentLeft.count || stackedCount > 0 {
+                    resetMajorGroups(for: .left)
+                }
+            }
+        case .pageDemo:
+            isRehearsingBreathingInSculptor = false
+            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+            if rightPods.count < 2 {
+                mountPod(id: "calendar", to: .right)
+                mountPod(id: "scripts", to: .right)
+                mountPod(id: "todo", to: .right)
+                normalizePageRanges(for: .right)
+            }
+        case .breathingDemo:
+            mountPod(id: "vitals", to: .left)
+            mountPod(id: "shelf", to: .left)
+            mountPod(id: "notes", to: .left)
+            mountPod(id: "clipboard", to: .left)
+            normalizePageRanges(for: .left)
+            isDynamicBreathingEnabled = true
+            isAlwaysCompactBreathing = true
+            isRehearsingBreathingInSculptor = true
+        case .antiTouchCalibration:
+            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+            if leftPods.count < 2 {
+                mountPod(id: "vitals", to: .left)
+                mountPod(id: "shelf", to: .left)
+            }
+            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+            if rightPods.count < 2 {
+                mountPod(id: "calendar", to: .right)
+                mountPod(id: "scripts", to: .right)
+            }
+            normalizePageRanges(for: .left)
+            normalizePageRanges(for: .right)
+            isAlwaysCompactBreathing = false
             isRehearsingBreathingInSculptor = true
         }
         invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func togglePodDecomposedInSculptor(podId: String) {
+        let current = isPodDecomposed(podId)
+        let next = !current
+        switch podId {
+        case "vitals":
+            _isVitalsDecomposed = next
+            capabilityProvider(for: "vitals")?.setDecomposed(next, store: self)
+        case "scripts":
+            _isScriptsDecomposed = next
+            capabilityProvider(for: "scripts")?.setDecomposed(next, store: self)
+        case "ai":
+            _isAIDecomposed = next
+            capabilityProvider(for: "ai")?.setDecomposed(next, store: self)
+        case "clipboard":
+            let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: userDefaults)
+            storage.set(next, forKey: "isDecomposed")
+            capabilityProvider(for: "clipboard")?.setDecomposed(next, store: self)
+        case "calendar":
+            let nextStrategy: CalendarOverflowStrategy = (calendarOverflowStrategy == .smartFold) ? .continuousStream : .smartFold
+            calendarOverflowStrategy = nextStrategy
+            capabilityProvider(for: "calendar")?.setDecomposed(nextStrategy == .smartFold, store: self)
+        default:
+            capabilityProvider(for: podId)?.setDecomposed(next, store: self)
+        }
+        onDecomposedStateSync?(podId, next)
+        onboardingDidToggleDecompose = true
+        _ = triggerControlHaptic(.alignment)
+        invalidateLayoutCache()
+        savePersistentState()
         onWindowsRebuildNeeded?()
     }
 
@@ -3198,6 +3349,7 @@ public final class PurahWorkspaceStore {
         capabilityProvider(for: "vitals")?.setDecomposed(newVal, store: self)
         onDecomposedStateSync?("scripts", newVal)
         onDecomposedStateSync?("vitals", newVal)
+        onboardingDidToggleDecompose = true
 
         isRehearsingBreathingInSculptor = true
         invalidateLayoutCache()

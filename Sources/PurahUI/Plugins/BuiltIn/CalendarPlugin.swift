@@ -150,6 +150,11 @@ public struct CalendarPlugin: PurahPodPlugin {
         return state.overflowStrategy != .continuousStream && store.calendarOverflowStrategy != .continuousStream
     }
 
+    public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        state.overflowStrategy = decomposed ? .smartFold : .continuousStream
+        store.calendarOverflowStrategy = decomposed ? .smartFold : .continuousStream
+    }
+
     private func resolvedSubItemHeaders(store: PurahWorkspaceStore) -> [(id: String, title: String)] {
         guard state.overflowStrategy != .continuousStream else { return [] }
         let currentTime = CACurrentMediaTime()
