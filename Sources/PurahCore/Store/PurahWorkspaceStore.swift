@@ -247,17 +247,13 @@ public final class PurahWorkspaceStore {
             triggerControlHaptic(.alignment)
         }
 
-        let screenH = max(Double(availableScreenHeight(for: targetEdge)), 600.0)
-        let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
-        if pages.count > 1 {
-            setRailPage(pages.count - 1, for: targetEdge)
-            DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(targetEdge)")
-            onCapacityWarningToast?("layout.toast.pageOverflow".localized)
-        } else if isBreathingActive(for: targetEdge, totalHeight: screenH) {
-            if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
-                lastCapacityAlertTime = Date()
-                DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(targetEdge)")
-                onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+        if !isDynamicBreathingEnabled {
+            let screenH = max(Double(availableScreenHeight(for: targetEdge)), 600.0)
+            let pages = paginatedPods(for: targetEdge, totalHeight: screenH)
+            if pages.count > 1 {
+                setRailPage(pages.count - 1, for: targetEdge)
+                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(targetEdge)")
+                onCapacityWarningToast?("layout.toast.pageOverflow".localized)
             }
         }
     }
@@ -1433,7 +1429,7 @@ public final class PurahWorkspaceStore {
         let clusterMinFloors: [Double] = clusters.map { cluster in
             if cluster.count == 1 {
                 let pod = cluster[0]
-                return (isSculptingRails || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                return Double(minimumDrawerHeight(for: pod.id))
             } else {
                 let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
                 return hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
@@ -1503,7 +1499,8 @@ public final class PurahWorkspaceStore {
         let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
         let minStandalone = CGFloat(standaloneMinimumRailHeight(for: pod.id))
         let podHeight = max(pod.range.length * totalHeight, minStandalone)
-        if isSculptingRails || pod.minLength <= 0.06 {
+        let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
+        if isSculptingRails || isShortened {
             return podHeight
         }
         let minReserved = minimumDrawerHeight(for: pod.id)
@@ -1589,12 +1586,13 @@ public final class PurahWorkspaceStore {
                 let clusterNeeded: Double
                 if !isDynamicBreathingEnabled {
                     if cluster.count >= 2 {
-                        let hasManual = (isLiveRailEditingMode && !isRehearsingBreathingInSculptor) || cluster.contains(where: { $0.minLength <= 0.06 })
+                        let hasManual = (isLiveRailEditingMode && !isRehearsingBreathingInSculptor) || cluster.contains(where: { $0.minLength <= 0.06 && ($0.range.length * totalHeight < Double(minimumDrawerHeight(for: $0.id)) - 1.0) })
                         clusterNeeded = hasManual ? max(96.0, Double(cluster.count) * 24.0) : max(155.0, Double(cluster.count) * 48.0)
                     } else {
                         let pod = cluster[0]
                         let isSculpting = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
-                        clusterNeeded = (isSculpting || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                        let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
+                        clusterNeeded = (isSculpting || isShortened) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
                     }
                 } else {
                     if cluster.count >= 2 {
@@ -1729,7 +1727,8 @@ public final class PurahWorkspaceStore {
         for (_, cluster) in clusters.enumerated() {
             if cluster.count == 1 {
                 let pod = cluster[0]
-                let minFloor = (isSculptingRails || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
+                let minFloor = (isSculptingRails || isShortened) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
                 let maxVis = maxVisualHeight(for: pod.id, totalHeight: totalHeight)
                 let span = min(max(pod.range.length * totalHeight, minFloor), max(maxVis, minFloor))
                 standardSpans.append(span)
@@ -1739,7 +1738,7 @@ public final class PurahWorkspaceStore {
                 let subGap = 3.0
                 let totalSubGaps = Double(cluster.count - 1) * subGap
                 let sumSubLengths = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 22.0) } + totalSubGaps
-                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 && ($0.range.length * totalHeight < Double(minimumDrawerHeight(for: $0.id)) - 1.0) })
                 let clusterMinFloor = hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
                 let span = max(sumSubLengths, clusterMinFloor)
                 standardSpans.append(span)
@@ -1753,7 +1752,14 @@ public final class PurahWorkspaceStore {
         let totalClusterGaps = Double(max(clusters.count - 1, 0)) * clusterGap
         let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
         let sumStandard = standardSpans.reduce(0.0, +)
-        let sumMinRequired = clusterMinFloors.reduce(0.0, +)
+        let sumMinRequired = clusters.reduce(0.0) { acc, cluster in
+            if cluster.count == 1 {
+                return acc + Double(minimumDrawerHeight(for: cluster[0].id))
+            } else {
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
+                return acc + (hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0)
+            }
+        }
         let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
 
         let clusterWeights = clusters.map { cl in cl.reduce(0.0) { $0 + max($1.range.length, 0.035) } }
@@ -1769,7 +1775,7 @@ public final class PurahWorkspaceStore {
             if cluster.count == 1 {
                 let pod = cluster[0]
                 let pref = Double(preferredDrawerHeight(for: pod.id))
-                preferredExpandedSpans.append(min(pref, clusterMaxVisuals[cIdx]))
+                preferredExpandedSpans.append(max(pref, clusterMaxVisuals[cIdx]))
             } else {
                 let activeSub = cluster.first(where: { isPodExpanded($0) }) ?? cluster[0]
                 let pref = Double(preferredDrawerHeight(for: activeSub.id))
@@ -1878,10 +1884,10 @@ public final class PurahWorkspaceStore {
             let fullClusterSpans: [Double] = clusters.indices.map { cIdx in
                 if clusters[cIdx].count == 1 {
                     let pod = clusters[cIdx][0]
-                    return max(idleClusterSpans[cIdx], min(Double(preferredDrawerHeight(for: pod.id)), clusterMaxVisuals[cIdx]))
+                    return max(idleClusterSpans[cIdx], Double(preferredDrawerHeight(for: pod.id)))
                 } else {
                     let activeSub = clusters[cIdx].first(where: { isPodExpanded($0) }) ?? clusters[cIdx][0]
-                    return max(idleClusterSpans[cIdx], min(Double(preferredDrawerHeight(for: activeSub.id)), clusterMaxVisuals[cIdx]), 180.0)
+                    return max(idleClusterSpans[cIdx], Double(preferredDrawerHeight(for: activeSub.id)), 180.0)
                 }
             }
 
@@ -2826,30 +2832,168 @@ public final class PurahWorkspaceStore {
         defaults.set(customPushForceThreshold, forKey: "purah.customPushForceThreshold")
         defaults.set(customPushResistanceBarrier, forKey: "purah.customPushResistanceBarrier")
         defaults.synchronize()
-        notifyCapacityWarningIfNeeded()
     }
 
     public func autoLayoutAll() {
-        // Dynamically update each pod's minLength to reflect capability provider's minimum required height
+        // 1. Reset Manual Overrides & Update Minimum Floors
         for idx in pods.indices {
-            let pod = pods[idx]
-            let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if !isDynamicBreathingEnabled && pod.minLength > 0.06 {
-                let minPt = Double(minimumDrawerHeight(for: pod.id))
-                pods[idx].minLength = max(minPt / screenH, 0.07)
+            pods[idx].preferredExpandedHeight = nil
+            let screenH = max(Double(availableScreenHeight(for: pods[idx].edge)), 600.0)
+            pods[idx].minLength = isDynamicBreathingEnabled ? max(28.0 / screenH, 0.035) : max(Double(minimumDrawerHeight(for: pods[idx].id)) / screenH, 0.07)
+        }
+
+        // 2. Smart Page & Stack Consolidation per Edge (.left, .right)
+        for edge in [MountEdge.left, .right] {
+            let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
+            let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
+            guard !enabledIndices.isEmpty else { continue }
+
+            // Group enabledIndices into Stack-preserving clusters
+            var clusters: [[Int]] = []
+            var visitedGroupIds = Set<String>()
+            var visitedIndices = Set<Int>()
+
+            for idx in enabledIndices {
+                if visitedIndices.contains(idx) { continue }
+                if let groupId = pods[idx].majorGroupId {
+                    if !visitedGroupIds.contains(groupId) {
+                        visitedGroupIds.insert(groupId)
+                        let groupIndices = enabledIndices.filter { pods[$0].majorGroupId == groupId }
+                        let sortedGroup = groupIndices.sorted { pods[$0].range.start < pods[$1].range.start }
+                        clusters.append(sortedGroup)
+                        visitedIndices.formUnion(sortedGroup)
+                    }
+                } else {
+                    clusters.append([idx])
+                    visitedIndices.insert(idx)
+                }
+            }
+
+            // Sort clusters ergonomically by (firstPod.preferredZone, -clusterAvgWeight, firstPod.range.start)
+            clusters.sort { c1, c2 in
+                let p1 = pods[c1[0]]
+                let p2 = pods[c2[0]]
+                if p1.preferredZone != p2.preferredZone {
+                    return p1.preferredZone < p2.preferredZone
+                }
+                let w1 = c1.reduce(0.0) { $0 + pods[$1].ergonomicWeight } / Double(c1.count)
+                let w2 = c2.reduce(0.0) { $0 + pods[$1].ergonomicWeight } / Double(c2.count)
+                if w1 != w2 {
+                    return w1 > w2
+                }
+                return p1.range.start < p2.range.start
+            }
+
+            // Assign pageIndex based on isDynamicBreathingEnabled
+            if isDynamicBreathingEnabled {
+                let compactFloorSum = clusters.reduce(0.0) { sum, cluster in
+                    sum + (cluster.count >= 2 ? Double(cluster.count) * 26.0 : 42.0) + 8.0
+                }
+                let pageBudget = max(screenH - 96.0, 260.0)
+                if compactFloorSum <= pageBudget {
+                    for cluster in clusters {
+                        for idx in cluster {
+                            pods[idx].pageIndex = 0
+                        }
+                    }
+                    setRailPage(0, for: edge)
+                } else {
+                    var curPage = 0
+                    var curPageHeight = 0.0
+                    for cluster in clusters {
+                        let clusterH = (cluster.count >= 2 ? Double(cluster.count) * 26.0 : 42.0) + 8.0
+                        if curPageHeight > 0 && curPageHeight + clusterH > pageBudget {
+                            curPage += 1
+                            curPageHeight = 0.0
+                        }
+                        for idx in cluster {
+                            pods[idx].pageIndex = curPage
+                        }
+                        curPageHeight += clusterH
+                    }
+                    setRailPage(min(currentRailPage(for: edge), curPage), for: edge)
+                }
+            } else {
+                let pageBudget = max(screenH - 96.0, 260.0)
+                var curPage = 0
+                var curPageHeight = 0.0
+                for cluster in clusters {
+                    let clusterRequiredH: Double
+                    if cluster.count >= 2 {
+                        clusterRequiredH = max(155.0, Double(cluster.count) * 48.0)
+                    } else {
+                        clusterRequiredH = Double(minimumDrawerHeight(for: pods[cluster[0]].id))
+                    }
+                    let clusterTotalH = clusterRequiredH + 8.0
+                    if curPageHeight > 0 && curPageHeight + clusterTotalH > pageBudget {
+                        curPage += 1
+                        curPageHeight = 0.0
+                    }
+                    for idx in cluster {
+                        pods[idx].pageIndex = curPage
+                    }
+                    curPageHeight += clusterTotalH
+                }
+                setRailPage(min(currentRailPage(for: edge), curPage), for: edge)
+            }
+
+            // Distribute Full-Rail Golden Proportions Within Each Page
+            let sortedPodIndices = clusters.flatMap { $0 }
+            let pageIndices = Array(Set(sortedPodIndices.map { pods[$0].pageIndex })).sorted()
+            var groupedByPage: [(Int, [Int])] = []
+            for page in pageIndices {
+                let pagePods = sortedPodIndices.filter { pods[$0].pageIndex == page }
+                groupedByPage.append((page, pagePods))
+            }
+
+            let pageCount = groupedByPage.count
+            let safeStart = pageCount > 1 ? (48.0 / screenH) : 0.02
+            let safeTotalSpan = pageCount > 1 ? ((screenH - 96.0) / screenH) : 0.94
+            let gap = 8.0 / screenH
+
+            for (_, pagePodIndices) in groupedByPage {
+                let totalGaps = Double(max(pagePodIndices.count - 1, 0)) * gap
+                let usableSpan = max(safeTotalSpan - totalGaps, Double(pagePodIndices.count) * 0.05)
+
+                var weights: [Double] = []
+                var minRatios: [Double] = []
+                for idx in pagePodIndices {
+                    let prefH = Double(preferredDrawerHeight(for: pods[idx].id))
+                    let minH = Double(minimumDrawerHeight(for: pods[idx].id))
+                    let weight = max(pods[idx].ergonomicWeight, 15.0) * max(prefH, minH)
+                    weights.append(weight)
+                    minRatios.append(minH / screenH)
+                }
+
+                let totalWeight = max(weights.reduce(0.0, +), 1.0)
+                let sumMinRatios = minRatios.reduce(0.0, +)
+
+                var lengths: [Double] = []
+                if sumMinRatios <= usableSpan {
+                    let surplus = usableSpan - sumMinRatios
+                    for i in pagePodIndices.indices {
+                        let len = minRatios[i] + surplus * (weights[i] / totalWeight)
+                        lengths.append(len)
+                    }
+                } else {
+                    for i in pagePodIndices.indices {
+                        let len = usableSpan * (weights[i] / totalWeight)
+                        lengths.append(len)
+                    }
+                }
+
+                var curStart = safeStart
+                for (offset, idx) in pagePodIndices.enumerated() {
+                    let len = lengths[offset]
+                    pods[idx].range = NormalizedRange(start: curStart, length: len)
+                    curStart += len + gap
+                }
             }
         }
 
-        pods = ErgonomicAutoLayoutEngine.optimizeBilateralLayout(
-            pods: pods,
-            reassignEdges: false,
-            availableHeight: Double(availableScreenHeight(for: .left))
-        )
-        normalizePageRanges(for: .left)
-        normalizePageRanges(for: .right)
         invalidateLayoutCache()
         savePersistentState()
-        notifyCapacityWarningIfNeeded()
+        onWindowsRebuildNeeded?()
     }
 
     public func togglePodEnabled(id: String) {
@@ -2858,20 +3002,16 @@ public final class PurahWorkspaceStore {
         if !pod.isEnabled {
             pods[index].isEnabled = true
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if !isDynamicBreathingEnabled && pod.minLength > 0.06 {
+            if !isDynamicBreathingEnabled {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[index].minLength = max(minPt / screenH, 0.07)
             }
-            let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
-            if pages.count > 1 {
-                setRailPage(pages.count - 1, for: pod.edge)
-                DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(pod.edge)")
-                onCapacityWarningToast?("layout.toast.pageOverflow".localized)
-            } else if isBreathingActive(for: pod.edge, totalHeight: screenH) {
-                if lastCapacityAlertTime == nil || Date().timeIntervalSince(lastCapacityAlertTime!) >= 6.0 {
-                    lastCapacityAlertTime = Date()
-                    DiagnosticLogger.shared.info("Store", "Dynamic breathing mode toast triggered for edge=\(pod.edge)")
-                    onCapacityWarningToast?("layout.toast.breathingActivated".localized)
+            if !isDynamicBreathingEnabled {
+                let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
+                if pages.count > 1 {
+                    setRailPage(pages.count - 1, for: pod.edge)
+                    DiagnosticLogger.shared.warn("Store", "Page overflow toast triggered for edge=\(pod.edge)")
+                    onCapacityWarningToast?("layout.toast.pageOverflow".localized)
                 }
             }
             onPodEnabledChanged?(id, true)

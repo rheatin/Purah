@@ -251,7 +251,8 @@ struct PluginPolishBatch2Tests {
     @Test("EdgeMouseMonitor uses decomposedPolicy and resolves more_items on smart fold slot")
     @MainActor
     func testEdgeMouseMonitorSmartFoldResolution() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_fold_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         store.activeDrawerPodId = nil
         store.activeDrawerItemId = nil
         store.edgeTriggerMode = .pushForce

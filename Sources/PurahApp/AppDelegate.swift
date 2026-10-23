@@ -290,13 +290,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         coordinator?.rebuildWindows()
     }
 
-    @objc private func selectPreset(_ sender: NSMenuItem) {
-        guard let preset = sender.representedObject as? PodPreset else { return }
-        store.applyPreset(preset)
-        coordinator?.rebuildWindows()
-        rebuildMenu()
-    }
-
     @objc private func changeLanguage(_ sender: NSMenuItem) {
         guard let lang = sender.representedObject as? AppLanguage else { return }
         LocalizationManager.shared.currentLanguage = lang
