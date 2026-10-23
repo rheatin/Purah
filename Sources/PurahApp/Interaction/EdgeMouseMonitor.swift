@@ -435,7 +435,7 @@ public final class EdgeMouseMonitor {
             threshold: store.activePushResistanceBarrier
         )
 
-        if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration {
+        if store.isGateTelemetryTrackingEnabled {
             if !breakthrough && pushAccumulator.currentForce > 0 && store.activeDrawerPodId == nil {
                 store.onboardingGateState = .pushing
                 store.onboardingGateTargetValue = Int(store.activePushResistanceBarrier)
@@ -620,7 +620,7 @@ public final class EdgeMouseMonitor {
                     store.invalidateLayoutCache()
                 }
             }
-            if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration && store.activeDrawerPodId == nil {
+            if store.isGateTelemetryTrackingEnabled && store.activeDrawerPodId == nil {
                 if store.onboardingGateState != .opened && store.onboardingGateState != .idle {
                     store.onboardingGateState = .idle
                     store.onboardingGateProgress = 0.0
@@ -642,7 +642,7 @@ public final class EdgeMouseMonitor {
             pushAccumulator.reset()
             cancelInitialDwell()
             cancelPortalHover()
-            if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration && store.activeDrawerPodId == nil {
+            if store.isGateTelemetryTrackingEnabled && store.activeDrawerPodId == nil {
                 if store.onboardingGateState != .opened && store.onboardingGateState != .idle {
                     store.onboardingGateState = .idle
                     store.onboardingGateProgress = 0.0
@@ -699,7 +699,7 @@ public final class EdgeMouseMonitor {
 
             if isVerticalFling || abs(vel.y) > 250.0 {
                 cancelInitialDwell()
-                if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration {
+                if store.isGateTelemetryTrackingEnabled {
                     store.onboardingGateState = .suppressedFling
                     store.onboardingGateProgress = 0.0
                     store.onboardingGateCurrentValue = Int(abs(vel.y))
@@ -723,7 +723,7 @@ public final class EdgeMouseMonitor {
                     store.invalidateLayoutCache()
                 }
             }
-            if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration && store.activeDrawerPodId == nil {
+            if store.isGateTelemetryTrackingEnabled && store.activeDrawerPodId == nil {
                 if store.onboardingGateState != .opened && store.onboardingGateState != .idle {
                     store.onboardingGateState = .idle
                     store.onboardingGateProgress = 0.0
@@ -777,7 +777,7 @@ public final class EdgeMouseMonitor {
                         threshold: store.activePushResistanceBarrier
                     )
                     isPushForceBreakthrough = !isSeam && isAccumulatorBreakthrough
-                    if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration {
+                    if store.isGateTelemetryTrackingEnabled {
                         if !isPushForceBreakthrough && pushAccumulator.currentForce > 0 && store.activeDrawerPodId == nil {
                             store.onboardingGateState = .pushing
                             store.onboardingGateTargetValue = Int(store.activePushResistanceBarrier)
@@ -823,7 +823,7 @@ public final class EdgeMouseMonitor {
 
                 // Mode 2: Hover dwell gate trigger (strictly adheres to configured dwell duration)
                 let requiredDwell: Double = {
-                    if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration && store.edgeTriggerSensitivity == .cautious {
+                    if store.isGateTelemetryTrackingEnabled && store.edgeTriggerSensitivity == .cautious {
                         return 0.28
                     }
                     return store.activeInitialDwellSeconds
@@ -848,7 +848,7 @@ public final class EdgeMouseMonitor {
                     let remainingDwell = max(requiredDwell - hoverDuration, 0.02)
                     let candidateId = candidate.id
 
-                    if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration {
+                    if store.isGateTelemetryTrackingEnabled {
                         let targetMs = max(Int(requiredDwell * 1000), 1)
                         store.onboardingGateState = .dwelling
                         store.onboardingGateTargetValue = targetMs
@@ -858,7 +858,7 @@ public final class EdgeMouseMonitor {
                             while !Task.isCancelled {
                                 try? await Task.sleep(nanoseconds: 16_000_000)
                                 guard !Task.isCancelled, let self = self else { break }
-                                guard self.store.isOnboardingGuideActive && self.store.onboardingStep == .antiTouchCalibration else { break }
+                                guard self.store.isGateTelemetryTrackingEnabled else { break }
                                 guard self.store.onboardingGateState == .dwelling else { break }
                                 let elapsed = Date().timeIntervalSince(startTime) + hoverDuration
                                 let elapsedMs = Int(elapsed * 1000)
@@ -944,7 +944,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func activatePodDrawer(candidate: SlotPod, matched: ResolvedPodLayoutItem, currentWindowY: CGFloat, edge: MountEdge) {
-        if store.isOnboardingGuideActive && store.onboardingStep == .antiTouchCalibration {
+        if store.isGateTelemetryTrackingEnabled {
             store.onboardingGateState = .opened
             store.onboardingGateProgress = 1.0
             store.onboardingGateCurrentValue = store.onboardingGateTargetValue

@@ -58,6 +58,10 @@ public struct InteractionSettingsView: View {
                                     get: { store.edgeTriggerMode },
                                     set: {
                                         store.edgeTriggerMode = $0
+                                        store.onboardingGateTargetValue = ($0 == .hoverDwell ? Int(store.activeInitialDwellSeconds * 1000) : Int(store.activePushResistanceBarrier))
+                                        store.onboardingGateState = .idle
+                                        store.onboardingGateProgress = 0.0
+                                        store.onboardingGateCurrentValue = 0
                                         store.savePersistentState()
                                     }
                                 ),
@@ -80,12 +84,21 @@ public struct InteractionSettingsView: View {
                                 options: EdgeTriggerSensitivity.allCases,
                                 selection: Binding(
                                     get: { store.edgeTriggerSensitivity },
-                                    set: { store.applySensitivityPreset($0) }
+                                    set: {
+                                        store.applySensitivityPreset($0)
+                                        store.onboardingGateTargetValue = (store.edgeTriggerMode == .hoverDwell ? Int(store.activeInitialDwellSeconds * 1000) : Int(store.activePushResistanceBarrier))
+                                        store.onboardingGateState = .idle
+                                        store.onboardingGateProgress = 0.0
+                                        store.onboardingGateCurrentValue = 0
+                                    }
                                 ),
                                 titleForOption: { $0.localizedDisplayName }
                             )
                             .frame(width: 280)
                         }
+
+                        // Live Anti-Touch Gate Telemetry Meter
+                        PurahEdgeGateMeterView(store: store)
 
                         VStack(spacing: 8) {
                             if store.edgeTriggerMode == .hoverDwell {
@@ -97,6 +110,9 @@ public struct InteractionSettingsView: View {
                                         set: {
                                             store.customInitialDwellMs = $0
                                             store.edgeTriggerSensitivity = .custom
+                                            if store.edgeTriggerMode == .hoverDwell {
+                                                store.onboardingGateTargetValue = Int($0)
+                                            }
                                             store.savePersistentState()
                                         }
                                     ),
@@ -113,6 +129,9 @@ public struct InteractionSettingsView: View {
                                         set: {
                                             store.customPushResistanceBarrier = $0
                                             store.edgeTriggerSensitivity = .custom
+                                            if store.edgeTriggerMode == .pushForce {
+                                                store.onboardingGateTargetValue = Int($0)
+                                            }
                                             store.savePersistentState()
                                         }
                                     ),
@@ -334,6 +353,18 @@ public struct InteractionSettingsView: View {
             .frame(width: 680)
         }
         .frame(minHeight: 560)
+        .onAppear {
+            store.isInteractionSettingsTelemetryActive = true
+            store.onboardingGateState = .idle
+            store.onboardingGateProgress = 0.0
+            store.onboardingGateCurrentValue = 0
+            store.onboardingGateTargetValue = store.edgeTriggerMode == .hoverDwell
+                ? Int(store.activeInitialDwellSeconds * 1000)
+                : Int(store.activePushResistanceBarrier)
+        }
+        .onDisappear {
+            store.isInteractionSettingsTelemetryActive = false
+        }
     }
 
     @ViewBuilder

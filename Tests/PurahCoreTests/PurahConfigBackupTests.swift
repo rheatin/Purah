@@ -271,7 +271,7 @@ struct OnboardingAndLaunchAtLoginTests {
         // Step 2: Decompose demo
         store.selectOnboardingStep(.decomposeDemo)
         #expect(store.pods.contains(where: { $0.id == "vitals" && $0.isEnabled && $0.edge == .left }))
-        #expect(store.pods.contains(where: { $0.id == "scripts" && $0.isEnabled && $0.edge == .right }))
+        #expect(store.pods.contains(where: { $0.id == "calendar" && $0.isEnabled && $0.edge == .right }))
         #expect(store.isPodDecomposed("vitals") == false)
         #expect(store.isCurrentOnboardingMissionCompleted == false)
 
@@ -290,6 +290,9 @@ struct OnboardingAndLaunchAtLoginTests {
         #expect(store.isCurrentOnboardingMissionCompleted == true)
 
         // Step 4: Page demo
+        if store.pods.filter({ $0.edge == .right && $0.isEnabled }).count < 2 {
+            store.mountPod(id: "scripts", to: .right)
+        }
         store.selectOnboardingStep(.pageDemo)
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
         #expect(rightPods.count >= 2)
@@ -371,5 +374,87 @@ struct OnboardingAndLaunchAtLoginTests {
         monitor.processMouse(point: edgePoint, now: t0.addingTimeInterval(0.18), customVelocity: .zero)
         #expect(store.activeDrawerPodId != nil, "Active drawer should be opened by edge hover in anti-touch calibration")
         #expect(store.onboardingDidTriggerEdgeDrawer == true, "onboardingDidTriggerEdgeDrawer should be set to true")
+    }
+
+    @Test("Non-destructive onboarding preserves user's mounted pods when navigating to Step 5 breathingDemo")
+    func testOnboardingPreservesUserPodsInBreathingDemo() {
+        let store = PurahWorkspaceStore()
+        store.startInteractiveOnboarding(clearAllPods: true)
+
+        // User mounts custom pods in Step 1
+        store.mountPod(id: "terminal", to: .left)
+        store.mountPod(id: "notes", to: .left)
+        store.mountPod(id: "music", to: .right)
+
+        // Advance to Step 5 breathingDemo
+        store.selectOnboardingStep(.breathingDemo)
+
+        // User's custom pods must be preserved and NOT overwritten by 7-pod layout
+        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+        #expect(leftPods.map(\.id).contains("terminal"))
+        #expect(leftPods.map(\.id).contains("notes"))
+        #expect(rightPods.map(\.id).contains("music"))
+        #expect(leftPods.count == 2)
+        #expect(store.isUsingTemporaryDemoSandbox == false)
+    }
+
+    @Test("toggleTemporaryBreathingSandbox snapshots user pods and restores exact layout")
+    func testTemporaryBreathingSandboxSnapshotAndRestore() {
+        let store = PurahWorkspaceStore()
+        store.startInteractiveOnboarding(clearAllPods: true)
+
+        store.mountPod(id: "terminal", to: .left)
+        store.mountPod(id: "notes", to: .left)
+        store.mountPod(id: "music", to: .right)
+        store.isDynamicBreathingEnabled = false
+
+        store.selectOnboardingStep(.breathingDemo)
+
+        // Toggle on the 7-pod sandbox
+        store.toggleTemporaryBreathingSandbox()
+        #expect(store.isUsingTemporaryDemoSandbox == true)
+        #expect(store.isDynamicBreathingEnabled == true)
+        let sandboxLeft = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(sandboxLeft.count == 7)
+
+        // Toggle off / restore user snapshot
+        store.toggleTemporaryBreathingSandbox()
+        #expect(store.isUsingTemporaryDemoSandbox == false)
+        #expect(store.isDynamicBreathingEnabled == false)
+        let restoredLeft = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        let restoredRight = store.pods.filter { $0.edge == .right && $0.isEnabled }
+        #expect(restoredLeft.map(\.id).contains("terminal"))
+        #expect(restoredLeft.map(\.id).contains("notes"))
+        #expect(restoredLeft.count == 2)
+        #expect(restoredRight.map(\.id).contains("music"))
+
+        // Also test: opening sandbox then advancing to Step 6 auto-restores
+        store.toggleTemporaryBreathingSandbox()
+        #expect(store.isUsingTemporaryDemoSandbox == true)
+        store.selectOnboardingStep(.antiTouchCalibration)
+        #expect(store.isUsingTemporaryDemoSandbox == false)
+        let afterStep6Left = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(afterStep6Left.map(\.id).contains("terminal"))
+        #expect(afterStep6Left.map(\.id).contains("notes"))
+    }
+
+    @Test("isGateTelemetryTrackingEnabled evaluates onboarding calibration and interaction settings telemetry")
+    func testGateTelemetryTrackingEvaluation() {
+        let store = PurahWorkspaceStore()
+        store.isOnboardingGuideActive = false
+        store.isInteractionSettingsTelemetryActive = false
+        #expect(store.isGateTelemetryTrackingEnabled == false)
+
+        store.isInteractionSettingsTelemetryActive = true
+        #expect(store.isGateTelemetryTrackingEnabled == true)
+
+        store.isInteractionSettingsTelemetryActive = false
+        store.isOnboardingGuideActive = true
+        store.onboardingStep = .antiTouchCalibration
+        #expect(store.isGateTelemetryTrackingEnabled == true)
+
+        store.onboardingStep = .mountPods
+        #expect(store.isGateTelemetryTrackingEnabled == false)
     }
 }

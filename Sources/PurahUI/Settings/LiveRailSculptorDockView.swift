@@ -747,23 +747,23 @@ public struct LiveRailSculptorDockView: View {
                     }
                     Spacer(minLength: 8)
 
-                    // Interactive Dynamic Breathing Toggle Pill
+                    // Temporary 7-Pod Sandbox Toggle / Restore My Layout Button
                     Button {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                            store.setDynamicBreathingEnabled(!store.isDynamicBreathingEnabled)
+                            store.toggleTemporaryBreathingSandbox()
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: store.isDynamicBreathingEnabled ? "lungs.fill" : "lungs")
+                            Image(systemName: store.isUsingTemporaryDemoSandbox ? "arrow.uturn.backward.circle.fill" : "flask.fill")
                                 .font(.system(size: 9.5, weight: .bold))
-                            Text(store.isDynamicBreathingEnabled ? "onboarding.step5.dynamicToggleOn".localized : "onboarding.step5.dynamicToggleOff".localized)
+                            Text(store.isUsingTemporaryDemoSandbox ? "onboarding.step5.sandboxRestore".localized : "onboarding.step5.sandboxTry".localized)
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         }
-                        .foregroundColor(store.isDynamicBreathingEnabled ? palette.primaryAccent : .secondary)
-                        .padding(.horizontal, 7)
+                        .foregroundColor(store.isUsingTemporaryDemoSandbox ? .black : .white)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(store.isDynamicBreathingEnabled ? palette.primaryAccent.opacity(0.18) : Color.white.opacity(0.08))
+                        .background(store.isUsingTemporaryDemoSandbox ? Color.orange : Color.white.opacity(0.12))
                         .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
