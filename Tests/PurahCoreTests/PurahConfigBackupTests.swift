@@ -366,7 +366,9 @@ struct OnboardingAndLaunchAtLoginTests {
         #expect(store.isRehearsingBreathingInSculptor == true)
         #expect(store.onboardingDidTriggerEdgeDrawer == false)
 
-        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
+        let t0 = Date()
+        monitor.processMouse(point: edgePoint, now: t0, customVelocity: .zero)
+        monitor.processMouse(point: edgePoint, now: t0.addingTimeInterval(0.18), customVelocity: .zero)
         #expect(store.activeDrawerPodId != nil, "Active drawer should be opened by edge hover in anti-touch calibration")
         #expect(store.onboardingDidTriggerEdgeDrawer == true, "onboardingDidTriggerEdgeDrawer should be set to true")
     }

@@ -796,6 +796,10 @@ public struct LiveRailSculptorDockView: View {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                     store.edgeTriggerMode = .hoverDwell
                                     store.onboardingDidSwitchTriggerMode = true
+                                    store.onboardingGateState = .idle
+                                    store.onboardingGateProgress = 0.0
+                                    store.onboardingGateCurrentValue = 0
+                                    store.onboardingGateTargetValue = (store.edgeTriggerSensitivity == .agile ? 0 : (store.edgeTriggerSensitivity == .balanced ? 150 : 280))
                                     store.savePersistentState()
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -814,6 +818,10 @@ public struct LiveRailSculptorDockView: View {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                     store.edgeTriggerMode = .pushForce
                                     store.onboardingDidSwitchTriggerMode = true
+                                    store.onboardingGateState = .idle
+                                    store.onboardingGateProgress = 0.0
+                                    store.onboardingGateCurrentValue = 0
+                                    store.onboardingGateTargetValue = Int(store.activePushResistanceBarrier)
                                     store.savePersistentState()
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -835,11 +843,36 @@ public struct LiveRailSculptorDockView: View {
                                 Button {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                         store.edgeTriggerSensitivity = sens
+                                        store.onboardingGateState = .idle
+                                        store.onboardingGateProgress = 0.0
+                                        store.onboardingGateCurrentValue = 0
+                                        if store.edgeTriggerMode == .hoverDwell {
+                                            store.onboardingGateTargetValue = (sens == .agile ? 0 : (sens == .balanced ? 150 : 280))
+                                        } else {
+                                            store.onboardingGateTargetValue = Int(sens.pushResistanceBarrier)
+                                        }
                                         store.savePersistentState()
                                         store.triggerControlHaptic(.alignment)
                                     }
                                 } label: {
-                                    Text(sens.localizedShortName)
+                                    let pillText: String = {
+                                        if store.edgeTriggerMode == .hoverDwell {
+                                            switch sens {
+                                            case .agile: return "\(sens.localizedShortName) (0ms)"
+                                            case .balanced: return "\(sens.localizedShortName) (150ms)"
+                                            case .cautious: return "\(sens.localizedShortName) (280ms)"
+                                            case .custom: return "\(sens.localizedShortName) (\(Int(store.customInitialDwellMs))ms)"
+                                            }
+                                        } else {
+                                            switch sens {
+                                            case .agile: return "\(sens.localizedShortName) (22px)"
+                                            case .balanced: return "\(sens.localizedShortName) (36px)"
+                                            case .cautious: return "\(sens.localizedShortName) (52px)"
+                                            case .custom: return "\(sens.localizedShortName) (\(Int(store.customPushResistanceBarrier))px)"
+                                            }
+                                        }
+                                    }()
+                                    Text(pillText)
                                         .font(.system(size: 8.5, weight: store.edgeTriggerSensitivity == sens ? .bold : .medium, design: .rounded))
                                         .foregroundColor(store.edgeTriggerSensitivity == sens ? .white : .secondary)
                                         .padding(.horizontal, 5)
@@ -853,7 +886,7 @@ public struct LiveRailSculptorDockView: View {
                     }
 
                     missionBox(isCompleted: isDone) {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 4) {
                                 Image(systemName: "info.circle.fill")
                                     .font(.system(size: 9))
@@ -869,6 +902,74 @@ public struct LiveRailSculptorDockView: View {
                                     format: "onboarding.step6.mission".localized,
                                     isDone ? "onboarding.step6.statusTested".localized : "onboarding.step6.statusWaiting".localized
                                 )
+                            )
+
+                            // Live Gate Telemetry Meter Bar
+                            let gateStatusText: String = {
+                                switch store.onboardingGateState {
+                                case .idle:
+                                    return "onboarding.step6.gate.idle".localized
+                                case .dwelling:
+                                    return String(format: "onboarding.step6.gate.dwelling".localized, store.onboardingGateCurrentValue, store.onboardingGateTargetValue)
+                                case .pushing:
+                                    return String(format: "onboarding.step6.gate.pushing".localized, store.onboardingGateCurrentValue, store.onboardingGateTargetValue)
+                                case .suppressedFling:
+                                    return String(format: "onboarding.step6.gate.suppressedFling".localized, store.onboardingGateCurrentValue)
+                                case .opened:
+                                    let unit = store.edgeTriggerMode == .hoverDwell ? "ms" : "px"
+                                    return String(format: "onboarding.step6.gate.opened".localized, store.onboardingGateTargetValue, unit)
+                                }
+                            }()
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 4) {
+                                    Text("onboarding.step6.gate.title".localized)
+                                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                        .foregroundColor(palette.primaryAccent)
+                                    Spacer()
+                                    Text("\(Int(store.onboardingGateProgress * 100))%")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(store.onboardingGateState == .suppressedFling ? .orange : (store.onboardingGateState == .opened ? .green : palette.primaryAccent))
+                                }
+
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.12))
+                                            .frame(height: 5)
+                                        Capsule()
+                                            .fill(
+                                                store.onboardingGateState == .suppressedFling ? Color.orange :
+                                                (store.onboardingGateState == .opened ? Color.green : palette.primaryAccent)
+                                            )
+                                            .frame(width: max(geo.size.width * CGFloat(store.onboardingGateProgress), 4), height: 5)
+                                            .animation(.linear(duration: 0.05), value: store.onboardingGateProgress)
+                                    }
+                                }
+                                .frame(height: 5)
+
+                                Text(gateStatusText)
+                                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                                    .foregroundColor(
+                                        store.onboardingGateState == .suppressedFling ? .orange :
+                                        (store.onboardingGateState == .opened ? .green : .white.opacity(0.85))
+                                    )
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Color.black.opacity(0.35))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .stroke(
+                                                store.onboardingGateState == .suppressedFling ? Color.orange.opacity(0.6) :
+                                                (store.onboardingGateState == .opened ? Color.green.opacity(0.6) : palette.primaryAccent.opacity(0.25)),
+                                                lineWidth: 0.8
+                                            )
+                                    )
                             )
                         }
                     }

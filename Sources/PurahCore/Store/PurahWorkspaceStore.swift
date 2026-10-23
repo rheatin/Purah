@@ -69,6 +69,19 @@ public final class PurahWorkspaceStore {
     public var onboardingDidSwitchTriggerMode: Bool = false
     public var onboardingDidTriggerEdgeDrawer: Bool = false
 
+    public enum OnboardingGateTelemetryState: String, Sendable {
+        case idle
+        case dwelling
+        case pushing
+        case suppressedFling
+        case opened
+    }
+
+    public var onboardingGateState: OnboardingGateTelemetryState = .idle
+    public var onboardingGateProgress: Double = 0.0
+    public var onboardingGateCurrentValue: Int = 0
+    public var onboardingGateTargetValue: Int = 150
+
     public var isCurrentOnboardingMissionCompleted: Bool {
         switch onboardingStep {
         case .mountPods:
@@ -870,6 +883,9 @@ public final class PurahWorkspaceStore {
                 onboardingBreathingHoveredPods.insert(podId)
             } else if onboardingStep == .antiTouchCalibration {
                 onboardingDidTriggerEdgeDrawer = true
+                onboardingGateState = .opened
+                onboardingGateProgress = 1.0
+                onboardingGateCurrentValue = onboardingGateTargetValue
             } else if onboardingStep == .decomposeDemo {
                 onboardingDidToggleDecompose = true
             }
@@ -920,6 +936,11 @@ public final class PurahWorkspaceStore {
         activeDrawerPodId = nil
         activeDrawerItemId = nil
         hoveredPodId = nil
+        if isOnboardingGuideActive && onboardingStep == .antiTouchCalibration {
+            onboardingGateState = .idle
+            onboardingGateProgress = 0.0
+            onboardingGateCurrentValue = 0
+        }
         invalidateLayoutCache()
     }
 
@@ -1431,7 +1452,7 @@ public final class PurahWorkspaceStore {
 
     public func notifyCapacityWarningIfNeeded() {
         let now = Date()
-        if let last = lastCapacityAlertTime, now.timeIntervalSince(last) < 6.0 {
+        if !Self.isTestingEnvironment, let last = lastCapacityAlertTime, now.timeIntervalSince(last) < 6.0 {
             return
         }
         for edge in [MountEdge.left, MountEdge.right] {
@@ -3239,7 +3260,15 @@ public final class PurahWorkspaceStore {
             isAlwaysCompactBreathing = true
             isRehearsingBreathingInSculptor = true
         case .antiTouchCalibration:
+            dismissActiveDrawer()
+            if edgeTriggerSensitivity == .custom || edgeTriggerSensitivity == .agile {
+                edgeTriggerSensitivity = .balanced
+            }
             onboardingDidTriggerEdgeDrawer = false
+            onboardingGateState = .idle
+            onboardingGateProgress = 0.0
+            onboardingGateCurrentValue = 0
+            onboardingGateTargetValue = Int(activeInitialDwellSeconds * 1000)
             let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
             if leftPods.count < 2 {
                 mountPod(id: "vitals", to: .left)

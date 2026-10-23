@@ -1159,6 +1159,7 @@ public struct LiveSculptPodCapsuleView: View {
     @State private var lastResizeHapticStep: Int = 0
     @State private var isResizeHovered: Bool = false
     @State private var isPulseOn: Bool = false
+    @State private var arrowBounce: Bool = false
 
     private var pod: SlotPod {
         item.pod
@@ -1352,65 +1353,6 @@ public struct LiveSculptPodCapsuleView: View {
                             .fixedSize()
                             .help("Move pod to another page")
 
-                            // Split / Stack buttons
-                            if pod.majorGroupId != nil {
-                                Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                        store.splitPodFromMajorGroup(id: pod.id)
-                                        store.triggerControlHaptic(.alignment)
-                                    }
-                                } label: {
-                                    Text("✂️ Split")
-                                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                                        .foregroundColor(.orange)
-                                        .padding(.horizontal, 4)
-                                        .frame(height: 17)
-                                        .background(Color.orange.opacity(0.20))
-                                        .cornerRadius(4)
-                                }
-                                .buttonStyle(.tactile)
-                                .help("Split from Shared Major Pod")
-                            }
-
-                            if store.canMergePodWithNext(id: pod.id) {
-                                Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                        store.mergePodWithNext(id: pod.id)
-                                        store.triggerControlHaptic(.alignment)
-                                    }
-                                } label: {
-                                    Text("🔗 Stack")
-                                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                                        .foregroundColor(palette.primaryAccent)
-                                        .padding(.horizontal, 4)
-                                        .frame(height: 17)
-                                        .background(palette.primaryAccent.opacity(0.18))
-                                        .cornerRadius(4)
-                                }
-                                .buttonStyle(.tactile)
-                                .help("Stack with pod below into a Shared Major Pod")
-                            }
-
-                            // Decompose toggle button
-                            if ["vitals", "scripts", "clipboard", "ai", "calendar"].contains(pod.id) && !isSharedStacked {
-                                let isDecomp = store.isPodDecomposed(pod.id)
-                                Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                        store.togglePodDecomposedInSculptor(podId: pod.id)
-                                    }
-                                } label: {
-                                    Text(isDecomp ? "onboarding.step2.capsuleButton.bar".localized : "onboarding.step2.capsuleButton.chips".localized)
-                                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                                        .foregroundColor(isDecomp ? palette.primaryAccent : .secondary)
-                                        .padding(.horizontal, 4)
-                                        .frame(height: 17)
-                                        .background(isDecomp ? palette.primaryAccent.opacity(0.20) : Color.white.opacity(0.10))
-                                        .cornerRadius(4)
-                                }
-                                .buttonStyle(.tactile)
-                                .help("Toggle between composite bar and decomposed chips")
-                            }
-
                             Spacer(minLength: 0)
 
                             // Throw to Opposite Rail
@@ -1434,7 +1376,190 @@ public struct LiveSculptPodCapsuleView: View {
                         .padding(.top, 2)
                     }
 
-                    if store.isPodDecomposed(pod.id) && !isSharedStacked {
+                    // Row 3: Dedicated Structure & Decompose Tools (shown when item.spanH >= 64, prevents truncation)
+                    if spanH >= 64 {
+                        HStack(spacing: 5) {
+                            // Split / Stack buttons
+                            if pod.majorGroupId != nil {
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.splitPodFromMajorGroup(id: pod.id)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
+                                } label: {
+                                    Text("✂️ Split")
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 4)
+                                        .frame(height: 17)
+                                        .background(Color.orange.opacity(0.20))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                                .fixedSize()
+                                .help("Split from Shared Major Pod")
+                            }
+
+                            if store.canMergePodWithNext(id: pod.id) {
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.mergePodWithNext(id: pod.id)
+                                        store.triggerControlHaptic(.alignment)
+                                    }
+                                } label: {
+                                    Text("🔗 Stack")
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(palette.primaryAccent)
+                                        .padding(.horizontal, 4)
+                                        .frame(height: 17)
+                                        .background(palette.primaryAccent.opacity(0.18))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                                .fixedSize()
+                                .help("Stack with pod below into a Shared Major Pod")
+                            }
+
+                            // Decompose toggle button
+                            if ["vitals", "scripts", "clipboard", "ai", "calendar"].contains(pod.id) && !isSharedStacked {
+                                let isDecomp = store.isPodDecomposed(pod.id)
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        store.togglePodDecomposedInSculptor(podId: pod.id)
+                                        store.triggerControlHaptic(.levelChange)
+                                    }
+                                } label: {
+                                    Text(isDecomp ? "onboarding.step2.capsuleButton.bar".localized : "onboarding.step2.capsuleButton.chips".localized)
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(isDecomp ? palette.primaryAccent : .secondary)
+                                        .padding(.horizontal, 5)
+                                        .frame(height: 17)
+                                        .background(isDecomp ? palette.primaryAccent.opacity(0.20) : Color.white.opacity(0.10))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.tactile)
+                                .fixedSize()
+                                .help("Toggle between composite bar and decomposed chips")
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 2)
+                    }
+
+                    // Onboarding Step 2 Hero Spotlight Callout + Sub-chips
+                    let isDecomposable = ["vitals", "scripts", "clipboard", "ai", "calendar"].contains(pod.id)
+                    let isOnboardingStep2Decomp = (store.isOnboardingGuideActive && store.onboardingStep == .decomposeDemo && isDecomposable && !isSharedStacked)
+
+                    if isOnboardingStep2Decomp {
+                        let isDecomp = store.isPodDecomposed(pod.id)
+                        VStack(spacing: 5) {
+                            // Animated Bouncing Arrow Badge Callout
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                Text("onboarding.step2.arrowPrompt".localized)
+                                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                                    .lineLimit(1)
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 9.5, weight: .bold))
+                            }
+                            .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3.5)
+                            .background(
+                                Capsule()
+                                    .fill(isDecomp ? Color.cyan : Color.yellow)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white, lineWidth: arrowBounce ? 1.8 : 0.8)
+                            )
+                            .shadow(color: (isDecomp ? Color.cyan : Color.yellow).opacity(arrowBounce ? 0.9 : 0.4), radius: arrowBounce ? 8 : 3)
+                            .offset(y: arrowBounce ? 3 : -3)
+                            .padding(.top, 4)
+
+                            // Full-width Glowing Hero Toggle Button
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.togglePodDecomposedInSculptor(podId: pod.id)
+                                    store.triggerControlHaptic(.levelChange)
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isDecomp ? "rectangle.grid.1x2.fill" : "rectangle.portrait.fill")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(isDecomp ? "onboarding.step2.heroButton.toBar".localized : "onboarding.step2.heroButton.toChips".localized)
+                                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                        .lineLimit(1)
+                                }
+                                .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(isDecomp ? Color.green : Color.yellow)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(Color.white, lineWidth: arrowBounce ? 2.2 : 1.0)
+                                )
+                                .shadow(color: (isDecomp ? Color.green : Color.yellow).opacity(arrowBounce ? 0.9 : 0.4), radius: arrowBounce ? 10 : 4)
+                                .scaleEffect(arrowBounce ? 1.04 : 0.98)
+                            }
+                            .buttonStyle(.tactile)
+                            .padding(.horizontal, 10)
+
+                            if isDecomp {
+                                let subChips: [(String, String)] = {
+                                    if pod.id == "vitals" {
+                                        return [("CPU", "24%"), ("RAM", "62%"), ("NET", "1.2 MB/s"), ("PWR", "98%")]
+                                    } else if pod.id == "scripts" {
+                                        return [("⚡️", "Flush DNS"), ("🗑️", "Empty Trash"), ("🌙", "Dark Mode"), ("🔄", "Restart Dock")]
+                                    } else if pod.id == "clipboard" {
+                                        return [("📋", "Snippet 1"), ("📋", "Snippet 2"), ("📋", "Snippet 3"), ("📋", "Snippet 4")]
+                                    } else if pod.id == "calendar" {
+                                        return [("📅", "10:00 Sync"), ("📅", "14:30 Review"), ("📅", "16:00 1-on-1"), ("📅", "17:30 Standup")]
+                                    } else {
+                                        return [("💬", "Prompt 1"), ("🤖", "Agent"), ("⚡️", "Quick Chat"), ("📁", "Context")]
+                                    }
+                                }()
+
+                                VStack(spacing: 3) {
+                                    ForEach(subChips, id: \.1) { chip in
+                                        HStack(spacing: 4) {
+                                            Text(chip.0)
+                                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                .foregroundColor(podColor)
+                                            Text("·")
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundColor(.white.opacity(0.4))
+                                            Text(chip.1)
+                                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                                .foregroundColor(.white.opacity(0.9))
+                                            Spacer()
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 7.5))
+                                                .foregroundColor(.green.opacity(0.8))
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2.5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .fill(Color.white.opacity(0.08))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                        .stroke(podColor.opacity(0.35), lineWidth: 0.5)
+                                                )
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.top, 4)
+                            }
+                        }
+                    } else if store.isPodDecomposed(pod.id) && !isSharedStacked {
                         let chips: [String] = {
                             if pod.id == "vitals" { return ["CPU", "RAM", "PWR", "DISK"] }
                             if pod.id == "scripts" { return ["RUN", "KILL", "CLEAN"] }
@@ -1605,6 +1730,9 @@ public struct LiveSculptPodCapsuleView: View {
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
                     isPulseOn = true
                 }
+            }
+            withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
+                arrowBounce = true
             }
         }
         .onChange(of: isStackTargetHighlighted) { _, highlighted in

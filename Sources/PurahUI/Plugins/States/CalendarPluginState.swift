@@ -9,15 +9,35 @@ import PurahCore
 @Observable
 @MainActor
 public final class CalendarPluginState: Sendable {
-    public var events: [CalendarEventItem]
-    public var scope: CalendarTimeScope
+    public var events: [CalendarEventItem] {
+        didSet {
+            cachedSubItemHeaders = []
+            cacheTimestamp = 0
+        }
+    }
+    public var scope: CalendarTimeScope {
+        didSet {
+            cachedSubItemHeaders = []
+            cacheTimestamp = 0
+        }
+    }
     public var alertStyle: PluginAlertStyle
     public var alertLeadTime: CalendarAlertLeadTime
     public var dismissAlertOnHover: Bool
     public var isEventGlowAlertEnabled: Bool
     public var isEventToastAlertEnabled: Bool
-    public var overflowStrategy: CalendarOverflowStrategy
-    public var maxRailEvents: Int
+    public var overflowStrategy: CalendarOverflowStrategy {
+        didSet {
+            cachedSubItemHeaders = []
+            cacheTimestamp = 0
+        }
+    }
+    public var maxRailEvents: Int {
+        didSet {
+            cachedSubItemHeaders = []
+            cacheTimestamp = 0
+        }
+    }
     public var isUsingRealCalendar: Bool
     public var isSyncing: Bool
     public var acknowledgedAlertIds: Set<String>
