@@ -93,7 +93,7 @@ public final class PurahWorkspaceStore {
         case .pageDemo:
             return onboardingDidCreatePage && onboardingDidSwitchPage
         case .breathingDemo:
-            return onboardingBreathingHoveredPods.count >= 2
+            return isDynamicBreathingEnabled && onboardingBreathingHoveredPods.count >= 2
         case .antiTouchCalibration:
             return onboardingDidTriggerEdgeDrawer
         }
@@ -335,7 +335,7 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
-    private func normalizePageRanges(for edge: MountEdge) {
+    public func normalizePageRanges(for edge: MountEdge) {
         let enabledIndices = pods.indices.filter { pods[$0].edge == edge && pods[$0].isEnabled }
         let groupedByPage = Dictionary(grouping: enabledIndices, by: { max(0, pods[$0].pageIndex) })
         let pageCount = groupedByPage.count
@@ -1589,12 +1589,12 @@ public final class PurahWorkspaceStore {
                 let clusterNeeded: Double
                 if !isDynamicBreathingEnabled {
                     if cluster.count >= 2 {
-                        let sumSub = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 24.0) }
-                        let gaps = Double(cluster.count - 1) * 3.0
-                        clusterNeeded = max(sumSub + gaps, 155.0)
+                        let hasManual = (isLiveRailEditingMode && !isRehearsingBreathingInSculptor) || cluster.contains(where: { $0.minLength <= 0.06 })
+                        clusterNeeded = hasManual ? max(96.0, Double(cluster.count) * 24.0) : max(155.0, Double(cluster.count) * 48.0)
                     } else {
                         let pod = cluster[0]
-                        clusterNeeded = max(pod.range.length * totalHeight, Double(minimumDrawerHeight(for: pod.id)))
+                        let isSculpting = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
+                        clusterNeeded = (isSculpting || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
                     }
                 } else {
                     if cluster.count >= 2 {
@@ -1832,8 +1832,16 @@ public final class PurahWorkspaceStore {
                 idleClusterSpans = standardSpans
             }
 
+            if !isAlwaysCompactBreathing {
+                let sumIdle = idleClusterSpans.reduce(0.0, +)
+                if sumIdle > 0 && abs(sumIdle - netAvailable) > 0.001 {
+                    let scale = netAvailable / sumIdle
+                    idleClusterSpans = idleClusterSpans.map { $0 * scale }
+                }
+            }
+
             idleClusterStartYs = []
-            if sumStandard > netAvailable || isAlwaysCompactBreathing {
+            if !isAlwaysCompactBreathing || sumStandard > netAvailable || isAlwaysCompactBreathing {
                 var curY = safeTop
                 for span in idleClusterSpans {
                     idleClusterStartYs.append(curY)
@@ -2055,34 +2063,47 @@ public final class PurahWorkspaceStore {
                     } else {
                         clusterSpans = clusterMinFloors
                     }
+                    let currentSum = clusterSpans.reduce(0.0, +)
+                    if currentSum > 0 && abs(currentSum - netAvailable) > 0.001 {
+                        let scale = netAvailable / currentSum
+                        clusterSpans = clusterSpans.map { $0 * scale }
+                    }
                 } else {
                     let scale = netAvailable / sumStandard
                     clusterSpans = standardSpans.map { $0 * scale }
                 }
             }
-            var curY = safeTop
-            for cIdx in 0..<clusters.count {
-                let desired = clusters[cIdx][0].range.start * totalHeight
-                let startY = max(desired, curY)
-                clusterStartYs[cIdx] = startY
-                curY = startY + clusterSpans[cIdx] + clusterGap
-            }
-            if let lastStart = clusterStartYs.last, let lastSpan = clusterSpans.last {
-                let overflow = (lastStart + lastSpan) - safeBottom
-                if overflow > 0 {
-                    var targetBottom = safeBottom
-                    for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
-                        let maxAllowed = targetBottom - clusterSpans[cIdx]
-                        clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowed)
-                        targetBottom = clusterStartYs[cIdx] - clusterGap
+            if sumStandard > netAvailable {
+                var curY = safeTop
+                for cIdx in 0..<clusters.count {
+                    clusterStartYs[cIdx] = curY
+                    curY += clusterSpans[cIdx] + clusterGap
+                }
+            } else {
+                var curY = safeTop
+                for cIdx in 0..<clusters.count {
+                    let desired = clusters[cIdx][0].range.start * totalHeight
+                    let startY = max(desired, curY)
+                    clusterStartYs[cIdx] = startY
+                    curY = startY + clusterSpans[cIdx] + clusterGap
+                }
+                if let lastStart = clusterStartYs.last, let lastSpan = clusterSpans.last {
+                    let overflow = (lastStart + lastSpan) - safeBottom
+                    if overflow > 0 {
+                        var targetBottom = safeBottom
+                        for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
+                            let maxAllowed = targetBottom - clusterSpans[cIdx]
+                            clusterStartYs[cIdx] = min(clusterStartYs[cIdx], maxAllowed)
+                            targetBottom = clusterStartYs[cIdx] - clusterGap
+                        }
                     }
                 }
-            }
-            for cIdx in 0..<clusters.count {
-                if cIdx == 0 {
-                    clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
-                } else {
-                    clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + clusterSpans[cIdx - 1] + clusterGap)
+                for cIdx in 0..<clusters.count {
+                    if cIdx == 0 {
+                        clusterStartYs[cIdx] = max(clusterStartYs[cIdx], safeTop)
+                    } else {
+                        clusterStartYs[cIdx] = max(clusterStartYs[cIdx], clusterStartYs[cIdx - 1] + clusterSpans[cIdx - 1] + clusterGap)
+                    }
                 }
             }
         }
@@ -2813,9 +2834,7 @@ public final class PurahWorkspaceStore {
         for idx in pods.indices {
             let pod = pods[idx]
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if isDynamicBreathingEnabled {
-                pods[idx].minLength = max(28.0 / screenH, 0.035)
-            } else {
+            if !isDynamicBreathingEnabled && pod.minLength > 0.06 {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[idx].minLength = max(minPt / screenH, 0.07)
             }
@@ -2839,9 +2858,7 @@ public final class PurahWorkspaceStore {
         if !pod.isEnabled {
             pods[index].isEnabled = true
             let screenH = max(Double(availableScreenHeight(for: pod.edge)), 400.0)
-            if isDynamicBreathingEnabled {
-                pods[index].minLength = max(28.0 / screenH, 0.035)
-            } else {
+            if !isDynamicBreathingEnabled && pod.minLength > 0.06 {
                 let minPt = Double(minimumDrawerHeight(for: pod.id))
                 pods[index].minLength = max(minPt / screenH, 0.07)
             }
@@ -3245,19 +3262,23 @@ public final class PurahWorkspaceStore {
             }
         case .breathingDemo:
             onboardingBreathingHoveredPods.removeAll()
-            mountPod(id: "vitals", to: .left)
-            mountPod(id: "shelf", to: .left)
-            mountPod(id: "notes", to: .left)
-            mountPod(id: "clipboard", to: .left)
+            let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+            setRailPage(0, for: .left)
+            for id in leftDemoIds {
+                mountPod(id: id, to: .left)
+                if let idx = pods.firstIndex(where: { $0.id == id }) {
+                    pods[idx].pageIndex = 0
+                }
+            }
+            resetMajorGroups(for: .left)
             normalizePageRanges(for: .left)
             let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
             if rightPods.count < 2 {
                 mountPod(id: "calendar", to: .right)
-                mountPod(id: "scripts", to: .right)
+                mountPod(id: "todo", to: .right)
             }
             normalizePageRanges(for: .right)
-            isDynamicBreathingEnabled = true
-            isAlwaysCompactBreathing = true
+            isAlwaysCompactBreathing = false
             isRehearsingBreathingInSculptor = true
         case .antiTouchCalibration:
             dismissActiveDrawer()
@@ -3453,30 +3474,32 @@ public final class PurahWorkspaceStore {
     }
 
     public func rehearseDynamicBreathing() {
-        var leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
-        if leftPods.count < 3 {
-            mountPod(id: "vitals", to: .left)
-            mountPod(id: "shelf", to: .left)
-            mountPod(id: "notes", to: .left)
-            mountPod(id: "clipboard", to: .left)
-            normalizePageRanges(for: .left)
-            leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
+        let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+        setRailPage(0, for: .left)
+        for id in leftDemoIds {
+            mountPod(id: id, to: .left)
+            if let idx = pods.firstIndex(where: { $0.id == id }) {
+                pods[idx].pageIndex = 0
+            }
         }
+        resetMajorGroups(for: .left)
+        normalizePageRanges(for: .left)
         isDynamicBreathingEnabled = true
-        isAlwaysCompactBreathing = true
+        isAlwaysCompactBreathing = false
         isRehearsingBreathingInSculptor = true
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
 
-        let podIds = leftPods.map(\.id)
+        let demoExpandIds = Array(leftDemoIds.prefix(3))
         onboardingRehearsalTask?.cancel()
         onboardingRehearsalTask = Task { @MainActor in
-            for podId in podIds {
+            for podId in demoExpandIds {
                 guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                     self.hoveredPodId = podId
                     self.activeDrawerPodId = podId
                     self.activeDrawerItemId = podId
+                    self.onboardingBreathingHoveredPods.insert(podId)
                     self.invalidateLayoutCache()
                 }
                 self.onWindowsRebuildNeeded?()

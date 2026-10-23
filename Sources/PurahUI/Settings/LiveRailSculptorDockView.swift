@@ -746,6 +746,28 @@ public struct LiveRailSculptorDockView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
+
+                    // Interactive Dynamic Breathing Toggle Pill
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            store.setDynamicBreathingEnabled(!store.isDynamicBreathingEnabled)
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: store.isDynamicBreathingEnabled ? "lungs.fill" : "lungs")
+                                .font(.system(size: 9.5, weight: .bold))
+                            Text(store.isDynamicBreathingEnabled ? "onboarding.step5.dynamicToggleOn".localized : "onboarding.step5.dynamicToggleOff".localized)
+                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(store.isDynamicBreathingEnabled ? palette.primaryAccent : .secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(store.isDynamicBreathingEnabled ? palette.primaryAccent.opacity(0.18) : Color.white.opacity(0.08))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.tactile)
+
                     Button {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                             store.rehearseDynamicBreathing()
@@ -765,13 +787,43 @@ public struct LiveRailSculptorDockView: View {
                     .buttonStyle(.tactile)
                 }
 
-                missionBox(isCompleted: isDone) {
-                    HStack(spacing: 8) {
-                        missionCheckItem(
-                            isDone: isDone,
-                            text: String(format: "onboarding.step5.mission".localized, min(hoveredCount, 2))
-                        )
-                        Spacer()
+                missionBox(isCompleted: store.isDynamicBreathingEnabled && isDone) {
+                    if !store.isDynamicBreathingEnabled {
+                        HStack(spacing: 8) {
+                            Text("onboarding.step5.dynamicOffPrompt".localized)
+                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                .foregroundColor(Color.orange.opacity(0.95))
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Spacer(minLength: 4)
+
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    store.setDynamicBreathingEnabled(true)
+                                    store.triggerControlHaptic(.alignment)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lungs.fill")
+                                    Text("onboarding.step5.turnOnDynamic".localized)
+                                }
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.tactile)
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            missionCheckItem(
+                                isDone: isDone,
+                                text: String(format: "onboarding.step5.missionActive".localized, min(hoveredCount, 2))
+                            )
+                            Spacer()
+                        }
                     }
                 }
 

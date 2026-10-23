@@ -306,7 +306,7 @@ struct OnboardingAndLaunchAtLoginTests {
         // Step 5: Breathing demo
         store.selectOnboardingStep(.breathingDemo)
         #expect(store.isDynamicBreathingEnabled == true)
-        #expect(store.isAlwaysCompactBreathing == true)
+        #expect(store.isAlwaysCompactBreathing == false)
         #expect(store.isRehearsingBreathingInSculptor == true)
         #expect(store.isCurrentOnboardingMissionCompleted == false)
 
