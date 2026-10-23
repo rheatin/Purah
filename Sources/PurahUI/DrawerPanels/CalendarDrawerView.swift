@@ -49,7 +49,8 @@ public struct CalendarDrawerView: View {
     private func singleEventCard(event: CalendarEventItem) -> some View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
-        let isImminent = event.isImminent
+        let isImminent = event.isImminent(leadTime: state.alertLeadTime)
+        let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         let isAcknowledged = state.isAlertAcknowledged(id: event.id) || store.isAlertAcknowledged(id: event.id)
         let isAlerting = (isOngoing || isImminent) && (state.isEventGlowAlertEnabled || store.isEventGlowAlertEnabled) && !isAcknowledged
         let calColor: Color = {
@@ -63,7 +64,7 @@ public struct CalendarDrawerView: View {
             if isAlerting && !reduceMotion {
                 ZStack {
                     Circle()
-                        .stroke(podColor, lineWidth: 1.2)
+                        .stroke(isImminent && !isOngoing ? Color.orange : podColor, lineWidth: 1.2)
                         .phaseAnimator([0.0, 1.0]) { view, phase in
                             view
                                 .scaleEffect(1.0 + phase * 0.85)
@@ -72,15 +73,26 @@ public struct CalendarDrawerView: View {
                             .easeInOut(duration: 1.4).repeatForever(autoreverses: false)
                         }
                     Circle()
-                        .fill(podColor)
+                        .fill(isImminent && !isOngoing ? Color.orange : podColor)
                         .frame(width: 7, height: 7)
-                        .shadow(color: podColor.opacity(0.8), radius: 3)
+                        .shadow(color: (isImminent && !isOngoing ? Color.orange : podColor).opacity(0.8), radius: 3)
                 }
                 .frame(width: 14, height: 14)
                 .padding(.top, 2)
+            } else if isPast {
+                Circle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 4)
+            } else if isImminent {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: Color.orange.opacity(0.6), radius: 3)
+                    .padding(.top, 4)
             } else {
                 Circle()
-                    .fill(podColor.opacity(isPast ? 0.35 : 1.0))
+                    .fill(podColor)
                     .frame(width: 7, height: 7)
                     .padding(.top, 4)
             }
@@ -92,7 +104,8 @@ public struct CalendarDrawerView: View {
                     } label: {
                         Text(event.title)
                             .font(.system(size: 12, weight: isOngoing ? .bold : .semibold, design: .rounded))
-                            .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isPast ? 0.45 : 1.0))
+                            .strikethrough(isPast, color: .secondary.opacity(0.65))
+                            .foregroundColor(isPast ? .secondary.opacity(0.55) : (palette.style == .native ? Color.primary : Color.white))
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
@@ -101,25 +114,38 @@ public struct CalendarDrawerView: View {
                     if isOngoing {
                         HStack(spacing: 3) {
                             Circle()
-                                .fill(Color.white)
+                                .fill(calColor.highContrastInk)
                                 .frame(width: 3.5, height: 3.5)
                             Text("calendar.status.now".localized)
                                 .font(.system(size: 8, weight: .heavy, design: .rounded))
                         }
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(Capsule().fill(podColor))
-                        .foregroundColor(.white)
-                        .shadow(color: podColor.opacity(0.6), radius: 3)
+                        .background(Capsule().fill(calColor))
+                        .foregroundColor(calColor.highContrastInk)
+                        .shadow(color: calColor.opacity(0.6), radius: 3)
                     } else if isImminent {
-                        HStack(spacing: 3) {
-                            Text("calendar.status.soon".localized)
-                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 7, weight: .bold))
+                            Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
                         }
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, 5.5)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.orange))
+                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                    } else if isPast {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "checkmark")
+                            Text("calendar.status.ended".localized)
+                        }
+                        .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 1.5)
-                        .background(Capsule().fill(podColor.opacity(0.25)))
-                        .foregroundColor(podColor)
+                        .background(Capsule().fill(Color.primary.opacity(0.04)))
                     }
 
                     Spacer(minLength: 4)
@@ -152,7 +178,7 @@ public struct CalendarDrawerView: View {
                 HStack(spacing: 6) {
                     Text(formattedTime(event: event))
                         .font(palette.fontMono)
-                        .foregroundColor(isPast ? podColor.opacity(0.35) : .gray)
+                        .foregroundColor(isPast ? .secondary.opacity(0.45) : .gray)
 
                     Text("·")
                         .foregroundColor(.gray)
@@ -186,10 +212,22 @@ public struct CalendarDrawerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Group {
+                if isOngoing {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(calColor.opacity(0.11))
+                } else if isImminent {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.orange.opacity(0.09))
+                }
+            }
+        )
         .liquidCardBackground(
             cornerRadius: 8,
-            strokeColor: podColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.8))
+            strokeColor: isOngoing ? calColor.opacity(0.90) : (isImminent ? Color.orange.opacity(0.85) : (isPast ? palette.borderColor.opacity(0.15) : podColor.opacity(isAlerting ? 1.0 : 0.8)))
         )
+        .opacity(isPast ? 0.55 : 1.0)
         .onAppear {
             if (event.isOngoing || event.isImminent) && (state.dismissAlertOnHover || store.dismissAlertOnHover) {
                 state.acknowledgeAlert(id: event.id)
@@ -437,7 +475,8 @@ public struct CalendarDrawerView: View {
     private func agendaRow(event: CalendarEventItem) -> some View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
-        let isImminent = event.isImminent
+        let isImminent = event.isImminent(leadTime: state.alertLeadTime)
+        let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         let calColor = event.colorHex.flatMap { Color(hex: $0) } ?? podColor
 
         HStack(spacing: 10) {
@@ -446,28 +485,45 @@ public struct CalendarDrawerView: View {
                 if event.isAllDay {
                     Text("ALL DAY")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(isPast ? .secondary.opacity(0.6) : (palette.style == .native ? Color.primary : .white))
+                        .foregroundColor(isPast ? .secondary.opacity(0.45) : (palette.style == .native ? Color.primary : .white))
                 } else {
                     Text(event.startTime.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute()))
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(isPast ? .secondary.opacity(0.6) : (palette.style == .native ? Color.primary : .white))
+                        .foregroundColor(isPast ? .secondary.opacity(0.45) : (palette.style == .native ? Color.primary : .white))
                     Text(event.endTime.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute()))
                         .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(isPast ? .secondary.opacity(0.35) : .secondary)
                 }
             }
             .frame(width: 44, alignment: .trailing)
 
             // Vertical Color Accent Bar
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(calColor.opacity(isPast ? 0.45 : 1.0))
-                .frame(width: 3, height: 28)
+            if isPast {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 2.5, height: 26)
+            } else if isOngoing {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(calColor)
+                    .frame(width: 4, height: 30)
+                    .shadow(color: calColor.opacity(0.7), radius: 4)
+            } else if isImminent {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.orange)
+                    .frame(width: 4, height: 30)
+                    .shadow(color: Color.orange.opacity(0.6), radius: 3)
+            } else {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(calColor)
+                    .frame(width: 3, height: 28)
+            }
 
             // Middle Info Column
             VStack(alignment: .leading, spacing: 2.5) {
                 Text(event.title)
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                    .foregroundColor(isPast ? .secondary : (palette.style == .native ? Color.primary : .white))
+                    .font(.system(size: 11.5, weight: isOngoing ? .bold : .semibold, design: .rounded))
+                    .strikethrough(isPast, color: .secondary.opacity(0.65))
+                    .foregroundColor(isPast ? .secondary.opacity(0.55) : (palette.style == .native ? Color.primary : .white))
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
@@ -496,49 +552,86 @@ public struct CalendarDrawerView: View {
             Spacer(minLength: 4)
 
             // Right Status / Action Column
-            if let url = event.url {
-                Button {
-                    NSWorkspace.shared.open(url)
-                } label: {
+            HStack(spacing: 5) {
+                if isOngoing {
                     HStack(spacing: 3) {
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 7.5, weight: .bold))
-                        Text("calendar.action.join".localized)
-                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        Circle()
+                            .fill(calColor.highContrastInk)
+                            .frame(width: 3.5, height: 3.5)
+                        Text("calendar.status.now".localized)
+                            .font(.system(size: 8, weight: .heavy, design: .rounded))
                     }
-                    .padding(.horizontal, 6.5)
-                    .padding(.vertical, 3)
-                    .background(podColor.opacity(0.20))
-                    .foregroundColor(podColor)
-                    .cornerRadius(5)
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(calColor))
+                    .foregroundColor(calColor.highContrastInk)
+                    .shadow(color: calColor.opacity(0.55), radius: 3)
+                    .fixedSize()
+                } else if isImminent {
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 7, weight: .bold))
+                        Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                            .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    }
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.orange))
+                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                    .fixedSize()
+                } else if isPast {
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "checkmark")
+                        Text("calendar.status.ended".localized)
+                    }
+                    .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(Color.primary.opacity(0.04)))
+                    .fixedSize()
                 }
-                .buttonStyle(.tactile)
-                .fixedSize()
-            } else if isOngoing {
-                Text("calendar.status.now".localized)
-                    .font(.system(size: 8, weight: .heavy, design: .rounded))
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(podColor))
-                    .foregroundColor(.white)
-                    .shadow(color: podColor.opacity(0.55), radius: 3)
+
+                if let url = event.url {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 7.5, weight: .bold))
+                            Text("calendar.action.join".localized)
+                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        }
+                        .padding(.horizontal, 6.5)
+                        .padding(.vertical, 3)
+                        .background(podColor.opacity(0.20))
+                        .foregroundColor(podColor)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.tactile)
                     .fixedSize()
-            } else if isImminent {
-                Text("calendar.status.soon".localized)
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.orange.opacity(0.18)))
-                    .foregroundColor(.orange)
-                    .fixedSize()
+                }
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
+        .background(
+            Group {
+                if isOngoing {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(calColor.opacity(0.11))
+                } else if isImminent {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.orange.opacity(0.09))
+                }
+            }
+        )
         .liquidCardBackground(
             cornerRadius: 7,
-            strokeColor: isOngoing ? podColor.opacity(0.75) : palette.borderColor.opacity(0.32)
+            strokeColor: isOngoing ? calColor.opacity(0.90) : (isImminent ? Color.orange.opacity(0.85) : (isPast ? palette.borderColor.opacity(0.15) : palette.borderColor.opacity(0.32)))
         )
+        .opacity(isPast ? 0.55 : 1.0)
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {
@@ -793,80 +886,141 @@ public struct CalendarAgendaOverviewDrawerView: View {
     private func agendaRow(event: CalendarEventItem, podColor: Color) -> some View {
         let isPast = event.isPast
         let isOngoing = event.isOngoing
-        let isImminent = event.isImminent
+        let isImminent = event.isImminent(leadTime: store.calendarAlertLeadTime)
+        let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         let calColor = event.colorHex.flatMap { Color(hex: $0) } ?? podColor
 
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Circle()
+        HStack(spacing: 8) {
+            // Left vertical accent bar
+            if isPast {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 2.5, height: 26)
+            } else if isOngoing {
+                RoundedRectangle(cornerRadius: 1.5)
                     .fill(calColor)
-                    .frame(width: 5, height: 5)
-
-                Text(event.title)
-                    .font(.system(size: 11, weight: isOngoing ? .bold : .medium, design: .rounded))
-                    .foregroundColor(isPast ? .secondary : (palette.style == .native ? Color.primary : .white))
-                    .lineLimit(1)
-
-                Spacer()
-
-                if isOngoing {
-                    Text("calendar.status.now".localized)
-                        .font(.system(size: 7.5, weight: .bold))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.green.opacity(0.18))
-                        .foregroundColor(.green)
-                        .cornerRadius(3)
-                } else if isImminent {
-                    Text("calendar.status.soon".localized)
-                        .font(.system(size: 7.5, weight: .bold))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.orange.opacity(0.18))
-                        .foregroundColor(.orange)
-                        .cornerRadius(3)
-                }
-
-                if let url = event.url {
-                    Button {
-                        NSWorkspace.shared.open(url)
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "video.fill")
-                                .font(.system(size: 7))
-                            Text("calendar.action.join".localized)
-                                .font(.system(size: 8.5, weight: .bold))
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(podColor.opacity(0.18))
-                        .foregroundColor(podColor)
-                        .cornerRadius(4)
-                    }
-                    .buttonStyle(.tactile)
-                }
+                    .frame(width: 4, height: 30)
+                    .shadow(color: calColor.opacity(0.7), radius: 4)
+            } else if isImminent {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.orange)
+                    .frame(width: 4, height: 30)
+                    .shadow(color: Color.orange.opacity(0.6), radius: 3)
+            } else {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(calColor)
+                    .frame(width: 3, height: 28)
             }
 
-            HStack(spacing: 4) {
-                Text(formattedTime(event: event))
-                    .font(palette.fontMono)
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-
-                if !event.location.isEmpty && event.location != "Apple Calendar" {
-                    Text("·")
-                        .foregroundColor(.secondary)
-                    Text(event.location)
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2.5) {
+                HStack(spacing: 6) {
+                    Text(event.title)
+                        .font(.system(size: 11, weight: isOngoing ? .bold : .medium, design: .rounded))
+                        .strikethrough(isPast, color: .secondary.opacity(0.65))
+                        .foregroundColor(isPast ? .secondary.opacity(0.55) : (palette.style == .native ? Color.primary : .white))
                         .lineLimit(1)
+
+                    Spacer(minLength: 4)
+
+                    if isOngoing {
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(calColor.highContrastInk)
+                                .frame(width: 3.5, height: 3.5)
+                            Text("calendar.status.now".localized)
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(calColor))
+                        .foregroundColor(calColor.highContrastInk)
+                        .shadow(color: calColor.opacity(0.55), radius: 3)
+                        .fixedSize()
+                    } else if isImminent {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 7, weight: .bold))
+                            Text(String(format: "calendar.status.inMinutes".localized, minsUntilStart))
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(Color.orange))
+                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                        .fixedSize()
+                    } else if isPast {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "checkmark")
+                            Text("calendar.status.ended".localized)
+                        }
+                        .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(Color.primary.opacity(0.04)))
+                        .fixedSize()
+                    }
+
+                    if let url = event.url {
+                        Button {
+                            NSWorkspace.shared.open(url)
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "video.fill")
+                                    .font(.system(size: 7))
+                                Text("calendar.action.join".localized)
+                                    .font(.system(size: 8.5, weight: .bold))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(podColor.opacity(0.18))
+                            .foregroundColor(podColor)
+                            .cornerRadius(4)
+                        }
+                        .buttonStyle(.tactile)
+                        .fixedSize()
+                    }
+                }
+
+                HStack(spacing: 4) {
+                    Text(formattedTime(event: event))
+                        .font(palette.fontMono)
+                        .font(.system(size: 9))
+                        .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
+
+                    if !event.location.isEmpty && event.location != "Apple Calendar" {
+                        Text("·")
+                            .foregroundColor(.secondary)
+                        Text(event.location)
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
-        .background(isOngoing ? podColor.opacity(0.08) : Color.clear)
-        .cornerRadius(6)
+        .background(
+            Group {
+                if isOngoing {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(calColor.opacity(0.11))
+                } else if isImminent {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.orange.opacity(0.09))
+                }
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(
+                    isOngoing ? calColor.opacity(0.90) : (isImminent ? Color.orange.opacity(0.85) : (isPast ? palette.borderColor.opacity(0.15) : palette.borderColor.opacity(0.32))),
+                    lineWidth: 0.8
+                )
+        )
+        .opacity(isPast ? 0.55 : 1.0)
     }
 
     private func formattedTime(event: CalendarEventItem) -> String {

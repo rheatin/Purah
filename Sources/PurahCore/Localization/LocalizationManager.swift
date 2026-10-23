@@ -315,6 +315,8 @@ public final class LocalizationManager {
             "calendar.empty.subtitle": "Configure scope in Settings",
             "calendar.status.now": "NOW",
             "calendar.status.soon": "SOON",
+            "calendar.status.ended": "ENDED",
+            "calendar.status.inMinutes": "IN %dm",
             "calendar.action.join": "Join",
 
             // Marketplace Tabs
@@ -803,6 +805,8 @@ public final class LocalizationManager {
             "calendar.empty.subtitle": "可在设置中调整时间跨度",
             "calendar.status.now": "进行中",
             "calendar.status.soon": "即将开始",
+            "calendar.status.ended": "已结束",
+            "calendar.status.inMinutes": "%d分钟后",
             "calendar.action.join": "加入",
 
             // Marketplace Tabs
@@ -1128,6 +1132,11 @@ public final class LocalizationManager {
             "trigger.sensitivity.short.deliberate": "審慎",
             "trigger.sensitivity.short.custom": "自訂",
             "interaction.hotkeys.resetToDefault": "恢復預設",
+            "calendar.status.now": "進行中",
+            "calendar.status.soon": "即將開始",
+            "calendar.status.ended": "已結束",
+            "calendar.status.inMinutes": "%d分鐘後",
+            "calendar.action.join": "加入",
             "shelf.settings.autoRemoveOnDrag": "拖出後自動從檔案架移除",
             "shelf.settings.autoRemoveSubtitle": "檔案拖出使用後自動清空，點亮 ★ 星標的檔案將常駐保留",
             "notes.tips.table": "表格",

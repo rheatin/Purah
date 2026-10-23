@@ -1232,6 +1232,19 @@ public final class PurahWorkspaceStore {
         }
     }
 
+    public var calendarAlertLeadTime: CalendarAlertLeadTime {
+        get {
+            _ = _pluginStorageRevision
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            return storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
+        }
+        set {
+            _pluginStorageRevision &+= 1
+            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
+            storage.setCodable(newValue, forKey: "alertLeadTime")
+        }
+    }
+
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
     public var drawerWidthMode: DrawerWidthMode = .fixed
