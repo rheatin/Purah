@@ -1408,12 +1408,13 @@ public final class PurahWorkspaceStore {
         let totalClusterGaps = Double(max(clusters.count - 1, 0)) * clusterGap
         let netAvailable = max(availableH - totalClusterGaps, Double(clusters.count) * 24.0)
 
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
         let clusterMinFloors: [Double] = clusters.map { cluster in
             if cluster.count == 1 {
                 let pod = cluster[0]
-                return (isLiveRailEditingMode || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                return (isSculptingRails || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
             } else {
-                let hasManualResize = isLiveRailEditingMode || cluster.contains(where: { $0.minLength <= 0.06 })
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
                 return hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
             }
         }
@@ -1478,9 +1479,10 @@ public final class PurahWorkspaceStore {
     }
 
     public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
         let minStandalone = CGFloat(standaloneMinimumRailHeight(for: pod.id))
         let podHeight = max(pod.range.length * totalHeight, minStandalone)
-        if isLiveRailEditingMode || pod.minLength <= 0.06 {
+        if isSculptingRails || pod.minLength <= 0.06 {
             return podHeight
         }
         let minReserved = minimumDrawerHeight(for: pod.id)
@@ -1691,7 +1693,8 @@ public final class PurahWorkspaceStore {
         let pagePods = pages[pageIdx]
         guard !pagePods.isEmpty else { return [] }
 
-        let safeTop = isLiveRailEditingMode ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
+        let safeTop = isSculptingRails ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
         let safeBottom = pages.count > 1 ? (totalHeight - 48.0) : (totalHeight - 16.0)
         let availableH = max(safeBottom - safeTop, 160.0)
 
@@ -1705,7 +1708,7 @@ public final class PurahWorkspaceStore {
         for (_, cluster) in clusters.enumerated() {
             if cluster.count == 1 {
                 let pod = cluster[0]
-                let minFloor = (isLiveRailEditingMode || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
+                let minFloor = (isSculptingRails || pod.minLength <= 0.06) ? standaloneMinimumRailHeight(for: pod.id) : Double(minimumDrawerHeight(for: pod.id))
                 let maxVis = maxVisualHeight(for: pod.id, totalHeight: totalHeight)
                 let span = min(max(pod.range.length * totalHeight, minFloor), max(maxVis, minFloor))
                 standardSpans.append(span)
@@ -1715,7 +1718,7 @@ public final class PurahWorkspaceStore {
                 let subGap = 3.0
                 let totalSubGaps = Double(cluster.count - 1) * subGap
                 let sumSubLengths = cluster.reduce(0.0) { $0 + max($1.range.length * totalHeight, 22.0) } + totalSubGaps
-                let hasManualResize = isLiveRailEditingMode || cluster.contains(where: { $0.minLength <= 0.06 })
+                let hasManualResize = isSculptingRails || cluster.contains(where: { $0.minLength <= 0.06 })
                 let clusterMinFloor = hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0
                 let span = max(sumSubLengths, clusterMinFloor)
                 standardSpans.append(span)
@@ -3220,15 +3223,23 @@ public final class PurahWorkspaceStore {
                 normalizePageRanges(for: .right)
             }
         case .breathingDemo:
+            onboardingBreathingHoveredPods.removeAll()
             mountPod(id: "vitals", to: .left)
             mountPod(id: "shelf", to: .left)
             mountPod(id: "notes", to: .left)
             mountPod(id: "clipboard", to: .left)
             normalizePageRanges(for: .left)
+            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
+            if rightPods.count < 2 {
+                mountPod(id: "calendar", to: .right)
+                mountPod(id: "scripts", to: .right)
+            }
+            normalizePageRanges(for: .right)
             isDynamicBreathingEnabled = true
             isAlwaysCompactBreathing = true
             isRehearsingBreathingInSculptor = true
         case .antiTouchCalibration:
+            onboardingDidTriggerEdgeDrawer = false
             let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
             if leftPods.count < 2 {
                 mountPod(id: "vitals", to: .left)

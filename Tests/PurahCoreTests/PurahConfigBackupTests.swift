@@ -1,7 +1,9 @@
 // Tests/PurahCoreTests/PurahConfigBackupTests.swift
 import Testing
 import Foundation
+import AppKit
 @testable import PurahCore
+@testable import PurahApp
 
 @Suite("Configuration Backup & Reset Tests")
 @MainActor
@@ -324,5 +326,48 @@ struct OnboardingAndLaunchAtLoginTests {
         store.activateDrawer(podId: "vitals")
         #expect(store.onboardingDidTriggerEdgeDrawer == true)
         #expect(store.isCurrentOnboardingMissionCompleted == true)
+    }
+
+    @Test("EdgeMouseMonitor responds to live edge hover during onboarding rehearsals (Step 5 & Step 6)")
+    func testEdgeMouseMonitorDuringOnboardingRehearsals() {
+        let store = PurahWorkspaceStore()
+        store.startInteractiveOnboarding(clearAllPods: false)
+        #expect(store.isOnboardingGuideActive == true)
+        #expect(store.isLiveRailEditingMode == true)
+
+        store.edgeTriggerMode = .hoverDwell
+        store.edgeTriggerSensitivity = .agile // 0ms instant hover
+
+        let monitor = EdgeMouseMonitor(store: store, coordinator: nil)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        // Step 5: Breathing Demo
+        store.selectOnboardingStep(.breathingDemo)
+        #expect(store.isRehearsingBreathingInSculptor == true)
+        #expect(store.onboardingBreathingHoveredPods.isEmpty == true)
+
+        let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        guard let firstLeftPod = leftLayout.first else {
+            #expect(Bool(false), "Left rail should have pods in breathing demo")
+            return
+        }
+        let targetY = visibleRect.maxY - CGFloat(firstLeftPod.startY + firstLeftPod.spanH * 0.5)
+        let edgePoint = NSPoint(x: 1.0, y: targetY)
+        monitor.customCurrentMouseLocation = edgePoint
+
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
+        #expect(store.activeDrawerPodId != nil, "Active drawer should be opened by edge hover in breathing demo")
+        #expect(store.onboardingBreathingHoveredPods.count >= 1, "Hovered pod should be recorded in onboardingBreathingHoveredPods")
+
+        // Step 6: Anti-touch Calibration
+        store.dismissActiveDrawer()
+        store.selectOnboardingStep(.antiTouchCalibration)
+        #expect(store.isRehearsingBreathingInSculptor == true)
+        #expect(store.onboardingDidTriggerEdgeDrawer == false)
+
+        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
+        #expect(store.activeDrawerPodId != nil, "Active drawer should be opened by edge hover in anti-touch calibration")
+        #expect(store.onboardingDidTriggerEdgeDrawer == true, "onboardingDidTriggerEdgeDrawer should be set to true")
     }
 }
