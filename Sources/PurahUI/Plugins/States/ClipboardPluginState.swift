@@ -116,6 +116,10 @@ public final class ClipboardPluginState: Sendable {
         self.items = SystemClipboardSyncService.shared.history
     }
 
+    public func clearHistory(keepFavorites: Bool = true) {
+        clearAll(keepFavorites: keepFavorites)
+    }
+
     public func clearAll(keepPinned: Bool) {
         clearAll(keepFavorites: keepPinned)
     }

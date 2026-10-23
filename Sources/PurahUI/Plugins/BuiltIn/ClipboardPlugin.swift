@@ -137,20 +137,16 @@ public struct ClipboardPlugin: PurahPodPlugin {
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
         if !state.items.isEmpty {
             return AnyView(
-                Button(role: .destructive) {
-                    state.clearAll()
-                    context.performHaptic(.alignment)
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 9.5))
-                        Text("Clear")
-                            .font(.system(size: 9.5, weight: .medium))
-                    }
-                    .foregroundColor(.secondary)
+                PurahClearButton(
+                    title: "Clear",
+                    icon: "trash",
+                    isCompact: true,
+                    helpText: "Clear unpinned clipboard history (keeps starred items)"
+                ) {
+                    state.clearHistory(keepFavorites: true)
+                    context.performHaptic(.levelChange)
+                    context.showToast("Cleared unstarred clipboard items", "trash")
                 }
-                .buttonStyle(.tactile)
-                .help("Clear Clipboard History")
             )
         }
         return nil

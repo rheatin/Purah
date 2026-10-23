@@ -1759,26 +1759,14 @@ public struct AIAssistantPluginSettingsView: View {
 
                     Spacer()
 
-                    Button {
+                    PurahClearButton(
+                        title: "Clear Unstarred",
+                        icon: "trash.fill",
+                        isCompact: false,
+                        helpText: "Clear all unstarred AI sessions"
+                    ) {
                         state.clearUnstarredSessions()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 9.5, weight: .semibold))
-                            Text("Clear Unstarred")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4.5)
-                        .background(Color.red.opacity(0.12))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.red.opacity(0.35), lineWidth: 0.8)
-                        )
                     }
-                    .buttonStyle(.plain)
                 }
 
                 // Immunity Banner

@@ -292,26 +292,14 @@ public struct PurahStoragePolicySection: View {
                     .buttonStyle(.plain)
 
                     if let onClearAll {
-                        Button {
+                        PurahClearButton(
+                            title: "Clear Unstarred",
+                            icon: "trash.fill",
+                            isCompact: false,
+                            helpText: "Remove all unstarred items"
+                        ) {
                             onClearAll()
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "trash.fill")
-                                    .font(.system(size: 10))
-                                Text("Clear Unstarred")
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            }
-                            .foregroundColor(.red)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(Color.red.opacity(0.08))
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.red.opacity(0.25), lineWidth: 0.8)
-                            )
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -375,5 +363,64 @@ public struct PurahStackedDecomposeNoticeView: View {
                     .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
             )
         }
+    }
+}
+
+// MARK: - Standardized Clear Button
+public struct PurahClearButton: View {
+    public let title: String?
+    public let icon: String
+    public let isCompact: Bool
+    public let helpText: String?
+    public let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    public init(
+        title: String? = nil,
+        icon: String = "trash",
+        isCompact: Bool = true,
+        helpText: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.icon = icon
+        self.isCompact = isCompact
+        self.helpText = helpText
+        self.action = action
+    }
+
+    public var body: some View {
+        let fgColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+        Button(action: action) {
+            HStack(spacing: isCompact ? 3 : 4) {
+                Image(systemName: icon)
+                    .font(.system(size: isCompact ? 8 : 9.5, weight: .semibold))
+                if let title, !title.isEmpty {
+                    Text(title)
+                        .font(.system(size: isCompact ? 8.5 : 10, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundColor(fgColor)
+            .padding(.horizontal, isCompact ? (title == nil ? 5 : 6) : 9)
+            .padding(.vertical, isCompact ? 2.5 : 4.5)
+            .background(
+                RoundedRectangle(cornerRadius: isCompact ? 5 : 6, style: .continuous)
+                    .fill(Color.red.opacity(isHovered ? 0.22 : 0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: isCompact ? 5 : 6, style: .continuous)
+                    .stroke(Color.red.opacity(isHovered ? 0.55 : 0.32), lineWidth: isCompact ? 0.6 : 0.8)
+            )
+        }
+        .buttonStyle(.tactile)
+        .fixedSize()
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
+        .help(helpText ?? (title ?? "Clear"))
     }
 }

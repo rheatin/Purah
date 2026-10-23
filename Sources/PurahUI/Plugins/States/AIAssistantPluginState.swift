@@ -218,7 +218,14 @@ public final class AIAssistantPluginState: Sendable {
             viewingStepIndex = nil
         }
     }
-    public var inputText: String = ""
+    public var inputText: String {
+        get { currentInputText }
+        set { currentInputText = newValue }
+    }
+    public var originalSelectedText: String {
+        get { capturedSelection ?? "" }
+        set { capturedSelection = newValue.isEmpty ? nil : newValue }
+    }
     public var isStreaming: Bool = false
     public var capturedSelection: String? = nil
     public var capturedSourceApp: String? = nil

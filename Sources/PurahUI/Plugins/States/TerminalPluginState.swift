@@ -11,7 +11,7 @@ public final class TerminalPluginState: Sendable {
     public var fontFamily: String
     public var fontSize: Double
     public let storage: any PurahPluginStorage
-    @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+    @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
 
     public var terminalFontFamily: String {
         get { fontFamily }
@@ -63,6 +63,10 @@ public final class TerminalPluginState: Sendable {
 
     public func clearScreen() {
         TerminalManager.shared.clearScreen()
+    }
+
+    public func clearActiveTab() {
+        clearScreen()
     }
 
     public func sendInterrupt() {

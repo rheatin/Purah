@@ -920,24 +920,17 @@ public struct AIAssistantRoleWorkbenchView: View {
                     Spacer()
 
                     if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button {
-                            state.currentInputText = ""
-                            state.capturedSelection = nil
+                        PurahClearButton(
+                            title: "ai.action.clear".localized,
+                            icon: "trash",
+                            isCompact: true,
+                            helpText: "ai.action.clear".localized
+                        ) {
+                            state.inputText = ""
+                            state.originalSelectedText = ""
                             state.stagedDropText = nil
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 9))
-                                Text("ai.action.clear".localized)
-                                    .font(.system(size: 9.5))
-                            }
-                            .foregroundColor(Color.white.opacity(0.65))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(5)
+                            store.triggerControlHaptic(.alignment)
                         }
-                        .buttonStyle(.plain)
                     }
 
                     if !showRoleSwitcher {

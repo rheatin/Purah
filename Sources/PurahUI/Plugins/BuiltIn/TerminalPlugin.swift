@@ -39,7 +39,7 @@ public struct TerminalPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        AnyView(TerminalHeaderTrailingToolbarView(state: state))
+        AnyView(TerminalHeaderTrailingToolbarView(state: state, store: context.store))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
@@ -254,25 +254,14 @@ public struct TerminalPluginSettingsView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Button {
-                            state.clearScreen()
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 10))
-                                Text("Clear Output Buffer")
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.primary.opacity(0.05))
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
-                            )
+                        PurahClearButton(
+                            title: "Clear Output Buffer",
+                            icon: "trash.fill",
+                            isCompact: false,
+                            helpText: "Clear active terminal scrollback buffer"
+                        ) {
+                            state.clearActiveTab()
                         }
-                        .buttonStyle(.plain)
 
                         Spacer()
                     }

@@ -302,13 +302,16 @@ public struct DropShelfDrawerView: View {
                     }
                     .buttonStyle(.tactile)
 
-                    Button("dropshelf.clearAll".localized) {
+                    PurahClearButton(
+                        title: "dropshelf.clearAll".localized,
+                        icon: "trash",
+                        isCompact: true,
+                        helpText: "dropshelf.clearAll".localized
+                    ) {
                         state.clear()
                         store._shelfFiles = state.files
+                        store.triggerControlHaptic(.levelChange)
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(palette.dangerAccent)
                 }
 
                 // File List with Automatic Direct Left-Click Drag Marquee Selection

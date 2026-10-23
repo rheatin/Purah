@@ -150,11 +150,13 @@ public struct TerminalHeaderAccessoryView: View {
 
 public struct TerminalHeaderTrailingToolbarView: View {
     public let state: TerminalPluginState
+    public let store: PurahWorkspaceStore
     @ObservedObject private var manager = TerminalManager.shared
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
-    public init(state: TerminalPluginState) {
+    public init(state: TerminalPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
+        self.store = state.boundStore ?? store
     }
 
     public var body: some View {
@@ -227,15 +229,15 @@ public struct TerminalHeaderTrailingToolbarView: View {
             .buttonStyle(.plain)
             .help("Send SIGINT (Ctrl+C)")
 
-            Button {
-                manager.clearScreen()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 8.5))
-                    .foregroundColor(.secondary)
+            PurahClearButton(
+                title: nil,
+                icon: "trash",
+                isCompact: true,
+                helpText: "Clear terminal output (⌘K)"
+            ) {
+                state.clearActiveTab()
+                store.triggerControlHaptic(.alignment)
             }
-            .buttonStyle(.plain)
-            .help("Clear Terminal Buffer")
 
             Button {
                 manager.restartShell(
