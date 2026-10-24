@@ -4,7 +4,7 @@ This document outlines the architecture, interaction models, animation philosoph
 
 ---
 
-## 1. Architectural Architecture
+## 1. System Architecture
 
 Purah is organized into three decoupled Swift packages and targets:
 
@@ -19,16 +19,18 @@ Sources/
 - **`PurahCore`**:
   - `PurahWorkspaceStore`: Primary `@Observable` state container. Handles slot pod layout, active drawer states, and local persistence (`UserDefaults`).
   - `ErgonomicAutoLayoutEngine`: Mathematical solver calculating optimal non-overlapping vertical ranges (`NormalizedRange`: 0.0 ~ 1.0) along screen edges.
-  - `Services`: Native system integrations (`HardwareVitalsService`, `SystemMusicSyncService`, `SystemCalendarSyncService`, `SystemRemindersSyncService`, `ScriptRunwayService`).
+  - `Services`: Native system integrations (`HardwareVitalsService`, `SystemMusicSyncService`, `SystemCalendarSyncService`, `SystemRemindersSyncService`, `ScriptRunwayService`, `AIAssistantService`, `SystemClipboardSyncService`, `LaunchAtLoginService`, and `PurahConfigBackupManager`).
   - `Plugins`: Standard plugin manifest schema (`PurahPluginManifest`).
 - **`PurahUI`**:
   - `AmbientRailStripView`: Unified edge rail container rendering active pods and drawer cards.
+  - `LiveRailSculptorDockView` & `LiveRailSculptorStripView`: Interactive live rail sculptor HUD and tactile editing dock (`⌃⌥E`).
   - `Plugins`: Plugin protocol (`PurahPodPlugin`), runtime context (`PurahPluginContext`), registry (`PluginRegistry`), and built-in pods.
   - `WindowViews`: `PassThroughHostingView` bridging AppKit mouse tracking and SwiftUI rendering.
   - `Theme`: `ThemeManager`, `ThemePalette` (macOS Native and Purah Pad Sheikah Slate styles), and `TactileButtonStyle`.
 - **`PurahApp`**:
   - `AmbientRailWindow`: Borderless `.floating` NSPanel anchoring to physical screen boundaries with custom frame hit-testing.
   - `EdgeMouseMonitor`: Global mouse monitor tracking 14px edge triggers, 2D bounding boxes, velocity speed suppression, and exit grace windows.
+  - `GlobalHotKeyManager`: Low-latency Carbon global hotkey manager (`⌥⇥` Freeze Rails & `⌃⌥E` Live Rail Sculptor) operating without accessibility permissions.
   - `ScreenEdgeCoordinator`: Multi-screen lifecycle manager and rail window synchronizer.
 
 ---
@@ -38,10 +40,10 @@ Sources/
 Purah runs as a background accessory app (`LSUIElement = true`) with transparent full-height panels.
 
 ### Key Windowing Rules:
-1. **2D Bounding-Box Filtering**:
-   - `AmbientRailWindow` is 340pt wide and full-screen height.
+1. **2D Bounding-Box Filtering & Dynamic Framebuffer**:
+   - `AmbientRailWindow` employs a dynamic framebuffer architecture: it is `28pt` wide (`compactCanvasWidth`) when docked to save ~20MB framebuffer memory and dynamically expands to `580pt` (`maxCanvasWidth`) when active or pinned, with full-screen visible height.
    - `window.ignoresMouseEvents` MUST be `true` by default when docked or when cursor is over transparent empty space.
-   - `EdgeMouseMonitor` and `PassThroughHostingView` use 2D bounding-box collision detection (`isPointInsideAnyDrawerCard`). Only points physically within active or pinned drawer cards (`x <= effectiveDrawerWidth`, `minY <= y <= maxY`) enable interactive mode (`ignoresMouseEvents = false`).
+   - `EdgeMouseMonitor` and `PassThroughHostingView` use 2D bounding-box collision detection (`isPointInsideAnyDrawerCard`). Only points physically within active or pinned drawer cards (`x <= effectiveDrawerWidth`, `minY <= y <= maxY`) enable interactive mode (`ignoresMouseEvents = false`). Furthermore, `isPointInsideAnyDrawerCard` bridges `store.activePreviewScreenFrame` so pinned interactive QuickLook/Preview panels for Clipboard and Drop Shelf keep the parent drawer open.
    - Transparent areas above, below, or beside drawers **100% return `nil` in `hitTest`**, passing clicks directly through to underlying applications (Finder, IDEs, desktop).
 2. **150ms Exit Grace Window (Hysteresis)**:
    - When cursor leaves a drawer card, a 150ms grace timer begins before retracting.
@@ -65,7 +67,7 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
 
 ## 3. Plugin Architecture (`PurahPodPlugin`)
 
-All modules (Vitals, Notes, Music, Shelf, Scripts, Calendar, Todo, Terminal, Clipboard) are implemented as standard plugins conforming to `PurahPodPlugin` and `PurahPodCapabilityProvider`. For comprehensive step-by-step developer documentation, refer to **`docs/PLUGIN_DEVELOPMENT_GUIDE.md`**.
+All modules (Vitals, Notes, Music, Shelf, Scripts, Calendar, Todo, Terminal, Clipboard, AI Assistant) are implemented as standard plugins conforming to `PurahPodPlugin` and `PurahPodCapabilityProvider`. For comprehensive step-by-step developer documentation, refer to **`docs/PLUGIN_DEVELOPMENT_GUIDE.md`**.
 
 ```swift
 @MainActor
@@ -80,8 +82,13 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
     @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
 
-    // Dynamic Accent Color (e.g. telemetry load color)
+    // Dynamic Bar & Accent Color (e.g. telemetry load color, alerting tint)
+    func dynamicBarColor(context: PurahPluginContext) -> Color?
     func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
+    var usesAdaptiveTelemetryColor: Bool { get }
+
+    // Alert Management
+    func acknowledgeAllAlerts(context: PurahPluginContext)
 
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
@@ -89,8 +96,13 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 ```
 
 - **`PluginRegistry.shared`**: Manages registration, discovery, and lifecycle. Built-in plugins are registered on startup.
-- **Autonomous Dynamic Accent Color Resolution (`dynamicAccentColor`)**: Plugins declare dynamic real-time accent colors autonomously via `dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?` (e.g. Hardware Vitals returning telemetry health thresholds). `ThemePalette.podColor(for:store:)` queries plugins polymorphically, ensuring zero hardcoded plugin IDs in the host theme engine.
+- **Autonomous Dynamic Accent Color & Telemetry (`dynamicAccentColor` & `usesAdaptiveTelemetryColor`)**: Plugins declare dynamic real-time accent colors autonomously via `dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?` (e.g. Hardware Vitals returning telemetry health thresholds) and declare whether they use adaptive telemetry tinting via `usesAdaptiveTelemetryColor: Bool`. `ThemePalette.podColor(for:store:)` queries plugins polymorphically, ensuring zero hardcoded plugin IDs in the host theme engine.
+- **Alert Management (`acknowledgeAllAlerts`)**: Plugins implement `acknowledgeAllAlerts(context: PurahPluginContext)` to dismiss active alert badges or visual warning pulses across rail bars and drawers in a single action.
+- **Autonomous Adaptive Width & Preferred Height (`adaptiveDrawerWidth` & `preferredDrawerHeight`)**: Plugins declare their optimal adaptive width via `adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?` (e.g. Music: 360pt, Shelf: 360pt, Clipboard: 380pt, Terminal: 520pt, Notes: 320pt) and their optimal expanded height via `preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat`. The base workspace store contains ZERO hardcoded plugin dimensions and gracefully falls back to text-length estimation only when a plugin returns `nil`.
 - **Modularized Stepped Drawer Architecture**: Stepped drawer views are decoupled into dedicated single-responsibility files under `Sources/PurahUI/DrawerPanels/` (`TodoItemDrawerView`, `CalendarItemDrawerView`, `VitalsItemDrawerView`, `ScriptItemDrawerView`), while `Sources/PurahUI/AmbientViews/ItemDrawerCardView.swift` maintains shared primitives like `OptionalGlow`.
+- **Stacked Mode Decomposition Exclusivity**: When a pod is merged into a shared Stack (`store.isInSharedMajorPod(podId:) == true`), stepped decomposition (`isDecomposed`) is automatically disabled so stacked pods share a clean composite drawer, and plugin settings display `PurahStackedDecomposeNoticeView` with a one-click `Unstack Pod` action.
+- **Stepped Empty-State Composite Fallback**: When a stepped plugin (`Calendar`, `Todo`, etc.) has `0` active sub-items (`subItemCount == 0`), it automatically falls back to composite bar and composite empty-state drawer mode so hovering/clicking always opens the drawer.
+- **Zero-Dependency C-ABI External Plugin Bridge**: For Developer Mode (`Dev: Load Package...`), Purah supports runtime loading and just-in-time compilation of external Swift packages via `PluginDynamicLoader`, `PluginJITCompiler`, and `PurahExternalPluginSDK.swift`, bridging dynamically loaded plugins through a zero-dependency C-ABI interface without tight host binary couplings.
 - **Sunsetting of Legacy `PodPreset`**: Static hardcoded presets (`PodPreset`) have been completely removed in favor of the 6-step Interactive Panoramic Onboarding, Live Rail Sculptor (`⌃⌥E`), and `✨ Magic Ergonomic Auto-Layout` (`store.autoLayoutAll()`), providing fully ergonomic, non-overlapping dynamic layout solving.
 - **`PurahPluginStorage`**: Provides scoped isolation (`ScopedPluginStorage(pluginId:)`), keeping plugin persistent preferences neatly partitioned (`purah.plugin.<id>.<key>`).
 - **`PurahPluginFileStorage` & `PurahDiskRepository`**: Dual-tier storage architecture providing isolated sandboxed disk directories (`~/Library/Application Support/Purah/Plugins/<pluginId>/`), automatic atomic JSON indexing, `PurahRetentionPeriod` expiration cleaning, and `PurahDiskQuota` auto-pruning. Enforces the **Star Protection Immunity Rule**: all items with `isFavorite == true` are strictly immune to automated expiration or quota pruning.
@@ -104,7 +116,6 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
   - `PurahDecomposedCapacitySettingRow`: One-line capacity slider and overflow strategy settings UI row.
 - **Default Decomposed Principle**: Plugins that support multi-item stepped modes (Vitals, Scripts, Calendar, Todo) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and per-item direct interaction.
 - **Header Slot Integration**: Plugins can inject badges (e.g. Terminal `[• ZSH]`) and inline toolbars directly into the card header row via `makeHeaderAccessoryView` and `makeHeaderTrailingView`, saving vertical drawer space.
-- **Autonomous Adaptive Width Principle (自适应宽度自主宣告法则)**: Plugins autonomously declare their optimal adaptive width via `adaptiveDrawerWidth(store:) -> CGFloat?` (e.g. Music: 360pt, Shelf: 360pt, Clipboard: 380pt, Terminal: 520pt, Notes: 320pt). The base workspace store contains ZERO hardcoded plugin dimensions and gracefully falls back to text-length estimation only when a plugin returns `nil`.
 - **Plugin Lifecycle & Polling Suspension**: `PluginRegistry` automatically guards background polling tasks. When a pod is disabled in settings or unmounted from an active rail, its polling `Task` is stopped or withheld from running, ensuring zero idle background CPU overhead for disabled plugins.
 - **Extensibility**: Third-party plugins can register custom manifests and views without modifying core layout engines.
 
@@ -132,7 +143,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - To guarantee proper visual space and ergonomics for drawer content, configure min/max height bounds on the pod (`minLength` / `maxLength` in the layout engine), rather than allowing the drawer card to vertically overflow or detach from its rail bar.
    - Exception: Multi-item stepped pods (`Calendar` & `Todo`), where individual task/event chips step out from their respective sub-slots.
 
-### 5. Physical Ergonomic Minimum Height & Dynamic Rail Capacity Rule (Mandatory)
+## 5. Physical Ergonomic Minimum Height & Dynamic Rail Capacity Rule (Mandatory)
 1. **Tiered Ergonomic Sub-Item Minimum**:
    - **Full-Pod Composite Drawers** (Music, Shelf, Notes, Terminal, Clipboard): **MUST enforce $\ge 120\text{pt}$** (Terminal preserves $\ge 520\text{pt}$ width, Clipboard composite $\ge 150\text{pt}$).
    - **Tactile Metrics & Actions** (split hardware metric chips, script runway action buttons): **MUST enforce $\ge 56\text{pt}$** to ensure precise fingertip/cursor click hitboxes.
@@ -143,15 +154,16 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 2. **Dynamic Height Budgeting & In-Rail Capacity**:
    - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts bounded by `calendarMaxRailEvents`, `todoMaxRailTasks`, and `clipboardMaxRailItems`.
    - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at their respective tier minimums ($\ge 56\text{pt}$, $\ge 42\text{pt}$, $\ge 40\text{pt}$, or $\ge 32\text{pt}$).
-3. **Hard Capacity Ceiling & Mounting Rejection (溢出拒载与 Toast 报警法则 - Mandatory)**:
-   - When enabling or installing a new plugin, if adding its required minimum height causes the total required height on that rail to exceed the screen's available height budget (`totalRequiredHeight > availableScreenHeight`), the system **MUST NOT load or mount the plugin**.
-   - Instead of squashing existing plugins below their ergonomic minimums, keep the plugin disabled, cancel mounting, and immediately fire an ergonomic warning toast notification (`onCapacityWarningToast`).
+3. **Trinity Layout & Progressive Overflow Rules (三位一体满轨渐进挤压与自动分页法则 - Mandatory)**:
+   - **Sufficient Space (`sumMinRequired <= netAvailable`)**: Pods fill the rail proportionally in static co-planar mode with zero hover expansion or vertical shifting.
+   - **Dynamic Breathing Enabled (`isDynamicBreathingEnabled == true`)**: When `sumMinRequired > netAvailable`, all pods on the page progressively squeeze to fill 100% of the rail from `safeTop` to `safeBottom` (never bunching at the top of the screen). Hovering a squeezed pod smoothly expands it in-place up to `preferredDrawerHeight` while neighboring pods elastically compress.
+   - **Dynamic Breathing Disabled (`isDynamicBreathingEnabled == false`)**: The system never auto-enables Dynamic mode behind the user's back and never compresses pods below their `minimumDrawerHeight`. Once Page 1 reaches its minimum height floor, newly enabled/mounted pods **automatically overflow to `Page 2`** (activating top/bottom Hover Portals) and emit a gentle page-overflow notice.
 4. **Adaptive Mode Minimum Height Grace Rule (自适应模式极限高度下完美视图呈现法则 - Mandatory)**:
    - For all plugins operating in adaptive width or dynamic height modes: **The view MUST render with absolute visual perfection even at its absolute minimum height bound (`minimumDrawerHeight`)**.
    - No content may ever clip, overflow beyond card boundaries, overlap headers, or awkwardly truncate essential UI elements.
    - Text boxes, thumbnails, and preview panes must cleanly adopt internal scroll views (`ScrollView`) with subtle scrollbars or dynamic size adaptations when height is at the minimum threshold, ensuring that minimum height bounds never compromise aesthetics or usability.
 
-### 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
+## 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
 1. **Unified Card Anatomy**:
    - Every plugin drawer card adheres to the standard 3-row golden structure:
      - **Row 1 (Header)**: Primary Icon + Name (bold) + Subtype Badge (monospaced) + Standardized Pin Button (`PurahPinButton`).
@@ -169,6 +181,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - **Initial Hover Dwell (抗微颤悬停驻留门禁 - SuperCorners 模型)**: When cursor lands on a pod within the 12pt rail band, dwell timer begins. Hand micro-jitters do not reset the timer; when dwell duration (e.g. 150ms balanced / 0ms agile) elapses, the drawer glides open smoothly.
    - **Push Force Resistance Barrier (推力阻力结界模型 - Barrier/Input Leap/Loop 模型)**: Solves the macOS coordinate-clamping problem at screen borders by accumulating hardware relative motion deltas (`PushForceAccumulator`). Continuous pressing against the bezel (36px accumulated force) or rapid double-tap impulse strike (22px) shatters the resistance barrier and pops open the drawer with 0ms latency. Inward retreat immediately resets the accumulator.
    - `EdgeTriggerSensitivity` governs the **Initial Dwell Window**, the **Push Resistance Barrier Threshold**, the **Exit Grace Window**, and the **Overshoot Catch Corridor Width**.
+   - **Live Edge Gate Telemetry Meter (`PurahEdgeGateMeterView`)**: Available in both Onboarding Step 6 and `InteractionSettingsView` for real-time millisecond dwell / push-force / velocity-fling suppression visualization.
 
 ---
 
@@ -198,7 +211,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
 ---
 
-## 6. Coding & Verification Standards
+## 9. Coding & Verification Standards
 
 - **Language Baseline**: Swift 6.0+ with complete strict concurrency checking (`-strict-concurrency=complete`).
 - **Tests**: Use Swift Testing (`@Suite`, `@Test`, `#expect`).
