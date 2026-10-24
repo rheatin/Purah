@@ -86,7 +86,11 @@ public final class AppUpdaterManager {
             let htmlUrlString = (json["html_url"] as? String) ?? "https://github.com/rheatin/Purah/releases"
 
             // Look for downloadable .zip or .dmg asset
-            var downloadURL = URL(string: htmlUrlString)!
+            guard let fallbackURL = URL(string: htmlUrlString) ?? URL(string: "https://github.com/rheatin/Purah/releases") else {
+                state = .failed(error: "Invalid release URL")
+                return
+            }
+            var downloadURL = fallbackURL
             if let assets = json["assets"] as? [[String: Any]] {
                 for asset in assets {
                     if let name = asset["name"] as? String,
@@ -162,9 +166,10 @@ public final class AppUpdaterManager {
 
         let script = """
         #!/bin/bash
-        PID="\(currentPID)"
-        ARCHIVE="\(archiveURL.path)"
-        TARGET="\(currentBundleURL.path)"
+        PID="$1"
+        ARCHIVE="$2"
+        TARGET="$3"
+        SCRIPT_SELF="$0"
 
         # 1. Wait for current instance to exit
         while kill -0 "$PID" 2>/dev/null; do
@@ -187,25 +192,32 @@ public final class AppUpdaterManager {
         NEW_APP=$(/usr/bin/find "$TEMP_DIR" -maxdepth 2 -name "Purah.app" | head -n 1)
 
         if [[ -n "$NEW_APP" && -d "$NEW_APP" ]]; then
-            /bin/rm -rf "$TARGET"
-            /bin/cp -R "$NEW_APP" "$TARGET"
-            /usr/bin/xattr -cr "$TARGET" 2>/dev/null || true
-            /usr/bin/open "$TARGET"
+            /usr/bin/codesign --verify --deep --strict "$NEW_APP" || { /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"; exit 1; }
+            BACKUP="${TARGET}.backup.$$"
+            if /bin/mv "$TARGET" "$BACKUP"; then
+                if /bin/mv "$NEW_APP" "$TARGET"; then
+                    /bin/rm -rf "$BACKUP"
+                    /usr/bin/xattr -cr "$TARGET" 2>/dev/null || true
+                    /usr/bin/open "$TARGET"
+                else
+                    /bin/mv "$BACKUP" "$TARGET"
+                fi
+            fi
         fi
 
         # 4. Cleanup
         /bin/rm -rf "$TEMP_DIR"
-        /bin/rm -f "$ARCHIVE"
+        /bin/rm -f "$ARCHIVE" "$SCRIPT_SELF"
         exit 0
         """
 
-        let scriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("purah_relaunch.sh")
+        let scriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("purah_relaunch_\(UUID().uuidString).sh")
         try? script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [scriptURL.path]
+        process.arguments = [scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path]
         try? process.run()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {

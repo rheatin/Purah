@@ -10,6 +10,7 @@ public final class SystemCalendarSyncService {
 
     private var eventStore: EKEventStore?
     @ObservationIgnored private nonisolated(unsafe) var eventStoreObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var syncGeneration: UInt64 = 0
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
@@ -68,6 +69,9 @@ public final class SystemCalendarSyncService {
         let targetScope = scope ?? targetStore?.calendarScope ?? .today
         let interval = targetScope.dateInterval(from: Date())
 
+        syncGeneration &+= 1
+        let currentGen = syncGeneration
+
         Task.detached(priority: .userInitiated) { [weak self] in
             let backgroundStore = EKEventStore()
             backgroundStore.refreshSourcesIfNecessary()
@@ -83,6 +87,7 @@ public final class SystemCalendarSyncService {
 
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
+                guard currentGen == self.syncGeneration else { return }
                 if let targetStore = self.boundStore {
                     targetStore.calendarScope = targetScope
                     targetStore.isUsingRealCalendar = true

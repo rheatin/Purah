@@ -49,6 +49,7 @@ public final class CalendarPluginState: Sendable {
     @ObservationIgnored public var cacheTimestamp: TimeInterval = 0
     @ObservationIgnored private var eventStoreObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
+    @ObservationIgnored private var syncGeneration: UInt64 = 0
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var calendarEvents: [CalendarEventItem] {
@@ -213,6 +214,9 @@ public final class CalendarPluginState: Sendable {
         }
 
         syncTask?.cancel()
+        syncGeneration &+= 1
+        let currentGen = syncGeneration
+
         syncTask = Task.detached(priority: .userInitiated) { [weak self] in
             let backgroundStore = EKEventStore()
             backgroundStore.refreshSourcesIfNecessary()
@@ -227,6 +231,7 @@ public final class CalendarPluginState: Sendable {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                guard currentGen == self.syncGeneration else { return }
                 let previousIds = self.events.map(\.id)
                 let newIds = deduplicated.map(\.id)
                 let hasChanged = previousIds != newIds

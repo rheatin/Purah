@@ -10,6 +10,7 @@ public final class SystemRemindersSyncService {
 
     @ObservationIgnored private lazy var eventStore = EKEventStore()
     @ObservationIgnored private nonisolated(unsafe) var eventStoreObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var syncGeneration: UInt64 = 0
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
@@ -21,7 +22,9 @@ public final class SystemRemindersSyncService {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                await self?.syncReminders(into: self?.boundStore)
+                guard let self = self else { return }
+                guard self.boundStore?.pods.contains(where: { $0.id == "todo" && $0.isEnabled }) == true else { return }
+                await self.syncReminders(into: self.boundStore)
             }
         }
     }
@@ -110,8 +113,13 @@ public final class SystemRemindersSyncService {
         }
 
         isSyncing = true
+        syncGeneration &+= 1
+        let currentGen = syncGeneration
+
         let targetScope = scope ?? targetStore?.remindersScope ?? .allIncomplete
         let items = await fetchReminders(scope: targetScope)
+
+        guard currentGen == self.syncGeneration else { return }
 
         if let targetStore = targetStore {
             targetStore.remindersScope = targetScope
@@ -161,9 +169,13 @@ public final class SystemRemindersSyncService {
             let baseIdentifier = id.components(separatedBy: "_").first ?? id
             if let item = eventStore.calendarItem(withIdentifier: baseIdentifier) as? EKReminder {
                 item.isCompleted.toggle()
-                try? eventStore.save(item, commit: true)
-                await syncReminders(into: targetStore)
-                return
+                do {
+                    try eventStore.save(item, commit: true)
+                    await syncReminders(into: targetStore)
+                    return
+                } catch {
+                    DiagnosticLogger.shared.error("Reminders", "Failed to save reminder completion: \(error.localizedDescription)")
+                }
             }
         }
 

@@ -391,12 +391,6 @@ public final class PluginDynamicLoader {
             throw PluginDynamicLoadError.fileNotFound(path)
         }
 
-        // If this dylib or plugin ID was previously loaded, unload it first
-        if let existing = loadedHandles[path] {
-            dlclose(existing)
-            loadedHandles.removeValue(forKey: path)
-        }
-
         guard let handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL) else {
             let errorMsg = dlerror().map { String(cString: $0) } ?? "Unknown dlopen error"
             throw PluginDynamicLoadError.dlopenFailed(errorMsg)
@@ -429,7 +423,6 @@ public final class PluginDynamicLoader {
             let jsonString = String(cString: cString)
             guard let jsonData = jsonString.data(using: .utf8),
                   let manifest = try? JSONDecoder().decode(PurahPluginManifest.self, from: jsonData) else {
-                dlclose(handle)
                 throw PluginDynamicLoadError.invalidPluginType
             }
 
@@ -484,15 +477,12 @@ public final class PluginDynamicLoader {
             return plugin
         }
 
-        dlclose(handle)
         throw PluginDynamicLoadError.missingEntrySymbol(symbol)
     }
 
     /// Unloads a dynamically loaded plugin handle and cleans up memory
     public func unloadPlugin(id: String) {
-        if let handle = loadedHandles.removeValue(forKey: id) {
-            dlclose(handle)
-        }
+        loadedHandles.removeValue(forKey: id)
         loadedDylibPaths.removeValue(forKey: id)
     }
 

@@ -9,11 +9,92 @@ public final class PluginJITCompiler {
     private init() {}
 
     /// Locates the active swift CLI tool
-    private func swiftExecutableURL() -> URL {
+    nonisolated private static func swiftExecutableURL() -> URL {
         if FileManager.default.isExecutableFile(atPath: "/usr/bin/swift") {
             return URL(fileURLWithPath: "/usr/bin/swift")
         }
         return URL(fileURLWithPath: "/usr/bin/xcrun")
+    }
+
+    nonisolated private static func runProcessOffMainThread(
+        executableURL: URL,
+        arguments: [String],
+        currentDirectoryURL: URL
+    ) async throws -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
+        process.currentDirectoryURL = currentDirectoryURL
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        final class BufferBox: @unchecked Sendable {
+            let lock = NSLock()
+            var data = Data()
+
+            func append(_ chunk: Data) {
+                guard !chunk.isEmpty else { return }
+                lock.lock()
+                data.append(chunk)
+                lock.unlock()
+            }
+
+            func finalize(remaining: Data) -> String {
+                lock.lock()
+                defer { lock.unlock() }
+                if !remaining.isEmpty {
+                    data.append(remaining)
+                }
+                return String(data: data, encoding: .utf8) ?? ""
+            }
+        }
+
+        final class ContinuationGuard: @unchecked Sendable {
+            let lock = NSLock()
+            var isResumed = false
+
+            func resumeOnce(_ action: () -> Void) {
+                lock.lock()
+                defer { lock.unlock() }
+                if !isResumed {
+                    isResumed = true
+                    action()
+                }
+            }
+        }
+
+        let buffer = BufferBox()
+        let resumeGuard = ContinuationGuard()
+        let fileHandle = pipe.fileHandleForReading
+
+        fileHandle.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            buffer.append(chunk)
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            process.terminationHandler = { proc in
+                fileHandle.readabilityHandler = nil
+                let remaining = fileHandle.readDataToEndOfFile()
+                try? fileHandle.close()
+                let outputString = buffer.finalize(remaining: remaining)
+                resumeGuard.resumeOnce {
+                    continuation.resume(returning: (proc.terminationStatus, outputString))
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                fileHandle.readabilityHandler = nil
+                try? fileHandle.close()
+                resumeGuard.resumeOnce {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     /// Compiles a local Swift package folder into a dynamic library (.dylib)
@@ -26,46 +107,33 @@ public final class PluginJITCompiler {
             throw PluginDynamicLoadError.fileNotFound(packageSwiftPath)
         }
 
-        let process = Process()
-        process.currentDirectoryURL = packageDir
-        process.executableURL = swiftExecutableURL()
-        process.arguments = [
-            "build",
-            "-c", configuration,
-            "--disable-sandbox"
-        ]
+        let buildResult = try await Self.runProcessOffMainThread(
+            executableURL: Self.swiftExecutableURL(),
+            arguments: [
+                "build",
+                "-c", configuration,
+                "--disable-sandbox"
+            ],
+            currentDirectoryURL: packageDir
+        )
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        guard process.terminationStatus == 0 else {
-            throw PluginDynamicLoadError.compilationFailed(output)
+        guard buildResult.status == 0 else {
+            throw PluginDynamicLoadError.compilationFailed(buildResult.output)
         }
 
         // Resolve built binary directory
-        let binPathProcess = Process()
-        binPathProcess.currentDirectoryURL = packageDir
-        binPathProcess.executableURL = swiftExecutableURL()
-        binPathProcess.arguments = [
-            "build",
-            "-c", configuration,
-            "--disable-sandbox",
-            "--show-bin-path"
-        ]
-        let binPipe = Pipe()
-        binPathProcess.standardOutput = binPipe
-        try binPathProcess.run()
-        binPathProcess.waitUntilExit()
+        let binPathResult = try await Self.runProcessOffMainThread(
+            executableURL: Self.swiftExecutableURL(),
+            arguments: [
+                "build",
+                "-c", configuration,
+                "--disable-sandbox",
+                "--show-bin-path"
+            ],
+            currentDirectoryURL: packageDir
+        )
 
-        let binData = binPipe.fileHandleForReading.readDataToEndOfFile()
-        let binPath = (String(data: binData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let binPath = binPathResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !binPath.isEmpty && FileManager.default.fileExists(atPath: binPath) else {
             throw PluginDynamicLoadError.fileNotFound("Could not resolve binary output directory for package at \(packageDir.path)")

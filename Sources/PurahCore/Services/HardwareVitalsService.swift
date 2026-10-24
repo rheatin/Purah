@@ -189,6 +189,7 @@ public final class HardwareVitalsService {
 
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
+    @ObservationIgnored private let hostPort: mach_port_t = mach_host_self()
     @ObservationIgnored private var saveThrottleCounter = 0
 
     // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Vitals/
@@ -609,7 +610,7 @@ public final class HardwareVitalsService {
 
         let result = withUnsafeMutablePointer(to: &vmStats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                host_statistics64(self.hostPort, HOST_VM_INFO64, $0, &count)
             }
         }
 
@@ -656,7 +657,7 @@ public final class HardwareVitalsService {
         var numCpuInfo: mach_msg_type_number_t = 0
 
         let result = host_processor_info(
-            mach_host_self(),
+            self.hostPort,
             PROCESSOR_CPU_LOAD_INFO,
             &numProcessors,
             &cpuInfo,
@@ -726,6 +727,7 @@ public final class HardwareVitalsService {
 
     deinit {
         monitorTask?.cancel()
+        mach_port_deallocate(mach_task_self_, hostPort)
     }
 
     // MARK: - Native Darwin proc_pidinfo & NSWorkspace collection
