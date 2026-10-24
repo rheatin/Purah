@@ -466,6 +466,7 @@ struct VitalsAndScriptTests {
     @Test("PassThroughHostingView 2D hit-testing accurately captures decomposed script drawer")
     func testDecomposedScriptsHitTesting() {
         let store = PurahWorkspaceStore()
+        store.mountPod(id: "scripts", to: .left)
         store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions
         guard let firstAction = actions.first else {
@@ -517,6 +518,7 @@ struct VitalsAndScriptTests {
     @Test("Decomposed script drawer enables click-through on transparent areas of inactive sibling actions")
     func testDecomposedScriptTransparentClickThrough() {
         let store = PurahWorkspaceStore()
+        store.mountPod(id: "scripts", to: .left)
         store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions
         guard actions.count >= 2 else { return }

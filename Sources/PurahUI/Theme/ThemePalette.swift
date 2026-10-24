@@ -25,14 +25,9 @@ public struct ThemePalette: Sendable {
 
     @MainActor
     public func podColor(for podId: String, store: PurahWorkspaceStore? = nil) -> Color {
-        // 1. Hardware Vitals dynamic real-time color (resolved in nanoseconds with zero object allocations)
-        if podId == "vitals" {
-            let thresholds = store?._vitalsThresholds ?? VitalsColorThresholds()
-            return VitalsColorResolver.overallVitalsColor(
-                vitals: HardwareVitalsService.shared.metrics,
-                thresholds: thresholds,
-                palette: self
-            )
+        // 1. Plugin-provided dynamic real-time accent color (e.g. telemetry load color)
+        if let dynamicColor = PluginRegistry.shared.catalogPlugin(for: podId)?.dynamicAccentColor(store: store) {
+            return dynamicColor
         }
 
         // 2. Custom user color override

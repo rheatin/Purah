@@ -6,14 +6,15 @@ import Foundation
 @Suite("End-to-End System Integration Tests")
 @MainActor
 struct FullIntegrationTests {
-    @Test("Complete cycle: Preset -> AutoLayout -> Drag Stretch -> Collision Solve -> Zero Overlap")
+    @Test("Complete cycle: AutoLayout -> Drag Stretch -> Collision Solve -> Zero Overlap")
     func testCompleteLayoutCycle() {
         let store = PurahWorkspaceStore()
 
-        // 1. Apply layout preset
-        store.applyPreset(.sprintProductivity)
+        // 1. Auto layout all pods
+        store.autoLayoutAll()
         for edge in [MountEdge.left, MountEdge.right] {
             let pods = store.pods.filter { $0.edge == edge && $0.isEnabled }.sorted { $0.range.start < $1.range.start }
+            guard pods.count > 1 else { continue }
             for i in 0..<(pods.count - 1) {
                 #expect(pods[i].range.end <= pods[i + 1].range.start + 0.0001)
             }
@@ -27,6 +28,7 @@ struct FullIntegrationTests {
         // 3. Verify rigid zero-overlap invariant
         for edge in [MountEdge.left, MountEdge.right] {
             let pods = store.pods.filter { $0.edge == edge && $0.isEnabled }.sorted { $0.range.start < $1.range.start }
+            guard pods.count > 1 else { continue }
             for i in 0..<(pods.count - 1) {
                 #expect(pods[i].range.end <= pods[i + 1].range.start + 0.0001)
             }

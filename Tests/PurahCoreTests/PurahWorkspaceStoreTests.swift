@@ -24,32 +24,33 @@ struct PurahWorkspaceStoreTests {
         #expect(store.pods.contains(where: { $0.id == "ai" }))
     }
 
-    @Test("Applies Sprint Productivity preset properly")
-    func testSprintPreset() {
-        let isolated = UserDefaults(suiteName: "test_sprint")!
+    @Test("Auto-layout distributes default pods within safe rail capacity without overload warnings")
+    func testAutoLayoutWithinSafeCapacity() {
+        let isolated = UserDefaults(suiteName: "test_autolayout_capacity")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.applyPreset(.sprintProductivity)
+        store.autoLayoutAll()
 
-        // Sprint preset: left rail hosts shelf and notes
+        #expect(store.capacityRatio(for: .left) <= 1.0, "Auto-layout overloaded left rail")
+        #expect(store.capacityRatio(for: .right) <= 1.0, "Auto-layout overloaded right rail")
+
         let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
-        #expect(leftPods.contains(where: { $0.id == "shelf" }))
-        #expect(leftPods.contains(where: { $0.id == "notes" }))
-
-        // Right rail hosts calendar and todo
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
-        #expect(rightPods.contains(where: { $0.id == "calendar" }))
-        #expect(rightPods.contains(where: { $0.id == "todo" }))
+        #expect(!leftPods.isEmpty)
+        #expect(!rightPods.isEmpty)
     }
 
-    @Test("All presets configure 7 pods within safe rail capacity without overload warnings")
-    func testPresetsWithinSafeCapacity() {
-        let isolated = UserDefaults(suiteName: "test_presets")!
+    @Test("Auto-layout establishes non-overlapping ranges on both rails")
+    func testAutoLayoutNonOverlappingRanges() {
+        let isolated = UserDefaults(suiteName: "test_autolayout_ranges")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.autoLayoutAll()
 
-        for preset in PodPreset.allCases {
-            store.applyPreset(preset)
-            #expect(store.capacityRatio(for: .left) <= 1.0, "Preset \(preset.rawValue) overloaded left rail")
-            #expect(store.capacityRatio(for: .right) <= 1.0, "Preset \(preset.rawValue) overloaded right rail")
+        for edge in [MountEdge.left, MountEdge.right] {
+            let pods = store.pods.filter { $0.edge == edge && $0.isEnabled }.sorted { $0.range.start < $1.range.start }
+            guard pods.count > 1 else { continue }
+            for i in 0..<(pods.count - 1) {
+                #expect(pods[i].range.end <= pods[i + 1].range.start + 0.0001)
+            }
         }
     }
 

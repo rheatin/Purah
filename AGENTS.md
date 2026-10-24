@@ -80,12 +80,18 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
     @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
 
+    // Dynamic Accent Color (e.g. telemetry load color)
+    func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
+
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
 }
 ```
 
 - **`PluginRegistry.shared`**: Manages registration, discovery, and lifecycle. Built-in plugins are registered on startup.
+- **Autonomous Dynamic Accent Color Resolution (`dynamicAccentColor`)**: Plugins declare dynamic real-time accent colors autonomously via `dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?` (e.g. Hardware Vitals returning telemetry health thresholds). `ThemePalette.podColor(for:store:)` queries plugins polymorphically, ensuring zero hardcoded plugin IDs in the host theme engine.
+- **Modularized Stepped Drawer Architecture**: Stepped drawer views are decoupled into dedicated single-responsibility files under `Sources/PurahUI/DrawerPanels/` (`TodoItemDrawerView`, `CalendarItemDrawerView`, `VitalsItemDrawerView`, `ScriptItemDrawerView`), while `Sources/PurahUI/AmbientViews/ItemDrawerCardView.swift` maintains shared primitives like `OptionalGlow`.
+- **Sunsetting of Legacy `PodPreset`**: Static hardcoded presets (`PodPreset`) have been completely removed in favor of the 6-step Interactive Panoramic Onboarding, Live Rail Sculptor (`⌃⌥E`), and `✨ Magic Ergonomic Auto-Layout` (`store.autoLayoutAll()`), providing fully ergonomic, non-overlapping dynamic layout solving.
 - **`PurahPluginStorage`**: Provides scoped isolation (`ScopedPluginStorage(pluginId:)`), keeping plugin persistent preferences neatly partitioned (`purah.plugin.<id>.<key>`).
 - **`PurahPluginFileStorage` & `PurahDiskRepository`**: Dual-tier storage architecture providing isolated sandboxed disk directories (`~/Library/Application Support/Purah/Plugins/<pluginId>/`), automatic atomic JSON indexing, `PurahRetentionPeriod` expiration cleaning, and `PurahDiskQuota` auto-pruning. Enforces the **Star Protection Immunity Rule**: all items with `isFavorite == true` are strictly immune to automated expiration or quota pruning.
 - **`PurahPluginContext`**: Supplies layout geometry (`edge`, `railWidth`, `slotHeight`, `drawerWidth`), state (`isExpanded`, `isPinned`), theme palette, isolated storage, and action triggers (`requestExpand`, `requestDismiss`, `togglePin`, `isItemPinned`, `acknowledgeAlert`, `requestLayoutRecalculation`, `openSettings`, `showToast`, `showWarning`, `performHaptic`). Third-party plugins communicate through context actions rather than mutating host store internals directly.
