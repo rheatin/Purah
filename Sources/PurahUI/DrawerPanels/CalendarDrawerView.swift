@@ -713,7 +713,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
     public var body: some View {
         let podColor = palette.podColor(for: "calendar")
         let cardH = max(slotHeight, 32.0)
-        let drawerW: CGFloat = 320.0
         let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
@@ -723,13 +722,13 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
 
             // Glides out full agenda overview drawer only when hovered or pinned
-            expandedAgendaCard(podColor: podColor)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                expandedAgendaCard(podColor: podColor)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: cardH, alignment: .top)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
     }
 
     @ViewBuilder

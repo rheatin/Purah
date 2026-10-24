@@ -93,6 +93,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 - **Default Decomposed Principle**: Plugins that support multi-item stepped modes (Vitals, Scripts, Calendar, Todo) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and per-item direct interaction.
 - **Header Slot Integration**: Plugins can inject badges (e.g. Terminal `[• ZSH]`) and inline toolbars directly into the card header row via `makeHeaderAccessoryView` and `makeHeaderTrailingView`, saving vertical drawer space.
 - **Autonomous Adaptive Width Principle (自适应宽度自主宣告法则)**: Plugins autonomously declare their optimal adaptive width via `adaptiveDrawerWidth(store:) -> CGFloat?` (e.g. Music: 360pt, Shelf: 360pt, Clipboard: 380pt, Terminal: 520pt, Notes: 320pt). The base workspace store contains ZERO hardcoded plugin dimensions and gracefully falls back to text-length estimation only when a plugin returns `nil`.
+- **Plugin Lifecycle & Polling Suspension**: `PluginRegistry` automatically guards background polling tasks. When a pod is disabled in settings or unmounted from an active rail, its polling `Task` is stopped or withheld from running, ensuring zero idle background CPU overhead for disabled plugins.
 - **Extensibility**: Third-party plugins can register custom manifests and views without modifying core layout engines.
 
 ---
@@ -102,7 +103,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 1. **Physicality & Origin (Pure Bezel Slide)**:
    - Drawers are physical architectural extensions of the screen bezel.
    - Drawers use edge-anchored physical sliding (`.move(edge: edge == .right ? .trailing : .leading)`) with 100% solid opacity during exit.
-   - **Zero Ghosting Rule**: Never apply opacity fades on drawer card dismissals. A dark translucent card floating over user content looks like a dirty ghost artifact. The card glides smoothly and solidly back into the screen bezel.
+   - **Zero Ghosting Rule & Lazy Conditional Mounting**: Never apply opacity fades on drawer card dismissals. A dark translucent card floating over user content looks like a dirty ghost artifact. The card glides smoothly and solidly back into the screen bezel. Stepped drawer cards (e.g. `TodoItemDrawerView`, `CalendarItemDrawerView`, `VitalsItemDrawerView`, `ScriptItemDrawerView`, `genericSubItemChip`, `CalendarAgendaOverviewDrawerView`) enforce conditional `if isExpanded` mounting with pure `.move(edge:)` transitions and asymmetric spring animation, leaving zero offscreen dormant views or polling timers in memory while docked.
 2. **Asymmetric Easing & Duration**:
    - **Entrance**: Natural Apple-style deceleration spring: `response: 0.30, dampingFraction: 0.80`.
    - **Retraction / Exit**: Fast, crisp dismissal in ~160ms: `response: 0.20, dampingFraction: 0.92`.

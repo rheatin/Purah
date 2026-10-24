@@ -955,6 +955,14 @@ public final class AIAssistantService {
 
                 let buffer = SafeTextBuffer()
                 let lineBuffer = SafeTextBuffer()
+                let errorBuffer = SafeTextBuffer()
+
+                defer {
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
+                    try? outputPipe.fileHandleForReading.close()
+                    try? errorPipe.fileHandleForReading.close()
+                }
 
                 let processChunk: @Sendable (String) -> Void = { text in
                     if isNDJSON {
@@ -990,14 +998,26 @@ public final class AIAssistantService {
                     processChunk(text)
                 }
 
+                errorPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                    errorBuffer.append(text)
+                }
+
                 do {
                     try process.run()
                     process.waitUntilExit()
                     outputPipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
 
                     let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     if !remainingData.isEmpty, let remainingText = String(data: remainingData, encoding: .utf8) {
                         processChunk(remainingText)
+                    }
+
+                    let remainingErrData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remainingErrData.isEmpty, let remainingErrText = String(data: remainingErrData, encoding: .utf8) {
+                        errorBuffer.append(remainingErrText)
                     }
 
                     if isNDJSON {
@@ -1018,15 +1038,14 @@ public final class AIAssistantService {
                         let result = buffer.value()
                         continuation.resume(returning: result)
                     } else {
-                        let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                        let errText = String(data: errData, encoding: .utf8) ?? "Unknown error"
+                        let errText = errorBuffer.value()
+                        let fallbackMsg = errText.isEmpty ? "Unknown error" : errText
                         continuation.resume(throwing: AIAssistantError.processExecutionFailed(
                             exitCode: process.terminationStatus,
-                            errorOutput: Self.stripANSIEscapeSequences(errText)
+                            errorOutput: Self.stripANSIEscapeSequences(fallbackMsg)
                         ))
                     }
                 } catch {
-                    outputPipe.fileHandleForReading.readabilityHandler = nil
                     continuation.resume(throwing: error)
                 }
             }

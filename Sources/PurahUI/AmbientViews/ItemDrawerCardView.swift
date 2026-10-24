@@ -50,8 +50,6 @@ public struct TodoItemDrawerView: View {
             return podColor
         }()
 
-        let effectiveW = store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0)
-
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline color bar (using native category list color)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
@@ -63,13 +61,13 @@ public struct TodoItemDrawerView: View {
                     }
                 }
 
-            expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: cardH)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
     }
 
     @ViewBuilder
@@ -211,6 +209,7 @@ public struct TodoItemDrawerView: View {
     }}
 
 public struct CalendarItemDrawerView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     public let event: CalendarEventItem
     public let allEvents: [CalendarEventItem]
     public let edge: MountEdge
@@ -263,20 +262,17 @@ public struct CalendarItemDrawerView: View {
             return podColor
         }()
 
-        let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
-        let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
-
         let railBarColor: Color = {
             if isPast {
                 return Color.secondary.opacity(0.22)
             } else if isOngoing || isImminent {
                 return (isImminent && !isOngoing) ? Color.orange : calColor
             } else {
-                return calColor.opacity(0.85)
+                return calColor
             }
         }()
 
-        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
+        ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored indicator bar (co-planar flush height with dynamic attention beacon)
             RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
                 .fill(railBarColor)
@@ -299,13 +295,13 @@ public struct CalendarItemDrawerView: View {
                     }
                 }
 
-            expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                expandedCard(cardH: cardH, isPast: isPast, isOngoing: isOngoing, isImminent: isImminent, isAlerting: isAlerting, calColor: calColor)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: cardH, alignment: .top)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
         .onAppear {
             if isAlerting {
                 store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
@@ -882,7 +878,7 @@ public struct CalendarItemDrawerView: View {
     private func statusBeacon(isPast: Bool, isAlerting: Bool, calColor: Color) -> some View {
         Group {
             if isAlerting {
-                TimelineView(.animation) { timeline in
+                TimelineView(.animation(paused: !isAlerting || reduceMotion)) { timeline in
                     let time = timeline.date.timeIntervalSinceReferenceDate
                     let pulse = (sin(time * 4.2) + 1.0) / 2.0
                     ZStack {
@@ -997,8 +993,6 @@ public struct VitalsItemDrawerView: View {
         let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
 
-        let effectiveW = store.effectiveDrawerWidth(for: metric.displayName, baseWidth: 360.0, podId: "vitals")
-
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             // Rail-anchored baseline bar (micro dynamic telemetry meter level)
             ZStack(alignment: .bottom) {
@@ -1017,13 +1011,13 @@ public struct VitalsItemDrawerView: View {
                 }
             }
 
-            expandedCard(cardH: cardH)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                expandedCard(cardH: cardH)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: cardH)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
     }
 
     private var telemetryRatio: Double {
@@ -1187,7 +1181,6 @@ public struct ScriptItemDrawerView: View {
         let barW = CGFloat(store.railBarWidth)
         let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
 
-        let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0)
         let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
@@ -1217,16 +1210,16 @@ public struct ScriptItemDrawerView: View {
                 }
             }
 
-            expandedCard(cardH: cardH)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (effectiveW + 50) : -(effectiveW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                expandedCard(cardH: cardH)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: cardH)
         .onHover { hovering in
             isHovered = hovering
         }
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
     }
 
     @ViewBuilder

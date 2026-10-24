@@ -2438,10 +2438,11 @@ public struct AISessionHistoryManagerView: View {
 
 // MARK: - Shimmer Skeleton Lines View
 private struct AIShimmerSkeletonView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let roleColor: Color
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
 

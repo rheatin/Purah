@@ -201,7 +201,6 @@ public struct SteppedRailContainerView: View {
         let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
         let isExpanded = (state == .expandedDrawer)
         let cardH = isExpanded ? max(itemH, 32.0) : max(itemH, 6.0)
-        let drawerW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)
@@ -211,13 +210,13 @@ public struct SteppedRailContainerView: View {
                     }
                 }
 
-            genericSubItemDrawerCard(subItem: subItem, isPinned: isPinned, cardH: cardH, tintColor: tintColor)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                genericSubItemDrawerCard(subItem: subItem, isPinned: isPinned, cardH: cardH, tintColor: tintColor)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: cardH)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
     }
 
     @ViewBuilder

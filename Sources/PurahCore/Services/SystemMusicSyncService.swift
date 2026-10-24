@@ -604,9 +604,6 @@ public final class SystemMusicSyncService {
                 guard !store.isRailsFrozen else { return }
                 guard store.pods.contains(where: { $0.id == "music" && $0.isEnabled }) else { return }
 
-                store._musicTrack.playbackProgress = store._musicTrack.calculatedProgress
-                self?.onTrackChanged?(store._musicTrack)
-
                 tickCount += 1
                 if tickCount % 4 == 0 {
                     // Periodic 4-second ground-truth recalibration to prevent time-anchor drift

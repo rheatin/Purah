@@ -80,7 +80,8 @@ struct MultiDisplayTests {
 
     @Test("ScreenEdgeCoordinator sleeps empty rail when all pods on that edge are disabled")
     func testSingleRailSleepWhenPodsDisabled() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_multi_display_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         for idx in store.pods.indices where store.pods[idx].edge == .left {
             store.pods[idx].isEnabled = false
         }
