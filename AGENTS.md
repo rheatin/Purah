@@ -29,7 +29,7 @@ Sources/
   - `Theme`: `ThemeManager`, `ThemePalette` (macOS Native and Purah Pad Sheikah Slate styles), and `TactileButtonStyle`.
 - **`PurahApp`**:
   - `AmbientRailWindow`: Borderless `.floating` NSPanel anchoring to physical screen boundaries with custom frame hit-testing.
-  - `EdgeMouseMonitor`: Global mouse monitor tracking 14px edge triggers, 2D bounding boxes, velocity speed suppression, and exit grace windows.
+  - `EdgeMouseMonitor`: Global mouse monitor tracking strict 8pt (railBarWidth) edge triggers, 2D bounding boxes, velocity speed suppression, and exit grace windows.
   - `GlobalHotKeyManager`: Low-latency Carbon global hotkey manager (`⌥⇥` Freeze Rails & `⌃⌥E` Live Rail Sculptor) operating without accessibility permissions.
   - `ScreenEdgeCoordinator`: Multi-screen lifecycle manager and rail window synchronizer.
 
@@ -45,14 +45,13 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
    - `window.ignoresMouseEvents` MUST be `true` by default when docked or when cursor is over transparent empty space.
    - `EdgeMouseMonitor` and `PassThroughHostingView` use 2D bounding-box collision detection (`isPointInsideAnyDrawerCard`). Only points physically within active or pinned drawer cards (`x <= effectiveDrawerWidth`, `minY <= y <= maxY`) enable interactive mode (`ignoresMouseEvents = false`). Furthermore, `isPointInsideAnyDrawerCard` bridges `store.activePreviewScreenFrame` so pinned interactive QuickLook/Preview panels for Clipboard and Drop Shelf keep the parent drawer open.
    - Transparent areas above, below, or beside drawers **100% return `nil` in `hitTest`**, passing clicks directly through to underlying applications (Finder, IDEs, desktop).
-2. **150ms Exit Grace Window (Hysteresis)**:
-   - When cursor leaves a drawer card, a 150ms grace timer begins before retracting.
-   - If the cursor re-enters the drawer card or rail within 150ms, the timer is canceled and the drawer remains open.
+2. **Configurable Exit Grace Window (180ms agile / 280ms balanced / 400ms deliberate, customizable 100~600ms)**:
+   - When cursor leaves a drawer card, an exit grace timer begins before retracting.
+   - If the cursor re-enters the drawer card or rail within the grace window, the timer is canceled and the drawer remains open.
    - This eliminates accidental drawer collapse when moving towards corner controls (e.g. Pin buttons).
-3. **Immediate Hover Focus**:
-   - When cursor enters an active or pinned drawer card, `window.makeKey()` is triggered immediately on hover.
-   - `PassThroughHostingView` overrides `acceptsFirstMouse(for:) = true`.
-   - Single-click directly focuses `TextEditor` or activates buttons on the very first tap.
+3. **Immediate First-Click Focus (Non-Intrusive Hover)**:
+   - Hovering a drawer never steals key-window focus from underlying IDEs/editors.
+   - `PassThroughHostingView` overrides `acceptsFirstMouse(for:) = true` and `AmbientRailWindow` calls `makeKey()` immediately on `leftMouseDown` so single-click directly focuses `TextEditor` or activates buttons on the very first tap.
 4. **Pin Isolation**:
    - Individual drawer items can be pinned independently (`store.isItemPinned(id:)`).
    - When cursor leaves an unpinned drawer, only that specific unpinned drawer retracts. Pinned drawers stay pinned and rendered on screen.
@@ -60,7 +59,7 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
    - When a drawer card retracts, the canvas initiates a 300ms deferred collapse task to tuck from 580pt to 28pt.
    - Any re-expansion (`expandCanvas(for:)`) immediately cancels the pending collapse task and nullifies dismissing flags, preventing race conditions where rapid re-entry causes the canvas to collapse beneath the cursor.
 6. **Esc Key Drawer Dismissal & Terminal Passthrough**:
-   - Pressing `Esc` (`keyCode == 53`) dismisses any active unpinned drawer cards or exits Live Rail Editing Mode.
+   - Pressing `Esc` (`keyCode == 53`) dismisses any active unpinned drawer whether hovered or key-focused (via `EdgeMouseMonitor` + `AmbientRailWindow`), or exits Live Rail Editing Mode.
    - If the first responder is inside an embedded terminal (`TerminalView`), `Esc` is passed through directly to the shell without collapsing the drawer.
 
 ---
@@ -131,7 +130,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - **Entrance**: Natural Apple-style deceleration spring: `response: 0.30, dampingFraction: 0.80`.
    - **Retraction / Exit**: Fast, crisp dismissal in ~160ms: `response: 0.20, dampingFraction: 0.92`.
 3. **Fluid Waveform Visualizer (60 / 120 FPS Metal GPU)**:
-   - Audio visualizers use SwiftUI `Canvas` with `.drawingGroup()` driven by `TimelineView(.animation(paused: !isPlaying || reduceMotion))`.
+   - Audio visualizers use high-performance SwiftUI `Canvas` driven by `TimelineView(.animation(paused: !isPlaying || reduceMotion))`.
    - Sound waves follow superposition wave equations ($w_1\sin + w_2\cos + w_3\sin$) for silky organic flow.
    - Respects `accessibilityReduceMotion`: switches to static calm bars when reduce motion is enabled.
 4. **Tactile Pushpin & Button Feedback**:
@@ -145,7 +144,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
 ## 5. Physical Ergonomic Minimum Height & Dynamic Rail Capacity Rule (Mandatory)
 1. **Tiered Ergonomic Sub-Item Minimum**:
-   - **Full-Pod Composite Drawers** (Music, Shelf, Notes, Terminal, Clipboard): **MUST enforce $\ge 120\text{pt}$** (Terminal preserves $\ge 520\text{pt}$ width, Clipboard composite $\ge 150\text{pt}$).
+   - **Full-Pod Composite Drawers** (Music, Shelf, Notes, Terminal, Clipboard): **MUST enforce $\ge 120\text{pt}$** ($\ge 110\text{pt}$ for compact Music vinyl mini-player, $\ge 150\text{pt}$ for Clipboard, Terminal preserves $\ge 520\text{pt}$ width).
    - **Tactile Metrics & Actions** (split hardware metric chips, script runway action buttons): **MUST enforce $\ge 56\text{pt}$** to ensure precise fingertip/cursor click hitboxes.
    - **Compact Calendar Event Chips** (`compactEventCard`): enforce **$40\text{pt}$ baseline** with configurable `calendarMaxRailEvents` (2~6 events), optimizing high-density multi-event glanceability without overflowing the rail.
    - **Compact Reminder/Todo Task Chips** (`compactTodoCard`): enforce **$32\text{pt}$ baseline** with configurable `todoMaxRailTasks` (2~10 tasks) for concise task completion and fast-tick workflows.
@@ -169,17 +168,17 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
      - **Row 1 (Header)**: Primary Icon + Name (bold) + Subtype Badge (monospaced) + Standardized Pin Button (`PurahPinButton`).
      - **Row 2 (Body)**: Core content, monospaced command preview, live metric graph, or text preview.
      - **Row 3 (Action)**: Auxiliary status/timestamp + Tactile Primary Action Button.
-2. **Rail-Aware Safe Inset Margin (18pt ~ 22pt Floating Edge Inset)**:
+2. **Rail-Aware Safe Inset Margin (18pt ~ 22pt Floating Edge Inset on Stepped Cards)**:
    - Interactive buttons (Pin, Run, Toggle, Actions) **MUST NEVER hug the outer floating boundary**.
-   - All drawer cards enforce an `18pt ~ 22pt` inset padding on the floating edge (`trailing` on Left Rail, `leading` on Right Rail).
+   - Stepped drawer cards enforce an `18pt ~ 22pt` inset padding on the floating edge (`trailing` on Left Rail, `leading` on Right Rail), while composite drawer cards use `8pt` symmetric padding paired with the configurable `+20pt ~ +90pt` horizontal catch corridor (`±6pt` vertical margin) so content area is maximized.
    - This prevents natural cursor momentum from accidentally overshooting past the card and prematurely collapsing the drawer.
-3. **Dual-Rail Symmetric Catch Corridor (+50pt Invisible Buffer)**:
-   - `PassThroughHostingView` and `EdgeMouseMonitor` expand the interactive hit-test bounding box by `+50pt` beyond the outer floating edge of the card, and $\pm 18\text{pt}$ vertically.
-   - Mouse overshoots within this 50pt corridor remain interactive and preserve drawer state.
+3. **Dual-Rail Symmetric Catch Corridor (+20pt ~ +90pt Configurable Invisible Buffer)**:
+   - `PassThroughHostingView` and `EdgeMouseMonitor` expand the interactive hit-test bounding box by `+20pt ~ +90pt` (default `+50pt`, configurable) beyond the outer floating edge of the card, and `±6pt` vertically.
+   - Mouse overshoots within this corridor remain interactive and preserve drawer state.
 4. **Comprehensive Edge Sensitivity & Calibration Model (双模初次触发门禁)**:
-   - **Strict Edge Anti-Accidental Touch Band (12pt 极致防误触物理带宽)**: The rail trigger zone strictly adheres to `railBarWidth + 4.0` (8pt + 4pt = 12pt). Transparent desktop area beyond 12pt 100% returns `nil` in hitTest, ensuring zero interference with IDE scrollbars, browser sidebars, or window controls.
-   - **Initial Hover Dwell (抗微颤悬停驻留门禁 - SuperCorners 模型)**: When cursor lands on a pod within the 12pt rail band, dwell timer begins. Hand micro-jitters do not reset the timer; when dwell duration (e.g. 150ms balanced / 0ms agile) elapses, the drawer glides open smoothly.
-   - **Push Force Resistance Barrier (推力阻力结界模型 - Barrier/Input Leap/Loop 模型)**: Solves the macOS coordinate-clamping problem at screen borders by accumulating hardware relative motion deltas (`PushForceAccumulator`). Continuous pressing against the bezel (36px accumulated force) or rapid double-tap impulse strike (22px) shatters the resistance barrier and pops open the drawer with 0ms latency. Inward retreat immediately resets the accumulator.
+   - **Strict Edge Anti-Accidental Touch Band (8pt 极致防误触物理带宽)**: The rail trigger zone strictly equals `railBarWidth` (8pt default, configurable 4pt ~ 16pt) with zero overhang into the desktop. Transparent desktop area beyond `railBarWidth` 100% returns `nil` in hitTest, ensuring zero interference with IDE scrollbars, browser sidebars, or window controls.
+   - **Initial Hover Dwell (抗微颤悬停驻留门禁 - SuperCorners 模型)**: When cursor lands on a pod within the rail band, dwell timer begins. Hand micro-jitters do not reset the timer; when dwell duration (e.g. 150ms balanced / 0ms agile) elapses, the drawer glides open smoothly.
+   - **Push Force Resistance Barrier (推力阻力结界模型 - Barrier/Input Leap/Loop 模型)**: Solves the macOS coordinate-clamping problem at screen borders by accumulating hardware relative motion deltas (`PushForceAccumulator`). Continuous pressing against the bezel (22px agile / 36px balanced / 55px deliberate, customizable 20~120px) shatters the resistance barrier and pops open the drawer with 0ms latency. Inward retreat immediately resets the accumulator.
    - `EdgeTriggerSensitivity` governs the **Initial Dwell Window**, the **Push Resistance Barrier Threshold**, the **Exit Grace Window**, and the **Overshoot Catch Corridor Width**.
    - **Live Edge Gate Telemetry Meter (`PurahEdgeGateMeterView`)**: Available in both Onboarding Step 6 and `InteractionSettingsView` for real-time millisecond dwell / push-force / velocity-fling suppression visualization.
 

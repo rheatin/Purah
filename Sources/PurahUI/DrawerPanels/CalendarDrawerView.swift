@@ -728,7 +728,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
             }
         }
         .frame(height: cardH, alignment: .top)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
     }
 
     @ViewBuilder

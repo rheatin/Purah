@@ -15,6 +15,15 @@ public struct WaveMeterAmbientView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // Pre-allocated static colors for 60/120 FPS Canvas rendering performance
+    private static let greenSegmentColor = Color(hex: "#00F5D4")
+    private static let amberSegmentColor = Color(hex: "#FFD166")
+    private static let pinkSegmentColor = Color(hex: "#FF2A85")
+    private static let crimsonSegmentColor = Color(hex: "#FF0055")
+    private static let auroraColor1 = Color(hex: "#FF007A")
+    private static let auroraColor2 = Color(hex: "#FF4E50")
+    private static let auroraColor3 = Color(hex: "#F9D423")
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -113,7 +122,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Mode 2: 60 FPS Silky Smooth Live Progress Bar
     private func smoothProgressView(totalH: CGFloat, barW: CGFloat) -> some View {
-        TimelineView(.animation(paused: !isPlaying)) { timeline in
+        TimelineView(.animation(paused: !isPlaying || reduceMotion)) { timeline in
             Canvas { context, size in
                 let w = size.width
                 let h = size.height
@@ -155,7 +164,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Sub-Style 1: Cyberpunk Neon VU Tower (Real-time Low-pass Filter & Transient Beat Punch)
     private func neonVUTowerView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && isPlaying && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
@@ -214,10 +223,10 @@ public struct WaveMeterAmbientView: View {
                     // High Energy: Warm Amber Gold (#FF9F0A)
                     // Kick Overdrive Peak: Cyber Cyan (#00F5D4)
                     let litColor: Color = {
-                        if ratio < 0.35 { return Color(hex: "#FF0055") }
-                        else if ratio < 0.70 { return Color(hex: "#FF375F") }
-                        else if ratio < 0.88 { return Color(hex: "#FF9F0A") }
-                        else { return Color(hex: "#00F5D4") }
+                        if ratio < 0.35 { return Self.crimsonSegmentColor }
+                        else if ratio < 0.70 { return Self.pinkSegmentColor }
+                        else if ratio < 0.88 { return Self.amberSegmentColor }
+                        else { return Self.greenSegmentColor }
                     }()
 
                     let blockW: CGFloat = w - (isLit ? (isTopActiveBlock ? 0.4 : 0.8) : 1.6)
@@ -241,7 +250,7 @@ public struct WaveMeterAmbientView: View {
 
     // MARK: - Sub-Style 2: Aurora Wave Ribbon (Breathing Acoustic Ribbon)
     private func auroraWaveView(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && isPlaying && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
@@ -289,7 +298,7 @@ public struct WaveMeterAmbientView: View {
                 context.fill(
                     path,
                     with: .linearGradient(
-                        Gradient(colors: [Color(hex: "#FF007A"), Color(hex: "#FF4E50"), Color(hex: "#F9D423")]),
+                        Gradient(colors: [Self.auroraColor1, Self.auroraColor2, Self.auroraColor3]),
                         startPoint: CGPoint(x: centerX, y: 0),
                         endPoint: CGPoint(x: centerX, y: h)
                     )

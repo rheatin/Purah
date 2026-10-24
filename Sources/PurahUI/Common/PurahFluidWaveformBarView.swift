@@ -68,7 +68,7 @@ public struct PurahFluidWaveformBarView: View {
     }
 
     private func smoothProgressCanvas(totalH: CGFloat, barW: CGFloat) -> some View {
-        TimelineView(.animation(paused: !isPlaying)) { _ in
+        TimelineView(.animation(paused: !isPlaying || reduceMotion)) { _ in
             Canvas { context, size in
                 let w = size.width
                 let h = size.height
@@ -103,7 +103,7 @@ public struct PurahFluidWaveformBarView: View {
     }
 
     private func neonVUTowerCanvas(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && isPlaying && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in
@@ -144,7 +144,7 @@ public struct PurahFluidWaveformBarView: View {
     }
 
     private func auroraWaveCanvas(totalH: CGFloat, barW: CGFloat) -> some View {
-        let shouldAnimate = isAnimated && !reduceMotion
+        let shouldAnimate = isAnimated && isPlaying && !reduceMotion
 
         return TimelineView(.animation(paused: !shouldAnimate)) { timeline in
             Canvas { context, size in

@@ -307,7 +307,7 @@ public struct ClipboardItemDrawerView: View {
                 .allowsHitTesting(isExpanded)
         }
         .frame(height: isExpanded ? cardH : height)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.18, dampingFraction: 0.92), value: state)
+        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: state)
     }
 
     @ViewBuilder

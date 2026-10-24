@@ -13,9 +13,10 @@ public final class EdgeMouseMonitor {
     private var velocityTracker = VelocityTracker()
     nonisolated(unsafe) internal var pushAccumulator = PushForceAccumulator()
     private let flingDetector = FlingIntentDetector()
-    private var dwellTracker = DwellTracker(threshold: 0.16)
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var keyDownMonitor: Any?
+    private var globalKeyDownMonitor: Any?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var leftExitGraceTask: Task<Void, Never>?
@@ -52,10 +53,7 @@ public final class EdgeMouseMonitor {
     }
 
     private var effectiveEdgeTriggerWidth: CGFloat {
-        if Self.isTestingEnvironment {
-            return max(CGFloat(store.railBarWidth) + 4.0, 12.0)
-        }
-        return max(CGFloat(store.railBarWidth), 4.0)
+        max(CGFloat(store.railBarWidth), 4.0)
     }
 
     public init(store: PurahWorkspaceStore, coordinator: ScreenEdgeCoordinator? = nil) {
@@ -80,7 +78,6 @@ public final class EdgeMouseMonitor {
             rightExitGraceTask = nil
             cancelInitialDwell()
             cancelPortalHover()
-            dwellTracker.reset()
             pushAccumulator.reset()
             wasAtAbsoluteBezel = false
             bezelArrivalTime = nil
@@ -113,7 +110,6 @@ public final class EdgeMouseMonitor {
         leftExitGraceTask = nil
         rightExitGraceTask?.cancel()
         rightExitGraceTask = nil
-        dwellTracker.reset()
         pushAccumulator.reset()
         wasAtAbsoluteBezel = false
         bezelArrivalTime = nil
@@ -145,6 +141,32 @@ public final class EdgeMouseMonitor {
                 self?.handleMouse(event: event)
             }
             return event
+        }
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            if event.keyCode == 53 && (self.store.activeDrawerPodId != nil || self.store.activeDrawerItemId != nil) {
+                let responderType = NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? ""
+                if !responderType.contains("Terminal") {
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                        self.store.dismissActiveDrawer()
+                    }
+                    return nil
+                }
+            }
+            return event
+        }
+        globalKeyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return }
+            if event.keyCode == 53 && (self.store.activeDrawerPodId != nil || self.store.activeDrawerItemId != nil) {
+                let responderType = NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? ""
+                if !responderType.contains("Terminal") {
+                    Task { @MainActor [weak self] in
+                        withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                            self?.store.dismissActiveDrawer()
+                        }
+                    }
+                }
+            }
         }
         updateEventTapState()
     }
@@ -287,6 +309,38 @@ public final class EdgeMouseMonitor {
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)
             localMonitor = nil
+        }
+        if let monitor = keyDownMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyDownMonitor = nil
+        }
+        if let monitor = globalKeyDownMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalKeyDownMonitor = nil
+        }
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            if let tap = eventTap {
+                CGEvent.tapEnable(tap: tap, enable: false)
+                if let source = runLoopSource {
+                    CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+                }
+                CFMachPortInvalidate(tap)
+            }
+            if let monitor = globalMonitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            if let monitor = localMonitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            if let monitor = keyDownMonitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            if let monitor = globalKeyDownMonitor {
+                NSEvent.removeMonitor(monitor)
+            }
         }
     }
 
@@ -608,7 +662,6 @@ public final class EdgeMouseMonitor {
 
         // If mouse is neither on a rail nor inside an active/pinned drawer card on either side
         if !shouldBeInteractiveLeft && !shouldBeInteractiveRight {
-            dwellTracker.reset()
             pushAccumulator.reset()
             wasAtAbsoluteBezel = false
             bezelArrivalTime = nil

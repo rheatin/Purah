@@ -119,8 +119,9 @@ public struct AIAssistantSteppedDrawerView: View {
             .frame(width: barW, height: slotH)
 
             // 2. Expanded Floating Role Stepped Card (1:1 Co-Planar Height)
-            ZStack {
-                VStack(alignment: .leading, spacing: 4) {
+            if isExpanded {
+                ZStack {
+                    VStack(alignment: .leading, spacing: 4) {
                     // Minimal Top Header Strip (16pt tall)
                     HStack(spacing: 5) {
                         Image(systemName: role.systemIcon)
@@ -285,9 +286,9 @@ public struct AIAssistantSteppedDrawerView: View {
                 .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 4)
             }
             .frame(width: drawerW, height: cardH)
-            .offset(x: isExpanded ? (edge == .right ? (-barW - 6) : (barW + 6)) : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
-            .opacity(isExpanded ? 1.0 : 0.0)
-            .allowsHitTesting(isExpanded)
+            .offset(x: edge == .right ? (-barW - 6) : (barW + 6))
+            .transition(.move(edge: edge == .right ? .trailing : .leading))
+        }
         }
         .frame(height: slotH, alignment: .top)
         .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
@@ -2484,10 +2485,11 @@ private struct AIShimmerSkeletonView: View {
 
 // MARK: - Single Line Shimmer Skeleton View
 private struct AIShimmerSingleLineView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let roleColor: Color
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
 

@@ -14,6 +14,7 @@ public struct MusicDrawerView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubbedProgress: Double = 0.0
     @State private var isShowingLyrics: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -36,7 +37,7 @@ public struct MusicDrawerView: View {
     public var body: some View {
         let isPlaying = state.isPlaying
 
-        TimelineView(.periodic(from: .now, by: isPlaying ? 0.5 : 60.0)) { _ in
+        TimelineView(.periodic(from: .now, by: (isPlaying && !reduceMotion) ? 0.5 : (isPlaying ? 1.0 : 60.0))) { _ in
             let liveCurrentSec = state.track.calculatedCurrentTime
             let liveProgress = state.track.calculatedProgress
 

@@ -1406,8 +1406,17 @@ public final class PurahWorkspaceStore {
 
     public func availableScreenHeight(for edge: MountEdge) -> CGFloat {
         let screens = NSScreen.screens
-        let mainScreen = NSScreen.main ?? screens.first
-        guard let screen = mainScreen else { return 980.0 }
+        let targetScreen: NSScreen? = {
+            switch displayTargetMode {
+            case .primaryOnly:
+                return screens.first
+            case .externalOnly:
+                return screens.dropFirst().first ?? screens.first
+            case .followCursor:
+                return NSScreen.main ?? screens.first
+            }
+        }()
+        guard let screen = targetScreen else { return 980.0 }
         return max(screen.visibleFrame.height - 30.0, 400.0)
     }
 

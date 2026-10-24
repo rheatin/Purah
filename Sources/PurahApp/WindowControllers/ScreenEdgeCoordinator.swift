@@ -66,6 +66,7 @@ public final class ScreenEdgeCoordinator {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
+                EdgeMouseMonitor.updateCachedScreenEdges()
                 self?.rebuildWindows()
             }
         }

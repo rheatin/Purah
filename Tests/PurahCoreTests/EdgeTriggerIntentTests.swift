@@ -91,7 +91,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // High push velocity in Hover Dwell mode
@@ -118,7 +118,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Low speed glide into left edge (Vx = -100 pt/s < 380 pt/s)
@@ -144,7 +144,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Fast vertical swipe along the bezel (Vx = -400 pt/s, Vy = 850 pt/s)
@@ -171,7 +171,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Move to edge and rest still (zero velocity)
@@ -206,7 +206,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Move to edge
@@ -248,14 +248,14 @@ struct EdgeTriggerIntentTests {
         let y2 = visibleRect.maxY - CGFloat(pod2.startY + pod2.spanH / 2.0)
 
         // 1. Enter Pod 1
-        monitor.customCurrentMouseLocation = NSPoint(x: 10.0, y: y1)
-        monitor.processMouse(point: NSPoint(x: 10.0, y: y1), now: Date(), customVelocity: .zero)
+        monitor.customCurrentMouseLocation = NSPoint(x: 6.0, y: y1)
+        monitor.processMouse(point: NSPoint(x: 6.0, y: y1), now: Date(), customVelocity: .zero)
         #expect(store.activeDrawerPodId == nil)
 
         // 2. Before Pod 1 dwell fires (after 40ms), slide to Pod 2
         try? await Task.sleep(nanoseconds: 40_000_000)
-        monitor.customCurrentMouseLocation = NSPoint(x: 10.0, y: y2)
-        monitor.processMouse(point: NSPoint(x: 10.0, y: y2), now: Date(), customVelocity: .zero)
+        monitor.customCurrentMouseLocation = NSPoint(x: 6.0, y: y2)
+        monitor.processMouse(point: NSPoint(x: 6.0, y: y2), now: Date(), customVelocity: .zero)
 
         // 3. Condition-based wait for Pod 2 dwell to complete
         for _ in 1...15 {
@@ -282,7 +282,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Set frozen
@@ -316,7 +316,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Rest stationary at edge in pushForce mode
@@ -361,7 +361,7 @@ struct EdgeTriggerIntentTests {
         let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // On first hover event in agile mode, it must trigger immediately!
@@ -419,7 +419,7 @@ struct EdgeTriggerIntentTests {
         // Midpoint gap between pod1 and pod2
         let gapY = (pod1.startY + pod1.spanH + pod2.startY) / 2.0
         let targetY = visibleRect.maxY - CGFloat(gapY)
-        let edgePoint = NSPoint(x: 10.0, y: targetY)
+        let edgePoint = NSPoint(x: 6.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
         // Hover in empty gap: must NOT accidentally trigger a pod where no bar exists
@@ -486,9 +486,9 @@ struct EdgeTriggerIntentTests {
         #expect(vel.x > 1000.0, "Velocity must be calculated accurately across stable time window")
     }
 
-    @Test("Strict 12pt edge anti-accidental touch band triggers on pod and strictly suppresses beyond 12pt")
+    @Test("Strict 8pt edge anti-accidental touch band triggers on pod and strictly suppresses beyond 8pt")
     @MainActor
-    func testStrict12ptEdgeBandTriggerAndSuppression() {
+    func testStrict8ptEdgeBandTriggerAndSuppression() {
         let store = PurahWorkspaceStore()
         store.activeDrawerPodId = nil
         store.activeDrawerItemId = nil
@@ -503,17 +503,17 @@ struct EdgeTriggerIntentTests {
         guard let firstItem = layoutItems.first else { return }
         let targetY = visibleRect.maxY - CGFloat(firstItem.startY + firstItem.spanH / 2.0)
 
-        // 1. Outside test: Point at x = 1440 - 18 (18pt from right bezel, outside the 12pt pod band)
+        // 1. Outside test: Point at x = 1440 - 18 (18pt from right bezel, outside the 8pt pod band)
         let outsidePoint = NSPoint(x: 1422.0, y: targetY)
         monitor.customCurrentMouseLocation = outsidePoint
         monitor.processMouse(point: outsidePoint, now: Date(), customVelocity: .zero)
         #expect(store.activeDrawerPodId == nil, "18pt outside pod band must be strictly suppressed to prevent false triggers")
 
-        // 2. Inside test: Point at x = 1440 - 10 (10pt from right bezel, strictly inside the 12pt pod band)
-        let insidePoint = NSPoint(x: 1430.0, y: targetY)
+        // 2. Inside test: Point at x = 1440 - 6 (6pt from right bezel, strictly inside the 8pt pod band)
+        let insidePoint = NSPoint(x: 1434.0, y: targetY)
         monitor.customCurrentMouseLocation = insidePoint
         monitor.processMouse(point: insidePoint, now: Date(), customVelocity: .zero)
-        #expect(store.activeDrawerPodId == firstItem.pod.id, "10pt strictly inside pod band must trigger drawer")
+        #expect(store.activeDrawerPodId == firstItem.pod.id, "6pt strictly inside pod band must trigger drawer")
     }
 
     @Test("PushForceAccumulator accumulates raw motion deltas and breaks through resistance barrier")
