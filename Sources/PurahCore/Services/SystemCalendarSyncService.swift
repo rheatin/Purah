@@ -9,13 +9,14 @@ public final class SystemCalendarSyncService {
     public static let shared = SystemCalendarSyncService()
 
     private var eventStore: EKEventStore?
+    @ObservationIgnored private nonisolated(unsafe) var eventStoreObserver: (any NSObjectProtocol)?
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
     public private(set) var calendarCount: Int = 0
 
     public init() {
-        NotificationCenter.default.addObserver(
+        self.eventStoreObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
             object: nil,
             queue: .main
@@ -25,6 +26,12 @@ public final class SystemCalendarSyncService {
                 guard self.boundStore?.pods.contains(where: { $0.id == "calendar" && $0.isEnabled }) == true else { return }
                 self.syncEvents(into: self.boundStore)
             }
+        }
+    }
+
+    deinit {
+        if let observer = eventStoreObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 

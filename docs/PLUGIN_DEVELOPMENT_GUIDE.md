@@ -108,6 +108,8 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     // MARK: - 告警与变色机制 (Alerts & Adaptive Color)
     /// 声明轨条是否启用自适应动态遥测着色（如硬件监视器根据 CPU/RAM 负载动态显示绿/黄/红状态色）
     var usesAdaptiveTelemetryColor: Bool { get }
+    /// 插件自主声明动态实时强调色（如硬件监视器根据实时负载返回绿/黄/红状态色），宿主 ThemePalette 多态解析，零硬编码 ID
+    func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
     /// 用户在轨条或抽屉上发生交互或显式悬停确认时触发，用于批量清除该插件产生的所有注意力告警
     func acknowledgeAllAlerts(context: PurahPluginContext)
 
@@ -125,6 +127,9 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 - **自适应宽度自主宣告 (`adaptiveDrawerWidth`)**：底座（Base Store）遵循开闭原则，不硬编码具体插件宽度。插件只需重写 `adaptiveDrawerWidth(store:)` 返回专属宽度（如 `360.0`），即可在用户切换为自适应模式时享受专属最佳排版。
 - **首选抽屉展开高度 (`preferredDrawerHeight`)**：插件通过 `preferredDrawerHeight(store:) -> CGFloat` 自主声明展开抽屉或动态手风琴（Dynamic Accordion）弹性伸展时的黄金高度（如音乐 295pt、终端/剪贴板 280pt、AI 助手 320pt）。宿主排版引擎利用物理弹簧将轨条与抽屉平滑伸展至此高度，保证内部复杂组件拥有充裕的纵向展示空间。
 - **自适应遥测变色 (`usesAdaptiveTelemetryColor`)**：布尔属性（默认 `false`）。当声明为 `true`（如硬件指标 Hardware Vitals）时，轨条与设置面板将优先采用动态遥测变色逻辑（红黄绿健康阈值），而不会被用户偏好的单一静态主题色强行压制。
+- **自主动态强调色 (`dynamicAccentColor`)**：插件通过 `dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?` 自主计算实时特征色（例如 Hardware Vitals 根据实时硬件负载指标返回健康色、警示色或危险色）。宿主主题引擎 `ThemePalette.podColor(for:store:)` 优先多态向插件请求动态颜色，使底座消除对任何插件 ID 的硬编码判断。
+- **模块化单条目抽屉架构 (Modularized Stepped Drawer Architecture)**：拆解模式下的单条目抽屉卡片采用单文件单一职责设计，独立归档于 `Sources/PurahUI/DrawerPanels/`（例如 `TodoItemDrawerView.swift`、`CalendarItemDrawerView.swift`、`VitalsItemDrawerView.swift`、`ScriptItemDrawerView.swift`），而 `ItemDrawerCardView.swift` 仅保留公共抽屉修饰符与基础原语（如 `OptionalGlow`）。
+- **废弃静态预设 (`PodPreset`) 并全面转向现代人体工学排版**：全面退役旧版硬编码的 `PodPreset`，由全新的 6 步全景沉浸式新手引导、实况边轨雕刻师 (`⌃⌥E`) 与动态智能自适应算法（`store.autoLayoutAll()`）替代。
 - **全量告警消光回调 (`acknowledgeAllAlerts`)**：当用户点击轨条芯片、滑开抽屉或进行显式交互时，宿主将调用此方法通知插件消光。插件应在此重置内部未读提醒、清除告警气泡或标记通知为已读状态。
 
 ---

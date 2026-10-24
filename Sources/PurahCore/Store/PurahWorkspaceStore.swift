@@ -50,7 +50,6 @@ public final class PurahWorkspaceStore {
     public var isDrawerPinned: Bool = false
     public var pinnedDrawerItemIds: Set<String> = []
     public var isDraggingFromDrawer: Bool = false
-    public var currentPreset: PodPreset = .balanced
     public var isDynamicBreathingEnabled: Bool = true
     public var isAlwaysCompactBreathing: Bool = false
     public var onToast: ((String, String?) -> Void)? = nil
@@ -2588,7 +2587,6 @@ public final class PurahWorkspaceStore {
     // MARK: - Local Persistence
     public static func resetToFactoryDefaults(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: "purah.pods")
-        defaults.removeObject(forKey: "purah.currentPreset")
     }
 
     public func loadPersistentState() {
@@ -2721,11 +2719,6 @@ public final class PurahWorkspaceStore {
             defaults.removeObject(forKey: "purah.scripts.enabledActionIds")
         }
 
-        if let presetStr = defaults.string(forKey: "purah.currentPreset"),
-           let preset = PodPreset(rawValue: presetStr) {
-            self.currentPreset = preset
-        }
-
         if defaults.object(forKey: "purah.isDynamicBreathingEnabled") != nil {
             self.isDynamicBreathingEnabled = defaults.bool(forKey: "purah.isDynamicBreathingEnabled")
         } else {
@@ -2816,7 +2809,6 @@ public final class PurahWorkspaceStore {
         defaults.set(drawerWidthMode.rawValue, forKey: "purah.drawerWidthMode")
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
-        defaults.set(currentPreset.rawValue, forKey: "purah.currentPreset")
         defaults.set(isDynamicBreathingEnabled, forKey: "purah.isDynamicBreathingEnabled")
         defaults.set(isAlwaysCompactBreathing, forKey: "purah.isAlwaysCompactBreathing")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
@@ -3094,52 +3086,6 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
-    }
-
-    public func applyPreset(_ preset: PodPreset) {
-        currentPreset = preset
-        switch preset {
-        case .balanced:
-            // Left Rail: Vitals, Shelf, Notes (~480pt budget)
-            setPod(id: "vitals", edge: .left, zone: .glance, weight: 30, isEnabled: true)
-            setPod(id: "shelf", edge: .left, zone: .goldenAction, weight: 35, isEnabled: true)
-            setPod(id: "notes", edge: .left, zone: .quickFlick, weight: 30, isEnabled: true)
-
-            // Right Rail: Calendar, Todo, Scripts, Music (~600pt budget)
-            setPod(id: "calendar", edge: .right, zone: .goldenAction, weight: 40, isEnabled: true)
-            setPod(id: "todo", edge: .right, zone: .goldenAction, weight: 35, isEnabled: true)
-            setPod(id: "scripts", edge: .right, zone: .quickFlick, weight: 25, isEnabled: true)
-            setPod(id: "music", edge: .right, zone: .quickFlick, weight: 20, isEnabled: true)
-
-        case .sprintProductivity:
-            // Left Rail: Scripts Runway, Notes, Shelf (~440pt budget)
-            setPod(id: "scripts", edge: .left, zone: .goldenAction, weight: 45, isEnabled: true)
-            setPod(id: "notes", edge: .left, zone: .goldenAction, weight: 35, isEnabled: true)
-            setPod(id: "shelf", edge: .left, zone: .quickFlick, weight: 25, isEnabled: true)
-
-            // Right Rail: Tasks, Calendar, Vitals (~520pt budget)
-            setPod(id: "todo", edge: .right, zone: .goldenAction, weight: 45, isEnabled: true)
-            setPod(id: "calendar", edge: .right, zone: .goldenAction, weight: 40, isEnabled: true)
-            setPod(id: "vitals", edge: .right, zone: .glance, weight: 25, isEnabled: true)
-
-            // Mute music in sprint focus
-            setPod(id: "music", edge: .right, zone: .quickFlick, weight: 10, isEnabled: false)
-
-        case .immersiveMultimedia:
-            // Left Rail: Showcase Music & Notes (~250pt budget, large stage for vinyl)
-            setPod(id: "music", edge: .left, zone: .goldenAction, weight: 65, isEnabled: true)
-            setPod(id: "notes", edge: .left, zone: .quickFlick, weight: 25, isEnabled: true)
-            setPod(id: "shelf", edge: .left, zone: .quickFlick, weight: 10, isEnabled: false)
-
-            // Right Rail: Calendar & Vitals (~360pt budget)
-            setPod(id: "calendar", edge: .right, zone: .glance, weight: 50, isEnabled: true)
-            setPod(id: "vitals", edge: .right, zone: .glance, weight: 30, isEnabled: true)
-
-            // Disable distracting productivity tasks
-            setPod(id: "todo", edge: .right, zone: .quickFlick, weight: 10, isEnabled: false)
-            setPod(id: "scripts", edge: .right, zone: .quickFlick, weight: 10, isEnabled: false)
-        }
-        autoLayoutAll()
     }
 
     public func updatePodRange(id: String, newRange: NormalizedRange) {

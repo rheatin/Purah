@@ -7,6 +7,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     public static let shared = PluginRegistry()
 
     private var registeredPlugins: [String: any PurahPodPlugin] = [:]
+    public var plugins: [String: any PurahPodPlugin] { registeredPlugins }
     private var catalogPlugins: [String: any PurahPodPlugin] = [:]
     private var pollingTasks: [String: Task<Void, Never>] = [:]
     private var mountedPluginIds: Set<String> = []
@@ -92,13 +93,17 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         guard !mountedPluginIds.contains(id), let plugin = registeredPlugins[id] else { return }
         mountedPluginIds.insert(id)
         plugin.onMount(store: store)
-        startPollingIfNeeded(for: plugin, store: store)
+        if let plugin = plugins[id] {
+            startPollingIfNeeded(for: plugin, store: store)
+        }
         DiagnosticLogger.shared.info("Plugin", "Plugin mounted: \(id) (\(plugin.manifest.displayName))")
     }
 
     public func unmountPlugin(id: String, store: PurahWorkspaceStore) {
         guard mountedPluginIds.contains(id), let plugin = registeredPlugins[id] ?? catalogPlugins[id] else { return }
         mountedPluginIds.remove(id)
+        pollingTasks[id]?.cancel()
+        pollingTasks.removeValue(forKey: id)
         stopPolling(for: id)
         plugin.onUnmount(store: store)
         DiagnosticLogger.shared.info("Plugin", "Plugin unmounted: \(id)")
@@ -124,11 +129,14 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     private func startPollingIfNeeded(for plugin: any PurahPodPlugin, store: PurahWorkspaceStore) {
         stopPolling(for: plugin.manifest.id)
         guard let interval = plugin.preferredPollingInterval, interval > 0 else { return }
-        pollingTasks[plugin.manifest.id] = Task { [weak store] in
+        let pluginId = plugin.manifest.id
+        guard store.pods.first(where: { $0.id == pluginId })?.isEnabled ?? true else { return }
+        pollingTasks[pluginId] = Task { [weak store] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard let store, !Task.isCancelled else { break }
-                let isEnabled = store.pods.contains(where: { $0.id == plugin.manifest.id && $0.isEnabled })
+                guard store.pods.first(where: { $0.id == pluginId })?.isEnabled ?? true else { break }
+                let isEnabled = store.pods.contains(where: { $0.id == pluginId && $0.isEnabled })
                 if isEnabled && !store.isRailsFrozen {
                     await plugin.onPollingTick(store: store)
                 }

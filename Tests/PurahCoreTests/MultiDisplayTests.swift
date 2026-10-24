@@ -80,7 +80,8 @@ struct MultiDisplayTests {
 
     @Test("ScreenEdgeCoordinator sleeps empty rail when all pods on that edge are disabled")
     func testSingleRailSleepWhenPodsDisabled() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_multi_display_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         for idx in store.pods.indices where store.pods[idx].edge == .left {
             store.pods[idx].isEnabled = false
         }
@@ -103,5 +104,74 @@ struct MultiDisplayTests {
 
         service.stopMonitoring()
         #expect(service.isMonitoring == false)
+    }
+
+    @Test("Coordinator cancellable collapse task prevents race when rapidly re-expanding canvas")
+    func testCancellableCollapseTaskOnRapidReexpansion() async throws {
+        guard !NSScreen.screens.isEmpty else { return }
+        let isolated = UserDefaults(suiteName: "test_cancellable_collapse_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        let coordinator = ScreenEdgeCoordinator(store: store)
+        coordinator.rebuildWindows()
+
+        // 1. Initial expand
+        coordinator.expandCanvas(for: .right)
+        #expect(coordinator.isCanvasExpanded(for: .right) == true)
+
+        // 2. Trigger dismissDrawer, which schedules a 300ms collapse task
+        coordinator.dismissDrawer(for: .right)
+
+        // 3. Immediately re-expand canvas (canceling the pending collapse task)
+        coordinator.expandCanvas(for: .right)
+        #expect(coordinator.isCanvasExpanded(for: .right) == true)
+
+        // 4. Wait 350ms to exceed the 300ms collapse timer
+        try await Task.sleep(for: .milliseconds(350))
+
+        // 5. Canvas must still be expanded because the collapse task was cancelled
+        #expect(coordinator.isCanvasExpanded(for: .right) == true)
+    }
+
+    @Test("Esc key dismisses active unpinned drawer but passes through for Terminal")
+    func testEscKeyDrawerDismissal() {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let isolated = UserDefaults(suiteName: "test_esc_key_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        let window = AmbientRailWindow(edge: .right, screen: screen, store: store)
+
+        // Activate an unpinned drawer
+        store.activeDrawerPodId = "music"
+        #expect(store.activeDrawerPodId == "music")
+
+        // Construct Esc keyDown event
+        guard let escEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "\u{1b}",
+            charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false,
+            keyCode: 53
+        ) else { return }
+
+        // Perform Esc key equivalent
+        let handled = window.performKeyEquivalent(with: escEvent)
+        #expect(handled == true)
+        #expect(store.activeDrawerPodId == nil)
+
+        // When responder is inside Terminal, Esc should pass through without dismissing
+        final class TerminalMockView: NSView {}
+        let terminalView = TerminalMockView()
+        window.contentView?.addSubview(terminalView)
+        window.makeFirstResponder(terminalView)
+        store.activeDrawerPodId = "terminal"
+        let terminalHandled = window.performKeyEquivalent(with: escEvent)
+        #expect(terminalHandled == false)
+        #expect(store.activeDrawerPodId == "terminal")
+
+        window.close()
     }
 }

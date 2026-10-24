@@ -224,8 +224,26 @@ public final class ScriptRunwayService {
                 // 15-second non-blocking timeout guard
                 let didTimeout = await withTaskGroup(of: Bool.self) { group in
                     group.addTask {
-                        while task.isRunning {
-                            try? await Task.sleep(nanoseconds: 20_000_000)
+                        await withCheckedContinuation { continuation in
+                            final class ResumeState: @unchecked Sendable {
+                                var hasResumed = false
+                                let lock = NSLock()
+                            }
+                            let state = ResumeState()
+                            let resumeOnce: @Sendable () -> Void = {
+                                state.lock.lock()
+                                defer { state.lock.unlock() }
+                                if !state.hasResumed {
+                                    state.hasResumed = true
+                                    continuation.resume()
+                                }
+                            }
+                            task.terminationHandler = { _ in
+                                resumeOnce()
+                            }
+                            if !task.isRunning {
+                                resumeOnce()
+                            }
                         }
                         return false
                     }
@@ -239,6 +257,7 @@ public final class ScriptRunwayService {
                     }
                     let first = await group.next() ?? false
                     group.cancelAll()
+                    task.terminationHandler = nil
                     return first
                 }
 

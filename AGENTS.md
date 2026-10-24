@@ -54,6 +54,12 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
 4. **Pin Isolation**:
    - Individual drawer items can be pinned independently (`store.isItemPinned(id:)`).
    - When cursor leaves an unpinned drawer, only that specific unpinned drawer retracts. Pinned drawers stay pinned and rendered on screen.
+5. **Cancellable Canvas Retraction (Anti-Race Barrier)**:
+   - When a drawer card retracts, the canvas initiates a 300ms deferred collapse task to tuck from 580pt to 28pt.
+   - Any re-expansion (`expandCanvas(for:)`) immediately cancels the pending collapse task and nullifies dismissing flags, preventing race conditions where rapid re-entry causes the canvas to collapse beneath the cursor.
+6. **Esc Key Drawer Dismissal & Terminal Passthrough**:
+   - Pressing `Esc` (`keyCode == 53`) dismisses any active unpinned drawer cards or exits Live Rail Editing Mode.
+   - If the first responder is inside an embedded terminal (`TerminalView`), `Esc` is passed through directly to the shell without collapsing the drawer.
 
 ---
 
@@ -74,12 +80,18 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
     @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
 
+    // Dynamic Accent Color (e.g. telemetry load color)
+    func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
+
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
 }
 ```
 
 - **`PluginRegistry.shared`**: Manages registration, discovery, and lifecycle. Built-in plugins are registered on startup.
+- **Autonomous Dynamic Accent Color Resolution (`dynamicAccentColor`)**: Plugins declare dynamic real-time accent colors autonomously via `dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?` (e.g. Hardware Vitals returning telemetry health thresholds). `ThemePalette.podColor(for:store:)` queries plugins polymorphically, ensuring zero hardcoded plugin IDs in the host theme engine.
+- **Modularized Stepped Drawer Architecture**: Stepped drawer views are decoupled into dedicated single-responsibility files under `Sources/PurahUI/DrawerPanels/` (`TodoItemDrawerView`, `CalendarItemDrawerView`, `VitalsItemDrawerView`, `ScriptItemDrawerView`), while `Sources/PurahUI/AmbientViews/ItemDrawerCardView.swift` maintains shared primitives like `OptionalGlow`.
+- **Sunsetting of Legacy `PodPreset`**: Static hardcoded presets (`PodPreset`) have been completely removed in favor of the 6-step Interactive Panoramic Onboarding, Live Rail Sculptor (`⌃⌥E`), and `✨ Magic Ergonomic Auto-Layout` (`store.autoLayoutAll()`), providing fully ergonomic, non-overlapping dynamic layout solving.
 - **`PurahPluginStorage`**: Provides scoped isolation (`ScopedPluginStorage(pluginId:)`), keeping plugin persistent preferences neatly partitioned (`purah.plugin.<id>.<key>`).
 - **`PurahPluginFileStorage` & `PurahDiskRepository`**: Dual-tier storage architecture providing isolated sandboxed disk directories (`~/Library/Application Support/Purah/Plugins/<pluginId>/`), automatic atomic JSON indexing, `PurahRetentionPeriod` expiration cleaning, and `PurahDiskQuota` auto-pruning. Enforces the **Star Protection Immunity Rule**: all items with `isFavorite == true` are strictly immune to automated expiration or quota pruning.
 - **`PurahPluginContext`**: Supplies layout geometry (`edge`, `railWidth`, `slotHeight`, `drawerWidth`), state (`isExpanded`, `isPinned`), theme palette, isolated storage, and action triggers (`requestExpand`, `requestDismiss`, `togglePin`, `isItemPinned`, `acknowledgeAlert`, `requestLayoutRecalculation`, `openSettings`, `showToast`, `showWarning`, `performHaptic`). Third-party plugins communicate through context actions rather than mutating host store internals directly.
@@ -93,6 +105,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 - **Default Decomposed Principle**: Plugins that support multi-item stepped modes (Vitals, Scripts, Calendar, Todo) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and per-item direct interaction.
 - **Header Slot Integration**: Plugins can inject badges (e.g. Terminal `[• ZSH]`) and inline toolbars directly into the card header row via `makeHeaderAccessoryView` and `makeHeaderTrailingView`, saving vertical drawer space.
 - **Autonomous Adaptive Width Principle (自适应宽度自主宣告法则)**: Plugins autonomously declare their optimal adaptive width via `adaptiveDrawerWidth(store:) -> CGFloat?` (e.g. Music: 360pt, Shelf: 360pt, Clipboard: 380pt, Terminal: 520pt, Notes: 320pt). The base workspace store contains ZERO hardcoded plugin dimensions and gracefully falls back to text-length estimation only when a plugin returns `nil`.
+- **Plugin Lifecycle & Polling Suspension**: `PluginRegistry` automatically guards background polling tasks. When a pod is disabled in settings or unmounted from an active rail, its polling `Task` is stopped or withheld from running, ensuring zero idle background CPU overhead for disabled plugins.
 - **Extensibility**: Third-party plugins can register custom manifests and views without modifying core layout engines.
 
 ---
@@ -102,7 +115,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 1. **Physicality & Origin (Pure Bezel Slide)**:
    - Drawers are physical architectural extensions of the screen bezel.
    - Drawers use edge-anchored physical sliding (`.move(edge: edge == .right ? .trailing : .leading)`) with 100% solid opacity during exit.
-   - **Zero Ghosting Rule**: Never apply opacity fades on drawer card dismissals. A dark translucent card floating over user content looks like a dirty ghost artifact. The card glides smoothly and solidly back into the screen bezel.
+   - **Zero Ghosting Rule & Lazy Conditional Mounting**: Never apply opacity fades on drawer card dismissals. A dark translucent card floating over user content looks like a dirty ghost artifact. The card glides smoothly and solidly back into the screen bezel. Stepped drawer cards (e.g. `TodoItemDrawerView`, `CalendarItemDrawerView`, `VitalsItemDrawerView`, `ScriptItemDrawerView`, `genericSubItemChip`, `CalendarAgendaOverviewDrawerView`) enforce conditional `if isExpanded` mounting with pure `.move(edge:)` transitions and asymmetric spring animation, leaving zero offscreen dormant views or polling timers in memory while docked.
 2. **Asymmetric Easing & Duration**:
    - **Entrance**: Natural Apple-style deceleration spring: `response: 0.30, dampingFraction: 0.80`.
    - **Retraction / Exit**: Fast, crisp dismissal in ~160ms: `response: 0.20, dampingFraction: 0.92`.

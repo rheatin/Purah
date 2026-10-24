@@ -3,6 +3,7 @@ import AppKit
 import Foundation
 import Observation
 import ImageIO
+import CryptoKit
 
 @Observable
 @MainActor
@@ -340,20 +341,26 @@ public final class SystemClipboardSyncService {
 
     // MARK: - Internal Processors
     public func addItem(_ item: ClipboardItem) {
-        if let latest = history.first {
-            if latest.plainTextToCopy == item.plainTextToCopy {
-                return
-            }
+        if let latest = history.first, latest.plainTextToCopy == item.plainTextToCopy {
+            return
         }
 
-        history.insert(item, at: 0)
+        if let existingIdx = history.firstIndex(where: { $0.plainTextToCopy == item.plainTextToCopy }) {
+            let wasFavorite = history[existingIdx].isFavorite
+            history.remove(at: existingIdx)
+            var updated = item
+            updated.isFavorite = wasFavorite || item.isFavorite
+            history.insert(updated, at: 0)
+        } else {
+            history.insert(item, at: 0)
+        }
 
         // Enforce user-defined retention policy and disk quota instead of hardcoded count
         cleanExpiredItems()
         enforceDiskQuota()
 
         saveToDisk()
-        onItemAdded?(item)
+        onItemAdded?(history.first ?? item)
     }
 
     private func isConcealed(pasteboard: NSPasteboard) -> Bool {
@@ -377,6 +384,54 @@ public final class SystemClipboardSyncService {
         return processImageData(data, isPNG: pasteboard.data(forType: .png) != nil)
     }
 
+    /// Computes a deterministic SHA256 content hash by rendering the image thumbnail
+    /// into a fixed 32x32 RGBA pixel buffer and appending pixel dimensions.
+    public static func computeImageFingerprint(
+        cgImage: CGImage,
+        pixelWidth: Int,
+        pixelHeight: Int,
+        fallbackData: Data
+    ) -> String {
+        let targetSize = 32
+        let bytesPerPixel = 4
+        let bytesPerRow = targetSize * bytesPerPixel
+        let totalBytes = targetSize * bytesPerRow
+        var pixelData = [UInt8](repeating: 0, count: totalBytes)
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+
+        if let context = CGContext(
+            data: &pixelData,
+            width: targetSize,
+            height: targetSize,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) {
+            context.interpolationQuality = .none
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetSize, height: targetSize))
+
+            var buffer = Data(pixelData)
+            var w = pixelWidth.littleEndian
+            var h = pixelHeight.littleEndian
+            withUnsafeBytes(of: &w) { buffer.append(contentsOf: $0) }
+            withUnsafeBytes(of: &h) { buffer.append(contentsOf: $0) }
+
+            let digest = SHA256.hash(data: buffer)
+            return digest.map { String(format: "%02x", $0) }.joined()
+        } else {
+            var buffer = fallbackData
+            var w = pixelWidth.littleEndian
+            var h = pixelHeight.littleEndian
+            withUnsafeBytes(of: &w) { buffer.append(contentsOf: $0) }
+            withUnsafeBytes(of: &h) { buffer.append(contentsOf: $0) }
+            let digest = SHA256.hash(data: buffer)
+            return digest.map { String(format: "%02x", $0) }.joined()
+        }
+    }
+
     public func processImageData(_ data: Data, isPNG: Bool = false) -> ClipboardItem? {
         autoreleasepool {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
@@ -390,35 +445,42 @@ public final class SystemClipboardSyncService {
                 return nil
             }
 
-            let id = UUID().uuidString
-            let fullFilename = "\(id)_full.png"
-            let thumbFilename = "\(id)_thumb.png"
+            let thumbOptions: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 100
+            ]
+
+            guard let thumbCGImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+                return nil
+            }
+
+            let contentHash = Self.computeImageFingerprint(cgImage: thumbCGImage, pixelWidth: w, pixelHeight: h, fallbackData: data)
+            let fullFilename = "img_\(contentHash)_full.png"
+            let thumbFilename = "img_\(contentHash)_thumb.png"
             let fullFileURL = imagesDirectory.appendingPathComponent(fullFilename)
             let thumbFileURL = thumbnailsDirectory.appendingPathComponent(thumbFilename)
 
             do {
-                if isPNG {
-                    try data.write(to: fullFileURL)
-                } else {
-                    guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil),
-                          let dest = CGImageDestinationCreateWithURL(fullFileURL as CFURL, "public.png" as CFString, 1, nil) else { return nil }
-                    CGImageDestinationAddImage(dest, cgImage, nil)
-                    guard CGImageDestinationFinalize(dest) else { return nil }
+                if !FileManager.default.fileExists(atPath: fullFileURL.path) {
+                    if isPNG {
+                        try data.write(to: fullFileURL)
+                    } else {
+                        guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil),
+                              let dest = CGImageDestinationCreateWithURL(fullFileURL as CFURL, "public.png" as CFString, 1, nil) else { return nil }
+                        CGImageDestinationAddImage(dest, cgImage, nil)
+                        guard CGImageDestinationFinalize(dest) else { return nil }
+                    }
                 }
 
-                let thumbOptions: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceShouldCacheImmediately: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 100
-                ]
-
-                guard let thumbCGImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary),
-                      let thumbDest = CGImageDestinationCreateWithURL(thumbFileURL as CFURL, "public.png" as CFString, 1, nil) else {
-                    return nil
+                if !FileManager.default.fileExists(atPath: thumbFileURL.path) {
+                    guard let thumbDest = CGImageDestinationCreateWithURL(thumbFileURL as CFURL, "public.png" as CFString, 1, nil) else {
+                        return nil
+                    }
+                    CGImageDestinationAddImage(thumbDest, thumbCGImage, nil)
+                    guard CGImageDestinationFinalize(thumbDest) else { return nil }
                 }
-                CGImageDestinationAddImage(thumbDest, thumbCGImage, nil)
-                guard CGImageDestinationFinalize(thumbDest) else { return nil }
 
                 let byteSize = (try? Data(contentsOf: fullFileURL).count) ?? data.count
 

@@ -18,6 +18,9 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     // 1. Dynamic Bar Color (e.g. telemetry color, alerting tint)
     func dynamicBarColor(context: PurahPluginContext) -> Color?
 
+    // Dynamic Accent Color (e.g. telemetry load color)
+    func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
+
     // 2. Supported Drawer Modes (Composite vs Stepped)
     var supportedDrawerModes: Set<PurahDrawerMode> { get }
 
@@ -79,6 +82,7 @@ public extension PurahPodPlugin {
     func acknowledgeAllAlerts(context: PurahPluginContext) {}
 
     func dynamicBarColor(context: PurahPluginContext) -> Color? { nil }
+    func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color? { nil }
     var supportedDrawerModes: Set<PurahDrawerMode> { [.composite] }
     func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] { [] }
     func onRailBarTap(subItemId: String?, context: PurahPluginContext) {

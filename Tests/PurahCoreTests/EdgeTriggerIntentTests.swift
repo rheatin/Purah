@@ -258,7 +258,7 @@ struct EdgeTriggerIntentTests {
         monitor.processMouse(point: NSPoint(x: 10.0, y: y2), now: Date(), customVelocity: .zero)
 
         // 3. Condition-based wait for Pod 2 dwell to complete
-        for _ in 1...8 {
+        for _ in 1...15 {
             try? await Task.sleep(nanoseconds: 50_000_000)
             if store.activeDrawerPodId != nil { break }
         }

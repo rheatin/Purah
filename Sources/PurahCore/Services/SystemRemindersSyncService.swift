@@ -9,12 +9,13 @@ public final class SystemRemindersSyncService {
     public static let shared = SystemRemindersSyncService()
 
     @ObservationIgnored private lazy var eventStore = EKEventStore()
+    @ObservationIgnored private nonisolated(unsafe) var eventStoreObserver: (any NSObjectProtocol)?
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
 
     public init() {
-        NotificationCenter.default.addObserver(
+        self.eventStoreObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
             object: nil,
             queue: .main
@@ -22,6 +23,12 @@ public final class SystemRemindersSyncService {
             Task { @MainActor in
                 await self?.syncReminders(into: self?.boundStore)
             }
+        }
+    }
+
+    deinit {
+        if let observer = eventStoreObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 

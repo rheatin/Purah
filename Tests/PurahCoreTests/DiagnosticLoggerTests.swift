@@ -27,7 +27,8 @@ struct DiagnosticLoggerTests {
     @Test("Diagnostic report generation produces non-empty report with system telemetry")
     @MainActor
     func testDiagnosticReportGeneration() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_diag_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let report = DiagnosticLogger.shared.generateReport(store: store)
 
         #expect(report.contains("PROJECT PURAH DIAGNOSTIC REPORT"))
@@ -40,7 +41,8 @@ struct DiagnosticLoggerTests {
     @Test("Rail capacity calculation and overload detection")
     @MainActor
     func testRailCapacityCalculation() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_diag_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let leftRequired = store.totalRequiredHeight(for: .left)
         let rightRequired = store.totalRequiredHeight(for: .right)
 
@@ -54,7 +56,8 @@ struct DiagnosticLoggerTests {
     @Test("Capacity warning toast callback triggers when rail is overloaded")
     @MainActor
     func testCapacityWarningToastCallback() {
-        let store = PurahWorkspaceStore()
+        let isolated = UserDefaults(suiteName: "test_diag_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         var toastMessage: String? = nil
         store.onCapacityWarningToast = { msg in
             toastMessage = msg

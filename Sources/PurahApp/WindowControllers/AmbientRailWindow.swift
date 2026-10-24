@@ -100,9 +100,18 @@ public final class AmbientRailWindow: NSPanel {
         guard event.type == .keyDown else {
             return super.performKeyEquivalent(with: event)
         }
-        if event.keyCode == 53 && store.isLiveRailEditingMode {
-            store.setLiveRailEditingMode(false)
-            return true
+        if event.keyCode == 53 {
+            if store.isLiveRailEditingMode {
+                store.setLiveRailEditingMode(false)
+                return true
+            }
+            let responderType = self.firstResponder.map { String(describing: type(of: $0)) } ?? ""
+            if !responderType.contains("Terminal") && (store.activeDrawerPodId != nil || store.activeDrawerItemId != nil) {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                    store.dismissActiveDrawer()
+                }
+                return true
+            }
         }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""

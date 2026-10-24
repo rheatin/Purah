@@ -57,6 +57,15 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         state.unmount(store: store)
     }
 
+    public func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color? {
+        let thresholds = store?._vitalsThresholds ?? state.thresholds
+        return VitalsColorResolver.overallVitalsColor(
+            vitals: HardwareVitalsService.shared.metrics,
+            thresholds: thresholds,
+            palette: ThemeManager.shared.palette
+        )
+    }
+
     public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
