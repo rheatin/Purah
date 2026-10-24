@@ -315,11 +315,20 @@ public final class SystemClipboardSyncService {
 
                 let removed = history.remove(at: oldestUnstarredIdx)
                 prunedCount += 1
-                if case .image(let path, let thumbPath, _, _, _) = removed.type {
+                if case .image(let path, let thumbPath, _, _, let byteSize) = removed.type {
+                    var freedBytes: Int64 = 0
+                    if let imgAttrs = try? FileManager.default.attributesOfItem(atPath: path),
+                       let s = imgAttrs[.size] as? Int64 {
+                        freedBytes += s
+                    }
+                    if let thumbAttrs = try? FileManager.default.attributesOfItem(atPath: thumbPath),
+                       let s = thumbAttrs[.size] as? Int64 {
+                        freedBytes += s
+                    }
                     try? FileManager.default.removeItem(atPath: path)
                     try? FileManager.default.removeItem(atPath: thumbPath)
+                    currentSize = max(0, currentSize - (freedBytes > 0 ? freedBytes : Int64(byteSize)))
                 }
-                currentSize = computeDirectorySize(url: storageDirectory)
             }
 
             if prunedCount > 0 {
@@ -465,21 +474,39 @@ public final class SystemClipboardSyncService {
             do {
                 if !FileManager.default.fileExists(atPath: fullFileURL.path) {
                     if isPNG {
-                        try data.write(to: fullFileURL)
+                        try data.write(to: fullFileURL, options: .atomic)
                     } else {
-                        guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil),
-                              let dest = CGImageDestinationCreateWithURL(fullFileURL as CFURL, "public.png" as CFString, 1, nil) else { return nil }
+                        guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+                        let tempFullURL = imagesDirectory.appendingPathComponent("temp_\(UUID().uuidString).png")
+                        guard let dest = CGImageDestinationCreateWithURL(tempFullURL as CFURL, "public.png" as CFString, 1, nil) else { return nil }
                         CGImageDestinationAddImage(dest, cgImage, nil)
-                        guard CGImageDestinationFinalize(dest) else { return nil }
+                        guard CGImageDestinationFinalize(dest) else {
+                            try? FileManager.default.removeItem(at: tempFullURL)
+                            return nil
+                        }
+                        if FileManager.default.fileExists(atPath: fullFileURL.path) {
+                            try? FileManager.default.removeItem(at: tempFullURL)
+                        } else {
+                            try FileManager.default.moveItem(at: tempFullURL, to: fullFileURL)
+                        }
                     }
                 }
 
                 if !FileManager.default.fileExists(atPath: thumbFileURL.path) {
-                    guard let thumbDest = CGImageDestinationCreateWithURL(thumbFileURL as CFURL, "public.png" as CFString, 1, nil) else {
+                    let tempThumbURL = thumbnailsDirectory.appendingPathComponent("temp_\(UUID().uuidString).png")
+                    guard let thumbDest = CGImageDestinationCreateWithURL(tempThumbURL as CFURL, "public.png" as CFString, 1, nil) else {
                         return nil
                     }
                     CGImageDestinationAddImage(thumbDest, thumbCGImage, nil)
-                    guard CGImageDestinationFinalize(thumbDest) else { return nil }
+                    guard CGImageDestinationFinalize(thumbDest) else {
+                        try? FileManager.default.removeItem(at: tempThumbURL)
+                        return nil
+                    }
+                    if FileManager.default.fileExists(atPath: thumbFileURL.path) {
+                        try? FileManager.default.removeItem(at: tempThumbURL)
+                    } else {
+                        try FileManager.default.moveItem(at: tempThumbURL, to: thumbFileURL)
+                    }
                 }
 
                 let byteSize = (try? Data(contentsOf: fullFileURL).count) ?? data.count

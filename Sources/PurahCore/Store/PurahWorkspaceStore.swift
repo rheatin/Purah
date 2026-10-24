@@ -52,6 +52,7 @@ public final class PurahWorkspaceStore {
     public var isDraggingFromDrawer: Bool = false
     public var isDynamicBreathingEnabled: Bool = true
     public var isAlwaysCompactBreathing: Bool = false
+    @ObservationIgnored
     public var onToast: ((String, String?) -> Void)? = nil
 
     public var isOnboardingGuideActive: Bool = false
@@ -65,6 +66,7 @@ public final class PurahWorkspaceStore {
     public var isGateTelemetryTrackingEnabled: Bool {
         (isOnboardingGuideActive && onboardingStep == .antiTouchCalibration) || isInteractionSettingsTelemetryActive
     }
+    @ObservationIgnored
     public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
 
     public var onboardingDidToggleDecompose: Bool = false
@@ -640,7 +642,7 @@ public final class PurahWorkspaceStore {
         }
 
         invalidateLayoutCache()
-        savePersistentState()
+        scheduleSavePersistentState()
         onWindowsRebuildNeeded?()
     }
 
@@ -661,7 +663,7 @@ public final class PurahWorkspaceStore {
             pods[targetIdx].range.length = newLen
             pods[targetIdx].minLength = min(pods[targetIdx].minLength, minSubRatio)
             invalidateLayoutCache()
-            savePersistentState()
+            scheduleSavePersistentState()
             onWindowsRebuildNeeded?()
             return
         }
@@ -700,7 +702,7 @@ public final class PurahWorkspaceStore {
         }
 
         invalidateLayoutCache()
-        savePersistentState()
+        scheduleSavePersistentState()
         onWindowsRebuildNeeded?()
     }
 
@@ -1446,10 +1448,15 @@ public final class PurahWorkspaceStore {
         return sumMinRequired > netAvailable
     }
 
+    @ObservationIgnored
     public var onCapacityWarningToast: ((String) -> Void)?
+    @ObservationIgnored
     public var onLocalMouseMove: (@MainActor (NSEvent) -> Void)?
+    @ObservationIgnored
     public var onPodEnabledChanged: (@MainActor (String, Bool) -> Void)?
+    @ObservationIgnored
     public var onWindowsRebuildNeeded: (@MainActor () -> Void)?
+    @ObservationIgnored
     public var onRequestExpandCanvas: (@MainActor (MountEdge) -> Void)?
     private var lastCapacityAlertTime: Date?
 
@@ -1557,9 +1564,25 @@ public final class PurahWorkspaceStore {
 
     public func paginatedPods(for edge: MountEdge, totalHeight: Double) -> [[SlotPod]] {
         lastKnownTotalHeight[edge] = totalHeight
-        var allEdgePods = pods.filter { $0.edge == edge && $0.isEnabled }
+        let enabledPods = pods.filter { $0.edge == edge && $0.isEnabled }
+        guard !enabledPods.isEmpty else { return [] }
+
+        let signature = enabledPods.map { "\($0.id):\($0.range.start):\($0.range.length):\($0.pageIndex):\($0.majorGroupId ?? ""):\(minimumDrawerHeight(for: $0.id))" }.joined(separator: "|")
+        let isSculpting = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
+        let now = ProcessInfo.processInfo.systemUptime
+
+        if let cached = cachedPaginatedPods[edge],
+           abs(cached.height - totalHeight) < 0.5,
+           cached.podsCount == enabledPods.count,
+           cached.enabledSignature == signature,
+           cached.isDynamicBreathingEnabled == isDynamicBreathingEnabled,
+           cached.isSculptingRails == isSculpting,
+           (now - cached.timestamp) < 0.05 {
+            return cached.pages
+        }
+
+        var allEdgePods = enabledPods
             .sorted { (max(0, $0.pageIndex), $0.range.start) < (max(0, $1.pageIndex), $1.range.start) }
-        guard !allEdgePods.isEmpty else { return [] }
 
         // Ensure pods sharing the same majorGroupId have the same pageIndex (using first member's pageIndex)
         var groupPageMap: [String: Int] = [:]
@@ -1625,8 +1648,30 @@ public final class PurahWorkspaceStore {
             }
         }
 
+        cachedPaginatedPods[edge] = PaginationCacheEntry(
+            height: totalHeight,
+            podsCount: enabledPods.count,
+            enabledSignature: signature,
+            isDynamicBreathingEnabled: isDynamicBreathingEnabled,
+            isSculptingRails: isSculpting,
+            pages: pages,
+            timestamp: now
+        )
         return pages
     }
+
+    private struct PaginationCacheEntry {
+        let height: Double
+        let podsCount: Int
+        let enabledSignature: String
+        let isDynamicBreathingEnabled: Bool
+        let isSculptingRails: Bool
+        let pages: [[SlotPod]]
+        let timestamp: Double
+    }
+
+    @ObservationIgnored
+    private var cachedPaginatedPods: [MountEdge: PaginationCacheEntry] = [:]
 
     private struct LayoutCacheEntry {
         let height: Double
@@ -1648,6 +1693,7 @@ public final class PurahWorkspaceStore {
 
     public func invalidateLayoutCache() {
         cachedResolvedLayouts.removeAll()
+        cachedPaginatedPods.removeAll()
     }
 
     public func recalculateLayout() {
@@ -2831,7 +2877,21 @@ public final class PurahWorkspaceStore {
         defaults.set(customCatchCorridorPt, forKey: "purah.customCatchCorridorPt")
         defaults.set(customPushForceThreshold, forKey: "purah.customPushForceThreshold")
         defaults.set(customPushResistanceBarrier, forKey: "purah.customPushResistanceBarrier")
-        defaults.synchronize()
+    }
+
+    @ObservationIgnored private var debouncedSaveTask: Task<Void, Never>? = nil
+
+    public func scheduleSavePersistentState() {
+        if Self.isTestingEnvironment {
+            savePersistentState()
+            return
+        }
+        debouncedSaveTask?.cancel()
+        debouncedSaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+            self.savePersistentState()
+        }
     }
 
     public func autoLayoutAll() {
@@ -3131,7 +3191,7 @@ public final class PurahWorkspaceStore {
             pods = resolved
         }
         invalidateLayoutCache()
-        savePersistentState()
+        scheduleSavePersistentState()
         onWindowsRebuildNeeded?()
     }
 

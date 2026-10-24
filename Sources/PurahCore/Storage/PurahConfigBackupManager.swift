@@ -84,7 +84,6 @@ public struct PurahConfigurationBackup: Codable, Equatable, Sendable {
 public enum PurahConfigBackupManager {
     public static func exportBackupData(from store: PurahWorkspaceStore, defaults: UserDefaults = .standard) throws -> Data {
         store.savePersistentState()
-        defaults.synchronize()
 
         var settings: [String: PurahConfigValue] = [:]
         let dict = defaults.dictionaryRepresentation()
@@ -140,7 +139,6 @@ public enum PurahConfigBackupManager {
             }
         }
 
-        defaults.synchronize()
         store.loadPersistentState()
 
         if let langStr = defaults.string(forKey: "purah.appLanguage"),
@@ -176,7 +174,6 @@ public enum PurahConfigBackupManager {
         store.dismissActiveDrawer()
 
         store.savePersistentState()
-        defaults.synchronize()
         store.invalidateLayoutCache()
         store.onWindowsRebuildNeeded?()
 

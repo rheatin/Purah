@@ -3,6 +3,27 @@ import AppKit
 import PurahCore
 import UniformTypeIdentifiers
 
+@MainActor
+private enum ClipboardThumbnailCache {
+    private static let cache: NSCache<NSString, NSImage> = {
+        let c = NSCache<NSString, NSImage>()
+        c.countLimit = 64
+        return c
+    }()
+
+    static func image(for thumbPath: String, fallbackPath: String) -> NSImage? {
+        let key = thumbPath as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        if let img = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: fallbackPath) {
+            cache.setObject(img, forKey: key)
+            return img
+        }
+        return nil
+    }
+}
+
 public struct ClipboardPlugin: PurahPodPlugin {
     public nonisolated let manifest = PurahPluginManifest(
         id: "clipboard",
@@ -312,8 +333,7 @@ public struct ClipboardItemDrawerView: View {
                     }
 
                 case .image(let path, let thumbPath, let w, let h, _):
-                    if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
-                        let _ = { nsImg.cacheMode = .never }()
+                    if let nsImg = ClipboardThumbnailCache.image(for: thumbPath, fallbackPath: path) {
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -855,8 +875,7 @@ public struct ClipboardFullDrawerView: View {
 
             case .image(let path, let thumbPath, let w, let h, let bytes):
                 HStack(spacing: isCompact ? 8 : 12) {
-                    if let nsImg = NSImage(contentsOfFile: thumbPath) ?? NSImage(contentsOfFile: path) {
-                        let _ = { nsImg.cacheMode = .never }()
+                    if let nsImg = ClipboardThumbnailCache.image(for: thumbPath, fallbackPath: path) {
                         Image(nsImage: nsImg)
                             .resizable()
                             .aspectRatio(contentMode: .fill)

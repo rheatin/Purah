@@ -19,7 +19,6 @@ public enum PurahExportPathManager {
     public static func updateLastDirectory(from fileURL: URL) {
         let dirPath = fileURL.deletingLastPathComponent().path
         UserDefaults.standard.set(dirPath, forKey: lastExportDirectoryKey)
-        UserDefaults.standard.synchronize()
     }
 
     @MainActor

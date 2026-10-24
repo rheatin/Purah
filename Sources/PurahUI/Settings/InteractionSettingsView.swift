@@ -113,7 +113,7 @@ public struct InteractionSettingsView: View {
                                             if store.edgeTriggerMode == .hoverDwell {
                                                 store.onboardingGateTargetValue = Int($0)
                                             }
-                                            store.savePersistentState()
+                                            store.scheduleSavePersistentState()
                                         }
                                     ),
                                     range: 0...1000,
@@ -132,7 +132,7 @@ public struct InteractionSettingsView: View {
                                             if store.edgeTriggerMode == .pushForce {
                                                 store.onboardingGateTargetValue = Int($0)
                                             }
-                                            store.savePersistentState()
+                                            store.scheduleSavePersistentState()
                                         }
                                     ),
                                     range: 20...120,
@@ -149,7 +149,7 @@ public struct InteractionSettingsView: View {
                                     set: {
                                         store.customExitGraceMs = $0
                                         store.edgeTriggerSensitivity = .custom
-                                        store.savePersistentState()
+                                        store.scheduleSavePersistentState()
                                     }
                                 ),
                                 range: 100...600,
@@ -165,7 +165,7 @@ public struct InteractionSettingsView: View {
                                     set: {
                                         store.customCatchCorridorPt = $0
                                         store.edgeTriggerSensitivity = .custom
-                                        store.savePersistentState()
+                                        store.scheduleSavePersistentState()
                                     }
                                 ),
                                 range: 20...90,

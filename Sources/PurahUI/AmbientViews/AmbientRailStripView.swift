@@ -85,6 +85,8 @@ public struct AmbientRailStripView: View {
                     .zIndex(200)
                 }
 
+                let isBreathing = store.isBreathingActive(for: edge, totalHeight: Double(totalHeight))
+
                 // Active slot pods mounted with strict non-overlapping physical positions
                 ForEach(layoutItems) { item in
                     let pod = item.pod
@@ -95,7 +97,6 @@ public struct AmbientRailStripView: View {
                     let isSharedMajorSubBar = (item.majorGroupId != nil && abs(drawerSpanH - spanH) > 1.0)
                     let shouldShowDrawer = store.shouldRenderDrawer(for: item, in: layoutItems)
                     let isThisPodActive = shouldShowDrawer || (store.hoveredPodId == pod.id || store.activePod?.id == pod.id || store.isItemPinned(id: pod.id) || store.capabilityProvider(for: pod.id)?.hasPinnedChild(store: store) == true)
-                    let isBreathing = store.isBreathingActive(for: edge, totalHeight: Double(totalHeight))
                     let activeBarW: CGFloat = (isBreathing && isThisPodActive) ? (barW + 2.5) : barW
 
                     let isPinned = store.isItemPinned(id: pod.id)

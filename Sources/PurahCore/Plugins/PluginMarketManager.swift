@@ -31,7 +31,7 @@ public final class PluginMarketManager: Sendable {
     public var availableCatalog: [PurahPluginManifest]
 
     @ObservationIgnored
-    public let store: PurahWorkspaceStore
+    private weak var store: PurahWorkspaceStore?
 
     @ObservationIgnored
     public weak var lifecycleDelegate: (any PluginMarketLifecycleDelegate)?
@@ -45,7 +45,7 @@ public final class PluginMarketManager: Sendable {
     public static let defaultInstalledIds: Set<String> = Set(PurahWorkspaceStore.defaultPods().map(\.id))
 
     public init(
-        store: PurahWorkspaceStore = PurahWorkspaceStore(),
+        store: PurahWorkspaceStore? = nil,
         availableCatalog: [PurahPluginManifest] = PurahPluginManifest.fullCatalog,
         userDefaults: UserDefaults = .standard,
         lifecycleDelegate: (any PluginMarketLifecycleDelegate)? = nil
@@ -64,12 +64,14 @@ public final class PluginMarketManager: Sendable {
             if shouldAutoInstallAI {
                 resolvedInstalledIds.insert("ai")
             }
-            let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
-            store.pods.removeAll { managedIds.contains($0.id) && !resolvedInstalledIds.contains($0.id) }
-            resolvedInstalledIds.formUnion(store.pods.map(\.id))
-            store.invalidateLayoutCache()
+            if let store {
+                let managedIds = Set(availableCatalog.map(\.id)).union(PurahWorkspaceStore.defaultPods().map(\.id))
+                store.pods.removeAll { managedIds.contains($0.id) && !resolvedInstalledIds.contains($0.id) }
+                resolvedInstalledIds.formUnion(store.pods.map(\.id))
+                store.invalidateLayoutCache()
+            }
         } else {
-            resolvedInstalledIds = Set(store.pods.map(\.id))
+            resolvedInstalledIds = Set(store?.pods.map(\.id) ?? PurahWorkspaceStore.defaultPods().map(\.id))
             if shouldAutoInstallAI {
                 resolvedInstalledIds.insert("ai")
             }
@@ -78,18 +80,20 @@ public final class PluginMarketManager: Sendable {
         if shouldAutoInstallAI {
             userDefaults.set(true, forKey: autoInstallAIKey)
             resolvedInstalledIds.insert("ai")
-            if let index = store.pods.firstIndex(where: { $0.id == "ai" }) {
-                store.pods[index].isEnabled = true
-            } else if let defAI = PurahWorkspaceStore.defaultPods().first(where: { $0.id == "ai" }) {
-                var pod = defAI
-                pod.isEnabled = true
-                store.pods.append(pod)
+            if let store {
+                if let index = store.pods.firstIndex(where: { $0.id == "ai" }) {
+                    store.pods[index].isEnabled = true
+                } else if let defAI = PurahWorkspaceStore.defaultPods().first(where: { $0.id == "ai" }) {
+                    var pod = defAI
+                    pod.isEnabled = true
+                    store.pods.append(pod)
+                }
+                store.invalidateLayoutCache()
             }
-            store.invalidateLayoutCache()
         }
 
         self.installedPluginIds = resolvedInstalledIds
-        self.enabledPluginIds = Set(store.pods.filter(\.isEnabled).map(\.id))
+        self.enabledPluginIds = Set(store?.pods.filter(\.isEnabled).map(\.id) ?? [])
         if shouldAutoInstallAI {
             self.enabledPluginIds.insert("ai")
             savePersistentState()
@@ -102,7 +106,7 @@ public final class PluginMarketManager: Sendable {
     }
 
     public func isEnabled(id: String) -> Bool {
-        if let pod = store.pods.first(where: { $0.id == id }) {
+        if let pod = store?.pods.first(where: { $0.id == id }) {
             return pod.isEnabled
         }
         return enabledPluginIds.contains(id)
@@ -112,6 +116,8 @@ public final class PluginMarketManager: Sendable {
         installedPluginIds.insert(id)
         enabledPluginIds.insert(id)
         savePersistentState()
+
+        guard let store else { return }
 
         if let index = store.pods.firstIndex(where: { $0.id == id }) {
             store.pods[index].isEnabled = true
@@ -141,6 +147,8 @@ public final class PluginMarketManager: Sendable {
         enabledPluginIds.remove(id)
         savePersistentState()
 
+        guard let store else { return }
+
         let activeDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
         activeDelegate?.pluginMarketDidUninstall(id: id, store: store)
 
@@ -164,13 +172,14 @@ public final class PluginMarketManager: Sendable {
         } else {
             availableCatalog.append(manifest)
         }
-        if store.pods.contains(where: { $0.id == manifest.id }) {
+        if store?.pods.contains(where: { $0.id == manifest.id }) == true {
             installedPluginIds.insert(manifest.id)
             enabledPluginIds.insert(manifest.id)
         }
     }
 
     public func toggleEnabled(id: String) {
+        guard let store else { return }
         store.togglePodEnabled(id: id)
         if let pod = store.pods.first(where: { $0.id == id }) {
             if pod.isEnabled {
@@ -188,13 +197,17 @@ public final class PluginMarketManager: Sendable {
 
     public func loadPersistentState() {
         // Derive enabled IDs strictly from store.pods (the single source of truth for pod state)
-        self.enabledPluginIds = Set(store.pods.filter(\.isEnabled).map(\.id))
-        store.invalidateLayoutCache()
+        if let store {
+            self.enabledPluginIds = Set(store.pods.filter(\.isEnabled).map(\.id))
+            store.invalidateLayoutCache()
+        }
     }
 
     public func savePersistentState() {
         userDefaults.set(Array(installedPluginIds), forKey: userDefaultsKey)
-        let enabled = Array(store.pods.filter(\.isEnabled).map(\.id))
-        UserDefaults.standard.setValue(enabled, forKey: "purah.market.enabledPluginIds")
+        if let store {
+            let enabled = Array(store.pods.filter(\.isEnabled).map(\.id))
+            UserDefaults.standard.setValue(enabled, forKey: "purah.market.enabledPluginIds")
+        }
     }
 }

@@ -38,7 +38,6 @@ public struct ScopedPluginStorage: PurahPluginStorage {
         } else {
             defaults.removeObject(forKey: fullKey(key))
         }
-        defaults.synchronize()
     }
 
     public func double(forKey key: String) -> Double {
@@ -47,7 +46,6 @@ public struct ScopedPluginStorage: PurahPluginStorage {
 
     public func set(_ value: Double, forKey key: String) {
         defaults.set(value, forKey: fullKey(key))
-        defaults.synchronize()
     }
 
     public func bool(forKey key: String) -> Bool {
@@ -56,7 +54,6 @@ public struct ScopedPluginStorage: PurahPluginStorage {
 
     public func set(_ value: Bool, forKey key: String) {
         defaults.set(value, forKey: fullKey(key))
-        defaults.synchronize()
     }
 
     public func int(forKey key: String) -> Int {
@@ -65,7 +62,6 @@ public struct ScopedPluginStorage: PurahPluginStorage {
 
     public func set(_ value: Int, forKey key: String) {
         defaults.set(value, forKey: fullKey(key))
-        defaults.synchronize()
     }
 
     public func codable<T: Codable>(forKey key: String, as: T.Type) -> T? {
@@ -76,17 +72,14 @@ public struct ScopedPluginStorage: PurahPluginStorage {
     public func setCodable<T: Codable>(_ value: T?, forKey key: String) {
         guard let value else {
             defaults.removeObject(forKey: fullKey(key))
-            defaults.synchronize()
             return
         }
         if let data = try? JSONEncoder().encode(value) {
             defaults.set(data, forKey: fullKey(key))
-            defaults.synchronize()
         }
     }
 
     public func removeObject(forKey key: String) {
         defaults.removeObject(forKey: fullKey(key))
-        defaults.synchronize()
     }
 }

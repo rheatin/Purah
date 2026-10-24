@@ -30,10 +30,14 @@ public struct DiagnosticLogEntry: Identifiable, Sendable, Codable {
         self.message = message
     }
 
-    public var formattedLine: String {
+    private nonisolated(unsafe) static let timeFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withTime, .withColonSeparatorInTime]
-        let timeStr = formatter.string(from: timestamp)
+        return formatter
+    }()
+
+    public var formattedLine: String {
+        let timeStr = Self.timeFormatter.string(from: timestamp)
         return "[\(timeStr)] [\(level.rawValue)] [\(category)] \(message)"
     }
 }
