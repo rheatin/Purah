@@ -54,6 +54,12 @@ Purah runs as a background accessory app (`LSUIElement = true`) with transparent
 4. **Pin Isolation**:
    - Individual drawer items can be pinned independently (`store.isItemPinned(id:)`).
    - When cursor leaves an unpinned drawer, only that specific unpinned drawer retracts. Pinned drawers stay pinned and rendered on screen.
+5. **Cancellable Canvas Retraction (Anti-Race Barrier)**:
+   - When a drawer card retracts, the canvas initiates a 300ms deferred collapse task to tuck from 580pt to 28pt.
+   - Any re-expansion (`expandCanvas(for:)`) immediately cancels the pending collapse task and nullifies dismissing flags, preventing race conditions where rapid re-entry causes the canvas to collapse beneath the cursor.
+6. **Esc Key Drawer Dismissal & Terminal Passthrough**:
+   - Pressing `Esc` (`keyCode == 53`) dismisses any active unpinned drawer cards or exits Live Rail Editing Mode.
+   - If the first responder is inside an embedded terminal (`TerminalView`), `Esc` is passed through directly to the shell without collapsing the drawer.
 
 ---
 

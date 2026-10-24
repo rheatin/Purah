@@ -733,9 +733,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
 
     @ViewBuilder
     private func expandedAgendaCard(podColor: Color) -> some View {
-        let floatingEdgePadding: CGFloat = (edge == .left ? 18.0 : 12.0)
-        let railEdgePadding: CGFloat = (edge == .left ? 12.0 : 18.0)
-
         VStack(alignment: .leading, spacing: 8) {
             // Row 1: Header
             HStack(spacing: 8) {
@@ -851,8 +848,8 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 .buttonStyle(.tactile)
             }
         }
-        .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
-        .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
+        .padding(.leading, edge == .left ? 12.0 : 18.0)
+        .padding(.trailing, edge == .left ? 18.0 : 12.0)
         .padding(.vertical, 10)
         .frame(width: 320, height: max(slotHeight, 140.0), alignment: .top)
         .liquidCardBackground(

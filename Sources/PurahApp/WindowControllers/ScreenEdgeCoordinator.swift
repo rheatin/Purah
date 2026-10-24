@@ -44,6 +44,7 @@ public final class ScreenEdgeCoordinator {
     public private(set) var activeScreen: NSScreen?
     public private(set) var isFrozen: Bool = false
     private var isDismissingEdge: [MountEdge: Bool] = [:]
+    private var collapseTasks: [MountEdge: Task<Void, Never>] = [:]
     nonisolated(unsafe) private var screenChangeObserver: (any NSObjectProtocol)?
 
     public init(store: PurahWorkspaceStore) {
@@ -77,10 +78,10 @@ public final class ScreenEdgeCoordinator {
         switch store.displayTargetMode {
         case .followCursor:
             if let point = point {
-                return all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(point) } ?? activeScreen ?? NSScreen.main ?? all.first
+                return all.first { $0.frame.contains(point) } ?? all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(point) } ?? activeScreen ?? NSScreen.main ?? all.first
             } else {
                 let loc = EdgeMouseMonitor.isTestingEnvironment ? (all.first?.frame.origin ?? .zero) : NSEvent.mouseLocation
-                return all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(loc) } ?? activeScreen ?? NSScreen.main ?? all.first
+                return all.first { $0.frame.contains(loc) } ?? all.first { $0.frame.insetBy(dx: -2, dy: -2).contains(loc) } ?? activeScreen ?? NSScreen.main ?? all.first
             }
         case .primaryOnly:
             return all.first
@@ -205,6 +206,8 @@ public final class ScreenEdgeCoordinator {
     /// Dynamically expands rail canvas from 28pt compact docked width to full drawer canvas width (580pt)
     public func expandCanvas(for edge: MountEdge) {
         guard !isFrozen else { return }
+        collapseTasks[edge]?.cancel()
+        collapseTasks[edge] = nil
         isDismissingEdge[edge] = false
         if edge == .left {
             leftRailWindow?.setExpanded(true)
@@ -228,6 +231,15 @@ public final class ScreenEdgeCoordinator {
         } else {
             rightRailWindow?.setExpanded(false)
             rightRailWindow?.setInteractive(false)
+        }
+    }
+
+    /// Returns whether the rail window canvas for the given edge is currently expanded
+    public func isCanvasExpanded(for edge: MountEdge) -> Bool {
+        if edge == .left {
+            return leftRailWindow?.isExpanded ?? false
+        } else {
+            return rightRailWindow?.isExpanded ?? false
         }
     }
 
@@ -261,7 +273,7 @@ public final class ScreenEdgeCoordinator {
                 isDismissingEdge[targetEdge] = true
                 store.onDismissPreviewPanel?()
                 store.activePreviewScreenFrame = nil
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
                     store.activeDrawerItemId = nil
                     store.activeDrawerPodId = nil
                     store.hoveredPodId = nil
@@ -269,7 +281,7 @@ public final class ScreenEdgeCoordinator {
                 }
             } else if let hoveredId = store.hoveredPodId,
                       store.pod(forItemId: hoveredId)?.edge == targetEdge {
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
                     store.hoveredPodId = nil
                     store.invalidateLayoutCache()
                 }
@@ -279,9 +291,13 @@ public final class ScreenEdgeCoordinator {
             EdgeMouseMonitor.shared?.resetEdgeState()
 
             // Smoothly collapse window canvas back to compact 28pt width once drawer is 100% tucked inside bezel (~160ms animation + 140ms safe buffer = 300ms)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) { [weak self] in
-                self?.isDismissingEdge[targetEdge] = false
-                self?.collapseCanvas(for: targetEdge)
+            collapseTasks[targetEdge]?.cancel()
+            collapseTasks[targetEdge] = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled, let self = self else { return }
+                self.isDismissingEdge[targetEdge] = false
+                self.collapseTasks[targetEdge] = nil
+                self.collapseCanvas(for: targetEdge)
             }
         }
     }
