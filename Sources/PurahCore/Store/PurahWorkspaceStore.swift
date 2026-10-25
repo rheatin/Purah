@@ -3370,9 +3370,14 @@ public final class PurahWorkspaceStore {
         // Live lookup: `railPods` below is indexed by id, never by snapshot.
         func livePod(_ id: String) -> SlotPod? { pods.first(where: { $0.id == id }) }
 
+        // The layout engine spaces pods by a physical 8pt; deriving the gap the
+        // same way here keeps "fill rail" consistent with auto-layout instead of
+        // drifting to a different value on non-900pt screens.
+        let railGap = 8.0 / screenH
+
         if isPaged && railPodIds.count >= 2 {
             // In Paged Spaces, expand target pod to fill maximum space on its page while compressing siblings on the same page to minLength
-            let gap = 0.015
+            let gap = railGap
             let totalGaps = Double(max(railPodIds.count - 1, 0)) * gap
             let otherMins = railPodIds.enumerated().reduce(0.0) { acc, pair in
                 if pair.offset == currentIndex { return acc }
@@ -3396,14 +3401,14 @@ public final class PurahWorkspaceStore {
             let newLength = max(0.98 - start, currentPod.minLength)
             pods[podIndex].range.length = newLength
         } else {
-            // Expand towards successor above/below, stopping 0.015 short of it so
+            // Expand towards successor above/below, stopping one rail gap short so
             // the rigid zero-overlap invariant still holds. When the successor
             // already sits closer than the pod's *current* length (tightly packed
             // rail) there is nothing ergonomically sane to gain, so leave the pod
             // untouched instead of shrinking it or spilling over the neighbour.
             guard let nextPod = livePod(railPodIds[currentIndex + 1]) else { return }
             let start = pods[podIndex].range.start
-            let allowedLength = nextPod.range.start - start - 0.015
+            let allowedLength = nextPod.range.start - start - railGap
             guard allowedLength > pods[podIndex].range.length, allowedLength >= currentPod.minLength else { return }
             pods[podIndex].range.length = allowedLength
         }
