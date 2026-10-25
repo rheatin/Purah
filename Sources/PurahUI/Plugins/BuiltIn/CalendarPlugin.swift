@@ -170,28 +170,16 @@ public struct CalendarPlugin: PurahPodPlugin {
         }
 
         let now = Date()
-        let sortedEvents = allEvents.sorted { a, b in
-            if a.isOngoing != b.isOngoing {
-                return a.isOngoing && !b.isOngoing
-            }
-            if a.isImminent != b.isImminent {
-                return a.isImminent && !b.isImminent
-            }
-            let aPast = a.endTime < now
-            let bPast = b.endTime < now
-            if aPast != bPast {
-                return !aPast && bPast
-            }
-            return a.startTime < b.startTime
-        }
+        let sortedEvents = allEvents.sorted(by: CalendarOrdering.railComparator(now: now))
 
         let maxLimit = (state.overflowStrategy == .smartFold) ? max(state.maxRailEvents, 2) : sortedEvents.count
         var result: [(id: String, title: String)] = []
 
         if state.overflowStrategy == .smartFold && sortedEvents.count > maxLimit {
             let primaryCount = maxLimit - 1
-            result = sortedEvents.prefix(primaryCount).map { ($0.id, $0.title) }
-            let remaining = sortedEvents.count - primaryCount
+            let (visible, overflow) = CalendarOrdering.foldIntoRailSlots(sortedEvents, slotCount: primaryCount, now: now)
+            result = visible.map { ($0.id, $0.title) }
+            let remaining = overflow.count
             let moreTitle = String(format: "calendar.overview.moreEvents".localized, remaining)
             result.append(("calendar_more_events", moreTitle))
         } else {
@@ -237,22 +225,7 @@ public struct CalendarPlugin: PurahPodPlugin {
         let now = Date()
         let leadTime = state.alertLeadTime
 
-        let sortedEvents = allEvents.sorted { a, b in
-            if a.isOngoing != b.isOngoing {
-                return a.isOngoing && !b.isOngoing
-            }
-            let aImminent = a.isImminent(leadTime: leadTime, now: now)
-            let bImminent = b.isImminent(leadTime: leadTime, now: now)
-            if aImminent != bImminent {
-                return aImminent && !bImminent
-            }
-            let aPast = a.endTime < now
-            let bPast = b.endTime < now
-            if aPast != bPast {
-                return !aPast && bPast
-            }
-            return a.startTime < b.startTime
-        }
+        let sortedEvents = allEvents.sorted(by: CalendarOrdering.railComparator(now: now))
 
         let maxLimit = (state.overflowStrategy == .smartFold) ? max(state.maxRailEvents, 2) : sortedEvents.count
 
@@ -261,8 +234,9 @@ public struct CalendarPlugin: PurahPodPlugin {
 
         if state.overflowStrategy == .smartFold && sortedEvents.count > maxLimit {
             let primaryCount = maxLimit - 1
-            visibleEvents = Array(sortedEvents.prefix(primaryCount))
-            remainingCount = sortedEvents.count - primaryCount
+            let (visible, overflow) = CalendarOrdering.foldIntoRailSlots(sortedEvents, slotCount: primaryCount, now: now)
+            visibleEvents = visible
+            remainingCount = overflow.count
         } else {
             visibleEvents = sortedEvents
         }

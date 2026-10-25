@@ -7,6 +7,7 @@ public struct CalendarDrawerView: View {
     public let state: CalendarPluginState
     public let store: PurahWorkspaceStore
     @State private var activeIndex: Int = 0
+    @State private var agendaAnchorID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {
@@ -459,16 +460,56 @@ public struct CalendarDrawerView: View {
         VStack(alignment: .leading, spacing: 8) {
             topSummaryBar()
 
-            // Chrono Event Cards
+            // Chrono Event Cards — the viewport lands on "now" every open
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(state.events) { event in
+                        if event.id == nowLineEventID {
+                            nowDividerRow()
+                        }
                         agendaRow(event: event)
                     }
                 }
                 .padding(.vertical, 2)
             }
+            .scrollPosition(id: $agendaAnchorID)
+            .onAppear { anchorAgendaViewport() }
+            .onChange(of: store.calendarScope) { anchorAgendaViewport() }
         }
+    }
+
+    /// First event that has not ended — the "now" boundary in this list.
+    private var nowLineEventID: String? {
+        CalendarOrdering.recentAnchorID(in: state.events)
+    }
+
+    /// Lands the viewport on "now" with up to two ended rows visible above,
+    /// so the present reads as a position on the timeline rather than a cut.
+    private func anchorAgendaViewport() {
+        guard let upcomingID = nowLineEventID,
+              let upcomingIndex = state.events.firstIndex(where: { $0.id == upcomingID }) else {
+            agendaAnchorID = state.events.first?.id
+            return
+        }
+        if upcomingIndex >= 2 {
+            agendaAnchorID = state.events[upcomingIndex - 2].id
+        } else {
+            agendaAnchorID = state.events.first?.id
+        }
+    }
+
+    @ViewBuilder
+    private func nowDividerRow() -> some View {
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.orange.opacity(0.55))
+                .frame(height: 1)
+            Text("calendar.status.now".localized)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .foregroundColor(.orange)
+                .fixedSize()
+        }
+        .padding(.vertical, 1)
     }
 
     @ViewBuilder
@@ -691,6 +732,12 @@ public struct CalendarAgendaOverviewDrawerView: View {
     public let isPinned: Bool
     public let slotHeight: CGFloat
     public let store: PurahWorkspaceStore
+    @State private var overviewAnchorID: String?
+
+    /// Upcoming ascending, then ended descending — both sides hug "now".
+    private var orderedBatches: (upcoming: [CalendarEventItem], ended: [CalendarEventItem]) {
+        CalendarOrdering.splitByNow(events)
+    }
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
@@ -804,15 +851,34 @@ public struct CalendarAgendaOverviewDrawerView: View {
             Divider()
                 .background(palette.borderColor.opacity(0.35))
 
-            // Row 2: Scrollable Event List
+            // Row 2: Scrollable Event List — upcoming above, ended below, "now" between
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(events) { event in
+                    let batches = orderedBatches
+                    ForEach(batches.upcoming) { event in
+                        agendaRow(event: event, podColor: podColor)
+                    }
+                    if !batches.ended.isEmpty {
+                        HStack(spacing: 6) {
+                            Rectangle()
+                                .fill(Color.orange.opacity(0.55))
+                                .frame(height: 1)
+                            Text("calendar.status.now".localized)
+                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                .foregroundColor(.orange)
+                                .fixedSize()
+                        }
+                        .padding(.vertical, 1)
+                        .id("calendar_now_divider")
+                    }
+                    ForEach(batches.ended) { event in
                         agendaRow(event: event, podColor: podColor)
                     }
                 }
                 .padding(.vertical, 2)
             }
+            .scrollPosition(id: $overviewAnchorID)
+            .onAppear { anchorOverviewViewport() }
             .frame(maxHeight: 280)
 
             Divider()
@@ -875,6 +941,17 @@ public struct CalendarAgendaOverviewDrawerView: View {
             } label: {
                 Label("Open in Apple Calendar", systemImage: "calendar")
             }
+        }
+    }
+
+    /// Lands the viewport with the "now" divider near the top, so both sides
+    /// of the boundary read immediately.
+    private func anchorOverviewViewport() {
+        let batches = orderedBatches
+        if let lastUpcoming = batches.upcoming.last {
+            overviewAnchorID = lastUpcoming.id
+        } else {
+            overviewAnchorID = batches.ended.first?.id
         }
     }
 
