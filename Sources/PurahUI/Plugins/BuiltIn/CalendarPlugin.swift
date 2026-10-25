@@ -113,10 +113,13 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     private func effectiveEvents(store: PurahWorkspaceStore) -> [CalendarEventItem] {
         if state.events.isEmpty {
-            if !store._calendarEvents.isEmpty {
-                store._calendarEvents = []
-            }
-            return []
+            // The plugin state is empty before its first sync (or when its
+            // scoped storage has not been populated yet). This accessor used to
+            // *erase* the store's mirrored events here, so the very first rail
+            // render — before EventKit answers, or before `mount` copies the
+            // store into the state — wiped the calendar instead of showing it.
+            // Reading must never mutate; the sync path owns every store write.
+            return store._calendarEvents
         }
         if store._calendarEvents.isEmpty {
             store._calendarEvents = state.events

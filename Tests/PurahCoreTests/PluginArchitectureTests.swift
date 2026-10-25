@@ -807,7 +807,7 @@ struct PluginArchitectureTests {
     func testDrawerPanelsAcceptStateContainers() {
         let store = PurahWorkspaceStore()
 
-        let calState = CalendarPluginState()
+        let calState = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         let calDrawerWithState = CalendarDrawerView(state: calState, store: store)
         let calDrawerWithStore = CalendarDrawerView(store: store)
         _ = calDrawerWithState

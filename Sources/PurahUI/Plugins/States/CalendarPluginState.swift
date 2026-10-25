@@ -153,6 +153,13 @@ public final class CalendarPluginState: Sendable {
 
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
+        // Both sets are keyed by event id and unpersisted, so past events would
+        // otherwise accumulate acknowledgements for the whole session.
+        if acknowledgedAlertIds.count > 256 || notifiedToastEventIds.count > 256 {
+            let liveIDs = Set(events.map(\.id))
+            acknowledgedAlertIds = acknowledgedAlertIds.filter { liveIDs.contains($0) }
+            notifiedToastEventIds = notifiedToastEventIds.filter { liveIDs.contains($0) }
+        }
     }
 
     public func resetAcknowledgedAlerts() {

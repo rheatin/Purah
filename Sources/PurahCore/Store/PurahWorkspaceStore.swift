@@ -1070,8 +1070,30 @@ public final class PurahWorkspaceStore {
         )
     }
 
+    /// Alert bookkeeping is keyed by item id and never persisted, so without a
+    /// bound these sets grow for every event the user has ever acknowledged
+    /// during a session. They are pruned once they exceed this many entries.
+    private static let alertIDRetentionLimit = 256
+
+    /// Drops acknowledgements and toast receipts that no longer refer to
+    /// anything live: departed calendar events, removed pods, and the fixed
+    /// set of vitals metric ids are the only ids worth keeping.
+    public func pruneStaleAlertIDs(force: Bool = false) {
+        guard force
+            || acknowledgedAlertIds.count > Self.alertIDRetentionLimit
+            || notifiedToastEventIds.count > Self.alertIDRetentionLimit else { return }
+        let liveEventIDs = Set(_calendarEvents.map(\.id))
+        let podIDs = Set(pods.map(\.id))
+        func isLive(_ id: String) -> Bool {
+            liveEventIDs.contains(id) || podIDs.contains(id) || id.hasPrefix("vitals-")
+        }
+        acknowledgedAlertIds = acknowledgedAlertIds.filter(isLive)
+        notifiedToastEventIds = notifiedToastEventIds.filter { liveEventIDs.contains($0) }
+    }
+
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
+        pruneStaleAlertIDs()
     }
 
     public func isAlertAcknowledged(id: String) -> Bool {
@@ -1161,6 +1183,7 @@ public final class PurahWorkspaceStore {
     public func postToastNotification(id: String, message: String) {
         guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(id) else { return }
         notifiedToastEventIds.insert(id)
+        pruneStaleAlertIDs()
         onCapacityWarningToast?(message)
     }
 

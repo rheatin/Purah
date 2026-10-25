@@ -39,7 +39,7 @@ struct CalendarOverflowStrategyTests {
     func testCalendarPluginContinuousStreamDecomposition() {
         // isDecomposed is the mode authority now; the legacy overflowStrategy
         // only seeds it through migration.
-        let state = CalendarPluginState()
+        let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         state.overflowStrategy = .continuousStream
         state.isDecomposed = false
         let plugin = CalendarPlugin(state: state)
@@ -54,7 +54,7 @@ struct CalendarOverflowStrategyTests {
     @Test("CalendarPlugin smartFold limits stepped chips to maxRailEvents and appends +N More chip")
     @MainActor
     func testCalendarPluginSmartFoldSteppedItems() {
-        let state = CalendarPluginState()
+        let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         state.overflowStrategy = .smartFold
         state.maxRailEvents = 3
 
@@ -139,7 +139,7 @@ struct CalendarOverflowStrategyTests {
     @Test("CalendarPluginSettingsView instantiates and reflects state changes")
     @MainActor
     func testCalendarPluginSettingsView() {
-        let state = CalendarPluginState()
+        let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         let store = PurahWorkspaceStore()
         let view = CalendarPluginSettingsView(state: state, store: store)
         #expect(view.state.overflowStrategy == .smartFold)
@@ -228,7 +228,7 @@ struct CalendarOverflowStrategyTests {
     @Test("Calendar status badges distinguish ongoing, imminent, and ended events")
     @MainActor
     func testCalendarEventStatusBadges() {
-        let state = CalendarPluginState()
+        let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         state.overflowStrategy = .smartFold
         state.maxRailEvents = 5
         state.alertLeadTime = .fifteenMinutes
