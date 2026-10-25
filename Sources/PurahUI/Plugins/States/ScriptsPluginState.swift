@@ -9,6 +9,7 @@ import PurahCore
 @MainActor
 public final class ScriptsPluginState: Sendable {
     public var isDecomposed: Bool
+    public var maxRailActions: Int
     public var enabledActionIds: [String]
     public var actions: [ScriptActionItem]
     public var lastOutput: String?
@@ -49,10 +50,17 @@ public final class ScriptsPluginState: Sendable {
             self.isDecomposed = true
         }
         self.enabledActionIds = storage.codable(forKey: "enabledActionIds", as: [String].self) ?? []
+        let savedSlotLimit = storage.int(forKey: "maxRailActions")
+        self.maxRailActions = (savedSlotLimit > 0) ? savedSlotLimit : 12
         self.actions = storage.codable(forKey: "actions", as: [ScriptActionItem].self) ?? ScriptRunwayService.shared.actions
         self.lastOutput = nil
         self.isRunning = false
         self.lastExecutedActionId = nil
+    }
+
+    public func setMaxRailActions(_ count: Int) {
+        maxRailActions = count
+        storage.set(count, forKey: "maxRailActions")
     }
 
     public func load() {

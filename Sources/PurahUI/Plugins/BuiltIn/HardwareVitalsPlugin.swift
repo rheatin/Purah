@@ -70,7 +70,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
-            maxRailItems: state.enabledMetrics.count,
+            maxRailItems: min(state.maxRailMetrics, state.enabledMetrics.count),
             minChipHeight: 56.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
@@ -314,6 +314,41 @@ public struct VitalsPluginSettingsView: View {
                     )
 
                     if !isStacked && state.isDecomposed {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Rail Slot Limit")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("\(min(state.maxRailMetrics, state.enabledMetrics.count)) of \(state.enabledMetrics.count) metrics")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
+                            }
+
+                            Slider(
+                                value: Binding(
+                                    get: { Double(min(state.maxRailMetrics, max(state.enabledMetrics.count, 2))) },
+                                    set: {
+                                        state.setMaxRailMetrics(Int($0))
+                                        store.invalidateLayoutCache()
+                                        store.onWindowsRebuildNeeded?()
+                                    }
+                                ),
+                                in: 2.0...Double(max(state.enabledMetrics.count, 2)),
+                                step: 1.0
+                            )
+
+                            Text("Metrics beyond this limit stay hidden on the rail — enable fewer metrics or raise the limit to show them all.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
+
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text("Visible Sub-Metrics")

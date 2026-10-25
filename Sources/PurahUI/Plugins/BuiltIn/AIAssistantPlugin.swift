@@ -1073,7 +1073,7 @@ public struct AIAssistantPluginSettingsView: View {
                             step: 1.0
                         )
 
-                        Text("Controls the maximum number of role chips decomposed along the screen edge.")
+                        Text("Controls the maximum number of role chips on the rail. Roles beyond this limit stay hidden — \(state.enabledRoles.count) enabled, \(max(state.enabledRoles.count - state.maxRailRoles, 0)) hidden.")
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }

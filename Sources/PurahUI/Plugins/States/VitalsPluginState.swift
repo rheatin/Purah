@@ -9,6 +9,7 @@ import PurahCore
 @MainActor
 public final class VitalsPluginState: Sendable {
     public var isDecomposed: Bool
+    public var maxRailMetrics: Int
     public var enabledMetrics: [VitalsMetricType]
     public var thresholds: VitalsColorThresholds
     public let storage: any PurahPluginStorage
@@ -38,6 +39,11 @@ public final class VitalsPluginState: Sendable {
         set { enabledMetrics = newValue }
     }
 
+    public func setMaxRailMetrics(_ count: Int) {
+        maxRailMetrics = count
+        storage.set(count, forKey: "maxRailMetrics")
+    }
+
     public var vitalsThresholds: VitalsColorThresholds {
         get { thresholds }
         set { thresholds = newValue }
@@ -60,6 +66,8 @@ public final class VitalsPluginState: Sendable {
             self.isDecomposed = true
         }
         self.enabledMetrics = resolvedStorage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
+        let savedSlotLimit = resolvedStorage.int(forKey: "maxRailMetrics")
+        self.maxRailMetrics = (savedSlotLimit > 0) ? savedSlotLimit : 8
         self.thresholds = resolvedStorage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
     }
 

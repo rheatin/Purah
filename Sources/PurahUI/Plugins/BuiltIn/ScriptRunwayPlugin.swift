@@ -61,7 +61,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
-            maxRailItems: state.enabledActions.count,
+            maxRailItems: min(state.maxRailActions, state.enabledActions.count),
             minChipHeight: 56.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
@@ -330,6 +330,40 @@ public struct ScriptsPluginSettingsView: View {
                     )
 
                     if !isStacked && state.isDecomposed {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Rail Slot Limit")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("\(min(state.maxRailActions, state.enabledActions.count)) of \(state.enabledActions.count) scripts")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
+                            }
+
+                            let scriptLimitRange: ClosedRange<Double> = 2.0...Double(max(state.enabledActions.count, 2))
+                            let scriptLimitValue: Double = Double(min(state.maxRailActions, max(state.enabledActions.count, 2)))
+                            let scriptLimitBinding: Binding<Double> = Binding(
+                                get: { scriptLimitValue },
+                                set: { (newValue: Double) in
+                                    state.setMaxRailActions(Int(newValue))
+                                    store.invalidateLayoutCache()
+                                    store.savePersistentState()
+                                }
+                            )
+                            Slider(value: scriptLimitBinding, in: scriptLimitRange, step: 1.0)
+
+                            Text("Scripts beyond this limit stay hidden on the rail — lower the limit to keep the rail compact, raise it to show more action chips.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
+
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("Visible Stepped Action Chips")
