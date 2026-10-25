@@ -942,23 +942,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                         }
                     }
 
-                    if !showRoleSwitcher {
-                        Button {
-                            onTogglePin()
-                        } label: {
-                            Image(systemName: isPinned ? "pin.fill" : "pin")
-                                .font(.system(size: 9))
-                                .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                                .frame(width: 20, height: 20)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(Color.white.opacity(0.06))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .help("Pin Drawer")
-                    }
-
                     // Hidden button for ⌘↩, kept for muscle memory alongside Return-to-send.
                     Button {
                         sendSourcePrompt()

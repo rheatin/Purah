@@ -176,9 +176,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
-        let count = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
         return PurahDecomposedPolicy(
-            maxRailItems: max(count, 1),
+            maxRailItems: max(state.maxRailRoles, 1),
             minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
@@ -187,9 +186,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
-        let count = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
         return PurahDecomposedPolicy(
-            maxRailItems: max(count, 1),
+            maxRailItems: max(state.maxRailRoles, 1),
             minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,

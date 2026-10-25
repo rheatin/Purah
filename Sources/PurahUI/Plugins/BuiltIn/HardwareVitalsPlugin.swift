@@ -326,14 +326,14 @@ public struct VitalsPluginSettingsView: View {
 
                             Slider(
                                 value: Binding(
-                                    get: { Double(min(state.maxRailMetrics, state.enabledMetrics.count)) },
+                                    get: { Double(min(max(state.maxRailMetrics, 2), 6)) },
                                     set: {
                                         state.setMaxRailMetrics(Int($0))
                                         store.invalidateLayoutCache()
                                         store.onWindowsRebuildNeeded?()
                                     }
                                 ),
-                                in: 1.0...Double(max(state.enabledMetrics.count, 2)),
+                                in: 2.0...6.0,
                                 step: 1.0
                             )
 

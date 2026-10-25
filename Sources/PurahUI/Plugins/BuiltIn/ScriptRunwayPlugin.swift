@@ -340,17 +340,15 @@ public struct ScriptsPluginSettingsView: View {
                                     .foregroundColor(palette.primaryAccent)
                             }
 
-                            let scriptLimitRange: ClosedRange<Double> = 2.0...Double(max(state.enabledActions.count, 2))
-                            let scriptLimitValue: Double = Double(min(state.maxRailActions, max(state.enabledActions.count, 2)))
                             let scriptLimitBinding: Binding<Double> = Binding(
-                                get: { scriptLimitValue },
+                                get: { Double(min(max(state.maxRailActions, 2), 6)) },
                                 set: { (newValue: Double) in
                                     state.setMaxRailActions(Int(newValue))
                                     store.invalidateLayoutCache()
                                     store.savePersistentState()
                                 }
                             )
-                            Slider(value: scriptLimitBinding, in: scriptLimitRange, step: 1.0)
+                            Slider(value: scriptLimitBinding, in: 2.0...6.0, step: 1.0)
 
                             Text("Scripts beyond this limit stay hidden on the rail — lower the limit to keep the rail compact, raise it to show more action chips.")
                                 .font(.system(size: 9.5))

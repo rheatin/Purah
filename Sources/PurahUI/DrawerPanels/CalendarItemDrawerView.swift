@@ -136,7 +136,7 @@ public struct CalendarItemDrawerView: View {
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 8)
-        .frame(width: effectiveW, height: cardH, alignment: .top)
+        .frame(width: effectiveW, height: cardH, alignment: .center)
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85))
