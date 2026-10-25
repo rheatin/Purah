@@ -9,7 +9,6 @@ public final class SystemRemindersSyncService {
     public static let shared = SystemRemindersSyncService()
 
     @ObservationIgnored private lazy var eventStore = EKEventStore()
-    @ObservationIgnored private nonisolated(unsafe) var eventStoreObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var syncGeneration: UInt64 = 0
     public weak var boundStore: PurahWorkspaceStore?
     public private(set) var isSyncing: Bool = false
@@ -19,27 +18,16 @@ public final class SystemRemindersSyncService {
     /// in-memory fallback without touching the user's real Reminders database.
     @ObservationIgnored private let permissionStatus: @MainActor () -> AccessStatus
 
+    /// Intentionally registers no `EKEventStoreChanged` observer.
+    ///
+    /// `TodoPluginState` (the mounted pod) already observes that notification
+    /// and owns the authoritative `todos` array. Both sides used to observe it,
+    /// so every Reminders edit ran two full EventKit fetches and raced to write
+    /// `store._todos`. The service stays a stateless query layer.
     public init(permissionStatus: @escaping @MainActor () -> AccessStatus = {
         PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
     }) {
         self.permissionStatus = permissionStatus
-        self.eventStoreObserver = NotificationCenter.default.addObserver(
-            forName: .EKEventStoreChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
-                guard self.boundStore?.pods.contains(where: { $0.id == "todo" && $0.isEnabled }) == true else { return }
-                await self.syncReminders(into: self.boundStore)
-            }
-        }
-    }
-
-    deinit {
-        if let observer = eventStoreObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     public func resetStore() {
