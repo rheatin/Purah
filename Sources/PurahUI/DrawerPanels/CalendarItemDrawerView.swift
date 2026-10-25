@@ -732,10 +732,6 @@ public struct CalendarItemDrawerView: View {
         }
     }
 
-    private var pinButton: some View {
-        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
-    }
-
     private func openInSystemCalendar(event: CalendarEventItem) {
         launchAppleCalendar(at: event.startTime)
     }
