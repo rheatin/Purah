@@ -402,6 +402,9 @@ public final class EdgeMouseMonitor {
                     return Unmanaged.passUnretained(event)
                 }
 
+                // The tap's run-loop source is installed on the *main* run loop
+                // (see below), so this callback always runs on the main thread;
+                // the hop-off is a defensive net, not a live code path.
                 if Thread.isMainThread {
                     MainActor.assumeIsolated {
                         monitor.handleHardwareRawMotion(point: pt, rawDeltaX: dx)
