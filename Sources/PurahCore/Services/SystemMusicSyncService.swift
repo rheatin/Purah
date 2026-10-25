@@ -399,7 +399,20 @@ public final class SystemMusicSyncService {
     }
 
     public func processMediaRemoteData(dict: [String: Any], pid: pid_t, store: PurahWorkspaceStore?) {
-        guard let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String, !title.isEmpty else { return }
+        guard let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String, !title.isEmpty else {
+            // An empty Now-Playing payload means the source app ended its media
+            // session (e.g. Dynamic.music clears the dict on pause). Swallowing
+            // this update froze the rail on "playing" forever — honor it as a
+            // stop signal, keeping the last anchor position.
+            if let store, store._musicTrack.isPlaying {
+                store._musicTrack.isPlaying = false
+                store._musicTrack.playbackRate = 0.0
+                store._musicTrack.waveformSamples = [Double](repeating: 0.15, count: store._musicTrack.waveformSamples.count)
+                updatePlaybackTimer(store: store, isPlaying: false)
+                onTrackChanged?(store._musicTrack)
+            }
+            return
+        }
 
         let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
         let album = dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
