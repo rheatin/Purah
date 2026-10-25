@@ -2329,12 +2329,26 @@ public final class PurahWorkspaceStore {
 
                     if itemActive || itemPinned {
                         matchedSubItem = true
-                        let itemTop = item.startY + Double(idx) * (itemH + spacing)
-                        let itemBottom = itemTop + cardH
+
+                        // Merged overview state: the "+N" chip owns the pod's full
+                        // span — its drawer is exactly pod-height, so the hit box
+                        // must be the whole pod frame, not the chip slot.
+                        let isMergedOverview = PurahPluginSubItem.isMoreItemsID(subId)
+
+                        let frameTop: Double
+                        let frameBottom: Double
+                        if isMergedOverview {
+                            frameTop = item.startY
+                            frameBottom = item.startY + item.spanH
+                        } else {
+                            let itemTop = item.startY + Double(idx) * (itemH + spacing)
+                            frameTop = itemTop
+                            frameBottom = itemTop + cardH
+                        }
                         let maxAllowedY = totalHeight - 12.0
-                        let shift = max(itemBottom - maxAllowedY, 0.0)
-                        let shiftedTop = itemTop - shift
-                        let shiftedBottom = itemBottom - shift
+                        let shift = max(frameBottom - maxAllowedY, 0.0)
+                        let shiftedTop = frameTop - shift
+                        let shiftedBottom = frameBottom - shift
                         let topOfCardY = totalHeight - shiftedTop
                         let bottomOfCardY = totalHeight - shiftedBottom
                         let minY = max(bottomOfCardY - 6.0, 0.0)

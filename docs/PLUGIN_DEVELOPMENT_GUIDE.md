@@ -124,6 +124,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 - 单抽屉插件只需实现 `makeRailBarView` 与 `makeDrawerView`。
 - 如果支持在轨拆解（如多条目/多指标），声明 `supportedDrawerModes: [.stepped]` 并实现 `steppedItems(context:)`。
 - **在轨拆解策略 (`PurahDecomposedPolicy`)**：支持拆解的插件可重写 `decomposedPolicy`，开箱即用支持最高在轨显示数量、子芯片最低/最高高度保护、自动算高及 `+N More` 智能折叠胶囊，底座容器自动精准适配。
+- **N+ 合并展开法则 (Merged Overview Expansion - 强制)**：当智能折叠的 `+N More` 芯片被悬停展开或固定（Pin）时，其所属 Pod 自动进入**合并总览态**——同级其它芯片收起，Pod 的完整高度合并为单一总览槽位。总览抽屉高度因此恒等于 Pod 高度（物理共面等高法则），内容超载时在抽屉内部滚动；命中框（`activeDrawerCardFrames`）同步覆盖整个 Pod 框架而非单芯片槽位。该机制由底座通用实现（`PurahPluginSubItem.mergedOverviewChip` + stepped 容器合并分支），插件**零代码接入**；唯一义务：`+N` 总览抽屉视图必须使用 drawer 级实底背景（`liquidDrawerBackground`），禁止使用半透明 card 变体（总览卡片悬浮于 canvas 深色衬底之外），且内容**严禁溢出 Pod 高度**。`+N` 芯片 id 必须含 `_more_` 标记（约定：`"\(pod.id)_more_items"` 或既有 legacy 拼写）。
 - **自适应宽度自主宣告 (`adaptiveDrawerWidth`)**：底座（Base Store）遵循开闭原则，不硬编码具体插件宽度。插件只需重写 `adaptiveDrawerWidth(store:)` 返回专属宽度（如 `360.0`），即可在用户切换为自适应模式时享受专属最佳排版。
 - **首选抽屉展开高度 (`preferredDrawerHeight`)**：插件通过 `preferredDrawerHeight(store:) -> CGFloat` 自主声明展开抽屉或动态手风琴（Dynamic Accordion）弹性伸展时的黄金高度（如音乐 295pt、终端/剪贴板 280pt、AI 助手 320pt）。宿主排版引擎利用物理弹簧将轨条与抽屉平滑伸展至此高度，保证内部复杂组件拥有充裕的纵向展示空间。
 - **自适应遥测变色 (`usesAdaptiveTelemetryColor`)**：布尔属性（默认 `false`）。当声明为 `true`（如硬件指标 Hardware Vitals）时，轨条与设置面板将优先采用动态遥测变色逻辑（红黄绿健康阈值），而不会被用户偏好的单一静态主题色强行压制。

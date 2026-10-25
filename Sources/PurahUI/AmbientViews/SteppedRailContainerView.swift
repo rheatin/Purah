@@ -81,10 +81,37 @@ public struct SteppedRailContainerView: View {
 
         let barW = max(context.railWidth, CGFloat(store.railBarWidth))
 
+        // Merged overview state: when the smart-fold "+N" chip is hovered-open
+        // or pinned, the pod collapses its other chips into one full-span slot
+        // so the overview drawer is exactly pod-height (Physical Co-Planar
+        // Height Rule) and its hit box matches the rendered card.
+        let mergedChip = PurahPluginSubItem.mergedOverviewChip(
+            in: items,
+            activeDrawerItemId: store.activeDrawerItemId,
+            isItemPinned: { store.isItemPinned(id: $0) }
+        )
+
         Group {
             if items.isEmpty {
                 plugin.makeRailBarView(context: context)
                     .frame(width: barW, height: totalHeight)
+            } else if let moreChip = mergedChip {
+                let morePinned = store.isItemPinned(id: moreChip.id)
+                let mergedContext = makeSubItemContext(for: moreChip, itemH: totalHeight, isActive: true, isPinned: morePinned)
+                ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
+                    subItemChip(subItem: moreChip, state: .expandedDrawer, isPinned: morePinned, itemH: totalHeight)
+                        .transition(.opacity)
+
+                    RoundedRectangle(cornerRadius: min(barW / 2, 4))
+                        .fill(Color.clear)
+                        .frame(width: barW, height: totalHeight)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            plugin.onRailBarTap(subItemId: moreChip.id, context: mergedContext)
+                        }
+                }
+                .frame(height: totalHeight, alignment: .top)
+                .zIndex(100)
             } else {
                 VStack(alignment: edge == .left ? .leading : .trailing, spacing: spacing) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, subItem in
@@ -126,6 +153,7 @@ public struct SteppedRailContainerView: View {
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: totalHeight)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: store.activeDrawerItemId)
         .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
             plugin.onDrop(providers: providers, context: context)
         })

@@ -741,6 +741,18 @@ public struct CalendarAgendaOverviewDrawerView: View {
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
+    /// Matches the stepped card family: rounded on the floating edge, flush
+    /// toward the rail.
+    private var drawerShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: edge == .right ? 10 : 0,
+            bottomLeadingRadius: edge == .right ? 10 : 0,
+            bottomTrailingRadius: edge == .right ? 0 : 10,
+            topTrailingRadius: edge == .right ? 0 : 10,
+            style: .continuous
+        )
+    }
+
     public init(
         events: [CalendarEventItem],
         edge: MountEdge,
@@ -918,9 +930,9 @@ public struct CalendarAgendaOverviewDrawerView: View {
         .padding(.trailing, edge == .left ? 18.0 : 12.0)
         .padding(.vertical, 10)
         .frame(width: 320, height: max(slotHeight, 140.0), alignment: .top)
-        .liquidCardBackground(
-            cornerRadius: 10,
-            strokeColor: podColor.opacity(0.8)
+        .liquidDrawerBackground(
+            shape: drawerShape,
+            accentColor: podColor
         )
         .contextMenu {
             Button {
