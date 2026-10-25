@@ -183,12 +183,6 @@ public struct AIAssistantSteppedDrawerView: View {
                             .help("Stop Generation")
                         }
 
-                        PurahPinButton(isPinned: isPinned, tintColor: roleColor, size: 16) {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                context.togglePin(subItemId)
-                            }
-                        }
-                        .frame(width: 16, height: 16)
                     }
                     .frame(height: 16)
 
