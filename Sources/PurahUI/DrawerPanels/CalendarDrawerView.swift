@@ -753,32 +753,16 @@ public struct CalendarAgendaOverviewDrawerView: View {
 
     public var body: some View {
         let podColor = palette.podColor(for: "calendar")
-        expandedAgendaCard(podColor: podColor)
-    }
-
-    @ViewBuilder
-    private func expandedAgendaCard(podColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Row 1: Header
-            HStack(spacing: 8) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(podColor)
-
-                Text("calendar.overview.title".localized)
-                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-
-                Text("\(events.count)")
-                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(podColor)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(podColor.opacity(0.18))
-                    .cornerRadius(4)
-
-                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+        let batches = orderedBatches
+        return PurahOverviewList(
+            icon: "calendar.badge.clock",
+            title: "calendar.overview.title".localized,
+            count: events.count,
+            accent: podColor,
+            showsSettings: true,
+            onSettings: { store.openPluginSettings(id: "calendar") },
+            headerTrailing: sampleConnectHidden ? nil : {
+                AnyView(
                     Button {
                         Task {
                             let granted = await PermissionManager.shared.requestCalendarAccess()
@@ -805,94 +789,34 @@ public struct CalendarAgendaOverviewDrawerView: View {
                     }
                     .buttonStyle(.tactile)
                     .help("Using sample events. Click to connect system Apple Calendar")
+                )
+            },
+            isPinned: isPinned,
+            onPin: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    store.togglePinItem(id: "calendar_more_events")
                 }
-
-                Spacer()
-
-                Button {
-                    store.openPluginSettings(id: "calendar")
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+            },
+            showsBoundary: !batches.ended.isEmpty,
+            boundaryTitle: "calendar.status.now".localized,
+            boundaryColor: .orange,
+            primary: {
+                ForEach(batches.upcoming) { event in
+                    agendaRow(event: event, podColor: podColor)
                 }
-                .buttonStyle(.tactile)
-                .help("Open Calendar Settings")
-
-                PurahPinButton(isPinned: isPinned, tintColor: podColor) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                        store.togglePinItem(id: "calendar_more_events")
-                    }
+            },
+            secondary: {
+                ForEach(batches.ended) { event in
+                    agendaRow(event: event, podColor: podColor)
                 }
-            }
-
-            Divider()
-                .background(palette.borderColor.opacity(0.35))
-
-            // Row 2: Scrollable Event List — upcoming above, ended below, "now" between
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    let batches = orderedBatches
-                    ForEach(batches.upcoming) { event in
-                        agendaRow(event: event, podColor: podColor)
-                    }
-                    if !batches.ended.isEmpty {
-                        HStack(spacing: 6) {
-                            Rectangle()
-                                .fill(Color.orange.opacity(0.55))
-                                .frame(height: 1)
-                            Text("calendar.status.now".localized)
-                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                                .foregroundColor(.orange)
-                                .fixedSize()
-                        }
-                        .padding(.vertical, 1)
-                        .id("calendar_now_divider")
-                    }
-                    ForEach(batches.ended) { event in
-                        agendaRow(event: event, podColor: podColor)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .scrollPosition(id: $overviewAnchorID)
-            .onAppear { anchorOverviewViewport() }
-            .frame(maxHeight: 280)
-
-            Divider()
-                .background(palette.borderColor.opacity(0.35))
-
-            // Row 3: Action Bar
-            HStack {
-                Text(store.calendarScope.title)
-                    .font(.system(size: 9.5, weight: .medium))
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                Button {
-                    launchAppleCalendar()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 8.5))
-                        Text("Apple Calendar")
-                            .font(.system(size: 9.5, weight: .medium))
-                    }
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(palette.surfaceBackground)
-                    .cornerRadius(5)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.tactile)
-            }
-        }
-        .contextMenu {
+            },
+            footerCaption: store.calendarScope.title,
+            actionIcon: "arrow.up.forward.app",
+            actionTitle: "Apple Calendar",
+            onAction: { launchAppleCalendar() },
+            scrollAnchor: $overviewAnchorID
+        )
+.contextMenu {
             Button {
                 store.openPluginSettings(id: "calendar")
             } label: {
@@ -912,6 +836,11 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 Label("Open in Apple Calendar", systemImage: "calendar")
             }
         }
+    }
+
+    /// Sample-mode connect prompt shows only before the system calendar is linked.
+    private var sampleConnectHidden: Bool {
+        store.isUsingRealCalendar && PermissionManager.shared.calendarStatus == .authorized
     }
 
     /// Lands the viewport on the nearest upcoming event — the overview

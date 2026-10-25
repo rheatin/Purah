@@ -185,11 +185,51 @@ public struct TodoPlugin: PurahPodPlugin {
         }
     }
 
-    /// "+N" overview content: everything not already rendered as a rail chip.
-    /// The host supplies the shared shell (bar, solid card, transition).
+    /// "+N" overview content: everything not already rendered as a rail chip,
+    /// split at the completed boundary. The host supplies the shared shell.
     public func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            TodoDrawerView(state: state, store: context.store, excludeIDs: context.visibleSubItemIds)
+        let railIDs = context.visibleSubItemIds
+        let overflow = effectiveTodos(store: context.store)
+            .filter { !railIDs.contains($0.id) }
+        let incomplete = overflow.filter { !$0.isCompleted }
+        let completed = overflow.filter { $0.isCompleted }
+        return AnyView(
+            PurahOverviewList(
+                icon: "checklist",
+                title: "todo.overview.title".localized,
+                count: overflow.count,
+                accent: context.accentColor,
+                showsSettings: true,
+                onSettings: { context.store.openPluginSettings(id: "todo") },
+                isPinned: context.isItemPinned("todo_more_items"),
+                onPin: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        context.togglePin("todo_more_items")
+                    }
+                },
+                showsBoundary: !completed.isEmpty && !incomplete.isEmpty,
+                boundaryTitle: "todo.overview.completed".localized,
+                boundaryColor: context.accentColor,
+                primary: {
+                    ForEach(incomplete) { todo in
+                        TodoOverviewRow(todo: todo, state: state, store: context.store)
+                    }
+                },
+                secondary: {
+                    ForEach(completed) { todo in
+                        TodoOverviewRow(todo: todo, state: state, store: context.store)
+                            .transition(.opacity)
+                    }
+                },
+                footerCaption: "Reminders",
+                actionIcon: "arrow.up.forward.app",
+                actionTitle: "todo.overview.openApp".localized,
+                onAction: {
+                    if let url = URL(string: "x-apple-reminderkit://") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            )
         )
     }
 

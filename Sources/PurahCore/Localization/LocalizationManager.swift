@@ -363,6 +363,9 @@ public final class LocalizationManager {
 
             // Todo & Calendar
             "todo.empty.title": "No pending tasks",
+            "todo.overview.title": "Reminders",
+            "todo.overview.completed": "Completed",
+            "todo.overview.openApp": "Open Reminders",
             "todo.empty.subtitle": "Configure filter in Settings",
             "calendar.empty.title": "No events in current range",
             "calendar.empty.subtitle": "Configure scope in Settings",
@@ -906,6 +909,9 @@ public final class LocalizationManager {
 
             // 待办与日历
             "todo.empty.title": "无待办事项",
+            "todo.overview.title": "提醒事项",
+            "todo.overview.completed": "已完成",
+            "todo.overview.openApp": "打开提醒事项",
             "todo.empty.subtitle": "可在设置中调整过滤条件",
             "calendar.empty.title": "当前时段无日程安排",
             "calendar.empty.subtitle": "可在设置中调整时间跨度",

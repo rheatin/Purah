@@ -907,6 +907,34 @@ public final class PurahWorkspaceStore {
         let targetItemId = itemId ?? podId
         pendingHoverPodId = podId
 
+        // Overview ↔ chip switches inside one pod play sequenced: the current
+        // drawer retracts first, then the next one springs out — the stack-like
+        // collapse-then-pop feel. Hover must still be on the pod when the
+        // deferred activation fires, or it is dropped.
+        let previousItemId = activeDrawerItemId
+        let isOverviewSwitch = previousItemId != nil
+            && previousItemId != targetItemId
+            && PurahPluginSubItem.isMoreItemsID(previousItemId!) != PurahPluginSubItem.isMoreItemsID(targetItemId)
+            && pod(forItemId: previousItemId!)?.id == podId
+        if isOverviewSwitch {
+            onRequestExpandCanvas?(targetEdge)
+            withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                hoveredPodId = podId
+                activeDrawerPodId = nil
+                activeDrawerItemId = nil
+                invalidateLayoutCache()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.hoveredPodId == podId || self.pendingHoverPodId == podId else { return }
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    self.activeDrawerPodId = podId
+                    self.activeDrawerItemId = targetItemId
+                    self.invalidateLayoutCache()
+                }
+            }
+            return
+        }
+
         if isAlreadyExpanded || Self.isTestingEnvironment {
             onRequestExpandCanvas?(targetEdge)
             withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
