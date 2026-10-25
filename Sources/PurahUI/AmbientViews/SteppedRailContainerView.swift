@@ -73,11 +73,7 @@ public struct SteppedRailContainerView: View {
             }
         }()
 
-        let count = max(items.count, 1)
-        let totalSpacing = spacing * CGFloat(count - 1)
         let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-        let itemH = min(max((totalHeight - totalSpacing) / CGFloat(count), effectiveMinChipH), maxChipH)
-        let actualSpanH = CGFloat(items.count) * itemH + spacing * CGFloat(max(items.count - 1, 0))
 
         let barW = max(context.railWidth, CGFloat(store.railBarWidth))
 
