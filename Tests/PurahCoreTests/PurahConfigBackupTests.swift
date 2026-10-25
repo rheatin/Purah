@@ -50,8 +50,9 @@ struct PurahConfigBackupTests {
         decoder.dateDecodingStrategy = .iso8601
         let backup = try decoder.decode(PurahConfigurationBackup.self, from: data)
 
-        #expect(backup.schemaVersion == 1)
-        #expect(backup.appVersion == "0.2.0")
+        #expect(backup.schemaVersion == PurahConfigBackupManager.currentSchemaVersion)
+        // Metadata must track the shipping version, not a stale literal.
+        #expect(backup.appVersion == PurahCore.version)
         #expect(backup.settings["purah.fixedDrawerWidth"] == .double(320.0))
         #expect(backup.settings["purah.railBarWidth"] == .double(10.0))
     }

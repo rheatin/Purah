@@ -82,7 +82,18 @@ public struct PurahConfigurationBackup: Codable, Equatable, Sendable {
 
 @MainActor
 public enum PurahConfigBackupManager {
-    public static func exportBackupData(from store: PurahWorkspaceStore, defaults: UserDefaults = .standard) throws -> Data {
+    /// Current backup schema. Older files remain importable; newer ones are
+    /// rejected rather than partially applied.
+    public static let currentSchemaVersion = 2
+    /// Bound on how many settings an import may carry, so a hostile file cannot
+    /// flood `UserDefaults` or stall the main thread.
+    public static let maximumImportedSettings = 5_000
+
+    public static func exportBackupData(
+        from store: PurahWorkspaceStore,
+        defaults: UserDefaults = .standard,
+        includeSecrets: Bool = false
+    ) throws -> Data {
         store.savePersistentState()
 
         var settings: [String: PurahConfigValue] = [:]
@@ -92,14 +103,19 @@ public enum PurahConfigBackupManager {
             if key.hasSuffix(".transient") || key.hasSuffix(".lock") {
                 continue
             }
+            // Credentials live in the keychain and must never travel in a plain
+            // JSON file the user may drop into git, a ticket or a shared disk.
+            if !includeSecrets && PurahSecretKeys.isSecret(key) {
+                continue
+            }
             if let configVal = convertToConfigValue(rawValue) {
                 settings[key] = configVal
             }
         }
 
         let backup = PurahConfigurationBackup(
-            schemaVersion: 1,
-            appVersion: "0.2.0",
+            schemaVersion: currentSchemaVersion,
+            appVersion: PurahCore.version,
             exportedAt: Date(),
             settings: settings
         )
@@ -110,12 +126,53 @@ public enum PurahConfigBackupManager {
         return try encoder.encode(backup)
     }
 
-    public static func importBackupData(_ data: Data, into store: PurahWorkspaceStore, defaults: UserDefaults = .standard) throws {
+    public enum ImportError: LocalizedError {
+        case unsupportedSchema(Int)
+        case tooManySettings(Int)
+        case rejectedKeys([String])
+
+        public var errorDescription: String? {
+            switch self {
+            case .unsupportedSchema(let version):
+                return "This backup was written by a newer version of Purah (schema \(version)). Update Purah and try again."
+            case .tooManySettings(let count):
+                return "This backup contains \(count) settings, which exceeds the supported limit."
+            case .rejectedKeys(let keys):
+                return "This backup contains unsupported settings: \(keys.prefix(5).joined(separator: ", "))"
+            }
+        }
+    }
+
+    public static func importBackupData(
+        _ data: Data,
+        into store: PurahWorkspaceStore,
+        defaults: UserDefaults = .standard,
+        allowSecrets: Bool = false
+    ) throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let backup = try decoder.decode(PurahConfigurationBackup.self, from: data)
 
-        for (key, configValue) in backup.settings {
+        guard backup.schemaVersion <= currentSchemaVersion else {
+            throw ImportError.unsupportedSchema(backup.schemaVersion)
+        }
+        guard backup.settings.count <= maximumImportedSettings else {
+            throw ImportError.tooManySettings(backup.settings.count)
+        }
+
+        // Only Purah's own namespaced keys, and never credentials: without this
+        // an attacker-supplied file could rewrite `openAIBaseURL` / API keys or
+        // inject arbitrary defaults domains.
+        let accepted = backup.settings.keys.filter { key in
+            key.hasPrefix("purah.")
+                && !key.hasSuffix(".transient")
+                && !key.hasSuffix(".lock")
+                && (allowSecrets || !PurahSecretKeys.isSecret(key))
+        }
+        let rejected = backup.settings.keys.filter { !accepted.contains($0) }
+
+        for key in accepted {
+            guard let configValue = backup.settings[key] else { continue }
             switch configValue {
             case .string(let str):
                 defaults.set(str, forKey: key)
@@ -148,6 +205,13 @@ public enum PurahConfigBackupManager {
 
         store.invalidateLayoutCache()
         store.onWindowsRebuildNeeded?()
+
+        if !rejected.isEmpty {
+            DiagnosticLogger.shared.warn(
+                "Backup",
+                "Ignored \(rejected.count) unsupported setting(s) while importing: \(rejected.sorted().prefix(10).joined(separator: ", "))"
+            )
+        }
     }
 
     public static func resetToFactoryDefaults(store: PurahWorkspaceStore, defaults: UserDefaults = .standard, triggerOnboarding: Bool = false) {
