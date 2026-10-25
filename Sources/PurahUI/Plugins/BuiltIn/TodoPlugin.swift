@@ -175,6 +175,14 @@ public struct TodoPlugin: PurahPodPlugin {
         }
     }
 
+    /// "+N" overview content: everything not already rendered as a rail chip.
+    /// The host supplies the shared shell (bar, solid card, transition).
+    public func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            TodoDrawerView(state: state, store: context.store, excludeIDs: context.visibleSubItemIds)
+        )
+    }
+
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         if let id = subItemId {
             context.performHaptic(.levelChange)
@@ -187,37 +195,6 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        if subItemId == "todo_more_items" {
-            let isPinned = context.isItemPinned(subItemId)
-            let isExpanded = context.isExpanded || isPinned
-            let barW = max(context.railWidth, CGFloat(context.store.railBarWidth))
-            let barH = max(context.slotHeight, 6.0)
-            let radius = min(barW / 2, 4)
-            return AnyView(
-                ZStack(alignment: context.edge == .right ? .topTrailing : .topLeading) {
-                    RoundedRectangle(cornerRadius: radius)
-                        .fill(context.accentColor.opacity(0.85))
-                        .frame(width: barW, height: barH)
-
-                    if isExpanded {
-                        TodoDrawerView(state: state, store: context.store, excludeIDs: context.visibleSubItemIds)
-                            .padding(8)
-                            .frame(width: context.drawerWidth, height: barH)
-                            .liquidDrawerBackground(
-                                shape: UnevenRoundedRectangle(
-                                    topLeadingRadius: context.edge == .right ? 8 : 0,
-                                    bottomLeadingRadius: context.edge == .right ? 8 : 0,
-                                    bottomTrailingRadius: context.edge == .left ? 8 : 0,
-                                    topTrailingRadius: context.edge == .left ? 8 : 0,
-                                    style: .continuous
-                                ),
-                                accentColor: context.accentColor
-                            )
-                    }
-                }
-                .frame(height: barH, alignment: .top)
-            )
-        }
         let todos = effectiveTodos(store: context.store)
         guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.isItemPinned(subItemId)

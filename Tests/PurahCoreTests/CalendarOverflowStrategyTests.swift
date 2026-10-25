@@ -97,8 +97,7 @@ struct CalendarOverflowStrategyTests {
         #expect(items.last?.badge == "4")
         #expect(plugin.ownsSubItemId("calendar_more_events", store: store) == true)
         #expect(plugin.ownsSubItemId("calendar_more_items", store: store) == true)
-        #expect(plugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: context) != nil)
-        #expect(plugin.makeSteppedDrawerView(subItemId: "calendar_more_items", context: context) != nil)
+        #expect(plugin.makeOverviewDrawerContent(context: context) != nil)
     }
 
     @Test("TodoPlugin smart fold more_items support")
@@ -124,7 +123,7 @@ struct CalendarOverflowStrategyTests {
             requestDismiss: {},
             togglePin: {}
         )
-        #expect(plugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: context) != nil)
+        #expect(plugin.makeOverviewDrawerContent(context: context) != nil)
 
         store.togglePinItem(id: "todo_more_items")
         #expect(plugin.hasPinnedChild(store: store) == true)
@@ -153,22 +152,6 @@ struct CalendarOverflowStrategyTests {
         let itemH = max((totalHeight - totalSpacing) / CGFloat(count), minChipH)
         let computedTotal = itemH * CGFloat(count) + totalSpacing
         #expect(computedTotal <= totalHeight + 0.1)
-    }
-
-    @Test("CalendarAgendaOverviewDrawerView starts in dockedFlush and only expands when active or pinned")
-    @MainActor
-    func testCalendarAgendaOverviewDrawerViewDockedState() {
-        let store = PurahWorkspaceStore()
-        let view = CalendarAgendaOverviewDrawerView(
-            events: [],
-            edge: .right,
-            state: .dockedFlush,
-            isPinned: false,
-            slotHeight: 36,
-            store: store
-        )
-        #expect(view.state == .dockedFlush)
-        #expect(!view.isPinned)
     }
 
     @Test("CalendarAlertLeadTime evaluates time boundaries accurately from 0m to 8h and same day")

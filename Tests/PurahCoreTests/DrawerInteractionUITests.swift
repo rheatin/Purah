@@ -1382,11 +1382,14 @@ struct DrawerInteractionUITests {
             togglePin: {}
         )
 
-        let steppedView = plugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: dockedContext)
-        #expect(steppedView != nil)
-        let hosting = NSHostingView(rootView: steppedView!)
+        // Docked "+N" chips render through the generic stepped chip path; the
+        // overview content only appears via makeOverviewDrawerContent when active.
+        #expect(plugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: dockedContext) == nil)
+        let dockedContent = plugin.makeOverviewDrawerContent(context: dockedContext)
+        #expect(dockedContent != nil)
+        let hosting = NSHostingView(rootView: dockedContent!)
         let fittingSize = hosting.fittingSize
-        #expect(fittingSize.width <= 16.0, "When docked (isExpanded == false), todo_more_items must render only the 8pt rail bar without expanding the TodoDrawerView card")
+        #expect(fittingSize.width > 16.0, "Overview content is the full drawer; the 8pt docked bar is supplied by the stepped container")
     }
 
     @Test("HardwareVitalsPlugin adaptiveDrawerWidth returns 360pt in both composite and stepped modes")

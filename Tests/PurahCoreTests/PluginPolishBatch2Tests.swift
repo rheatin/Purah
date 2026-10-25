@@ -182,8 +182,10 @@ struct PluginPolishBatch2Tests {
             requestDismiss: {},
             togglePin: {}
         )
-        #expect(calPlugin.makeSteppedDrawerView(subItemId: "calendar_more_items", context: calContext) != nil)
-        #expect(calPlugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: calContext) != nil)
+        // Overview moved to the shared shell: content comes from
+        // makeOverviewDrawerContent, makeSteppedDrawerView hands it off.
+        #expect(calPlugin.makeOverviewDrawerContent(context: calContext) != nil)
+        #expect(calPlugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: calContext) == nil)
 
         // 2. Todo Plugin
         let todoPlugin = TodoPlugin()
@@ -205,7 +207,8 @@ struct PluginPolishBatch2Tests {
             requestDismiss: {},
             togglePin: {}
         )
-        #expect(todoPlugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: todoContext) != nil)
+        #expect(todoPlugin.makeOverviewDrawerContent(context: todoContext) != nil)
+        #expect(todoPlugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: todoContext) == nil)
     }
 
     // MARK: - Task 3: Automatic Layout Recalculation on Changes

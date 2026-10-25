@@ -728,9 +728,7 @@ fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
 public struct CalendarAgendaOverviewDrawerView: View {
     public let events: [CalendarEventItem]
     public let edge: MountEdge
-    public let state: ItemDrawerState
     public let isPinned: Bool
-    public let slotHeight: CGFloat
     public let store: PurahWorkspaceStore
     @State private var overviewAnchorID: String?
 
@@ -741,53 +739,21 @@ public struct CalendarAgendaOverviewDrawerView: View {
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
-    /// Matches the stepped card family: rounded on the floating edge, flush
-    /// toward the rail.
-    private var drawerShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: edge == .right ? 10 : 0,
-            bottomLeadingRadius: edge == .right ? 10 : 0,
-            bottomTrailingRadius: edge == .right ? 0 : 10,
-            topTrailingRadius: edge == .right ? 0 : 10,
-            style: .continuous
-        )
-    }
-
     public init(
         events: [CalendarEventItem],
         edge: MountEdge,
-        state: ItemDrawerState = .expandedDrawer,
         isPinned: Bool = false,
-        slotHeight: CGFloat,
         store: PurahWorkspaceStore
     ) {
         self.events = events
         self.edge = edge
-        self.state = state
         self.isPinned = isPinned
-        self.slotHeight = slotHeight
         self.store = store
     }
 
     public var body: some View {
         let podColor = palette.podColor(for: "calendar")
-        let cardH = max(slotHeight, 32.0)
-        let isExpanded = (state == .expandedDrawer)
-
-        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // Rail-anchored baseline bar
-            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(podColor.opacity(0.85))
-                .frame(width: CGFloat(store.railBarWidth), height: cardH)
-
-            // Glides out full agenda overview drawer only when hovered or pinned
-            if isExpanded {
-                expandedAgendaCard(podColor: podColor)
-                    .transition(.move(edge: edge == .right ? .trailing : .leading))
-            }
-        }
-        .frame(height: cardH, alignment: .top)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        expandedAgendaCard(podColor: podColor)
     }
 
     @ViewBuilder
@@ -926,14 +892,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 .buttonStyle(.tactile)
             }
         }
-        .padding(.leading, edge == .left ? 12.0 : 18.0)
-        .padding(.trailing, edge == .left ? 18.0 : 12.0)
-        .padding(.vertical, 10)
-        .frame(width: 320, height: slotHeight, alignment: .top)
-        .liquidDrawerBackground(
-            shape: drawerShape,
-            accentColor: podColor
-        )
         .contextMenu {
             Button {
                 store.openPluginSettings(id: "calendar")

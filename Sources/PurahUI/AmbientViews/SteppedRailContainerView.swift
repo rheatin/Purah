@@ -88,7 +88,9 @@ public struct SteppedRailContainerView: View {
             isItemPinned: { store.isItemPinned(id: $0) }
         )
         let displayItems: [PurahPluginSubItem] = mergedChip.map { [$0] } ?? items
-        let renderedChipIDs = Set(displayItems.map(\.id))
+        // "+N" exclusion set = everything the rail displayed before merging;
+        // merging collapses chips visually but they stay excluded.
+        let railChipIDs = Set(items.map(\.id))
         let isMerged = mergedChip != nil
         let slotCount = max(displayItems.count, 1)
         let slotSpacing = spacing * CGFloat(slotCount - 1)
@@ -117,7 +119,7 @@ public struct SteppedRailContainerView: View {
                         let shift = isActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
 
                         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: effectiveChipH, visibleIDs: renderedChipIDs)
+                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: effectiveChipH, visibleIDs: railChipIDs)
                                 .id(subItem.id)
                                 .offset(y: -shift)
                                 .transition(.opacity)
@@ -131,7 +133,7 @@ public struct SteppedRailContainerView: View {
                                     if store.dismissAlertOnHover && subItem.state == .alerting {
                                         store.acknowledgeAlert(id: subItem.id)
                                     }
-                                    let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: renderedChipIDs)
+                                    let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: railChipIDs)
                                     plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
                                 }
                         }
@@ -199,7 +201,10 @@ public struct SteppedRailContainerView: View {
         visibleIDs: Set<String>
     ) -> some View {
         let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: visibleIDs)
-        if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
+        if state == .expandedDrawer, PurahPluginSubItem.isMoreItemsID(subItem.id),
+           let content = plugin.makeOverviewDrawerContent(context: subContext) {
+            overviewShell(context: subContext, content: content, height: itemH)
+        } else if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
             customDrawer
         } else {
             genericSubItemChip(
@@ -209,6 +214,37 @@ public struct SteppedRailContainerView: View {
                 itemH: itemH
             )
         }
+    }
+
+    /// Shared "+N" overview shell: rail bar across the merged slot plus the
+    /// drawer-grade solid card. Plugins contribute content only; every
+    /// overview therefore looks and animates identically.
+    private func overviewShell(context subContext: PurahPluginContext, content: AnyView, height: CGFloat) -> some View {
+        let barW = max(context.railWidth, CGFloat(store.railBarWidth))
+        let drawerW = store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id)
+        return ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
+            RoundedRectangle(cornerRadius: min(barW / 2, 4))
+                .fill(subContext.accentColor.opacity(0.85))
+                .frame(width: barW, height: height)
+
+            content
+                .padding(.leading, edge == .left ? 12.0 : 18.0)
+                .padding(.trailing, edge == .left ? 18.0 : 12.0)
+                .padding(.vertical, 10)
+                .frame(width: drawerW, height: height, alignment: .top)
+                .liquidDrawerBackground(
+                    shape: UnevenRoundedRectangle(
+                        topLeadingRadius: edge == .right ? 10 : 0,
+                        bottomLeadingRadius: edge == .right ? 10 : 0,
+                        bottomTrailingRadius: edge == .left ? 10 : 0,
+                        topTrailingRadius: edge == .left ? 10 : 0,
+                        style: .continuous
+                    ),
+                    accentColor: subContext.accentColor
+                )
+                .transition(.move(edge: edge == .right ? .trailing : .leading))
+        }
+        .frame(height: height, alignment: .top)
     }
 
     @ViewBuilder

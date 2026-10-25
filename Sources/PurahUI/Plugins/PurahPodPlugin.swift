@@ -78,6 +78,12 @@ public extension PurahPodPlugin {
     func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? { nil }
     func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? { nil }
 
+    /// Content-only view for the pod's "+N more" overview drawer. The stepped
+    /// container supplies the shared shell (rail bar, drawer-grade solid card,
+    /// edge-flush shape, slide-in transition) so every overview looks and
+    /// animates identically. Return nil if the pod has no overview drawer.
+    func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView? { nil }
+
     var usesAdaptiveTelemetryColor: Bool { false }
     func acknowledgeAllAlerts(context: PurahPluginContext) {}
 
