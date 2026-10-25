@@ -52,6 +52,31 @@ struct CalendarMergedOverviewTests {
         #expect(PurahPluginSubItem.mergedOverviewChip(in: [items[0]], activeDrawerItemId: nil, isItemPinned: { _ in false }) == nil)
     }
 
+    @Test("makeOverviewDrawerContent dynamically dispatches through the existential")
+    func testOverviewContentDispatch() {
+        // Regression: the default lived only in a protocol extension, so
+        // existential calls statically dispatched to `nil` and +N drawers
+        // fell back to the generic chip. The requirement must win.
+        let plugin: any PurahPodPlugin = CalendarPlugin()
+        let store = PurahWorkspaceStore()
+        let context = PurahPluginContext(
+            pod: store.pods.first(where: { $0.id == "calendar" })!,
+            edge: .right,
+            railWidth: 8.0,
+            slotHeight: 300.0,
+            drawerWidth: 320.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .orange,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+        #expect(plugin.makeOverviewDrawerContent(context: context) != nil)
+    }
+
     @Test("isMoreItemsID matches canonical and legacy spellings only")
     func testMoreItemsIDMatching() {
         #expect(PurahPluginSubItem.isMoreItemsID("calendar_more_events"))
