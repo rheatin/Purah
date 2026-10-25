@@ -16,6 +16,9 @@ public struct PurahPluginContext: Sendable {
     public let palette: ThemePalette
     public let storage: any PurahPluginStorage
     public let fileStorage: PurahPluginFileStorage
+    /// Sub-item ids the stepped container is currently rendering on the rail.
+    /// "+N more" drawers use this to exclude already-displayed entries.
+    public let visibleSubItemIds: Set<String>
     private let _store: PurahWorkspaceStore?
 
     /// Legacy host store reference for built-in panels during transition.
@@ -108,6 +111,7 @@ public struct PurahPluginContext: Sendable {
         storage: (any PurahPluginStorage)? = nil,
         fileStorage: PurahPluginFileStorage? = nil,
         store: PurahWorkspaceStore? = nil,
+        visibleSubItemIds: Set<String> = [],
         requestExpand: @escaping @MainActor () -> Void,
         requestDismiss: @escaping @MainActor () -> Void,
         togglePin: @escaping @MainActor () -> Void,
@@ -141,6 +145,7 @@ public struct PurahPluginContext: Sendable {
         self.palette = palette
         self.storage = storage ?? ScopedPluginStorage(pluginId: pod.id)
         self.fileStorage = fileStorage ?? PurahPluginFileStorage(pluginId: pod.id)
+        self.visibleSubItemIds = visibleSubItemIds
         self._store = store
         self.requestExpand = requestExpand
         self.requestDismiss = requestDismiss

@@ -929,7 +929,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
         .padding(.leading, edge == .left ? 12.0 : 18.0)
         .padding(.trailing, edge == .left ? 18.0 : 12.0)
         .padding(.vertical, 10)
-        .frame(width: 320, height: max(slotHeight, 140.0), alignment: .top)
+        .frame(width: 320, height: slotHeight, alignment: .top)
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: podColor
@@ -956,15 +956,11 @@ public struct CalendarAgendaOverviewDrawerView: View {
         }
     }
 
-    /// Lands the viewport with the "now" divider near the top, so both sides
-    /// of the boundary read immediately.
+    /// Lands the viewport on the nearest upcoming event — the overview
+    /// continues the rail's flow, so "what's next" is on screen at open.
     private func anchorOverviewViewport() {
         let batches = orderedBatches
-        if let lastUpcoming = batches.upcoming.last {
-            overviewAnchorID = lastUpcoming.id
-        } else {
-            overviewAnchorID = batches.ended.first?.id
-        }
+        overviewAnchorID = batches.upcoming.first?.id ?? batches.ended.first?.id
     }
 
     @ViewBuilder

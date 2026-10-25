@@ -200,9 +200,9 @@ public struct TodoPlugin: PurahPodPlugin {
                         .frame(width: barW, height: barH)
 
                     if isExpanded {
-                        TodoDrawerView(state: state, store: context.store)
+                        TodoDrawerView(state: state, store: context.store, excludeIDs: context.visibleSubItemIds)
                             .padding(8)
-                            .frame(width: context.drawerWidth, height: max(barH, 180.0))
+                            .frame(width: context.drawerWidth, height: barH)
                             .liquidDrawerBackground(
                                 shape: UnevenRoundedRectangle(
                                     topLeadingRadius: context.edge == .right ? 8 : 0,

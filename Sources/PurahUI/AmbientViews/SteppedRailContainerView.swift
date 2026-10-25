@@ -88,6 +88,7 @@ public struct SteppedRailContainerView: View {
             isItemPinned: { store.isItemPinned(id: $0) }
         )
         let displayItems: [PurahPluginSubItem] = mergedChip.map { [$0] } ?? items
+        let renderedChipIDs = Set(displayItems.map(\.id))
         let isMerged = mergedChip != nil
         let slotCount = max(displayItems.count, 1)
         let slotSpacing = spacing * CGFloat(slotCount - 1)
@@ -116,7 +117,7 @@ public struct SteppedRailContainerView: View {
                         let shift = isActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0
 
                         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: effectiveChipH)
+                            subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: effectiveChipH, visibleIDs: renderedChipIDs)
                                 .id(subItem.id)
                                 .offset(y: -shift)
                                 .transition(.opacity)
@@ -130,7 +131,7 @@ public struct SteppedRailContainerView: View {
                                     if store.dismissAlertOnHover && subItem.state == .alerting {
                                         store.acknowledgeAlert(id: subItem.id)
                                     }
-                                    let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned)
+                                    let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: renderedChipIDs)
                                     plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
                                 }
                         }
@@ -148,7 +149,7 @@ public struct SteppedRailContainerView: View {
         })
     }
 
-    private func makeSubItemContext(for subItem: PurahPluginSubItem, itemH: CGFloat, isActive: Bool, isPinned: Bool) -> PurahPluginContext {
+    private func makeSubItemContext(for subItem: PurahPluginSubItem, itemH: CGFloat, isActive: Bool, isPinned: Bool, visibleIDs: Set<String> = []) -> PurahPluginContext {
         PurahPluginContext(
             pod: pod,
             edge: edge,
@@ -161,6 +162,7 @@ public struct SteppedRailContainerView: View {
             palette: palette,
             storage: context.storage,
             store: store,
+            visibleSubItemIds: visibleIDs,
             requestExpand: {
                 store.activateDrawer(podId: pod.id, itemId: subItem.id)
             },
@@ -193,9 +195,10 @@ public struct SteppedRailContainerView: View {
         subItem: PurahPluginSubItem,
         state: ItemDrawerState,
         isPinned: Bool,
-        itemH: CGFloat
+        itemH: CGFloat,
+        visibleIDs: Set<String>
     ) -> some View {
-        let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned)
+        let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: visibleIDs)
         if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
             customDrawer
         } else {

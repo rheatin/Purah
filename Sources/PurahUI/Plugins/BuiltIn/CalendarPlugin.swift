@@ -298,9 +298,16 @@ public struct CalendarPlugin: PurahPodPlugin {
         if subItemId == "calendar_more_events" || subItemId == "calendar_more_items" {
             let isPinned = context.isItemPinned(subItemId)
             let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+            // "+N" shows only what the rail does NOT already display, ordered by
+            // the shared now-anchored comparator so the drawer continues the
+            // rail's flow instead of repeating it.
+            let railIDs = context.visibleSubItemIds
+            let overflow = effectiveEvents(store: context.store)
+                .filter { !railIDs.contains($0.id) }
+                .sorted(by: CalendarOrdering.railComparator(now: Date()))
             return AnyView(
                 CalendarAgendaOverviewDrawerView(
-                    events: effectiveEvents(store: context.store),
+                    events: overflow,
                     edge: context.edge,
                     state: state,
                     isPinned: isPinned,

@@ -15,9 +15,14 @@ public struct TodoDrawerView: View {
         palette.podColor(for: "todo") // Amber gold for reminders
     }
 
-    public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
+    /// Todo ids already rendered as rail chips — the "+N" drawer excludes them
+    /// so it continues the rail's list instead of repeating it.
+    private let excludeIDs: Set<String>
+
+    public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore(), excludeIDs: Set<String> = []) {
         self.state = state
         self.store = store
+        self.excludeIDs = excludeIDs
     }
 
     public init(store: PurahWorkspaceStore) {
@@ -50,7 +55,7 @@ public struct TodoDrawerView: View {
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 5) {
-                        ForEach(state.todos) { todo in
+                        ForEach(state.todos.filter { !excludeIDs.contains($0.id) }) { todo in
                             todoCard(todo: todo)
                                 .transition(.asymmetric(
                                     insertion: .scale(scale: 0.96).combined(with: .opacity),
