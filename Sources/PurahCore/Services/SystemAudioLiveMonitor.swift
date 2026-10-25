@@ -15,6 +15,11 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
     private var procID: AudioDeviceIOProcID?
     public private(set) var isRunning: Bool = false
     private let lock = os_unfair_lock_t.allocate(capacity: 1)
+    /// Serializes `start()` / `stop()`. Callers live on the main thread, the
+    /// music heartbeat timer and the app delegate, so two lifecycle calls could
+    /// interleave and leave an aggregate device or process tap orphaned (each
+    /// leaks a CoreAudio object until logout).
+    private let lifecycleLock = os_unfair_lock_t.allocate(capacity: 1)
 
     private var _peak: Float = 0.0
     private var _bass: Float = 0.0
@@ -76,11 +81,13 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
 
     private init() {
         lock.initialize(to: os_unfair_lock())
+        lifecycleLock.initialize(to: os_unfair_lock())
     }
 
     deinit {
         stop()
         lock.deallocate()
+        lifecycleLock.deallocate()
     }
 
     public static var isTestingEnvironment: Bool {
@@ -90,6 +97,18 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
     }
 
     public func start() {
+        os_unfair_lock_lock(lifecycleLock)
+        defer { os_unfair_lock_unlock(lifecycleLock) }
+        startLocked()
+    }
+
+    public func stop() {
+        os_unfair_lock_lock(lifecycleLock)
+        defer { os_unfair_lock_unlock(lifecycleLock) }
+        stopLocked()
+    }
+
+    private func startLocked() {
         guard !isRunning else { return }
         guard !Self.isTestingEnvironment else { return }
         guard #available(macOS 14.2, *) else { return }
@@ -150,6 +169,16 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
             var energySum: Float = 0.0
             var sampleCount: Float = 0.0
 
+            // Filter state is shared with `stop()`, so read it under the same
+            // lock that guards the published levels. Working on locals and
+            // writing back once keeps the per-sample loop lock-free while
+            // removing the unsynchronised read-modify-write of `bassIIRState`.
+            os_unfair_lock_lock(self.lock)
+            var iirState = self.bassIIRState
+            var avgBass = self.runningAvgBass
+            var avgPeak = self.runningAvgPeak
+            os_unfair_lock_unlock(self.lock)
+
             for buf in bufferList {
                 if let ptr = buf.mData?.assumingMemoryBound(to: Float.self) {
                     let frameCount = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
@@ -161,8 +190,8 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
                         sampleCount += 1.0
 
                         // 1-Pole Low-Pass Filter isolating Kick Drum / Sub-Bass (< 130Hz)
-                        self.bassIIRState += iirAlpha * (sample - self.bassIIRState)
-                        let bVal = abs(self.bassIIRState)
+                        iirState += iirAlpha * (sample - iirState)
+                        let bVal = abs(iirState)
                         if bVal > maxBass { maxBass = bVal }
                     }
                 }
@@ -173,18 +202,21 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
             let clampedBass = min(maxBass * 2.8, 1.0)
 
             // Onset / Transient Kick Drum Detector: sudden energy burst above running baseline
-            self.runningAvgBass = self.runningAvgBass * 0.90 + clampedBass * 0.10
-            let bassSurge = max(clampedBass - self.runningAvgBass, 0.0)
+            avgBass = avgBass * 0.90 + clampedBass * 0.10
+            let bassSurge = max(clampedBass - avgBass, 0.0)
             let kickTrigger = min(bassSurge * 4.5, 1.0)
 
             // Full-spectrum transient attack detector (snare drum, claps, dynamic drops)
-            self.runningAvgPeak = self.runningAvgPeak * 0.90 + clampedPeak * 0.10
-            let peakSurge = max(clampedPeak - self.runningAvgPeak, 0.0)
+            avgPeak = avgPeak * 0.90 + clampedPeak * 0.10
+            let peakSurge = max(clampedPeak - avgPeak, 0.0)
             let peakTrigger = min(peakSurge * 3.5, 1.0)
 
             let combinedTrigger = max(kickTrigger, peakTrigger * 0.70)
 
             os_unfair_lock_lock(self.lock)
+            self.bassIIRState = iirState
+            self.runningAvgBass = avgBass
+            self.runningAvgPeak = avgPeak
             // Push into delay ring buffer
             let cap = 32
             self.levelRing[self.ringIndex] = clampedPeak
@@ -220,7 +252,7 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
         isRunning = true
     }
 
-    public func stop() {
+    private func stopLocked() {
         guard isRunning else { return }
         isRunning = false
         if let proc = procID, aggDeviceID != 0 {

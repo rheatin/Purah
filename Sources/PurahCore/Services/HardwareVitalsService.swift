@@ -160,6 +160,13 @@ private final class CpuTelemetryBuffer: @unchecked Sendable {
     var previousDiskReadBytes: UInt64?
     var previousDiskWriteBytes: UInt64?
     var previousDiskTimestamp: Date?
+    /// Per-PID CPU accounting. `pti_total_user + pti_total_system` is a
+    /// monotonic nanosecond counter, so a process's share of the CPU is the
+    /// delta since the previous sample divided by the wall-clock delta.
+    /// Deriving it from the raw counter (as the old `% 100` did) produced a
+    /// meaningless number.
+    var previousProcessCPUTimeNs: [Int32: UInt64] = [:]
+    var previousProcessSampleTimestamp: Date?
 
     deinit {
         if let prev = previousCpuInfo {
@@ -736,6 +743,15 @@ public final class HardwareVitalsService {
         var items: [ProcessInfoItem] = []
         let totalMemBytes = Double(ProcessInfo.processInfo.physicalMemory)
 
+        let now = Date()
+        let previousCPUTimes = buffer.previousProcessCPUTimeNs
+        let previousTimestamp = buffer.previousProcessSampleTimestamp
+        // First sample after launch has no baseline: report 0% rather than a
+        // bogus number, and use the *current* sample as the next baseline.
+        let interval = previousTimestamp.map { now.timeIntervalSince($0) } ?? 0
+        let hasBaseline = previousTimestamp != nil && interval > 0.05
+        var sampledCPUTimes: [Int32: UInt64] = [:]
+
         for app in apps {
             let pid = app.processIdentifier
             guard pid > 0, let name = app.localizedName, !name.isEmpty else { continue }
@@ -745,8 +761,14 @@ public final class HardwareVitalsService {
             if size == MemoryLayout<proc_taskinfo>.size {
                 let memBytes = Double(taskInfo.pti_resident_size)
                 let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
-                let cpuTimeMs = Double(taskInfo.pti_total_user + taskInfo.pti_total_system) / 100_000_000.0
-                let cpuPercent = min(max(cpuTimeMs.truncatingRemainder(dividingBy: 100.0), 0.5), 99.0)
+                let totalCPUTimeNs = taskInfo.pti_total_user + taskInfo.pti_total_system
+                sampledCPUTimes[pid] = totalCPUTimeNs
+
+                var cpuPercent = 0.0
+                if hasBaseline, let previous = previousCPUTimes[pid], totalCPUTimeNs >= previous {
+                    let usedSeconds = Double(totalCPUTimeNs - previous) / 1_000_000_000.0
+                    cpuPercent = min(max((usedSeconds / interval) * 100.0, 0.0), 100.0)
+                }
                 let memoryMB = memBytes / 1_048_576.0
 
                 items.append(ProcessInfoItem(
@@ -758,6 +780,11 @@ public final class HardwareVitalsService {
                 ))
             }
         }
+
+        // Keep only live PIDs so the dictionary cannot grow with every process
+        // the machine has ever launched.
+        buffer.previousProcessCPUTimeNs = sampledCPUTimes
+        buffer.previousProcessSampleTimestamp = now
 
         items.sort { $0.memoryPercent > $1.memoryPercent }
         return items

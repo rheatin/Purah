@@ -305,6 +305,8 @@ public struct AIRailBarPluginView: View {
     public let state: AIAssistantPluginState
     public let context: PurahPluginContext
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     public init(state: AIAssistantPluginState, context: PurahPluginContext) {
         self.state = state
         self.context = context
@@ -322,7 +324,7 @@ public struct AIRailBarPluginView: View {
                 .frame(width: barW, height: barH)
 
             if state.isStreaming {
-                TimelineView(.animation) { timeline in
+                TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                     let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
                     let spotH = max(barH * 0.28, 14.0)

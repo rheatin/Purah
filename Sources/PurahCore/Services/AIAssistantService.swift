@@ -116,6 +116,15 @@ public final class AIAssistantService {
     }
 
     // MARK: - Context Capture
+
+    /// `AXUIElementCopyAttributeValue` hands back an untyped `CFTypeRef`. A
+    /// malformed reply from the target process would trap on a forced cast, so
+    /// verify the CoreFoundation type before bridging.
+    private static func axElement(from ref: CFTypeRef?) -> AXUIElement? {
+        guard let ref, CFGetTypeID(ref) == AXUIElementGetTypeID() else { return nil }
+        return (ref as! AXUIElement)
+    }
+
     public func captureFrontmostSelection(allowPasteboardFallback: Bool = false) -> (text: String, sourceApp: String?)? {
         if let frontmost = NSWorkspace.shared.frontmostApplication,
            frontmost.bundleIdentifier != Bundle.main.bundleIdentifier {
@@ -129,8 +138,7 @@ public final class AIAssistantService {
         var sourceAppName: String?
         var focusedUIElement: AXUIElement?
 
-        if appResult == .success, let app = appRef {
-            let appElement = app as! AXUIElement
+        if appResult == .success, let appElement = Self.axElement(from: appRef) {
             var titleRef: CFTypeRef?
             if AXUIElementCopyAttributeValue(appElement, kAXTitleAttribute as CFString, &titleRef) == .success,
                let title = titleRef as? String, !title.isEmpty {
@@ -139,8 +147,8 @@ public final class AIAssistantService {
 
             var focusedElemRef: CFTypeRef?
             if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElemRef) == .success,
-               let focusedElem = focusedElemRef {
-                focusedUIElement = (focusedElem as! AXUIElement)
+               let focusedElem = Self.axElement(from: focusedElemRef) {
+                focusedUIElement = focusedElem
             }
         }
 

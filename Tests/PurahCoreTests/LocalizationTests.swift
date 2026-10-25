@@ -14,7 +14,17 @@ struct LocalizationTests {
         loc.currentLanguage = .english
         #expect(loc.localized("app.name") == "Purah Pad")
         #expect(loc.localized("menu.autoLayout") == "Magic Ergonomics Auto-Layout")
-        #expect(loc.localized("preset.balanced.title") == "Balanced Ergonomics")
+    }
+
+    @Test("Legacy PodPreset strings are gone; the key itself falls through")
+    @MainActor
+    func testLegacyPresetKeysRemoved() {
+        let loc = LocalizationManager()
+        loc.currentLanguage = .english
+        // `PodPreset` was sunset in favour of Live Rail Sculptor and Magic
+        // Auto-Layout. The leftover strings must not creep back in.
+        #expect(loc.localized("preset.balanced.title") == "preset.balanced.title")
+        #expect(loc.localized("preset.sprint.desc") == "preset.sprint.desc")
     }
 
     @Test("Fallbacks to key when missing")

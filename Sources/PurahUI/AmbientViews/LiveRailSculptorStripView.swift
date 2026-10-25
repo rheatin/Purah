@@ -598,6 +598,7 @@ public struct LiveSculptMajorClusterBoxView: View {
     @State private var lastSubResizeHapticStep: Int = 0
     @State private var hoveredSubResizeId: String? = nil
     @State private var isPulseOn: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -1128,6 +1129,10 @@ public struct LiveSculptMajorClusterBoxView: View {
             }
         }
         .onChange(of: isStackTargetHighlighted) { _, highlighted in
+            guard PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) else {
+                isPulseOn = highlighted
+                return
+            }
             if highlighted {
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
                     isPulseOn = true
@@ -1160,6 +1165,7 @@ public struct LiveSculptPodCapsuleView: View {
     @State private var isResizeHovered: Bool = false
     @State private var isPulseOn: Bool = false
     @State private var arrowBounce: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var pod: SlotPod {
         item.pod
@@ -1726,7 +1732,14 @@ public struct LiveSculptPodCapsuleView: View {
         .scaleEffect(activelyDragging ? 1.03 : 1.0)
         .offset(y: activelyDragging ? dragVisualOffsetY : 0)
         .onAppear {
-            if isStackTargetHighlighted || onboardingStackRole == .target {
+            let shouldPulse = isStackTargetHighlighted || onboardingStackRole == .target
+            guard PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) else {
+                // Static emphasis instead of a forever-pulsing outline.
+                isPulseOn = shouldPulse
+                arrowBounce = false
+                return
+            }
+            if shouldPulse {
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
                     isPulseOn = true
                 }
@@ -1736,6 +1749,10 @@ public struct LiveSculptPodCapsuleView: View {
             }
         }
         .onChange(of: isStackTargetHighlighted) { _, highlighted in
+            guard PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) else {
+                isPulseOn = highlighted || onboardingStackRole == .target
+                return
+            }
             if highlighted || onboardingStackRole == .target {
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
                     isPulseOn = true

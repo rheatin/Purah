@@ -146,7 +146,13 @@ public struct SteppedRailContainerView: View {
                             subItemChip(subItem: subItem, state: state, isPinned: isPinned, itemH: effectiveChipH, visibleIDs: railChipIDs)
                                 .id(subItem.id)
                                 .offset(y: -shift)
-                                .transition(.opacity)
+                                // Zero Ghosting: chips are physical bezel
+                                // extensions, so a smart-folded chip tucks
+                                // back into the edge rather than fading out.
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: edge == .right ? Edge.trailing : Edge.leading),
+                                    removal: .move(edge: edge == .right ? Edge.trailing : Edge.leading)
+                                ))
 
                             // Scope rail tap gestures strictly to the rail bar indicator shape (not the entire ZStack containing expanded card)
                             RoundedRectangle(cornerRadius: min(barW / 2, 4))
@@ -227,12 +233,13 @@ public struct SteppedRailContainerView: View {
         let subContext = makeSubItemContext(for: subItem, itemH: itemH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: visibleIDs)
         if state == .expandedDrawer, PurahPluginSubItem.isMoreItemsID(subItem.id),
            let content = plugin.makeOverviewDrawerContent(context: subContext) {
+            // Zero Ghosting: the overview is a drawer-grade solid card, so it
+            // must slide back into the bezel at full opacity — an opacity fade
+            // makes it read as a translucent ghost floating over user content.
             overviewShell(context: subContext, content: content, height: itemH)
                 .transition(.asymmetric(
-                    insertion: .move(edge: edge == .right ? Edge.trailing : Edge.leading)
-                        .combined(with: .opacity),
+                    insertion: .move(edge: edge == .right ? Edge.trailing : Edge.leading),
                     removal: .move(edge: edge == .right ? Edge.trailing : Edge.leading)
-                        .combined(with: .opacity)
                 ))
         } else if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
             customDrawer

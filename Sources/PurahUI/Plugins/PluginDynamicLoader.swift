@@ -237,7 +237,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeRailViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -260,7 +260,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeDrawerViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -279,7 +279,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        PluginDynamicLoader.shared.registerStore(store)
+        PluginDynamicLoader.shared.registerStore(store, for: manifest.id)
         let payload = PurahABIContextPayload.from(store: store, pluginId: manifest.id)
         if let fnWithContext = makeSettingsViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -298,7 +298,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeAccessoryViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -317,7 +317,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeTrailingViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -336,7 +336,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         if let fn = onRailTapFn {
             fn()
         }
@@ -345,7 +345,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func onMount(store: PurahWorkspaceStore) {
-        PluginDynamicLoader.shared.registerStore(store)
+        PluginDynamicLoader.shared.registerStore(store, for: manifest.id)
         onMountFn?()
     }
 
@@ -363,7 +363,20 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
 public final class PluginDynamicLoader {
     public static let shared = PluginDynamicLoader()
 
+    /// Fallback store for callers that never registered a per-plugin binding
+    /// (settings windows, tests, single-store builds).
     public weak var currentStore: PurahWorkspaceStore?
+
+    /// Store each external plugin was last rendered against. Binding is
+    /// per-plugin so a second screen (or a second store) cannot silently
+    /// re-route every external plugin's host actions to the newest store —
+    /// with a single `currentStore` the last writer won, and an external pod
+    /// on screen A could end up expanding a pod on screen B.
+    private var pluginStores: [String: WeakStore] = [:]
+
+    private struct WeakStore {
+        weak var value: PurahWorkspaceStore?
+    }
 
     private var loadedHandles: [String: UnsafeMutableRawPointer] = [:]
     private var loadedDylibPaths: [String: String] = [:]
@@ -374,8 +387,17 @@ public final class PluginDynamicLoader {
         self.currentStore = store
     }
 
+    public func registerStore(_ store: PurahWorkspaceStore, for pluginId: String) {
+        self.currentStore = store
+        self.pluginStores[pluginId] = WeakStore(value: store)
+    }
+
+    public func store(for pluginId: String) -> PurahWorkspaceStore? {
+        pluginStores[pluginId]?.value ?? currentStore
+    }
+
     public func handleExternalPluginAction(pluginId: String, action: String, payload: String?) {
-        guard let store = currentStore else { return }
+        guard let store = store(for: pluginId) else { return }
         switch action {
         case "expand":
             store.activePodId = pluginId
