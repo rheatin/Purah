@@ -389,28 +389,139 @@ public struct InteractiveMarkdownPreviewView: View {
         baseColor: Color? = nil
     ) -> Text {
         guard !text.isEmpty else { return Text("") }
-        if var attrString = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            for run in attrString.runs {
-                let intent = run.inlinePresentationIntent ?? []
-                if intent.contains(.code) {
-                    attrString[run.range].swiftUI.foregroundColor = accentColor
-                    attrString[run.range].swiftUI.backgroundColor = accentColor.opacity(0.15)
-                    attrString[run.range].swiftUI.font = .system(size: max(fontSize - 0.5, 9), weight: .medium, design: .monospaced)
-                } else {
-                    if let baseColor = baseColor {
-                        attrString[run.range].swiftUI.foregroundColor = baseColor
-                    }
-                    let weight: Font.Weight = (isBold || intent.contains(.stronglyEmphasized)) ? .bold : .regular
-                    attrString[run.range].swiftUI.font = .system(size: fontSize, weight: weight)
+        return Self.composeInlineMarkdown(
+            text, fontSize: fontSize, isBold: isBold,
+            baseColor: baseColor, accentColor: accentColor
+        )
+    }
+
+    /// Hand-rolled inline markdown renderer.
+    ///
+    /// Foundation's `AttributedString(markdown:)` refuses `**emphasis**` when the
+    /// delimiters sit flush against CJK characters (its CommonMark flanking rules treat
+    /// them as punctuation), which left raw `**` in AI output. Scanning for delimiter
+    /// pairs directly keeps bold working in Chinese text.
+    static func composeInlineMarkdown(
+        _ text: String,
+        fontSize: CGFloat,
+        isBold: Bool = false,
+        baseColor: Color? = nil,
+        accentColor: Color
+    ) -> Text {
+        var composed = AttributedString()
+        for segment in splitInlineSegments(text) {
+            composed += attributedRun(for: segment, fontSize: fontSize,
+                                      isBold: isBold, baseColor: baseColor,
+                                      accentColor: accentColor)
+        }
+        return Text(composed)
+    }
+
+    /// Style mapping for one scanned segment.
+    ///
+    /// Emphasis contrast is carried by weight AND brightness: at 9–11pt a bare `.bold`
+    /// barely reads against `.regular`, so plain text dims to 86% and bold stays fully
+    /// lit — the luminance step is what makes `**中文**` pop.
+    private static func attributedRun(
+        for segment: InlineSegment,
+        fontSize: CGFloat,
+        isBold: Bool,
+        baseColor: Color?,
+        accentColor: Color
+    ) -> AttributedString {
+        var run: AttributedString
+        switch segment {
+        case .plain(let str):
+            run = AttributedString(str)
+            run.swiftUI.font = .system(size: fontSize, weight: isBold ? .bold : .regular)
+            run.swiftUI.foregroundColor = baseColor ?? .primary.opacity(0.86)
+
+        case .bold(let str):
+            run = AttributedString(str)
+            run.inlinePresentationIntent = .stronglyEmphasized
+            run.swiftUI.font = .system(size: fontSize, weight: .bold)
+            run.swiftUI.foregroundColor = baseColor ?? .primary
+
+        case .italic(let str):
+            run = AttributedString(str)
+            run.inlinePresentationIntent = .emphasized
+            run.swiftUI.font = .system(size: fontSize, weight: isBold ? .bold : .regular)
+            run.swiftUI.foregroundColor = baseColor ?? .primary.opacity(0.86)
+
+        case .code(let str):
+            run = AttributedString(str)
+            run.inlinePresentationIntent = .code
+            run.swiftUI.font = .system(size: max(fontSize - 0.5, 9), weight: .medium, design: .monospaced)
+            run.swiftUI.foregroundColor = accentColor
+            run.swiftUI.backgroundColor = accentColor.opacity(0.15)
+        }
+        return run
+    }
+
+    enum InlineSegment: Equatable {
+        case plain(String)
+        case bold(String)
+        case italic(String)
+        case code(String)
+    }
+
+    /// Scans `**bold**`, `*italic*`, and backtick-code pairs. Unlike Foundation's
+    /// CommonMark pass this accepts delimiters flush against CJK characters, which AI
+    /// answers produce constantly in Chinese.
+    static func splitInlineSegments(_ text: String) -> [InlineSegment] {
+        var segments: [InlineSegment] = []
+        var current = ""
+        var index = text.startIndex
+
+        func flush() {
+            if !current.isEmpty { segments.append(.plain(current)); current = "" }
+        }
+
+        while index < text.endIndex {
+            let rest = text[index...]
+
+            func closeRange(of token: String) -> Range<String.Index>? {
+                let contentStart = rest.index(rest.startIndex, offsetBy: token.count)
+                guard contentStart < text.endIndex else { return nil }
+                return text.range(of: token, range: contentStart..<text.endIndex)
+            }
+
+            if rest.hasPrefix("**"),
+               let close = closeRange(of: "**") {
+                let inner = String(text[rest.index(rest.startIndex, offsetBy: 2)..<close.lowerBound])
+                // Flanking rule (simplified): emphasis content must not begin or end with
+                // whitespace, so "2 * 3" style math stays literal.
+                if !inner.isEmpty, !inner.hasPrefix(" "), !inner.hasSuffix(" ") {
+                    flush()
+                    segments.append(.bold(inner))
+                    index = close.upperBound
+                    continue
                 }
             }
-            return Text(attrString)
+            if rest.hasPrefix("`"),
+               let close = closeRange(of: "`") {
+                let inner = String(text[rest.index(rest.startIndex, offsetBy: 1)..<close.lowerBound])
+                flush()
+                segments.append(.code(inner))
+                index = close.upperBound
+                continue
+            }
+            if rest.hasPrefix("*"), !rest.hasPrefix("**"),
+               let close = closeRange(of: "*") {
+                let inner = String(text[rest.index(rest.startIndex, offsetBy: 1)..<close.lowerBound])
+                if !inner.isEmpty, !inner.contains("*"),
+                   !inner.hasPrefix(" "), !inner.hasSuffix(" ") {
+                    flush()
+                    segments.append(.italic(inner))
+                    index = close.upperBound
+                    continue
+                }
+            }
+            current.append(text[index])
+            index = text.index(after: index)
         }
-        var plain = Text(text).font(.system(size: fontSize, weight: isBold ? .bold : .regular))
-        if let baseColor = baseColor {
-            plain = plain.foregroundColor(baseColor)
-        }
-        return plain
+        flush()
+        return segments
     }
 
     private func parseBlocks(from markdown: String) -> [PreviewBlock] {
