@@ -132,19 +132,23 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        // FULL count — the container/monitor need the true overflow signal
+        // (count > capacity) to place the "+N" chip. Never pre-truncate here.
         guard isDecomposed(store: store) else { return 0 }
-        return min(effectiveTodos(store: store).count, store.todoMaxRailTasks)
+        return effectiveTodos(store: store).count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        // Plain mapping: the monitor injects the "+N" chip id itself when the
+        // hovered slot is the smart-fold slot (see EdgeMouseMonitor).
         let todos = effectiveTodos(store: store)
-        guard index < store.todoMaxRailTasks, todos.indices.contains(index) else { return nil }
+        guard todos.indices.contains(index) else { return nil }
         return todos[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
         let todos = effectiveTodos(store: store)
-        guard index < store.todoMaxRailTasks, todos.indices.contains(index) else { return nil }
+        guard todos.indices.contains(index) else { return nil }
         return todos[index].title
     }
 

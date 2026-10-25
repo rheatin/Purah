@@ -119,8 +119,8 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
-        let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
-        let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
+        // Pod-level adaptive width — never guess the pod from the event title.
+        let effectiveW = store.effectiveDrawerWidth(baseWidth: 310.0, podId: "calendar")
         let floatingEdgePadding: CGFloat = (edge == .left ? 18.0 : 12.0)
         let railEdgePadding: CGFloat = (edge == .left ? 12.0 : 18.0)
 
@@ -233,6 +233,8 @@ public struct CalendarItemDrawerView: View {
 
             categoryTag(calColor: calColor, isPast: isPast)
             sampleConnectBadge()
+
+            Spacer(minLength: 4)
 
             pinButton(calColor: calColor)
         }
@@ -610,6 +612,7 @@ public struct CalendarItemDrawerView: View {
                 .frame(width: 5, height: 5)
             Text(event.calendarTitle)
                 .purahBadge(size: 8.5, weight: .bold)
+                .lineLimit(1)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2.5)

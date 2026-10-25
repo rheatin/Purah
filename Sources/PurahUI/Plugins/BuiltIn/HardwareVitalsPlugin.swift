@@ -314,12 +314,6 @@ public struct VitalsPluginSettingsView: View {
                     )
 
                     if !isStacked && state.isDecomposed {
-                        if state.enabledMetrics.count < 3 {
-                            Text("Enable at least 3 metrics to configure the rail slot limit.")
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        if state.enabledMetrics.count >= 3 {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
                                 Text("Rail Slot Limit")
@@ -339,7 +333,7 @@ public struct VitalsPluginSettingsView: View {
                                         store.onWindowsRebuildNeeded?()
                                     }
                                 ),
-                                in: 2.0...Double(state.enabledMetrics.count),
+                                in: 1.0...Double(max(state.enabledMetrics.count, 2)),
                                 step: 1.0
                             )
 
@@ -365,7 +359,6 @@ public struct VitalsPluginSettingsView: View {
                             RoundedRectangle(cornerRadius: 7)
                                 .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
                         )
-                        }
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
