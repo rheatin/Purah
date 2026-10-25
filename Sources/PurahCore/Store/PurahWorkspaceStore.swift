@@ -3337,43 +3337,52 @@ public final class PurahWorkspaceStore {
         let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: screenH)
         let isPaged = pages.count > 1
-        let railPods = pods.filter {
+        // Sorted *ids*: the array below is a value snapshot, so a mutation made
+        // earlier in this function would leave stale `range` values behind.
+        let railPodIds = pods.filter {
             $0.edge == edge && $0.isEnabled && (!isPaged || $0.pageIndex == currentPod.pageIndex)
-        }.sorted { $0.range.start < $1.range.start }
-        guard let currentIndex = railPods.firstIndex(where: { $0.id == podId }),
+        }.sorted { $0.range.start < $1.range.start }.map(\.id)
+        guard let currentIndex = railPodIds.firstIndex(of: podId),
               let podIndex = pods.firstIndex(where: { $0.id == podId }) else { return }
+        // Live lookup: `railPods` below is indexed by id, never by snapshot.
+        func livePod(_ id: String) -> SlotPod? { pods.first(where: { $0.id == id }) }
 
-        if isPaged && railPods.count >= 2 {
+        if isPaged && railPodIds.count >= 2 {
             // In Paged Spaces, expand target pod to fill maximum space on its page while compressing siblings on the same page to minLength
-            let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
             let gap = 0.015
-            let totalGaps = Double(max(railPods.count - 1, 0)) * gap
-            let otherMins = railPods.enumerated().reduce(0.0) { acc, pair in
+            let totalGaps = Double(max(railPodIds.count - 1, 0)) * gap
+            let otherMins = railPodIds.enumerated().reduce(0.0) { acc, pair in
                 if pair.offset == currentIndex { return acc }
-                let minH = Double(minimumDrawerHeight(for: pair.element.id))
-                return acc + max(pair.element.minLength, minH / screenH)
+                guard let p = livePod(pair.element) else { return acc }
+                let minH = Double(minimumDrawerHeight(for: p.id))
+                return acc + max(p.minLength, minH / screenH)
             }
             let targetLen = max(0.94 - totalGaps - otherMins, max(currentPod.minLength, Double(minimumDrawerHeight(for: podId)) / screenH))
             var curStart = 0.02
-            for (offset, p) in railPods.enumerated() {
-                if let idx = pods.firstIndex(where: { $0.id == p.id }) {
-                    let minH = Double(minimumDrawerHeight(for: p.id))
-                    let len = (offset == currentIndex) ? targetLen : max(p.minLength, minH / screenH)
-                    pods[idx].range = NormalizedRange(start: curStart, length: len)
-                    curStart += len + gap
-                }
+            for (offset, id) in railPodIds.enumerated() {
+                guard let p = livePod(id),
+                      let idx = pods.firstIndex(where: { $0.id == id }) else { continue }
+                let minH = Double(minimumDrawerHeight(for: p.id))
+                let len = (offset == currentIndex) ? targetLen : max(p.minLength, minH / screenH)
+                pods[idx].range = NormalizedRange(start: curStart, length: len)
+                curStart += len + gap
             }
-        } else if currentIndex == railPods.count - 1 {
+        } else if currentIndex == railPodIds.count - 1 {
             // Last pod on the rail (e.g. Music): expand length down to 0.98 to fill all remaining space!
             let start = pods[podIndex].range.start
             let newLength = max(0.98 - start, currentPod.minLength)
             pods[podIndex].range.length = newLength
         } else {
-            // Expand towards successor above/below
-            let nextPod = railPods[currentIndex + 1]
+            // Expand towards successor above/below, stopping 0.015 short of it so
+            // the rigid zero-overlap invariant still holds. When the successor
+            // already sits closer than the pod's *current* length (tightly packed
+            // rail) there is nothing ergonomically sane to gain, so leave the pod
+            // untouched instead of shrinking it or spilling over the neighbour.
+            guard let nextPod = livePod(railPodIds[currentIndex + 1]) else { return }
             let start = pods[podIndex].range.start
-            let newLength = max(nextPod.range.start - start - 0.015, currentPod.minLength)
-            pods[podIndex].range.length = newLength
+            let allowedLength = nextPod.range.start - start - 0.015
+            guard allowedLength > pods[podIndex].range.length, allowedLength >= currentPod.minLength else { return }
+            pods[podIndex].range.length = allowedLength
         }
 
         invalidateLayoutCache()

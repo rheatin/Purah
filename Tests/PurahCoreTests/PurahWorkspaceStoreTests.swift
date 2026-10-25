@@ -67,14 +67,47 @@ struct PurahWorkspaceStoreTests {
         #expect(store.pods.first(where: { $0.id == "music" })?.isEnabled == true)
     }
 
-    @Test("Fill rail expands pod to span safe boundary without crashing")
+    @Test("Fill rail expands a pod into the gap below it, never shrinking it")
     func testFillRail() throws {
-        let isolated = UserDefaults(suiteName: "test_fill_rail")!
+        let isolated = UserDefaults(suiteName: "test_fill_rail_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // Open an explicit gap below the pod: on a tightly packed rail there is
+        // nothing to absorb, and fillRail is intentionally a no-op.
+        let before = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        let successor = try #require(
+            store.pods
+                .filter { $0.edge == before.edge && $0.isEnabled && $0.id != before.id && $0.range.start > before.range.start }
+                .min { $0.range.start < $1.range.start }
+        )
+        store.updatePodRange(
+            id: successor.id,
+            newRange: NormalizedRange(start: before.range.end + 0.10, length: successor.range.length)
+        )
+
         store.fillRail(podId: "calendar")
 
         let cal = try #require(store.pods.first(where: { $0.id == "calendar" }))
-        #expect(cal.range.length >= 0.35)
+        // Re-read: `updatePodRange` runs the spring solver, which reflows the
+        // successors, so the pre-move snapshot's `start` is already stale.
+        let movedSuccessor = try #require(store.pods.first(where: { $0.id == successor.id }))
+        #expect(cal.range.length > before.range.length, "Fill rail must absorb the free space")
+        #expect(cal.range.end <= movedSuccessor.range.start + 0.0001,
+                "Fill rail must not overlap the next pod")
+        #expect(cal.range.end <= 0.98, "Fill rail must stay inside the safe rail bounds")
+    }
+
+    @Test("Fill rail never shrinks a tightly packed pod")
+    func testFillRailNeverShrinks() throws {
+        let isolated = UserDefaults(suiteName: "test_fill_rail_packed_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        let before = try #require(store.pods.first(where: { $0.id == "calendar" })).range.length
+
+        store.fillRail(podId: "calendar")
+
+        let cal = try #require(store.pods.first(where: { $0.id == "calendar" }))
+        #expect(cal.range.length >= before - 0.0001,
+                "Fill rail must be idempotent when there is no free space")
     }
 
     @Test("PurahWorkspaceStore persists settings via savePersistentState and loadPersistentState")

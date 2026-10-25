@@ -15,7 +15,14 @@ public final class SystemRemindersSyncService {
     public private(set) var isSyncing: Bool = false
     public private(set) var lastSyncDate: Date?
 
-    public init() {
+    /// Reminders permission probe. Tests inject `.denied` so they exercise the
+    /// in-memory fallback without touching the user's real Reminders database.
+    @ObservationIgnored private let permissionStatus: @MainActor () -> AccessStatus
+
+    public init(permissionStatus: @escaping @MainActor () -> AccessStatus = {
+        PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
+    }) {
+        self.permissionStatus = permissionStatus
         self.eventStoreObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
             object: nil,
@@ -42,7 +49,7 @@ public final class SystemRemindersSyncService {
     public func fetchReminders(scope: RemindersScope = .allIncomplete) async -> [TodoItem] {
         eventStore.refreshSourcesIfNecessary()
 
-        let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
+        let status = permissionStatus()
         guard status.isGranted else { return [] }
 
         return await withCheckedContinuation { continuation in
@@ -106,7 +113,7 @@ public final class SystemRemindersSyncService {
         }
         let targetStore = store ?? self.boundStore
 
-        let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
+        let status = permissionStatus()
         guard status.isGranted else {
             targetStore?.isUsingRealReminders = false
             return
@@ -139,7 +146,7 @@ public final class SystemRemindersSyncService {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
 
-        let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
+        let status = permissionStatus()
         if status.isGranted, let calendar = eventStore.defaultCalendarForNewReminders() {
             let reminder = EKReminder(eventStore: eventStore)
             reminder.title = trimmed
@@ -164,7 +171,7 @@ public final class SystemRemindersSyncService {
         }
         let targetStore = store ?? self.boundStore
 
-        let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .reminder))
+        let status = permissionStatus()
         if status.isGranted {
             let baseIdentifier = id.components(separatedBy: "_").first ?? id
             if let item = eventStore.calendarItem(withIdentifier: baseIdentifier) as? EKReminder {
