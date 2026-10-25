@@ -912,9 +912,13 @@ public final class PurahWorkspaceStore {
         // collapse-then-pop feel. Hover must still be on the pod when the
         // deferred activation fires, or it is dropped.
         let previousItemId = activeDrawerItemId
+        // One direction only: N+ → chip retracts first, then the chip drawer
+        // springs out. Chip → N+ activates immediately (the merged state
+        // already animates the sibling chips away).
         let isOverviewSwitch = previousItemId != nil
             && previousItemId != targetItemId
-            && PurahPluginSubItem.isMoreItemsID(previousItemId!) != PurahPluginSubItem.isMoreItemsID(targetItemId)
+            && PurahPluginSubItem.isMoreItemsID(previousItemId!)
+            && !PurahPluginSubItem.isMoreItemsID(targetItemId)
             && pod(forItemId: previousItemId!)?.id == podId
         if isOverviewSwitch {
             onRequestExpandCanvas?(targetEdge)
@@ -1556,6 +1560,15 @@ public final class PurahWorkspaceStore {
         }
         let minReserved = minimumDrawerHeight(for: pod.id)
         return max(podHeight, minReserved)
+    }
+
+    /// Universal rail-slot admission check for decomposed pods. Base knows the
+    /// counts (subItemCount vs policy.maxRailItems) — plugins call this before
+    /// enabling an entry and reject the enable when it returns false.
+    public func canEnableSubItem(for podId: String) -> Bool {
+        guard isPodDecomposed(podId), let provider = capabilityProvider(for: podId) else { return true }
+        let policy = provider.decomposedPolicy(store: self)
+        return provider.subItemCount(store: self) < policy.maxRailItems
     }
 
     public func isPodExpanded(_ pod: SlotPod) -> Bool {

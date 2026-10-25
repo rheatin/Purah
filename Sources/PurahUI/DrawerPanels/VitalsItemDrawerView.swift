@@ -151,20 +151,13 @@ public struct VitalsItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        HStack(spacing: 4) {
-            Button {
-                store.openPluginSettings(id: "vitals")
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.tactile)
-            .frame(width: 16, height: 16)
-            .help("Open Vitals Settings")
-
-            PurahPinButton(isPinned: isPinned, tintColor: telemetryColor, size: 16, action: onTogglePin)
-                .frame(width: 16, height: 16)
-        }
+        PurahDrawerHeaderTools(
+            onSettings: { store.openPluginSettings(id: "vitals") },
+            settingsHelp: "Open Vitals Settings",
+            isPinned: isPinned,
+            tintColor: telemetryColor,
+            onTogglePin: onTogglePin
+        )
         .frame(height: 16)
-    }}
+    }
+}

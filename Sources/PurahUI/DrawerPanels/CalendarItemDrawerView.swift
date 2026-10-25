@@ -700,19 +700,13 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func pinButton(calColor: Color) -> some View {
-        HStack(spacing: 4) {
-            Button {
-                store.openPluginSettings(id: "calendar")
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.tactile)
-            .help("Open Calendar Settings")
-
-            PurahPinButton(isPinned: isPinned, tintColor: calColor, action: onTogglePin)
-        }
+        PurahDrawerHeaderTools(
+            onSettings: { store.openPluginSettings(id: "calendar") },
+            settingsHelp: "Open Calendar Settings",
+            isPinned: isPinned,
+            tintColor: calColor,
+            onTogglePin: onTogglePin
+        )
     }
 
     private var drawerShape: UnevenRoundedRectangle {

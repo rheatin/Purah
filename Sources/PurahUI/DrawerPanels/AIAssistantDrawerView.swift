@@ -160,6 +160,14 @@ public struct AIAssistantSteppedDrawerView: View {
                             .help("Reset / New Session")
                         }
 
+                        PurahDrawerHeaderTools(
+                            onSettings: { context.store.openPluginSettings(id: "ai") },
+                            settingsHelp: "Open AI Settings",
+                            isPinned: isPinned,
+                            tintColor: roleColor,
+                            onTogglePin: { context.togglePin(subItemId) }
+                        )
+
                         if isRoleRunning {
                             Button {
                                 stopSteppedRun()

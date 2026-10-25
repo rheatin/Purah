@@ -37,12 +37,18 @@ struct CalendarOverflowStrategyTests {
     @Test("CalendarPlugin respects continuousStream by setting isDecomposed to false")
     @MainActor
     func testCalendarPluginContinuousStreamDecomposition() {
+        // isDecomposed is the mode authority now; the legacy overflowStrategy
+        // only seeds it through migration.
         let state = CalendarPluginState()
         state.overflowStrategy = .continuousStream
+        state.isDecomposed = false
         let plugin = CalendarPlugin(state: state)
         let store = PurahWorkspaceStore()
 
         #expect(plugin.isDecomposed(store: store) == false)
+
+        state.isDecomposed = true
+        #expect(plugin.isDecomposed(store: store) == true)
     }
 
     @Test("CalendarPlugin smartFold limits stepped chips to maxRailEvents and appends +N More chip")

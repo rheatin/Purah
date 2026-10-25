@@ -255,19 +255,13 @@ public struct ScriptItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        HStack(spacing: 4) {
-            Button {
-                store.openPluginSettings(id: "scripts")
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.tactile)
-            .help("Open Scripts Settings")
-
-            PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
-        }
+        PurahDrawerHeaderTools(
+            onSettings: { store.openPluginSettings(id: "scripts") },
+            settingsHelp: "Open Scripts Settings",
+            isPinned: isPinned,
+            tintColor: podColor,
+            onTogglePin: onTogglePin
+        )
     }
 
     private func badgeText(for type: ScriptCommandType) -> String {

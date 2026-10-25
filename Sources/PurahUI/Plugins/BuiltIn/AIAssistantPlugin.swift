@@ -1160,6 +1160,9 @@ public struct AIAssistantPluginSettingsView: View {
                 Toggle("", isOn: Binding(
                     get: { role.isEnabled },
                     set: { isChecked in
+                        // Rail slot admission: enabling beyond the on-rail
+                        // capacity is rejected (the toggle springs back).
+                        if isChecked && !store.canEnableSubItem(for: "ai") { return }
                         var updated = role
                         updated.isEnabled = isChecked
                         state.updateRole(updated)

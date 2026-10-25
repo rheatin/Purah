@@ -330,6 +330,11 @@ public struct ScriptsPluginSettingsView: View {
                     )
 
                     if !isStacked && state.isDecomposed {
+                        if state.enabledActions.count < 2 {
+                            Text("Enable at least 2 scripts to configure the rail slot limit.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
                                 Text("Rail Slot Limit")
@@ -403,6 +408,9 @@ public struct ScriptsPluginSettingsView: View {
                                                     store.savePersistentState()
                                                 }
                                             } else {
+                                                // Rail slot admission: reject when
+                                                // every slot is already occupied.
+                                                guard store.canEnableSubItem(for: "scripts") else { return }
                                                 updated.append(action.id)
                                                 state.enabledActionIds = updated
                                                 state.save()

@@ -1430,14 +1430,12 @@ struct DrawerInteractionUITests {
         scriptsPlugin.state.isDecomposed = false
         #expect(scriptsPlugin.adaptiveDrawerWidth(store: store) == 360.0)
 
-        // 3. CalendarPlugin adaptiveDrawerWidth
+        // 3. CalendarPlugin adaptiveDrawerWidth (mode authority: isDecomposed)
         let calPlugin = CalendarPlugin()
-        store.calendarOverflowStrategy = .smartFold
-        calPlugin.state.overflowStrategy = .smartFold
+        calPlugin.state.isDecomposed = true
         #expect(calPlugin.adaptiveDrawerWidth(store: store) == 310.0)
 
-        store.calendarOverflowStrategy = .continuousStream
-        calPlugin.state.overflowStrategy = .continuousStream
+        calPlugin.state.isDecomposed = false
         #expect(calPlugin.adaptiveDrawerWidth(store: store) == 360.0)
     }
 

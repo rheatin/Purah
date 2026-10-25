@@ -314,6 +314,11 @@ public struct VitalsPluginSettingsView: View {
                     )
 
                     if !isStacked && state.isDecomposed {
+                        if state.enabledMetrics.count < 2 {
+                            Text("Enable at least 2 metrics to configure the rail slot limit.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
                                 Text("Rail Slot Limit")
@@ -387,6 +392,9 @@ public struct VitalsPluginSettingsView: View {
                                                     state.enabledMetrics.removeAll { $0 == metric }
                                                 }
                                             } else {
+                                                // Rail slot admission: reject when
+                                                // every slot is already occupied.
+                                                guard store.canEnableSubItem(for: "vitals") else { return }
                                                 state.enabledMetrics.append(metric)
                                             }
                                             state.save()

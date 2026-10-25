@@ -26,6 +26,14 @@ public final class CalendarPluginState: Sendable {
     public var dismissAlertOnHover: Bool
     public var isEventGlowAlertEnabled: Bool
     public var isEventToastAlertEnabled: Bool
+    /// Unified mode authority (Base semantics): decomposed rail chips vs the
+    /// single composite drawer. `overflowStrategy` stays pinned to .smartFold.
+    public var isDecomposed: Bool {
+        didSet {
+            cachedSubItemHeaders = []
+            cacheTimestamp = 0
+        }
+    }
     public var overflowStrategy: CalendarOverflowStrategy {
         didSet {
             cachedSubItemHeaders = []
@@ -70,6 +78,12 @@ public final class CalendarPluginState: Sendable {
         self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         self.isEventGlowAlertEnabled = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
         self.isEventToastAlertEnabled = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) ?? true
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            // Legacy migration: continuousStream meant the composite mode.
+            self.isDecomposed = (storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold) != .continuousStream
+        }
         self.overflowStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold
         let savedMax = storage.int(forKey: "maxRailEvents")
         self.maxRailEvents = (savedMax > 0) ? savedMax : 4
@@ -117,6 +131,7 @@ public final class CalendarPluginState: Sendable {
         storage.set(dismissAlertOnHover, forKey: "dismissAlertOnHover")
         storage.setCodable(isEventGlowAlertEnabled, forKey: "isEventGlowAlertEnabled")
         storage.setCodable(isEventToastAlertEnabled, forKey: "isEventToastAlertEnabled")
+        storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(overflowStrategy, forKey: "overflowStrategy")
         storage.set(maxRailEvents, forKey: "maxRailEvents")
         storage.setCodable(events, forKey: "events")

@@ -426,7 +426,9 @@ struct PluginArchitectureTests {
         #expect(vitalsPlugin.supportedDrawerModes.contains(.stepped))
         #expect(scriptsPlugin.supportedDrawerModes.contains(.stepped))
         #expect(todoPlugin.supportedDrawerModes == [.stepped])
-        #expect(calPlugin.supportedDrawerModes == [.stepped])
+        // Calendar's mode authority is isDecomposed: decomposed serves both
+        // the stepped chips and the composite drawer.
+        #expect(calPlugin.supportedDrawerModes == [.composite, .stepped])
         #expect(shelfPlugin.supportedDropTypes.contains(.fileURL))
 
         let pod = store.pods.first(where: { $0.id == "vitals" }) ?? SlotPod(

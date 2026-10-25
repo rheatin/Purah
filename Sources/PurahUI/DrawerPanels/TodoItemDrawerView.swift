@@ -193,18 +193,12 @@ public struct TodoItemDrawerView: View {
     }
 
     private var pinButton: some View {
-        HStack(spacing: 4) {
-            Button {
-                store.openPluginSettings(id: "todo")
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.tactile)
-            .help("Open Reminders Settings")
-
-            PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
-        }
+        PurahDrawerHeaderTools(
+            onSettings: { store.openPluginSettings(id: "todo") },
+            settingsHelp: "Open Reminders Settings",
+            isPinned: isPinned,
+            tintColor: podColor,
+            onTogglePin: onTogglePin
+        )
     }
 }
