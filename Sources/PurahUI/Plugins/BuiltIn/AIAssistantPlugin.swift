@@ -1073,9 +1073,20 @@ public struct AIAssistantPluginSettingsView: View {
                             step: 1.0
                         )
 
-                        Text("Controls the maximum number of role chips on the rail. Roles beyond this limit stay hidden — \(state.enabledRoles.count) enabled, \(max(state.enabledRoles.count - state.maxRailRoles, 0)) hidden.")
+                        Text("Controls the maximum number of role chips on the rail.")
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
+
+                        let hiddenRoles = max(state.enabledRoles.count - state.maxRailRoles, 0)
+                        if hiddenRoles > 0 {
+                            HStack(spacing: 5) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 9))
+                                Text("\(hiddenRoles) enabled role\(hiddenRoles == 1 ? "" : "s") hidden — raise the limit or disable roles to show them.")
+                                    .font(.system(size: 9.5, weight: .medium))
+                            }
+                            .foregroundColor(.orange)
+                        }
                     }
                     .padding(9)
                     .background(Color.primary.opacity(0.025))

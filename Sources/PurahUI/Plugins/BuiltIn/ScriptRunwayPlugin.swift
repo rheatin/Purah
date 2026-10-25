@@ -355,6 +355,17 @@ public struct ScriptsPluginSettingsView: View {
                             Text("Scripts beyond this limit stay hidden on the rail — lower the limit to keep the rail compact, raise it to show more action chips.")
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
+
+                            let hiddenScripts = max(state.enabledActions.count - min(state.maxRailActions, state.enabledActions.count), 0)
+                            if hiddenScripts > 0 {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 9))
+                                    Text("\(hiddenScripts) enabled script\(hiddenScripts == 1 ? "" : "s") hidden — raise the limit or disable scripts to show them.")
+                                        .font(.system(size: 9.5, weight: .medium))
+                                }
+                                .foregroundColor(.orange)
+                            }
                         }
                         .padding(9)
                         .background(Color.primary.opacity(0.025))

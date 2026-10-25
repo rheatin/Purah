@@ -798,7 +798,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 }
             },
             showsBoundary: !batches.ended.isEmpty,
-            boundaryTitle: "calendar.status.now".localized,
+            boundaryTitle: "calendar.overview.pastBoundary".localized,
             boundaryColor: .orange,
             primary: {
                 ForEach(batches.upcoming) { event in

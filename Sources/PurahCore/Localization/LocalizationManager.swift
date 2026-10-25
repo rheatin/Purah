@@ -405,6 +405,7 @@ public final class LocalizationManager {
             "calendar.overflow.continuous": "Continuous Stream",
             "calendar.overflow.continuous.desc": "Consolidates into a sleek ambient time gauge that expands to full agenda",
             "calendar.overview.title": "Upcoming Agenda",
+            "calendar.overview.pastBoundary": "Past",
             "calendar.overview.moreEvents": "+%d More Events",
 
             // Calendar Alert Lead Time
@@ -951,6 +952,7 @@ public final class LocalizationManager {
             "calendar.overflow.continuous": "连续时间流光表",
             "calendar.overflow.continuous.desc": "折叠为纯粹沉静的边缘时间光柱，悬停滑出全天日程大抽屉",
             "calendar.overview.title": "全日程总览",
+            "calendar.overview.pastBoundary": "已过去",
             "calendar.overview.moreEvents": "+%d 个更多日程",
 
             // Calendar Alert Lead Time

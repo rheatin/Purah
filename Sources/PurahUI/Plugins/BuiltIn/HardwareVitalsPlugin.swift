@@ -340,6 +340,17 @@ public struct VitalsPluginSettingsView: View {
                             Text("Metrics beyond this limit stay hidden on the rail — enable fewer metrics or raise the limit to show them all.")
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
+
+                            let hiddenMetrics = max(state.enabledMetrics.count - min(state.maxRailMetrics, state.enabledMetrics.count), 0)
+                            if hiddenMetrics > 0 {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 9))
+                                    Text("\(hiddenMetrics) enabled metric\(hiddenMetrics == 1 ? "" : "s") hidden — raise the limit or disable metrics to show them.")
+                                        .font(.system(size: 9.5, weight: .medium))
+                                }
+                                .foregroundColor(.orange)
+                            }
                         }
                         .padding(9)
                         .background(Color.primary.opacity(0.025))

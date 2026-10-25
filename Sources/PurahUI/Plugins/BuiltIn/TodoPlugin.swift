@@ -164,11 +164,12 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        // Full list — the stepped container folds to the rail capacity and
+        // appends the "+N" chip. Truncating here would swallow the overflow
+        // and the "+N" chip would never appear.
         let items = effectiveTodos(store: context.store)
-        let maxTasks = max(context.store.todoMaxRailTasks, 1)
-        let displayItems = items.prefix(maxTasks)
         let now = Date()
-        return displayItems.map { todo in
+        return items.map { todo in
             let urgency = Self.urgencyPresentation(for: todo, now: now)
             return PurahPluginSubItem(
                 id: todo.id,
