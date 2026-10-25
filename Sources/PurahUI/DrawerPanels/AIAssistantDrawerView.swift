@@ -1075,6 +1075,47 @@ public struct AIAssistantRoleWorkbenchView: View {
         }
     }
 
+    private var rolePillLabel: some View {
+        HStack(spacing: 3) {
+            Image(systemName: role.systemIcon)
+                .font(.system(size: 8.5, weight: .semibold))
+            Text(role.title)
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+            Image(systemName: "chevron.down")
+                .font(.system(size: 6, weight: .bold))
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                .fill(roleColor.opacity(0.18))
+        )
+        .foregroundColor(roleColor)
+    }
+
+    private var roleMenuOptions: [InDrawerDropdownOption] {
+        var options: [InDrawerDropdownOption] = state.enabledRoles.map { r in
+            InDrawerDropdownOption(
+                id: r.id,
+                title: r.title,
+                systemIcon: r.systemIcon,
+                isSelected: state.selectedRoleId == r.id
+            ) {
+                let textToRun = !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? sourceText : state.currentInputText
+                state.switchRoleInTopBar(to: r, sourceText: textToRun)
+            }
+        }
+        options.append(InDrawerDropdownOption(
+            id: "__configure",
+            title: "ai.topbar.configureRoles".localized,
+            systemIcon: "gearshape",
+            isSelected: false
+        ) {
+            store.openPluginSettings(id: "ai")
+        })
+        return options
+    }
+
     // MARK: - Top 3-in-1 Status Bar
     @ViewBuilder
     private var topStatusBar: some View {
@@ -1147,55 +1188,27 @@ public struct AIAssistantRoleWorkbenchView: View {
             // Collapsed 3-in-1 Compact Status Bar (height: 22pt)
             HStack(spacing: 4) {
                 // Role Menu Pill ([🌐 Translate ▾])
-                Menu {
-                    ForEach(state.enabledRoles) { r in
-                        Button {
-                            let textToRun = !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? sourceText : state.currentInputText
-                            state.switchRoleInTopBar(to: r, sourceText: textToRun)
-                        } label: {
-                            HStack {
-                                Image(systemName: r.systemIcon)
-                                Text(r.title)
-                                if state.selectedRoleId == r.id {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                    Button {
-                        store.openPluginSettings(id: "ai")
-                    } label: {
-                        Text("ai.topbar.configureRoles".localized)
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: role.systemIcon)
-                            .font(.system(size: 8.5, weight: .semibold))
-                        Text(role.title)
-                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 6, weight: .bold))
-                    }
-                    .padding(.horizontal, 6)
-                    .frame(height: 22)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                            .fill(roleColor.opacity(0.18))
-                    )
-                    .foregroundColor(roleColor)
+                InDrawerDropdown(
+                    triggerHeight: 22,
+                    panelWidth: 168,
+                    options: roleMenuOptions
+                ) {
+                    rolePillLabel
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
 
                 // Language / Tone Menu Pill
                 if role.id == "translate" || role.id == "polish" {
                     let currentLang = (role.id == "translate") ? state.translateTargetLanguage : state.polishTargetLanguage
-                    Menu {
-                        ForEach(AITargetLanguage.allCases) { lang in
-                            Button {
+                    InDrawerDropdown(
+                        triggerHeight: 22,
+                        panelWidth: 150,
+                        options: AITargetLanguage.allCases.map { lang in
+                            InDrawerDropdownOption(
+                                id: lang.id,
+                                title: lang.displayName(for: role.id),
+                                systemIcon: nil,
+                                isSelected: currentLang == lang
+                            ) {
                                 if role.id == "translate" {
                                     state.translateTargetLanguage = lang
                                 } else {
@@ -1204,16 +1217,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 if !sourceText.isEmpty {
                                     state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
                                 }
-                            } label: {
-                                HStack {
-                                    Text(lang.displayName(for: role.id))
-                                    if currentLang == lang {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
                             }
                         }
-                    } label: {
+                    ) {
                         HStack(spacing: 2.5) {
                             Text(currentLang.badgeLabel(sourceText: sourceText, roleId: role.id))
                                 .font(.system(size: 9, weight: .semibold, design: .rounded))
@@ -1228,30 +1234,26 @@ public struct AIAssistantRoleWorkbenchView: View {
                         )
                         .foregroundColor(roleColor)
                     }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
                 }
 
                 if role.id == "polish" {
-                    Menu {
-                        ForEach(AIPolishTone.allCases) { tone in
-                            Button {
+                    InDrawerDropdown(
+                        triggerHeight: 22,
+                        panelWidth: 132,
+                        options: AIPolishTone.allCases.map { tone in
+                            InDrawerDropdownOption(
+                                id: tone.rawValue,
+                                title: tone.title,
+                                systemIcon: nil,
+                                isSelected: state.selectedPolishTone == tone
+                            ) {
                                 state.selectedPolishTone = tone
                                 if !sourceText.isEmpty {
                                     state.sendPrompt(sourceText, role: role, originalSelection: sourceText)
                                 }
-                            } label: {
-                                HStack {
-                                    Text(tone.title)
-                                    if state.selectedPolishTone == tone {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
                             }
                         }
-                    } label: {
+                    ) {
                         HStack(spacing: 2.5) {
                             Text(state.selectedPolishTone.title)
                                 .font(.system(size: 9, weight: .semibold, design: .rounded))
@@ -1266,10 +1268,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                         )
                         .foregroundColor(roleColor)
                     }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
                 }
 
                 // Inline Source Preview Pill (| Overall, TDL is... ✏️)
@@ -1840,22 +1838,25 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
 
                 // 2. Chain Next Role Menu Pill ([→ Process Next ▾])
-                Menu {
-                    ForEach(state.enabledRoles) { r in
-                        Button {
+                InDrawerDropdown(
+                    expandsUpward: true,
+                    triggerHeight: 24,
+                    panelWidth: 150,
+                    options: state.enabledRoles.map { r in
+                        InDrawerDropdownOption(
+                            id: r.id,
+                            title: "→ \(r.title)",
+                            systemIcon: r.systemIcon,
+                            isSelected: false
+                        ) {
                             state.chainOutputWithRole(r)
-                        } label: {
-                            HStack {
-                                Image(systemName: r.systemIcon)
-                                Text("→ \(r.title)")
-                            }
                         }
                     }
-                } label: {
+                ) {
                     HStack(spacing: 2.5) {
                         Text("ai.action.chainNext".localized)
                             .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        Image(systemName: "chevron.down")
+                        Image(systemName: "chevron.up")
                             .font(.system(size: 6, weight: .bold))
                     }
                     .lineLimit(1)
@@ -1868,10 +1869,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                     )
                     .foregroundColor(Color.white.opacity(0.85))
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
 
                 // 3. Save to Quick Notes
                 Button {
@@ -2517,6 +2514,146 @@ private struct AIShimmerSingleLineView: View {
                 .frame(width: w, height: 6)
             }
             .frame(height: 6)
+        }
+    }
+}
+
+// MARK: - In-Drawer Dropdown
+
+/// One option row inside an in-drawer dropdown panel.
+struct InDrawerDropdownOption: Identifiable {
+    let id: String
+    let title: String
+    let systemIcon: String?
+    let isSelected: Bool
+    let action: () -> Void
+}
+
+/// A dropdown that expands INSIDE the drawer card.
+///
+/// System `Menu` pops an NSMenu outside the panel: the pointer leaves the card's hit
+/// rectangle, EdgeMouseMonitor starts the exit-grace countdown, and the drawer collapses
+/// with the menu still floating. This control keeps the panel inside the card bounds —
+/// down for top-bar pills, up for bottom-bar pills — so the pointer never leaves the
+/// interactive region while browsing options.
+struct InDrawerDropdown<Trigger: View>: View {
+    let trigger: Trigger
+    let options: [InDrawerDropdownOption]
+    var expandsUpward: Bool = false
+    var triggerHeight: CGFloat = 22
+    var panelWidth: CGFloat = 152
+
+    @State private var isExpanded = false
+    @State private var hoveringOptionID: String? = nil
+
+    init(
+        expandsUpward: Bool = false,
+        triggerHeight: CGFloat = 22,
+        panelWidth: CGFloat = 152,
+        options: [InDrawerDropdownOption],
+        @ViewBuilder trigger: () -> Trigger
+    ) {
+        self.trigger = trigger()
+        self.options = options
+        self.expandsUpward = expandsUpward
+        self.triggerHeight = triggerHeight
+        self.panelWidth = panelWidth
+    }
+
+    var body: some View {
+        ZStack(alignment: (expandsUpward ? Alignment.bottomLeading : Alignment.topLeading)) {
+            Button {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                trigger
+            }
+            .buttonStyle(.plain)
+            .zIndex(1)
+
+            if isExpanded {
+                panel
+                    .zIndex(2)
+                    .allowsHitTesting(true)
+                    .transition(.opacity.combined(
+                        with: .scale(scale: 0.97, anchor: expandsUpward ? .bottom : .top)
+                    ))
+            }
+        }
+        .fixedSize()
+    }
+
+    private func optionRow(_ option: InDrawerDropdownOption) -> some View {
+        let titleFont = Font.system(size: 9.5, weight: option.isSelected ? .bold : .regular, design: .rounded)
+        let titleColor = Color.white.opacity(option.isSelected ? 1.0 : 0.82)
+        let rowBackground = hoveringOptionID == option.id ? Color.white.opacity(0.08) : Color.clear
+
+        return HStack(spacing: 5) {
+            if let icon = option.systemIcon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 12)
+            }
+            Text(option.title)
+                .font(titleFont)
+                .lineLimit(1)
+                .foregroundColor(titleColor)
+            Spacer(minLength: 0)
+            if option.isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundColor(Color(hex: "#A78BFA"))
+            }
+        }
+        .padding(.horizontal, 7)
+        .frame(maxWidth: .infinity, minHeight: 21, alignment: .leading)
+        .background(rowBackground)
+        .contentShape(Rectangle())
+    }
+
+    private var panel: some View {
+        optionsList
+            .frame(width: panelWidth)
+            .frame(maxHeight: 190)
+            .background(panelBackground)
+            .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 3)
+            // Anchor the panel flush against the trigger's outer edge, growing into the card.
+            .offset(y: expandsUpward ? -(triggerHeight + 2) : triggerHeight + 2)
+    }
+
+    private var panelBackground: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color(hex: "#10131A").opacity(0.97))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
+            )
+    }
+
+    private var optionsList: some View {
+        ScrollView(.vertical, showsIndicators: options.count > 8) {
+            VStack(spacing: 0) {
+                ForEach(options) { option in
+                    optionButton(option)
+                }
+            }
+            .padding(.vertical, 3)
+        }
+    }
+
+    private func optionButton(_ option: InDrawerDropdownOption) -> some View {
+        Button {
+            option.action()
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
+                isExpanded = false
+            }
+        } label: {
+            optionRow(option)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveringOptionID = hovering ? option.id : nil
         }
     }
 }
