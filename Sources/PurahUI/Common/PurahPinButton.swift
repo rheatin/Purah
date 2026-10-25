@@ -48,6 +48,9 @@ public struct PurahPinButton: View {
         }
         .buttonStyle(.tactile)
         .frame(width: size, height: size)
+        // `.help` is a mouse tooltip only; VoiceOver needs the semantic label.
+        .accessibilityLabel(isPinned ? "Unpin Drawer" : "Pin Drawer")
+        .accessibilityAddTraits(isPinned ? [.isSelected] : [])
         .help(isPinned ? "Unpin Drawer" : "Pin Drawer")
     }
 }

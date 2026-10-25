@@ -339,6 +339,17 @@ public struct AmbientRailStripView: View {
                 }
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
+                // The rail bar is an icon-only, gesture-driven target; without
+                // an explicit element VoiceOver reads nothing and cannot
+                // activate it.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(pod.name)
+                .accessibilityValue(isThisPodActive ? "Expanded" : "Collapsed")
+                .accessibilityHint("Open \(pod.name) drawer")
+                .accessibilityAddTraits(isThisPodActive ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction {
+                    plugin.onRailBarTap(subItemId: nil, context: barContext)
+                }
                 .onTapGesture {
                     if store.dismissAlertOnHover && isPodAlerting {
                         acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
