@@ -1353,24 +1353,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
                 .buttonStyle(.plain)
                 .help("ai.action.copyResult".localized)
-
-                // Pin Button (if !showRoleSwitcher)
-                if !showRoleSwitcher {
-                    Button {
-                        onTogglePin()
-                    } label: {
-                        Image(systemName: isPinned ? "pin.fill" : "pin")
-                            .font(.system(size: 9))
-                            .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                            .frame(width: 22, height: 22)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Pin Drawer")
-                }
             }
             .frame(height: 22)
             .simultaneousGesture(
