@@ -111,7 +111,7 @@ public struct SteppedRailContainerView: View {
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
                         // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
-                        let cardH = max(slotH, 48.0)
+                        let cardH = max(slotH, minChipH)
                         let effectiveChipH = isActive ? cardH : slotH
                         let itemTop = startY + CGFloat(idx) * (slotH + spacing)
                         let itemBottom = itemTop + cardH
@@ -204,6 +204,12 @@ public struct SteppedRailContainerView: View {
         if state == .expandedDrawer, PurahPluginSubItem.isMoreItemsID(subItem.id),
            let content = plugin.makeOverviewDrawerContent(context: subContext) {
             overviewShell(context: subContext, content: content, height: itemH)
+                .transition(.asymmetric(
+                    insertion: .move(edge: edge == .right ? Edge.trailing : Edge.leading)
+                        .combined(with: .opacity),
+                    removal: .move(edge: edge == .right ? Edge.trailing : Edge.leading)
+                        .combined(with: .opacity)
+                ))
         } else if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
             customDrawer
         } else {
@@ -242,7 +248,6 @@ public struct SteppedRailContainerView: View {
                     ),
                     accentColor: subContext.accentColor
                 )
-                .transition(.move(edge: edge == .right ? .trailing : .leading))
         }
         .frame(height: height, alignment: .top)
     }
@@ -256,7 +261,8 @@ public struct SteppedRailContainerView: View {
     ) -> some View {
         let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
         let isExpanded = (state == .expandedDrawer)
-        let cardH = isExpanded ? max(itemH, 32.0) : max(itemH, 6.0)
+        let minChipH = plugin.decomposedPolicy(store: store).minChipHeight
+        let cardH = isExpanded ? max(itemH, minChipH) : max(itemH, 6.0)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
             subItemIndicatorBar(subItem: subItem, itemH: cardH, tintColor: tintColor)

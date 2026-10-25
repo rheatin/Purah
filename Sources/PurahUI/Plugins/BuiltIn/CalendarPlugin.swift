@@ -87,10 +87,13 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
+        // Floor = taller of the two modes: composite drawer minimum (140) vs
+        // the decomposed rail (chip min-height × on-rail count + spacing).
+        let compositeMinimum: CGFloat = 140.0
         if !isDecomposed(store: store) || state.events.isEmpty {
-            return 140.0
+            return compositeMinimum
         }
-        return decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count)
+        return max(compositeMinimum, decomposedPolicy.calculateMinimumHeight(activeCount: state.events.count))
     }
 
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {

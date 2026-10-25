@@ -60,7 +60,9 @@ public struct TodoPlugin: PurahPodPlugin {
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
             maxRailItems: state.maxRailTodos,
-            minChipHeight: 32.0,
+            // Must carry the expanded TodoItemDrawerView's minimum readable
+            // height: the drawer is exactly chip-height (co-planar rule).
+            minChipHeight: 48.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
             overflowStrategy: .smartFold
@@ -72,10 +74,18 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if !isDecomposed(store: store) || state.incompleteTodos.isEmpty {
-            return 130.0
+        // The floor is the TALLER of the two modes: the composite drawer's
+        // minimum, or the decomposed rail (chip min-height × on-rail count +
+        // spacing). The on-rail count is the incomplete todos actually shown,
+        // clamped to the rail capacity — completed ones occupy no slot.
+        let compositeMinimum: CGFloat = 130.0
+        guard isDecomposed(store: store), !state.incompleteTodos.isEmpty else {
+            return compositeMinimum
         }
-        return decomposedPolicy.calculateMinimumHeight(activeCount: state.todos.count)
+        let decomposedMinimum = decomposedPolicy.calculateMinimumHeight(
+            activeCount: state.incompleteTodos.count
+        )
+        return max(compositeMinimum, decomposedMinimum)
     }
 
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
