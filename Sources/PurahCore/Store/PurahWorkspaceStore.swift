@@ -1751,6 +1751,169 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    /// Sub-item heights for an expanded decomposed pod.
+    ///
+    /// Only the chip under the cursor may grow. Every other chip keeps the exact
+    /// height it had while docked, which means the active chip's top edge stays
+    /// put (all preceding chips and gaps are unchanged) and the pod grows
+    /// downward into its neighbours. The previous implementation split the
+    /// pod's preferred height evenly across *all* chips, so hovering a lower
+    /// chip shoved it a hundred points down the rail and the drawer appeared to
+    /// spring out of the middle of the pod.
+    private func calculateExpandedSubSpans(
+        for cluster: [SlotPod],
+        expandedSpan: Double,
+        idleSpan: Double,
+        activeIndex: Int,
+        subGap: Double = 3.0
+    ) -> [Double] {
+        let idleSpans = calculateSubSpans(for: cluster, clusterSpan: idleSpan, subGap: subGap)
+        guard cluster.indices.contains(activeIndex) else { return idleSpans }
+
+        var spans = idleSpans
+        let otherGaps = subGap * Double(max(cluster.count - 1, 0))
+        let othersSum = idleSpans.enumerated().reduce(0.0) { acc, pair in
+            pair.offset == activeIndex ? acc : acc + pair.element
+        }
+        // Everything the pod did not spend on neighbours goes to the hovered chip.
+        spans[activeIndex] = max(expandedSpan - othersSum - otherGaps, idleSpans[activeIndex])
+        return spans
+    }
+
+    /// Chip positions for one decomposed pod.
+    ///
+    /// `expandedSpan` is the pod's span while its drawer is open; pass the idle
+    /// span when nothing is expanded. The active chip is reported with its
+    /// expanded card height and an unchanged `top`, so the drawer extrudes from
+    /// the chip the cursor is actually over.
+    public func resolvedChipSlots(
+        for pod: SlotPod,
+        startY: Double,
+        idleSpan: Double,
+        expandedSpan: Double,
+        totalHeight: Double,
+        isDynamicAccordion: Bool
+    ) -> [PodChipSlot] {
+        guard !isSharedMajorSubBar(for: pod.id),
+              isPodDecomposed(pod.id),
+              let provider = capabilityProvider(for: pod.id) else { return [] }
+
+        let rawCount = provider.subItemCount(store: self)
+        guard rawCount > 0, !_isMergedOverviewActive(inPodId: pod.id) else { return [] }
+
+        let policy = provider.decomposedPolicy(store: self)
+        let spacing = Double(policy.spacing)
+        // Cap by the real item count; while breathing, every item is shown even
+        // if the pod is squeezed below its ergonomic floor.
+        let fitCount = policy.visibleChipCount(in: idleSpan, isDynamicAccordion: isDynamicAccordion)
+        let rawVisible = isDynamicAccordion
+            ? min(rawCount, fitCount)
+            : min(rawCount, max(policy.maxRailItems, 1))
+        let count = max(rawVisible, 1)
+
+        let chipH = Double(policy.chipHeight(in: idleSpan, chipCount: count, isDynamicAccordion: isDynamicAccordion))
+
+        let activeIdx: Int? = (0..<count).first { idx in
+            guard let subId = subItemId(provider: provider, pod: pod, index: idx, rawCount: rawCount, count: count, policy: policy) else { return false }
+            return subId == activeDrawerItemId || isItemPinned(id: subId)
+        }
+
+        var heights = [Double](repeating: chipH, count: count)
+        var tops = [Double](repeating: 0, count: count)
+        for i in 0..<count {
+            tops[i] = startY + Double(i) * (chipH + spacing)
+        }
+        if let h = activeIdx {
+            // Only this chip absorbs the pod's expanded height; neighbours keep
+            // the exact height they had while docked. Because every preceding
+            // chip and gap is untouched, `tops[h]` (and everything above it) is
+            // unchanged, so the card extrudes from under the cursor instead of
+            // being pushed down the rail.
+            let otherChips = chipH * Double(count - 1)
+            let gaps = spacing * Double(max(count - 1, 0))
+            let grown = max(expandedSpan - otherChips - gaps, Double(policy.expandedCardHeight(chipH: CGFloat(chipH))))
+            heights[h] = grown
+            // Every chip below slides down by exactly the active chip's growth.
+            let growth = grown - chipH
+            if h + 1 < count {
+                for i in (h + 1)..<count {
+                    tops[i] += growth
+                }
+            }
+        }
+
+        return (0..<count).compactMap { idx in
+            guard let subId = subItemId(
+                provider: provider, pod: pod, index: idx,
+                rawCount: rawCount, count: count, policy: policy
+            ) else { return nil }
+            return PodChipSlot(
+                id: subId,
+                top: tops[idx],
+                height: heights[idx],
+                isActive: idx == activeIdx,
+                cardHeight: heights[idx]
+            )
+        }
+    }
+
+    /// Chip slots for pods whose solver pass produced none (shared major bars).
+    private func fallbackChipSlots(
+        for item: ResolvedPodLayoutItem,
+        provider: any PurahPodCapabilityProvider,
+        edge: MountEdge,
+        totalHeight: Double
+    ) -> [PodChipSlot] {
+        let policy = provider.decomposedPolicy(store: self)
+        let isDynamicAccordion = isBreathingActive(for: edge, totalHeight: totalHeight)
+        let count = policy.visibleChipCount(in: item.spanH, isDynamicAccordion: isDynamicAccordion)
+        let rawCount = provider.subItemCount(store: self)
+        let chipH = Double(policy.chipHeight(in: item.spanH, chipCount: count, isDynamicAccordion: isDynamicAccordion))
+        let spacing = Double(policy.spacing)
+        return (0..<count).compactMap { idx in
+            guard let subId = subItemId(
+                provider: provider, pod: item.pod, index: idx,
+                rawCount: rawCount, count: count, policy: policy
+            ) else { return nil }
+            let isActive = activeDrawerItemId == subId || isItemPinned(id: subId)
+            return PodChipSlot(
+                id: subId,
+                top: item.startY + Double(idx) * (chipH + spacing),
+                height: chipH,
+                isActive: isActive,
+                cardHeight: isActive ? Double(policy.expandedCardHeight(chipH: CGFloat(chipH))) : chipH
+            )
+        }
+    }
+
+    /// Resolves a rail chip's sub-item id, mirroring the smart-fold capsule rule.
+    private func subItemId(
+        provider: any PurahPodCapabilityProvider,
+        pod: SlotPod,
+        index: Int,
+        rawCount: Int,
+        count: Int,
+        policy: PurahDecomposedPolicy
+    ) -> String? {
+        let isSmartFoldSlot = policy.overflowStrategy == .smartFold
+            && rawCount > count
+            && count >= 2
+            && index == count - 1
+        if isSmartFoldSlot { return "\(pod.id)_more_items" }
+        return provider.subItemId(at: index, store: self)
+    }
+
+    private func _isMergedOverviewActive(inPodId podId: String) -> Bool {
+        guard let activeDrawerItemId, PurahPluginSubItem.isMoreItemsID(activeDrawerItemId) else { return false }
+        return pod(forItemId: activeDrawerItemId)?.id == podId
+    }
+
+    private func isSharedMajorSubBar(for podId: String) -> Bool {
+        guard let pod = pods.first(where: { $0.id == podId }) else { return false }
+        guard let gid = pod.majorGroupId else { return false }
+        return pods.contains { $0.isEnabled && $0.edge == pod.edge && $0.majorGroupId == gid && $0.id != podId }
+    }
+
     private func calculateSubSpans(for cluster: [SlotPod], clusterSpan: Double, subGap: Double = 3.0) -> [Double] {
         let m = cluster.count
         guard m > 0 else { return [] }
@@ -2222,14 +2385,29 @@ public final class PurahWorkspaceStore {
             let clusterY = clusterStartYs[cIdx]
             let clusterSpan = clusterSpans[cIdx]
             if cluster.count == 1 {
+                let pod = cluster[0]
+                // Decomposed pods: resolve one chip per visible sub-item so the
+                // hovered chip stays exactly where the cursor found it and only
+                // that chip grows. Idle span comes from the same solver pass so
+                // top-of-pod anchoring is stable.
+                let idleSpan = idleClusterSpans.indices.contains(cIdx) ? idleClusterSpans[cIdx] : clusterSpan
+                let slots = resolvedChipSlots(
+                    for: pod,
+                    startY: clusterY,
+                    idleSpan: idleSpan,
+                    expandedSpan: clusterSpan,
+                    totalHeight: totalHeight,
+                    isDynamicAccordion: isBreathingActiveOnPage
+                )
                 result.append(
                     ResolvedPodLayoutItem(
-                        pod: cluster[0],
+                        pod: pod,
                         startY: clusterY,
                         spanH: clusterSpan,
                         drawerStartY: clusterY,
                         drawerSpanH: clusterSpan,
-                        majorGroupId: nil
+                        majorGroupId: nil,
+                        chipSlots: slots
                     )
                 )
             } else {
@@ -2344,29 +2522,23 @@ public final class PurahWorkspaceStore {
             }
 
             if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id), provider.subItemCount(store: self) > 0 {
-                let policy = provider.decomposedPolicy(store: self)
                 let rawCount = provider.subItemCount(store: self)
-                let minChipH = Double(policy.minChipHeight)
-                let maxChipH = Double(policy.maxChipHeight)
-                let spacing = Double(policy.spacing)
-                let isDynamicAccordion = isBreathingActive(for: edge, totalHeight: totalHeight)
-                let maxAllowed = isDynamicAccordion
-                    ? max(policy.maxRailItems, 1)
-                    : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-                let count = min(rawCount, maxAllowed)
-                let safeCount = max(count, 1)
-                let totalSpacing = spacing * Double(safeCount - 1)
-                let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
-                let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
-                let cardH = max(itemH, minChipH, 48.0)
+                _ = rawCount
 
                 var matchedSubItem = false
-                for idx in 0..<count {
-                    let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
-                    let subId = isSmartFoldSlot ? "\(pod.id)_more_items" : provider.subItemId(at: idx, store: self)
-                    guard let subId = subId else { continue }
-                    let itemActive = (activeDrawerItemId == subId) || (isSmartFoldSlot && pod.id == "calendar" && activeDrawerItemId == "calendar_more_events")
-                    let itemPinned = isItemPinned(id: subId) || (isSmartFoldSlot && pod.id == "calendar" && isItemPinned(id: "calendar_more_events"))
+                // Read the solver's own chip positions instead of re-deriving a
+                // uniform height: the two used to disagree whenever a chip was
+                // expanded, which let the click-through corridor miss the card.
+                let slots: [PodChipSlot] = item.chipSlots.isEmpty
+                    ? fallbackChipSlots(for: item, provider: provider, edge: edge, totalHeight: totalHeight)
+                    : item.chipSlots
+
+                for slot in slots {
+                    let isMergedOverview = PurahPluginSubItem.isMoreItemsID(slot.id)
+                    let itemActive = activeDrawerItemId == slot.id
+                        || (isMergedOverview && pod.id == "calendar" && activeDrawerItemId == "calendar_more_events")
+                    let itemPinned = isItemPinned(id: slot.id)
+                        || (isMergedOverview && pod.id == "calendar" && isItemPinned(id: "calendar_more_events"))
 
                     if itemActive || itemPinned {
                         matchedSubItem = true
@@ -2374,17 +2546,14 @@ public final class PurahWorkspaceStore {
                         // Merged overview state: the "+N" chip owns the pod's full
                         // span — its drawer is exactly pod-height, so the hit box
                         // must be the whole pod frame, not the chip slot.
-                        let isMergedOverview = PurahPluginSubItem.isMoreItemsID(subId)
-
                         let frameTop: Double
                         let frameBottom: Double
                         if isMergedOverview {
                             frameTop = item.startY
                             frameBottom = item.startY + item.spanH
                         } else {
-                            let itemTop = item.startY + Double(idx) * (itemH + spacing)
-                            frameTop = itemTop
-                            frameBottom = itemTop + cardH
+                            frameTop = slot.top
+                            frameBottom = slot.top + (slot.isActive ? slot.cardHeight : slot.height)
                         }
                         let maxAllowedY = totalHeight - 12.0
                         let shift = max(frameBottom - maxAllowedY, 0.0)

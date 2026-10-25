@@ -514,6 +514,12 @@ public final class EdgeMouseMonitor {
     }
 
     public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
+        // The solver already resolved every chip, including the expanded card
+        // that overhangs the pod. Hit the exact pixels that are drawn.
+        if let last = item.chipSlots.last {
+            return CGFloat(last.top + last.height - item.startY)
+        }
+
         let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
         let isDynamicAccordion = store.isBreathingActive(for: item.pod.edge)
         if !isSharedMajorSubBar,
@@ -521,19 +527,9 @@ public final class EdgeMouseMonitor {
            let provider = store.capabilityProvider(for: item.pod.id),
            provider.subItemCount(store: store) > 0 {
             let policy = provider.decomposedPolicy(store: store)
-            let rawCount = provider.subItemCount(store: store)
-            let minChipH = policy.minChipHeight
-            let maxChipH = policy.maxChipHeight
-            let spacing = policy.spacing
-            let maxAllowed = isDynamicAccordion
-                ? max(policy.maxRailItems, 1)
-                : max(min(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-            let count = min(rawCount, maxAllowed)
-            let safeCount = max(count, 1)
-            let totalSpacing = spacing * CGFloat(safeCount - 1)
-            let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
-            return CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
+            let count = policy.visibleChipCount(in: item.spanH, isDynamicAccordion: isDynamicAccordion)
+            let itemH = policy.chipHeight(in: item.spanH, chipCount: count, isDynamicAccordion: isDynamicAccordion)
+            return CGFloat(count) * itemH + policy.spacing * CGFloat(max(count - 1, 0))
         }
         return CGFloat(item.spanH)
     }

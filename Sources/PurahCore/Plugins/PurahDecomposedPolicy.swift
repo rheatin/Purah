@@ -54,6 +54,33 @@ public struct PurahDecomposedPolicy: Sendable, Codable, Equatable {
         return CGFloat(count) * minChipHeight + totalSpacing
     }
 
+    /// How many chips fit in an available span, honouring `maxRailItems`.
+    public func visibleChipCount(in spanH: Double, isDynamicAccordion: Bool) -> Int {
+        guard !isDynamicAccordion else { return max(maxRailItems, 1) }
+        let fit = Int((CGFloat(spanH) + spacing) / (minChipHeight + spacing))
+        return max(min(fit, maxRailItems), 1)
+    }
+
+    /// Uniform chip height for a pod span.
+    ///
+    /// While a pod is breathing (squeezed), chips compress to 6pt so the rail
+    /// keeps every pod visible; otherwise the strict ergonomic floor applies.
+    /// This is the single source of truth used by the layout solver, the hit
+    /// tester and the SwiftUI rail — they previously each re-derived the
+    /// formula and could disagree by a few points.
+    public func chipHeight(in spanH: Double, chipCount: Int, isDynamicAccordion: Bool) -> CGFloat {
+        let count = max(chipCount, 1)
+        let totalSpacing = spacing * CGFloat(count - 1)
+        let floor: CGFloat = isDynamicAccordion ? 6.0 : minChipHeight
+        let raw = (CGFloat(spanH) - totalSpacing) / CGFloat(count)
+        return min(max(raw, floor), maxChipHeight)
+    }
+
+    /// Height of the expanded card for one chip (never below the ergonomic floor).
+    public func expandedCardHeight(chipH: CGFloat) -> CGFloat {
+        max(chipH, minChipHeight)
+    }
+
     /// Default ergonomic policies for standard built-in modes
     public static let calendarDefault = PurahDecomposedPolicy(
         maxRailItems: 4,
