@@ -353,7 +353,7 @@ public struct HardwareVitalsDrawerView: View {
             HStack(spacing: 2) {
                 ForEach(VitalsDashboardTab.allCases) { tab in
                     Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.micro) {
                             selectedTab = tab
                         }
                         if tab == .processes {
@@ -1024,7 +1024,7 @@ public struct VitalsFocusedDrawerView: View {
         HStack(spacing: 2) {
             ForEach(VitalsTimeScope.allCases) { sc in
                 Button {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.80)) {
+                    withAnimation(PurahMotionPolicy.confirm) {
                         timeScope = sc
                     }
                 } label: {

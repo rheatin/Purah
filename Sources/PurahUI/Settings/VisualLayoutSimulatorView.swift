@@ -60,7 +60,7 @@ public struct VisualLayoutSimulatorView: View {
                     .buttonStyle(.tactile)
 
                     Button {
-                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.autoLayoutAll()
                         }
                     } label: {
@@ -259,7 +259,7 @@ public struct VisualLayoutSimulatorView: View {
                     HStack(spacing: 12) {
                         if leftPageCount > 1 {
                             Button {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                withAnimation(PurahMotionPolicy.drawerEntrance) {
                                     store.cycleRailPage(for: .left, delta: 1)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -285,7 +285,7 @@ public struct VisualLayoutSimulatorView: View {
 
                         if rightPageCount > 1 {
                             Button {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                withAnimation(PurahMotionPolicy.drawerEntrance) {
                                     store.cycleRailPage(for: .right, delta: 1)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -333,7 +333,7 @@ public struct VisualLayoutSimulatorView: View {
             Spacer(minLength: 8)
 
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                withAnimation(PurahMotionPolicy.surface) {
                     store.autoStackMajorPods(for: .left)
                     store.autoStackMajorPods(for: .right)
                     store.triggerControlHaptic(.alignment)
@@ -354,7 +354,7 @@ public struct VisualLayoutSimulatorView: View {
             .buttonStyle(.tactile)
 
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                withAnimation(PurahMotionPolicy.surface) {
                     store.resetMajorGroups(for: .left)
                     store.resetMajorGroups(for: .right)
                     store.triggerControlHaptic(.alignment)
@@ -435,7 +435,7 @@ public struct VisualLayoutSimulatorView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
                             ForEach(unmountedPods) { pod in
                                 Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.togglePodEnabled(id: pod.id)
                                     }
                                 } label: {
@@ -528,7 +528,7 @@ public struct VisualLayoutSimulatorView: View {
                             Menu {
                                 ForEach(availableToStack) { candidate in
                                     Button("Stack \(candidate.name) here") {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        withAnimation(PurahMotionPolicy.surface) {
                                             store.addPodToMajorGroup(podId: candidate.id, targetPodId: cluster[0].id)
                                             store.triggerControlHaptic(.alignment)
                                         }
@@ -612,7 +612,7 @@ public struct VisualLayoutSimulatorView: View {
 
                 // Unmount button
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surface) {
                         store.togglePodEnabled(id: pod.id)
                     }
                 } label: {
@@ -630,14 +630,14 @@ public struct VisualLayoutSimulatorView: View {
                 Menu {
                     ForEach(0...max(maxExistingPage, 2), id: \.self) { pageIdx in
                         Button("Page \(pageIdx + 1)\(pod.pageIndex == pageIdx ? " ✓" : "")") {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surface) {
                                 store.setPodPage(id: pod.id, pageIndex: pageIdx)
                             }
                         }
                     }
                     Divider()
                     Button("+ New Page (P\(maxExistingPage + 2))") {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.setPodPage(id: pod.id, pageIndex: maxExistingPage + 1)
                         }
                     }
@@ -663,7 +663,7 @@ public struct VisualLayoutSimulatorView: View {
                 // Stack / Unstack Pill
                 if isStackedInCluster {
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.splitPodFromMajorGroup(id: pod.id)
                             store.triggerControlHaptic(.alignment)
                         }
@@ -688,7 +688,7 @@ public struct VisualLayoutSimulatorView: View {
                     Menu {
                         ForEach(otherPods) { otherPod in
                             Button("Stack with \(otherPod.name)") {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.addPodToMajorGroup(podId: otherPod.id, targetPodId: pod.id)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -720,7 +720,7 @@ public struct VisualLayoutSimulatorView: View {
                 // Reorder: Move Up
                 if store.canMovePod(id: pod.id, direction: .up) {
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.movePodInOrder(id: pod.id, direction: .up)
                         }
                     } label: {
@@ -738,7 +738,7 @@ public struct VisualLayoutSimulatorView: View {
                 // Reorder: Move Down
                 if store.canMovePod(id: pod.id, direction: .down) {
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.movePodInOrder(id: pod.id, direction: .down)
                         }
                     } label: {
@@ -755,7 +755,7 @@ public struct VisualLayoutSimulatorView: View {
 
                 // Transfer Edge (Switch Rail Button)
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surface) {
                         store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
                     }
                 } label: {

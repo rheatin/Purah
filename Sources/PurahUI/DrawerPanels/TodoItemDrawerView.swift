@@ -67,7 +67,7 @@ public struct TodoItemDrawerView: View {
             }
         }
         .frame(height: cardH)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     @ViewBuilder

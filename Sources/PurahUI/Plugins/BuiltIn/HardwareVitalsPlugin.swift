@@ -207,7 +207,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
                 height: context.slotHeight,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }
@@ -381,7 +381,7 @@ public struct VitalsPluginSettingsView: View {
                                 ForEach(VitalsMetricType.allCases) { metric in
                                     let isIncluded = state.enabledMetrics.contains(metric)
                                     Button {
-                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                        withAnimation(PurahMotionPolicy.confirm) {
                                             if isIncluded {
                                                 if state.enabledMetrics.count > 1 {
                                                     state.enabledMetrics.removeAll { $0 == metric }
@@ -438,7 +438,7 @@ public struct VitalsPluginSettingsView: View {
                 icon: "slider.horizontal.3",
                 iconColor: Color(hex: "#FF9F0A"),
                 trailing: Button {
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.confirm) {
                         state.resetThresholds()
                         store._vitalsThresholds = state.thresholds
                         store.savePersistentState()

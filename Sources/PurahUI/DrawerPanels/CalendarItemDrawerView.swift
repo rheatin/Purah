@@ -96,7 +96,7 @@ public struct CalendarItemDrawerView: View {
             }
         }
         .frame(height: cardH, alignment: .top)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
         .onAppear {
             if isAlerting {
                 store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")

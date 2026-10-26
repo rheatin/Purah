@@ -236,7 +236,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
                 pluginState: self.state,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }
@@ -305,7 +305,7 @@ public struct ClipboardItemDrawerView: View {
                 .allowsHitTesting(isExpanded)
         }
         .frame(height: isExpanded ? cardH : height)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: state)
+        .animation(state == .expandedDrawer ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: state)
     }
 
     @ViewBuilder
@@ -395,7 +395,7 @@ public struct ClipboardItemDrawerView: View {
                 Button {
                     pluginState.copyItem(item)
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                    withAnimation(PurahMotionPolicy.drawerExit) {
                         store.activeDrawerItemId = nil
                     }
                 } label: {
@@ -428,7 +428,7 @@ public struct ClipboardItemDrawerView: View {
             if let item = item {
                 pluginState.copyItem(item)
                 SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                withAnimation(PurahMotionPolicy.drawerExit) {
                     store.activeDrawerItemId = nil
                 }
             }
@@ -507,7 +507,7 @@ struct ClipboardItemDropDelegate: DropDelegate {
               let to = state.items.firstIndex(where: { $0.id == targetItem.id }),
               from != to else { return false }
 
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(PurahMotionPolicy.surfaceSoft) {
             state.moveItem(from: from, to: to)
         }
         return true
@@ -766,7 +766,7 @@ public struct ClipboardFullDrawerView: View {
                 HStack(spacing: 4) {
                     ForEach(ClipboardCategoryFilter.allCases) { filter in
                         Button {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                            withAnimation(PurahMotionPolicy.microLight) {
                                 selectedFilter = filter
                             }
                         } label: {
@@ -1027,7 +1027,7 @@ public struct ClipboardFullDrawerView: View {
                         .font(.system(size: isCompact ? 9 : 10.5))
                         .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
                         .scaleEffect(item.isFavorite ? 1.05 : 1.0)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
+                        .animation(PurahMotionPolicy.hover, value: item.isFavorite)
                 }
                 .buttonStyle(.plain)
                 .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
@@ -1053,7 +1053,7 @@ public struct ClipboardFullDrawerView: View {
         .scaleEffect(isDropTarget ? 0.985 : 1.0)
         .contentShape(Rectangle())
         .onHover { isHovering in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            withAnimation(PurahMotionPolicy.surface) {
                 if isHovering {
                     hoveredItemId = item.id
                     ClipboardHoverPreviewController.shared.show(

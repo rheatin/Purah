@@ -134,7 +134,7 @@ public struct LiveRailSculptorStripView: View {
                   !didAutoMergeDuringDrag else { return }
             didAutoMergeDuringDrag = true
             hoveredStackTargetPodId = nil
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+            withAnimation(PurahMotionPolicy.drawerEntrance) {
                 store.addPodToMajorGroup(podId: draggedPodId, targetPodId: targetId)
                 store.triggerControlHaptic(.levelChange)
             }
@@ -210,7 +210,7 @@ public struct LiveRailSculptorStripView: View {
            let extEdge = store.externalDragTargetEdge,
            extEdge != edge {
             let screenFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+            withAnimation(PurahMotionPolicy.drawerEntrance) {
                 store.commitExternalPodDrag(podId: item.pod.id, screenFrame: screenFrame)
             }
             return
@@ -224,7 +224,7 @@ public struct LiveRailSculptorStripView: View {
 
         // 2. Release-to-Merge onto hovered target pod / Major Stack
         if let targetId = currentTargetId {
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+            withAnimation(PurahMotionPolicy.drawerEntrance) {
                 store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
                 store.triggerControlHaptic(.levelChange)
             }
@@ -235,12 +235,12 @@ public struct LiveRailSculptorStripView: View {
         let finalCenterY = initialCenter + Double(translationY)
         if isSubPodInCluster {
             if translationY < -14 && store.canMovePod(id: item.pod.id, direction: .up) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                withAnimation(PurahMotionPolicy.surface) {
                     store.movePodInOrder(id: item.pod.id, direction: .up)
                     store.triggerControlHaptic(.alignment)
                 }
             } else if translationY > 14 && store.canMovePod(id: item.pod.id, direction: .down) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                withAnimation(PurahMotionPolicy.surface) {
                     store.movePodInOrder(id: item.pod.id, direction: .down)
                     store.triggerControlHaptic(.alignment)
                 }
@@ -269,7 +269,7 @@ public struct LiveRailSculptorStripView: View {
         }
 
         let newStart = min(max(baseStart + (Double(translationY) / safeHeight), 0.02), max(0.96 - item.pod.range.length, 0.02))
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+        withAnimation(PurahMotionPolicy.surface) {
             store.updatePodRange(
                 id: item.pod.id,
                 newRange: NormalizedRange(start: newStart, length: item.pod.range.length)
@@ -427,7 +427,7 @@ public struct LiveRailSculptorStripView: View {
                         let pagePods = pIdx < pages.count ? pages[pIdx] : []
                         let isPagePillHighlighted = isOnboardingPage && store.onboardingDidCreatePage && !store.onboardingDidSwitchPage
                         Button {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surface) {
                                 store.setRailPage(pIdx, for: edge)
                                 store.triggerControlHaptic(.alignment)
                             }
@@ -467,7 +467,7 @@ public struct LiveRailSculptorStripView: View {
                         guard currentPage < pages.count,
                               pages[currentPage].count > 1,
                               let lastPod = pages[currentPage].last else { return }
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.setPodPage(id: lastPod.id, pageIndex: pages.count)
                             store.triggerControlHaptic(.alignment)
                         }
@@ -658,7 +658,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                     Spacer(minLength: 2)
 
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.unstackMajorGroup(groupId: groupId, on: edge)
                             store.triggerControlHaptic(.alignment)
                         }
@@ -755,7 +755,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
                                         // Unmount button [✕]
                                         Button {
-                                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            withAnimation(PurahMotionPolicy.surface) {
                                                 store.splitPodFromMajorGroup(id: pod.id)
                                                 store.togglePodEnabled(id: pod.id)
                                                 store.triggerControlHaptic(.alignment)
@@ -774,7 +774,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                                         HStack(spacing: 4) {
                                             // Move Up [↑]
                                             Button {
-                                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                                withAnimation(PurahMotionPolicy.surface) {
                                                     store.movePodInOrder(id: pod.id, direction: .up)
                                                     store.triggerControlHaptic(.alignment)
                                                 }
@@ -792,7 +792,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
                                             // Move Down [↓]
                                             Button {
-                                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                                withAnimation(PurahMotionPolicy.surface) {
                                                     store.movePodInOrder(id: pod.id, direction: .down)
                                                     store.triggerControlHaptic(.alignment)
                                                 }
@@ -810,7 +810,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
                                             // Pop Out / Split from Stack [✂️ Split]
                                             Button {
-                                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                                withAnimation(PurahMotionPolicy.surface) {
                                                     store.splitPodFromMajorGroup(id: pod.id)
                                                     store.triggerControlHaptic(.alignment)
                                                 }
@@ -834,7 +834,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
                                             // Throw to Opposite Rail [⇄]
                                             Button {
-                                                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                                withAnimation(PurahMotionPolicy.surface) {
                                                     store.splitPodFromMajorGroup(id: pod.id)
                                                     store.movePod(id: pod.id, to: edge == .left ? .right : .left)
                                                     store.triggerControlHaptic(.alignment)
@@ -899,7 +899,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                                                     activeDraggingSubId = nil
                                                     activeSubDragOffset = .zero
                                                     onCancelParentDragState()
-                                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                                    withAnimation(PurahMotionPolicy.chipLift) {
                                                         store.detachPodFromMajorGroup(
                                                             id: pod.id,
                                                             targetCenterY: targetY,
@@ -941,7 +941,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                                                     safeTotalH: safeTotalH
                                                 )
                                                 onCancelParentDragState()
-                                                withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                                withAnimation(PurahMotionPolicy.chipLift) {
                                                     store.detachPodFromMajorGroup(
                                                         id: pod.id,
                                                         targetCenterY: targetY,
@@ -1226,7 +1226,7 @@ public struct LiveSculptPodCapsuleView: View {
                             )
 
                         Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surface) {
                                 store.togglePodEnabled(id: pod.id)
                                 store.triggerControlHaptic(.alignment)
                             }
@@ -1247,7 +1247,7 @@ public struct LiveSculptPodCapsuleView: View {
                         HStack(spacing: 4) {
                             // Move Up
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.movePodInOrder(id: pod.id, direction: .up)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -1265,7 +1265,7 @@ public struct LiveSculptPodCapsuleView: View {
 
                             // Move Down
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.movePodInOrder(id: pod.id, direction: .down)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -1284,7 +1284,7 @@ public struct LiveSculptPodCapsuleView: View {
                             // Snap to Predecessor if gap exists
                             if store.hasGapAbove(id: pod.id) {
                                 Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.snapPod(id: pod.id, to: .predecessor)
                                         store.triggerControlHaptic(.alignment)
                                     }
@@ -1301,7 +1301,7 @@ public struct LiveSculptPodCapsuleView: View {
 
                             // Fill Rail
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.fillRail(podId: pod.id)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -1321,7 +1321,7 @@ public struct LiveSculptPodCapsuleView: View {
                             Menu {
                                 ForEach(0..<maxPage, id: \.self) { pIdx in
                                     Button("Page \(pIdx + 1)\(pod.pageIndex == pIdx ? " ✓" : "")") {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        withAnimation(PurahMotionPolicy.surface) {
                                             store.setPodPage(id: pod.id, pageIndex: pIdx)
                                             store.triggerControlHaptic(.alignment)
                                         }
@@ -1329,7 +1329,7 @@ public struct LiveSculptPodCapsuleView: View {
                                 }
                                 Divider()
                                 Button("+ New Page (P\(maxPage + 1))") {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.setPodPage(id: pod.id, pageIndex: maxPage)
                                         store.triggerControlHaptic(.alignment)
                                     }
@@ -1351,7 +1351,7 @@ public struct LiveSculptPodCapsuleView: View {
 
                             // Throw to Opposite Rail
                             Button {
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.movePod(id: pod.id, to: edge == .left ? .right : .left)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -1376,7 +1376,7 @@ public struct LiveSculptPodCapsuleView: View {
                             // Split / Stack buttons
                             if pod.majorGroupId != nil {
                                 Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.splitPodFromMajorGroup(id: pod.id)
                                         store.triggerControlHaptic(.alignment)
                                     }
@@ -1396,7 +1396,7 @@ public struct LiveSculptPodCapsuleView: View {
 
                             if store.canMergePodWithNext(id: pod.id) {
                                 Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.mergePodWithNext(id: pod.id)
                                         store.triggerControlHaptic(.alignment)
                                     }
@@ -1418,7 +1418,7 @@ public struct LiveSculptPodCapsuleView: View {
                             if ["vitals", "scripts", "clipboard", "ai", "calendar"].contains(pod.id) && !isSharedStacked {
                                 let isDecomp = store.isPodDecomposed(pod.id)
                                 Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.togglePodDecomposedInSculptor(podId: pod.id)
                                         store.triggerControlHaptic(.levelChange)
                                     }
@@ -1476,7 +1476,7 @@ public struct LiveSculptPodCapsuleView: View {
 
                             // Full-width Glowing Hero Toggle Button
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.togglePodDecomposedInSculptor(podId: pod.id)
                                     store.triggerControlHaptic(.levelChange)
                                 }

@@ -161,7 +161,7 @@ public struct MusicPluginSettingsView: View {
     private func styleTile(title: String, icon: String, style: MusicRailStyle) -> some View {
         let isSelected = state.railStyle == style
         Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+            withAnimation(PurahMotionPolicy.micro) {
                 state.railStyle = style
                 state.save()
             }

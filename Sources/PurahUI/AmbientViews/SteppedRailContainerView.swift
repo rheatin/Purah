@@ -150,8 +150,8 @@ public struct SteppedRailContainerView: View {
                 .frame(height: displaySpanH, alignment: .top)
             }
         }
-        .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: totalHeight)
-        .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: store.activeDrawerItemId)
+        .animation(PurahMotionPolicy.railReflow, value: totalHeight)
+        .animation(PurahMotionPolicy.railReflow, value: store.activeDrawerItemId)
         .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
             plugin.onDrop(providers: providers, context: context)
         })
@@ -175,14 +175,14 @@ public struct SteppedRailContainerView: View {
                 store.activateDrawer(podId: pod.id, itemId: subItem.id)
             },
             requestDismiss: {
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                withAnimation(PurahMotionPolicy.drawerExit) {
                     if store.activeDrawerItemId == subItem.id {
                         store.activeDrawerItemId = nil
                     }
                 }
             },
             togglePin: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: subItem.id)
                 }
             },
@@ -279,7 +279,7 @@ public struct SteppedRailContainerView: View {
             }
         }
         .frame(height: cardH)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     @ViewBuilder
@@ -367,7 +367,7 @@ public struct SteppedRailContainerView: View {
             Spacer(minLength: 4)
 
             PurahPinButton(isPinned: isPinned, tintColor: tintColor) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: subItem.id)
                 }
             }
@@ -399,7 +399,7 @@ public struct SteppedRailContainerView: View {
                 Label("Configure \(plugin.manifest.displayName)...", systemImage: "gearshape")
             }
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: subItem.id)
                 }
             } label: {

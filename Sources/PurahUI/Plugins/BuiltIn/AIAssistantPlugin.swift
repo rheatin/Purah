@@ -100,7 +100,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             HStack(spacing: 5) {
                 // History Toggle Button
                 Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel.toggle()
                     }
                 } label: {
@@ -1532,7 +1532,7 @@ public struct AIAssistantPluginSettingsView: View {
                         .buttonStyle(.plain)
 
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 isAddingMCPServer.toggle()
                             }
                         } label: {
@@ -1691,7 +1691,7 @@ public struct AIAssistantPluginSettingsView: View {
                 Spacer()
 
                 Button("Cancel") {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         isAddingMCPServer = false
                         newServerName = ""
                         newServerCommand = ""
@@ -1709,7 +1709,7 @@ public struct AIAssistantPluginSettingsView: View {
                         command: newServerCommand.trimmingCharacters(in: .whitespaces),
                         arguments: newServerArgs.trimmingCharacters(in: .whitespaces)
                     )
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         isAddingMCPServer = false
                         newServerName = ""
                         newServerCommand = ""

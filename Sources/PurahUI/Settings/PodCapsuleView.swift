@@ -171,28 +171,28 @@ public struct PodCapsuleView: View {
                         }
 
                         if (pod.edge == .left && horizontalDistance > 60.0) || (pod.edge == .right && horizontalDistance < -60.0) {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            withAnimation(PurahMotionPolicy.drawerEntrance) {
                                 onTransferEdge()
                             }
                         } else if verticalDistance < -upwardThreshold, let onMoveOrder = onMoveOrder {
                             // Dragged upward past 50% threshold of predecessor -> Swap with predecessor above
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            withAnimation(PurahMotionPolicy.drawerEntrance) {
                                 onMoveOrder(.up)
                             }
                         } else if verticalDistance > downwardThreshold, let onMoveOrder = onMoveOrder {
                             // Dragged downward past 50% threshold of successor -> Swap with successor below
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            withAnimation(PurahMotionPolicy.drawerEntrance) {
                                 onMoveOrder(.down)
                             }
                         } else if verticalDistance < -12.0, hasGapAbove, let onSnapAbove = onSnapAbove {
                             // Dragged upward towards predecessor without crossing 50% -> Magnetically snap to predecessor!
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surface) {
                                 onSnapAbove()
                             }
                         } else if abs(verticalDistance) >= 4.0 {
                             let deltaRatio = Double(verticalDistance / canvasHeight)
                             let newStart = pod.range.start + deltaRatio
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            withAnimation(PurahMotionPolicy.drawerEntrance) {
                                 onMove(newStart)
                             }
                         }
@@ -240,7 +240,7 @@ public struct PodCapsuleView: View {
                         }
                         .onEnded { _ in
                             let minResizeRatio = 0.05
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            withAnimation(PurahMotionPolicy.drawerEntrance) {
                                 let maxLegalLength = max(0.98 - pod.range.start, minResizeRatio)
                                 let finalLength = min(max(pod.range.length, minResizeRatio), maxLegalLength)
                                 onResize(finalLength)

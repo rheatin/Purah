@@ -131,6 +131,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 2. **Asymmetric Easing & Duration**:
    - **Entrance**: Natural Apple-style deceleration spring: `response: 0.30, dampingFraction: 0.80`.
    - **Retraction / Exit**: Fast, crisp dismissal in ~160ms: `response: 0.20, dampingFraction: 0.92`.
+   - **Named Curves (`PurahMotionPolicy`)**: these two — plus every other curve used more than once — live as named constants (`drawerEntrance`, `drawerExit`, `surface`, `hover`, `pin`, `press`, …). Adopt the name rather than retyping the parameters, so a curve cannot silently drift between the call sites that share it. A curve used exactly once stays inline; naming it would imply a system where there is only a local decision. `MotionTokenTests` pins each value and caps the inline count.
 3. **Fluid Waveform Visualizer (60 / 120 FPS Metal GPU)**:
    - Audio visualizers use high-performance SwiftUI `Canvas` driven by `TimelineView(.animation(paused: !isPlaying || reduceMotion))`.
    - Sound waves follow superposition wave equations ($w_1\sin + w_2\cos + w_3\sin$) for silky organic flow.

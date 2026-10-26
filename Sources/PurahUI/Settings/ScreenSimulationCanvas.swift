@@ -157,17 +157,17 @@ public struct ScreenSimulationCanvas: View {
                                     store.fillRail(podId: item.pod.id)
                                 },
                                 onDisable: {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.togglePodEnabled(id: item.pod.id)
                                     }
                                 },
                                 onMoveOrder: { direction in
-                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    withAnimation(PurahMotionPolicy.drawerEntrance) {
                                         store.movePodInOrder(id: item.pod.id, direction: direction)
                                     }
                                 },
                                 onSnapAbove: {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.snapPod(id: item.pod.id, to: .predecessor)
                                     }
                                 },
@@ -193,7 +193,7 @@ public struct ScreenSimulationCanvas: View {
                                 onDropOntoStackTarget: {
                                     guard let targetId = hoveredStackTargetPodId else { return false }
                                     hoveredStackTargetPodId = nil
-                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    withAnimation(PurahMotionPolicy.drawerEntrance) {
                                         store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
                                         store.triggerControlHaptic(.levelChange)
                                     }
@@ -255,17 +255,17 @@ public struct ScreenSimulationCanvas: View {
                                     store.fillRail(podId: item.pod.id)
                                 },
                                 onDisable: {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.togglePodEnabled(id: item.pod.id)
                                     }
                                 },
                                 onMoveOrder: { direction in
-                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    withAnimation(PurahMotionPolicy.drawerEntrance) {
                                         store.movePodInOrder(id: item.pod.id, direction: direction)
                                     }
                                 },
                                 onSnapAbove: {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.snapPod(id: item.pod.id, to: .predecessor)
                                     }
                                 },
@@ -291,7 +291,7 @@ public struct ScreenSimulationCanvas: View {
                                 onDropOntoStackTarget: {
                                     guard let targetId = hoveredStackTargetPodId else { return false }
                                     hoveredStackTargetPodId = nil
-                                    withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    withAnimation(PurahMotionPolicy.drawerEntrance) {
                                         store.addPodToMajorGroup(podId: item.pod.id, targetPodId: targetId)
                                         store.triggerControlHaptic(.levelChange)
                                     }
@@ -421,7 +421,7 @@ public struct ScreenSimulationCanvas: View {
         let chevronName = (direction == .previous) ? "chevron.compact.up" : "chevron.compact.down"
 
         Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            withAnimation(PurahMotionPolicy.surface) {
                 store.cycleRailPage(for: edge, delta: delta)
                 store.triggerControlHaptic(.alignment)
             }

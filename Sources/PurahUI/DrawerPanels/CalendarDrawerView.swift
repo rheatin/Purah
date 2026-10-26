@@ -380,7 +380,7 @@ public struct CalendarDrawerView: View {
                     ForEach(CalendarTimeScope.allCases) { scopeCase in
                         let isSelected = state.scope == scopeCase
                         Button {
-                            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.micro) {
                                 state.scope = scopeCase
                                 state.save()
                                 store.calendarScope = scopeCase
@@ -793,7 +793,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
             },
             isPinned: isPinned,
             onPin: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: "calendar_more_events")
                 }
             },
@@ -823,7 +823,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 Label("Configure Calendar...", systemImage: "gearshape")
             }
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: "calendar_more_events")
                 }
             } label: {

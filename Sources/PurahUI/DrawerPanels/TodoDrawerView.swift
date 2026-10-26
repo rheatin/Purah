@@ -97,7 +97,7 @@ struct TodoOverviewRow: View {
                 .cornerRadius(3)
 
             Button {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.microLight) {
                     state.remove(id: todo.id)
                     store._todos.removeAll { $0.id == todo.id }
                 }

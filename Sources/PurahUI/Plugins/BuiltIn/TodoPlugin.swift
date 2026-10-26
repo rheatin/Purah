@@ -208,7 +208,7 @@ public struct TodoPlugin: PurahPodPlugin {
                 onSettings: { context.store.openPluginSettings(id: "todo") },
                 isPinned: context.isItemPinned("todo_more_items"),
                 onPin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin("todo_more_items")
                     }
                 },
@@ -263,7 +263,7 @@ public struct TodoPlugin: PurahPodPlugin {
                 height: context.slotHeight,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }

@@ -1253,8 +1253,8 @@ public struct BatchShelfDragPillView: View {
                 .stroke(shelfColor.opacity(isHovered || hasSelection ? 0.85 : 0.45), lineWidth: 1.2)
         )
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.01 : 1.0))
-        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isHovered)
-        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isDragging)
+        .animation(PurahMotionPolicy.micro, value: isHovered)
+        .animation(PurahMotionPolicy.micro, value: isDragging)
         .overlay(
             ShelfItemDragSourceView(
                 file: representativeFile,
@@ -1525,8 +1525,8 @@ public struct ShelfFileRowView: View {
                 .stroke(isSelected ? shelfColor : Color.clear, lineWidth: 1.5)
         )
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))
-        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isHovered)
-        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isDragging)
+        .animation(PurahMotionPolicy.shelfRow, value: isHovered)
+        .animation(PurahMotionPolicy.shelfRow, value: isDragging)
         .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }

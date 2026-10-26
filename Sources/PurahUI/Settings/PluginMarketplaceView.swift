@@ -87,7 +87,7 @@ public struct PluginMarketplaceView: View {
                     ForEach(PluginCenterTab.allCases) { tab in
                         let isSelected = selectedTab == tab
                         Button {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.micro) {
                                 selectedTab = tab
                             }
                         } label: {
@@ -214,7 +214,7 @@ public struct PluginMarketplaceView: View {
         .background(palette.background)
         .sheet(item: $securityReviewManifest) { manifest in
             SecurityConfirmationSheet(manifest: manifest, palette: palette) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
+                withAnimation(PurahMotionPolicy.hoverSoft) {
                     marketManager.install(id: manifest.id)
                     feedbackBanner = "🎉 \(manifest.displayName) installed and added to rail."
                 }
@@ -432,7 +432,7 @@ public struct PluginMarketplaceView: View {
                     // Uninstall button with 2-step spring confirmation
                     if confirmingUninstallId == manifest.id {
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            withAnimation(PurahMotionPolicy.hover) {
                                 marketManager.uninstall(id: manifest.id)
                                 confirmingUninstallId = nil
                                 if manifest.category == .heavyGPU {
@@ -456,7 +456,7 @@ public struct PluginMarketplaceView: View {
                         .buttonStyle(.tactile)
                     } else {
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            withAnimation(PurahMotionPolicy.hover) {
                                 confirmingUninstallId = manifest.id
                             }
                             Task {
@@ -500,7 +500,7 @@ public struct PluginMarketplaceView: View {
                         if manifest.isCommunity {
                             securityReviewManifest = manifest
                         } else {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
+                            withAnimation(PurahMotionPolicy.hoverSoft) {
                                 marketManager.install(id: manifest.id)
                                 feedbackBanner = "✨ \(manifest.displayName) installed successfully."
                             }

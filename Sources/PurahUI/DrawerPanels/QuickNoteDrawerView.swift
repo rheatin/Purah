@@ -211,11 +211,11 @@ public struct InteractiveMarkdownPreviewView: View {
                     .onPreferenceChange(BottomAnchorMaxYPreferenceKey.self) { bottomMaxY in
                         guard bottomMaxY > 0 && outerGeo.size.height > 0 else { return }
                         if bottomMaxY > outerGeo.size.height + 24 {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 isScrolledUp = true
                             }
                         } else if bottomMaxY <= outerGeo.size.height + 14 {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 isScrolledUp = false
                             }
                             followsTail = true
@@ -231,7 +231,7 @@ public struct InteractiveMarkdownPreviewView: View {
                             scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
                                 if isHoveringScrollArea && event.scrollingDeltaY > 1.0 {
                                     followsTail = false
-                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                                         isScrolledUp = true
                                     }
                                 }
@@ -248,7 +248,7 @@ public struct InteractiveMarkdownPreviewView: View {
 
                     if isScrolledUp {
                         FloatingScrollToBottomButton(accentColor: accentColor) {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 followsTail = true
                                 isScrolledUp = false
                                 scrollProxy.scrollTo("markdownBottomAnchor", anchor: .bottom)
@@ -880,7 +880,7 @@ public struct MarkdownCodeBlockView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.confirm) {
                         isCopied = true
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
@@ -3047,7 +3047,7 @@ public struct QuickNoteDrawerView: View {
                                     state.selectedFolder = doc.folder
                                     state.selectedNoteId = doc.id
                                     state.save()
-                                    withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                                    withAnimation(PurahMotionPolicy.confirm) {
                                         isSearchingNotes = false
                                         searchQuery = ""
                                     }
@@ -3266,7 +3266,7 @@ public struct QuickNoteDrawerView: View {
 
             // Cross-Folder Search Filter Toggle
             Button {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.confirm) {
                     isSearchingNotes.toggle()
                     if !isSearchingNotes {
                         searchQuery = ""
@@ -3371,7 +3371,7 @@ public struct QuickNoteDrawerView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(currentText, forType: .string)
                 store.triggerControlHaptic(.alignment)
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                withAnimation(PurahMotionPolicy.confirm) {
                     isCopied = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
@@ -3428,7 +3428,7 @@ public struct QuickNoteDrawerView: View {
             do {
                 try currentText.write(to: url, atomically: true, encoding: .utf8)
                 store.triggerControlHaptic(.alignment)
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                withAnimation(PurahMotionPolicy.confirm) {
                     isExported = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {

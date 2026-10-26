@@ -336,7 +336,7 @@ public struct PurahStackedDecomposeNoticeView: View {
                 Spacer(minLength: 6)
 
                 Button {
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surface) {
                         store.splitPodFromMajorGroup(id: podId)
                     }
                 } label: {

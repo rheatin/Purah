@@ -765,7 +765,7 @@ public struct MediaNudgeButtonStyle: ButtonStyle {
         configuration.label
             .offset(x: configuration.isPressed ? nudgeOffset : 0)
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.16, dampingFraction: 0.65), value: configuration.isPressed)
+            .animation(PurahMotionPolicy.press, value: configuration.isPressed)
     }
 }
 
