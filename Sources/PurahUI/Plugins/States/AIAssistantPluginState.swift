@@ -49,6 +49,13 @@ public final class AIAssistantPluginState: Sendable {
     public var allowedFilePaths: Set<String> = []
     public var pendingPermissionRequest: PendingFilePermissionRequest? = nil
 
+    // MARK: - Tool Permission Control
+    /// A gate the agent CLI raised mid-run. Unlike `pendingPermissionRequest`
+    /// — which is Purah deciding whether to *send* a prompt that references a
+    /// path — this is the agent deciding, while running, that it needs the
+    /// user's consent before touching something.
+    public var pendingToolPermission: PendingToolPermissionRequest? = nil
+
     // MARK: - Local Skills & Slash Commands
     public var localSkills: [AILocalSkill] = []
     public var activeSkill: AILocalSkill? = nil
@@ -807,6 +814,7 @@ public final class AIAssistantPluginState: Sendable {
         self.enabledActions = store._aiRolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
         self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
         refreshCapturedSelection()
+        bindPermissionBridge()
 
         if selectedProvider == .httpOpenAI || selectedProvider == .httpOllama {
             Task { [weak self] in
@@ -815,8 +823,38 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    /// Routes the agent's own permission gates into this state.
+    ///
+    /// The bridge starts on mount and stops on unmount, so a disabled or
+    /// unmounted plugin leaves no listener behind (AGENTS.md §3, polling and
+    /// lifecycle suspension).
+    private func bindPermissionBridge() {
+        let bridge = AIPermissionBridge.shared
+        bridge.onRequest = { [weak self] request in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.pendingToolPermission = request
+                // Bring the drawer forward: a gate the user never sees is a
+                // hung agent, and the hook is blocking on this answer.
+                self.boundStore?.activateDrawer(podId: "ai")
+            }
+        }
+        bridge.start()
+    }
+
+    // MARK: - Tool Permission Decisions
+
+    public func resolveToolPermission(_ decision: AIPermissionBridge.Decision) {
+        guard let request = pendingToolPermission else { return }
+        pendingToolPermission = nil
+        AIPermissionBridge.shared.resolve(request.id, decision: decision)
+    }
+
     public func unmount(store: PurahWorkspaceStore) {
         stopStreaming()
+        AIPermissionBridge.shared.onRequest = nil
+        AIPermissionBridge.shared.stop()
+        pendingToolPermission = nil
         save()
         if boundStore === store {
             boundStore = nil

@@ -765,7 +765,8 @@ public final class AIAssistantService {
             customCLIArguments: customCLIArguments,
             promptText: promptText,
             model: model,
-            additionalDirectories: skillDirectories
+            additionalDirectories: skillDirectories,
+            permissionSettingsPath: Self.permissionSettingsPath(for: executable)
         )
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
@@ -786,11 +787,16 @@ public final class AIAssistantService {
         customCLIArguments: String? = nil,
         promptText: String,
         model: String? = nil,
-        additionalDirectories: [String] = []
+        additionalDirectories: [String] = [],
+        permissionSettingsPath: String? = nil
     ) -> [String] {
         var args: [String] = []
         let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasCustomTemplate = trimmedCustomArgs != nil && !trimmedCustomArgs!.isEmpty && trimmedCustomArgs != "{prompt}"
+        // A hand-written template means the user already decided how the CLI
+        // should be invoked; adding settings they did not ask for would be us
+        // overriding that.
+        let canRoutePermissions = !hasCustomTemplate
 
         if executable == .custom || hasCustomTemplate {
             let template = hasCustomTemplate ? trimmedCustomArgs! : "{prompt}"
@@ -845,7 +851,67 @@ public final class AIAssistantService {
             args.insert(contentsOf: additionalDirectories.flatMap { ["--add-dir", $0] }, at: 0)
         }
 
+        // Route the agent's own permission prompts to Purah. The CLI is put in
+        // `manual` so nothing is auto-approved on the user's behalf, and the
+        // hook in the settings file is what turns each gate into a banner.
+        if executable == .claude, canRoutePermissions, let permissionSettingsPath {
+            args.insert(contentsOf: ["--settings", permissionSettingsPath, "--permission-mode", "manual"], at: 0)
+        }
+
         return args
+    }
+
+    // MARK: - Permission Routing
+
+    /// Writes the hook settings the CLI needs to reach `AIPermissionBridge`.
+    ///
+    /// Returns nil when the bridge is not listening, and that is deliberate:
+    /// the hook is configured with `onFailure: "block"`, so pointing it at a
+    /// dead port would turn every gated call into a denial. Without the file
+    /// the CLI keeps its stock behaviour and simply refuses the gated call.
+    public nonisolated static func permissionSettingsPath(for executable: AICLIExecutable) -> String? {
+        guard executable == .claude else { return nil }
+
+        let bridge = AIPermissionBridge.shared
+        // Mount starts the listener asynchronously. A brief settle is enough
+        // because the first send is always a user action later than that; if
+        // it still is not up we return nil rather than hand the CLI a dead
+        // endpoint it would fail closed against.
+        if !bridge.isListening {
+            bridge.waitUntilListening(timeout: 0.5)
+        }
+        guard bridge.isListening, let port = bridge.port else { return nil }
+
+        let settings: [String: Any] = [
+            "hooks": [
+                "PermissionRequest": [[
+                    "matcher": "*",
+                    "hooks": [[
+                        "type": "http",
+                        "url": "http://127.0.0.1:\(port)/permission",
+                        // Fail closed: a timeout must deny, never approve.
+                        "timeout": 30,
+                        "onFailure": "block"
+                    ]]
+                ]]
+            ]
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted]) else {
+            return nil
+        }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-ai-permissions", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let url = directory.appendingPathComponent("claude-hooks-\(port).json")
+        do {
+            try data.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - ANSI Escape Stripping & NDJSON Stream Parsing

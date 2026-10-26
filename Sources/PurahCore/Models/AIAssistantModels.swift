@@ -785,6 +785,45 @@ public struct AIBuiltInSkillConfig: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Tool Permission Requests
+
+/// A permission gate the agent CLI itself raised mid-run.
+///
+/// The agent decides when it needs permission; Purah's job is to ask the
+/// person instead of answering for them. One request is outstanding at a time
+/// because the hook that produces it is blocking the tool call until we reply.
+public struct PendingToolPermissionRequest: Identifiable, Equatable, Sendable {
+    public let id: String
+    /// Tool the agent wants to use (`Bash`, `Read`, `Edit`, …).
+    public let toolName: String
+    /// The tool's own arguments, formatted for a one-line glance.
+    public let commandPreview: String
+    /// Extra context worth showing before the user decides, when the CLI
+    /// supplied any (a file path, a reason, the working directory).
+    public let context: String?
+    /// Serialized `permission_suggestions`. Echoing them back on "always
+    /// allow" is what actually persists the decision for the session — the
+    /// button means nothing without it.
+    public let suggestionPayload: Data?
+    public let suggestionsDescription: String?
+
+    public init(
+        id: String = UUID().uuidString,
+        toolName: String,
+        commandPreview: String,
+        context: String? = nil,
+        suggestionPayload: Data? = nil,
+        suggestionsDescription: String? = nil
+    ) {
+        self.id = id
+        self.toolName = toolName
+        self.commandPreview = commandPreview
+        self.context = context
+        self.suggestionPayload = suggestionPayload
+        self.suggestionsDescription = suggestionsDescription
+    }
+}
+
 // MARK: - Local Skills
 public enum AILocalSkillSource: String, Codable, Sendable, CaseIterable {
     case optimus = "optimus"

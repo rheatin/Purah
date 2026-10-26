@@ -652,6 +652,14 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .padding(.bottom, 6)
             }
 
+            // The agent's own gate takes precedence: it is blocking a running
+            // turn, while the file banner only holds back a prompt that has not
+            // been sent yet.
+            if let toolRequest = state.pendingToolPermission {
+                toolPermissionBanner(req: toolRequest)
+                    .padding(.bottom, 6)
+            }
+
             Group {
                 if latestResult.isEmpty && !isRoleStreaming {
                     // Stage 1: Input Stage
@@ -811,6 +819,105 @@ public struct AIAssistantRoleWorkbenchView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color(hex: "#F59E0B").opacity(0.50), lineWidth: 1.0)
+        )
+    }
+
+    /// Banner for a permission the agent asked for while running.
+    ///
+    /// Same anatomy as the file banner on purpose: one card, one decision, the
+    /// same three weights of answer. "Always allow" is only offered when the
+    /// CLI supplied a suggestion to persist — a button that silently did
+    /// nothing would be worse than not showing it.
+    private func toolPermissionBanner(req: PendingToolPermissionRequest) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(Color(hex: "#F59E0B"))
+
+                Text(req.toolName)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("ai.permission.agentBadge".localized)
+                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color(hex: "#F59E0B").opacity(0.18))
+                    .foregroundColor(Color(hex: "#F59E0B"))
+                    .cornerRadius(3)
+            }
+
+            Text(req.commandPreview)
+                .font(.system(size: 8.5, design: .monospaced))
+                .foregroundColor(Color.white.opacity(0.80))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let context = req.context {
+                Text(context)
+                    .font(.system(size: 8.5))
+                    .foregroundColor(Color.white.opacity(0.50))
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 5) {
+                Button {
+                    state.resolveToolPermission(.allow)
+                } label: {
+                    Text("ai.permission.allow".localized)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(hex: "#0F111A"))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color(hex: "#10B981"))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+
+                if let scope = req.suggestionsDescription {
+                    Button {
+                        state.resolveToolPermission(.alwaysAllow)
+                    } label: {
+                        Text(String(format: "ai.permission.alwaysAllow".localized, scope))
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.12))
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                Button {
+                    state.resolveToolPermission(.deny)
+                } label: {
+                    Text("ai.permission.deny".localized)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(hex: "#1F1B12").opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(hex: "#F59E0B").opacity(0.60), lineWidth: 1.0)
         )
     }
 

@@ -684,7 +684,25 @@ public struct AIAssistantPluginSettingsView: View {
                 }
             }
 
-            // Executable Path Row
+            // Honesty about the gate: only claude can route its per-call
+            // permission prompts to a banner. The others run without an
+            // approval channel, so the user must know the difference rather
+            // than assume every engine asks.
+            if state.selectedCLI != .claude {
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: "exclamationmark.shield")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(Color(hex: "#F59E0B"))
+                    Text("ai.cli.noPermissionGate".localized)
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(hex: "#F59E0B").opacity(0.08))
+                .cornerRadius(6)
+            }
             HStack(spacing: 8) {
                 Text("Executable Path")
                     .font(.system(size: 10.5, weight: .medium))
