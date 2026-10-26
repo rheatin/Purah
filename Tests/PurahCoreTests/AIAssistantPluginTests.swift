@@ -32,6 +32,10 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.claude.rawValue == "claude")
         #expect(AICLIExecutable.claude.defaultSubcommand == ["-p"])
 
+        #expect(AICLIExecutable.pi.rawValue == "pi")
+        #expect(AICLIExecutable.pi.displayName == "Pi (AI Agent)")
+        #expect(AICLIExecutable.pi.defaultSubcommand == ["-p"])
+
         #expect(AICLIExecutable.codex.rawValue == "codex")
         #expect(AICLIExecutable.codex.defaultSubcommand == ["exec"])
 
@@ -41,7 +45,7 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.custom.rawValue == "custom")
         #expect(AICLIExecutable.custom.displayName == "Custom CLI")
         #expect(AICLIExecutable.custom.defaultSubcommand == ["{prompt}"])
-        #expect(AICLIExecutable.allCases.count == 4)
+        #expect(AICLIExecutable.allCases.count == 5)
 
         #expect(AIProviderKind.appleIntelligence.shortTitle == "Apple Intel")
         #expect(AIProviderKind.localCLI.shortTitle == "Local CLI")
@@ -1571,6 +1575,714 @@ struct AIAssistantPluginTests {
         case .unavailable(let reason):
             #expect(status.isAvailable == false)
             #expect(!reason.isEmpty)
+        }
+    }
+
+    // MARK: - Local Skills and Slash Command Tests
+    @Test("AILocalSkill, AILocalSkillSource, and AISlashCommandItem models")
+    func testAILocalSkillAndSlashCommandModels() throws {
+        let skill = AILocalSkill(
+            id: "write-swift",
+            name: "Write Swift",
+            description: "Expert guidelines for modern Swift 6.",
+            trigger: "write-swift",
+            directoryPath: "/Users/test/.agents/skills/write-swift",
+            promptTemplate: "Always use Sendable and Swift 6 concurrency.",
+            isEnabled: true,
+            source: .optimus
+        )
+
+        #expect(skill.id == "write-swift")
+        #expect(skill.trigger == "write-swift")
+        #expect(skill.source == .optimus)
+        #expect(skill.source.displayName == "Optimus")
+        #expect(AILocalSkillSource.claude.displayName == "Claude")
+        #expect(AILocalSkillSource.purah.displayName == "Purah")
+        #expect(AILocalSkillSource.custom.displayName == "Custom")
+
+        // Codable round-trip for AILocalSkill
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(skill)
+        let decodedSkill = try JSONDecoder().decode(AILocalSkill.self, from: data)
+        #expect(decodedSkill == skill)
+
+        // AISlashCommandItem tests
+        let role = AIRolePreset.from(action: .ask)
+        let roleItem = AISlashCommandItem(
+            trigger: "ask",
+            title: "Ask AI",
+            subtitle: "General assistant",
+            icon: "sparkles",
+            colorHex: "#EC4899",
+            kind: .role(role)
+        )
+        #expect(roleItem.id == "role_ask")
+        #expect(roleItem.trigger == "ask")
+
+        let skillItem = AISlashCommandItem(
+            trigger: skill.trigger,
+            title: skill.name,
+            subtitle: skill.description,
+            icon: "bolt.fill",
+            colorHex: "#34D399",
+            kind: .skill(skill)
+        )
+        #expect(skillItem.id == "skill_write-swift")
+        #expect(skillItem.trigger == "write-swift")
+
+        // AIBuiltInSkillConfig serialization with local skills
+        var config = AIBuiltInSkillConfig()
+        #expect(config.enableLocalSkills == true)
+        #expect(config.customSkillDirectories.isEmpty)
+
+        config.customSkillDirectories = ["/custom/path/skills"]
+        let configData = try encoder.encode(config)
+        let decodedConfig = try JSONDecoder().decode(AIBuiltInSkillConfig.self, from: configData)
+        #expect(decodedConfig.enableLocalSkills == true)
+        #expect(decodedConfig.customSkillDirectories == ["/custom/path/skills"])
+    }
+
+    @Test("LocalSkillDiscoveryService parses frontmatter and fallback markdown")
+    func testLocalSkillDiscoveryServiceParsing() {
+        let service = LocalSkillDiscoveryService.shared
+
+        // 1. With frontmatter
+        let markdownWithFrontmatter = """
+        ---
+        name: "swift-pro"
+        description: "Guidelines for writing robust SwiftUI and Swift code."
+        tags: [swift, swiftui]
+        ---
+
+        # Swift Pro Instructions
+        Follow strict Apple HIG.
+        """
+        let parsed = service.parseSkill(
+            content: markdownWithFrontmatter,
+            folderName: "swift-pro-folder",
+            folderPath: "/path/to/swift-pro",
+            source: .optimus
+        )
+        #expect(parsed != nil)
+        #expect(parsed?.id == "swift-pro-folder")
+        #expect(parsed?.name == "swift-pro")
+        #expect(parsed?.description == "Guidelines for writing robust SwiftUI and Swift code.")
+        #expect(parsed?.trigger == "swift-pro")
+        #expect(parsed?.promptTemplate.contains("Follow strict Apple HIG.") == true)
+        #expect(parsed?.source == .optimus)
+
+        // 2. Without frontmatter (header fallback)
+        let markdownWithoutFrontmatter = """
+        # Animation Craft
+
+        Detailed rules for 120fps motion design.
+        """
+        let parsedFallback = service.parseSkill(
+            content: markdownWithoutFrontmatter,
+            folderName: "animate",
+            folderPath: "/path/to/animate",
+            source: .claude
+        )
+        #expect(parsedFallback != nil)
+        #expect(parsedFallback?.id == "animate")
+        #expect(parsedFallback?.name == "animate")
+        #expect(parsedFallback?.description == "Animation Craft")
+        #expect(parsedFallback?.trigger == "animate")
+        #expect(parsedFallback?.promptTemplate.contains("Detailed rules for 120fps motion design.") == true)
+        #expect(parsedFallback?.source == .claude)
+    }
+
+    @Test("LocalSkillDiscoveryService scans custom directory and finds skills")
+    func testLocalSkillDiscoveryScanning() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_skills_test_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        // Subfolder 1 with SKILL.md
+        let skillFolder1 = tmpDir.appendingPathComponent("code-reviewer")
+        try FileManager.default.createDirectory(at: skillFolder1, withIntermediateDirectories: true)
+        let skillFile1 = skillFolder1.appendingPathComponent("SKILL.md")
+        let content1 = """
+        ---
+        name: code-reviewer
+        description: Senior code reviewer posture.
+        ---
+        Check all diffs thoroughly.
+        """
+        try content1.write(to: skillFile1, atomically: true, encoding: .utf8)
+
+        // Subfolder 2 with skill.md
+        let skillFolder2 = tmpDir.appendingPathComponent("api-architect")
+        try FileManager.default.createDirectory(at: skillFolder2, withIntermediateDirectories: true)
+        let skillFile2 = skillFolder2.appendingPathComponent("skill.md")
+        let content2 = """
+        ---
+        name: api-architect
+        description: REST and gRPC API designer.
+        ---
+        Design decoupled endpoints.
+        """
+        try content2.write(to: skillFile2, atomically: true, encoding: .utf8)
+
+        let service = LocalSkillDiscoveryService.shared
+        let config = AIBuiltInSkillConfig(
+            enableLocalSkills: true,
+            customSkillDirectories: [tmpDir.path]
+        )
+
+        let scanned = service.scanSkills(config: config)
+        #expect(scanned.contains(where: { $0.id == "code-reviewer" }))
+        #expect(scanned.contains(where: { $0.id == "api-architect" }))
+        #expect(service.discoveredSkills.contains(where: { $0.id == "code-reviewer" }))
+
+        // When disabled
+        let disabledConfig = AIBuiltInSkillConfig(
+            enableLocalSkills: false,
+            customSkillDirectories: [tmpDir.path]
+        )
+        let emptyScanned = service.scanSkills(config: disabledConfig)
+        #expect(emptyScanned.isEmpty)
+        #expect(service.discoveredSkills.isEmpty)
+    }
+
+    @Test("AIAssistantService extracts slash skill command and enriches prompt")
+    func testAIAssistantServiceSkillExtractionAndEnrichment() {
+        let sampleSkill = AILocalSkill(
+            id: "write-swift",
+            name: "write-swift",
+            description: "Swift 6 programming rules.",
+            trigger: "write-swift",
+            directoryPath: "/skills/write-swift",
+            promptTemplate: "Always use async/await and structured concurrency.",
+            isEnabled: true,
+            source: .optimus
+        )
+
+        // 1. extractSlashSkillCommand helper
+        let (extracted, stripped) = AIAssistantService.extractSlashSkillCommand(
+            from: "/write-swift Create an actor",
+            availableSkills: [sampleSkill]
+        )
+        #expect(extracted?.id == "write-swift")
+        #expect(stripped == "Create an actor")
+
+        let (noSkill, originalPrompt) = AIAssistantService.extractSlashSkillCommand(
+            from: "/unknown Command text",
+            availableSkills: [sampleSkill]
+        )
+        #expect(noSkill == nil)
+        #expect(originalPrompt == "/unknown Command text")
+
+        // 2. enrichPromptWithLocalSkills with activeSkill
+        let config = AIBuiltInSkillConfig(enableLocalSkills: true)
+        let (enrichedWithActive, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "Write a function",
+            skills: config,
+            activeSkill: sampleSkill
+        )
+        #expect(enrichedWithActive.contains("[Local Skill: write-swift]"))
+        #expect(enrichedWithActive.contains("Always use async/await and structured concurrency."))
+        #expect(enrichedWithActive.contains("[End of Skill: write-swift]"))
+        #expect(enrichedWithActive.contains("Write a function"))
+
+        // 2b. enrichPromptWithLocalSkills with empty prompt and activeSkill
+        let (enrichedEmptyPrompt, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "",
+            skills: config,
+            activeSkill: sampleSkill
+        )
+        #expect(enrichedEmptyPrompt.contains("[Local Skill: write-swift]"))
+        #expect(enrichedEmptyPrompt.contains("Always use async/await and structured concurrency."))
+        #expect(enrichedEmptyPrompt.contains("[End of Skill: write-swift]"))
+        #expect(enrichedEmptyPrompt.contains("User: Please execute the skill above and generate the result."))
+
+        // 2c. enrichPromptWithLocalSkills with slash command only
+        let (enrichedSlashOnly, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "/write-swift",
+            skills: config,
+            availableSkills: [sampleSkill]
+        )
+        #expect(enrichedSlashOnly.contains("[Local Skill: write-swift]"))
+        #expect(enrichedSlashOnly.contains("User: Please execute the skill above and generate the result."))
+
+        // 3. enrichPromptWithLocalSkills with slash command in prompt
+        let (enrichedFromSlash, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "/write-swift Implement a pipeline",
+            skills: config,
+            availableSkills: [sampleSkill]
+        )
+        #expect(enrichedFromSlash.contains("[Local Skill: write-swift]"))
+        #expect(enrichedFromSlash.contains("[End of Skill: write-swift]"))
+        #expect(enrichedFromSlash.contains("Implement a pipeline"))
+        // The invocation token is consumed, not echoed — the remaining
+        // occurrences are the skill directory we hand the agent.
+        #expect(!enrichedFromSlash.contains("/write-swift Implement a pipeline"))
+
+        // 4. enrichPromptWithLocalSkills disabled
+        let disabledConfig = AIBuiltInSkillConfig(enableLocalSkills: false)
+        let (untouched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "/write-swift Implement a pipeline",
+            skills: disabledConfig,
+            availableSkills: [sampleSkill]
+        )
+        #expect(untouched == "/write-swift Implement a pipeline")
+        #expect(!untouched.contains("[Local Skill: write-swift]"))
+    }
+
+    @Test("AIAssistantPluginState slash command autocomplete, filtering, selection, and keyboard navigation")
+    func testSlashCommandAutocompleteAndNavigation() {
+        let isolated = UserDefaults(suiteName: "test_ai_slash_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_slash_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_slash_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_slash_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_slash_test", customStorage: fileStorage)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        let sampleSkill = AILocalSkill(
+            id: "write-swift",
+            name: "write-swift",
+            description: "Expert guidelines for Swift 6.",
+            trigger: "write-swift",
+            directoryPath: "/skills/write-swift",
+            promptTemplate: "Follow Sendable rules.",
+            isEnabled: true,
+            source: .optimus
+        )
+        state.localSkills = [sampleSkill]
+
+        // 1. Initial candidates
+        #expect(!state.allSlashCommands.isEmpty)
+        #expect(state.allSlashCommands.contains(where: { $0.trigger == "write-swift" }))
+        #expect(state.allSlashCommands.contains(where: { $0.trigger == "translate" }))
+
+        // 2. checkSlashTrigger: start of text
+        state.checkSlashTrigger(in: "/", cursorLocation: 1)
+        #expect(state.isSlashMenuVisible == true)
+        #expect(state.slashQuery == "")
+
+        // Filter prefix
+        state.checkSlashTrigger(in: "/wr", cursorLocation: 3)
+        #expect(state.isSlashMenuVisible == true)
+        #expect(state.slashQuery == "wr")
+        let filteredWr = state.filteredSlashCommands
+        #expect(filteredWr.contains(where: { $0.trigger == "write-swift" }))
+        #expect(!filteredWr.contains(where: { $0.trigger == "translate" }))
+
+        // 3. checkSlashTrigger: after whitespace
+        state.checkSlashTrigger(in: "Please help /tra", cursorLocation: 16)
+        #expect(state.isSlashMenuVisible == true)
+        #expect(state.slashQuery == "tra")
+        let filteredTra = state.filteredSlashCommands
+        #expect(filteredTra.contains(where: { $0.trigger == "translate" }))
+        #expect(!filteredTra.contains(where: { $0.trigger == "write-swift" }))
+
+        // Fuzzy match on trigger
+        state.checkSlashTrigger(in: "/wsw", cursorLocation: 4)
+        #expect(state.isSlashMenuVisible == true)
+        #expect(state.filteredSlashCommands.contains(where: { $0.trigger == "write-swift" }))
+
+        // 4. checkSlashTrigger: without whitespace (should NOT trigger)
+        state.checkSlashTrigger(in: "http://example.com", cursorLocation: 7)
+        #expect(state.isSlashMenuVisible == false)
+
+        // 5. checkSlashTrigger: after space dismisses
+        state.checkSlashTrigger(in: "/wr ", cursorLocation: 4)
+        #expect(state.isSlashMenuVisible == false)
+
+        // 6. Navigation and Dismiss
+        state.checkSlashTrigger(in: "/", cursorLocation: 1)
+        #expect(state.isSlashMenuVisible == true)
+        state.selectedSlashIndex = 0
+        state.moveSlashSelection(delta: 1)
+        #expect(state.selectedSlashIndex == 1)
+        state.moveSlashSelection(delta: -1)
+        #expect(state.selectedSlashIndex == 0)
+        state.moveSlashSelection(delta: -1)
+        #expect(state.selectedSlashIndex == state.filteredSlashCommands.count - 1)
+
+        state.dismissSlashMenu()
+        #expect(state.isSlashMenuVisible == false)
+        #expect(state.slashQuery == "")
+        #expect(state.selectedSlashIndex == 0)
+
+        // 7. Select Role candidate
+        state.currentInputText = "/trans"
+        state.checkSlashTrigger(in: state.currentInputText, cursorLocation: state.currentInputText.count)
+        guard let translateItem = state.filteredSlashCommands.first(where: { $0.trigger == "translate" }) else {
+            Issue.record("Expected translate command item")
+            return
+        }
+        state.selectSlashCommand(translateItem)
+        #expect(state.isSlashMenuVisible == false)
+        #expect(state.selectedRoleId == "translate")
+        #expect(state.currentInputText == "")
+
+        // 8. Select Skill candidate
+        state.currentInputText = "Analyze this /wr"
+        state.checkSlashTrigger(in: state.currentInputText, cursorLocation: state.currentInputText.count)
+        guard let skillItem = state.filteredSlashCommands.first(where: { $0.trigger == "write-swift" }) else {
+            Issue.record("Expected write-swift skill item")
+            return
+        }
+        state.selectSlashCommand(skillItem)
+        #expect(state.isSlashMenuVisible == false)
+        #expect(state.activeSkill?.id == "write-swift")
+        #expect(state.currentInputText == "Analyze this ")
+
+        // 9. Prompt dispatch with activeSkill resets activeSkill
+        state.sendPrompt("Test prompt")
+        #expect(state.activeSkill == nil)
+
+        // 10. Empty prompt dispatch with activeSkill records trigger in user message and originalSelection
+        state.activeSkill = sampleSkill
+        state.currentInputText = ""
+        state.sendPrompt("", originalSelection: state.activeSkill.map { "/\($0.trigger)" })
+        #expect(state.activeSkill == nil)
+        let lastUserMsg = state.activeSession?.messages.last(where: { $0.role == .user })
+        #expect(lastUserMsg?.content == "/write-swift")
+        #expect(lastUserMsg?.originalSelection == "/write-swift")
+    }
+
+    @Test("AIAssistantPluginState local skills management: rescan, toggle, add/remove directory")
+    func testAIAssistantPluginStateLocalSkillsManagement() throws {
+        let state = AIAssistantPluginState(storage: ScopedPluginStorage(pluginId: "purah.plugin.test.ai.skills"))
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("PurahStateSkillsTest_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let skillDir = tmpDir.appendingPathComponent("code-helper")
+        try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
+        let skillFile = skillDir.appendingPathComponent("SKILL.md")
+        let content = """
+        ---
+        name: "code-helper"
+        description: "Assists with coding workflows."
+        ---
+        Always follow clean architecture principles.
+        """
+        try content.write(to: skillFile, atomically: true, encoding: .utf8)
+
+        // 1. Add custom directory
+        state.addCustomSkillDirectory(tmpDir.path)
+        #expect(state.skillConfig.customSkillDirectories.contains(tmpDir.path))
+        #expect(state.localSkills.contains(where: { $0.id == "code-helper" }))
+        #expect(state.localSkills.first(where: { $0.id == "code-helper" })?.isEnabled == true)
+
+        // 2. Toggle skill disabled
+        state.toggleSkillEnabled(id: "code-helper")
+        #expect(state.skillConfig.disabledSkillIds.contains("code-helper"))
+        #expect(state.localSkills.first(where: { $0.id == "code-helper" })?.isEnabled == false)
+        #expect(!state.allSlashCommands.contains(where: { $0.trigger == "code-helper" }))
+
+        // 3. Toggle skill re-enabled
+        state.toggleSkillEnabled(id: "code-helper")
+        #expect(!state.skillConfig.disabledSkillIds.contains("code-helper"))
+        #expect(state.localSkills.first(where: { $0.id == "code-helper" })?.isEnabled == true)
+        #expect(state.allSlashCommands.contains(where: { $0.trigger == "code-helper" }))
+
+        // 4. Add second skill and rescan
+        let secondDir = tmpDir.appendingPathComponent("test-helper")
+        try FileManager.default.createDirectory(at: secondDir, withIntermediateDirectories: true)
+        let secondFile = secondDir.appendingPathComponent("SKILL.md")
+        let secondContent = """
+        ---
+        name: "test-helper"
+        description: "Generates unit tests."
+        ---
+        Always write comprehensive tests.
+        """
+        try secondContent.write(to: secondFile, atomically: true, encoding: .utf8)
+
+        state.rescanLocalSkills()
+        #expect(state.localSkills.contains(where: { $0.id == "test-helper" }))
+
+        // 5. Remove custom directory
+        state.removeCustomSkillDirectory(tmpDir.path)
+        #expect(!state.skillConfig.customSkillDirectories.contains(tmpDir.path))
+        #expect(!state.localSkills.contains(where: { $0.id == "code-helper" }))
+        #expect(!state.localSkills.contains(where: { $0.id == "test-helper" }))
+    }
+
+    @Test("AICLIExecutable.pi resolution and argument formatting")
+    func testPiCLIExecutableAndArguments() {
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "Fix the bug"
+        )
+        #expect(args.contains("-p"))
+        #expect(args.contains("-nt"))
+        #expect(args.contains("Fix the bug"))
+
+        // Custom template with pi path ensures -p and -nt are present
+        let customArgs = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/pi",
+            customCLIArguments: "--thinking high {prompt}",
+            promptText: "Explain code"
+        )
+        #expect(customArgs.contains("-p"))
+        #expect(customArgs.contains("-nt"))
+        #expect(customArgs.contains("--thinking"))
+        #expect(customArgs.contains("Explain code"))
+
+        // Custom template with explicit --tools flag should NOT have -nt injected
+        let customToolsArgs = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/pi",
+            customCLIArguments: "--tools read,edit {prompt}",
+            promptText: "Explain code"
+        )
+        #expect(customToolsArgs.contains("-p"))
+        #expect(!customToolsArgs.contains("-nt"))
+        #expect(customToolsArgs.contains("--tools"))
+    }
+
+    // MARK: - Local Skill Delivery
+
+    @Test("A local agent CLI is told to invoke the skill, not re-fed its body")
+    func testNativeSkillDelivery() {
+        let skill = AILocalSkill(
+            id: "write-swift",
+            name: "write-swift",
+            description: "Swift 6 rules.",
+            trigger: "write-swift",
+            directoryPath: "/skills/write-swift",
+            promptTemplate: "# Write Swift\nAlways use structured concurrency.",
+            source: .claude
+        )
+        let config = AIBuiltInSkillConfig(enableLocalSkills: true)
+
+        let (native, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "Create an actor",
+            skills: config,
+            activeSkill: skill,
+            skillDelivery: .nativeCommand
+        )
+        #expect(native.contains("[Skill Invocation]"))
+        #expect(native.contains("`write-swift`"))
+        #expect(native.contains("/skills/write-swift"))
+        // The body belongs to the CLI's own copy of the skill; repeating it here
+        // would load the same instructions twice.
+        #expect(!native.contains("Always use structured concurrency."))
+        #expect(native.contains("Create an actor"))
+
+        let (inline, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "Create an actor",
+            skills: config,
+            activeSkill: skill,
+            skillDelivery: .inlineBody
+        )
+        #expect(inline.contains("[Local Skill: write-swift]"))
+        #expect(inline.contains("Always use structured concurrency."))
+        #expect(inline.contains("Skill directory: /skills/write-swift"))
+    }
+
+    @Test("Only a local CLI gets native skill delivery")
+    func testSkillDeliveryPerProvider() {
+        #expect(AIAssistantService.skillDelivery(for: .localCLI) == .nativeCommand)
+        for provider in [AIProviderKind.appleIntelligence, .httpOpenAI, .httpAnthropic, .httpOllama] {
+            #expect(AIAssistantService.skillDelivery(for: provider) == .inlineBody,
+                    "\(provider.displayName) has no skill system to defer to")
+        }
+    }
+
+    @Test("A skill body is capped so it cannot evict the conversation")
+    func testSkillBodyCap() {
+        let huge = String(repeating: "x", count: AIAttachmentBudget.maxSkillBodyChars + 500)
+        let skill = AILocalSkill(
+            id: "huge",
+            name: "huge",
+            description: "Big.",
+            trigger: "huge",
+            directoryPath: "/skills/huge",
+            promptTemplate: huge,
+            source: .custom
+        )
+        let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "go",
+            skills: AIBuiltInSkillConfig(enableLocalSkills: true),
+            activeSkill: skill
+        )
+        #expect(enriched.contains("[Skill instructions truncated at \(AIAttachmentBudget.maxSkillBodyChars) characters]"))
+        #expect(enriched.count < huge.count,
+                "Truncation must actually shorten the prompt")
+    }
+
+    @Test("Inlined skills name their companion files and directory")
+    func testSkillBundledResources() {
+        let skill = AILocalSkill(
+            id: "review-animations",
+            name: "review-animations",
+            description: "Motion review.",
+            trigger: "review-animations",
+            directoryPath: "/skills/review-animations",
+            promptTemplate: "See STANDARDS.md before answering.",
+            source: .claude,
+            bundledResourceNames: ["STANDARDS.md", "SKILL.md"]
+        )
+        let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "review this",
+            skills: AIBuiltInSkillConfig(enableLocalSkills: true),
+            activeSkill: skill
+        )
+        #expect(enriched.contains("Bundled files in that directory: STANDARDS.md, SKILL.md"))
+    }
+
+    @Test("Skill directories reach the CLI as --add-dir, and only there")
+    func testSkillDirectoryArguments() {
+        let claudeArgs = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/Users/x/.local/bin/claude",
+            promptText: "run it",
+            additionalDirectories: ["/skills/write-swift"]
+        )
+        #expect(claudeArgs.contains("--add-dir"))
+        #expect(claudeArgs.contains("/skills/write-swift"))
+
+        // Codex's --add-dir means writable; reading is already permitted by its
+        // sandbox, so it is deliberately not passed.
+        let codexArgs = AIAssistantService.resolveCLIArguments(
+            executable: .codex,
+            cliPath: "/opt/homebrew/bin/codex",
+            promptText: "run it",
+            additionalDirectories: ["/skills/write-swift"]
+        )
+        #expect(!codexArgs.contains("--add-dir"))
+
+        let noSkillClaude = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/Users/x/.local/bin/claude",
+            promptText: "run it"
+        )
+        #expect(!noSkillClaude.contains("--add-dir"))
+    }
+
+    @Test("MCP servers become a --mcp-config the run actually reads")
+    func testMCPConfigRouting() throws {
+        let noServers = AIAssistantService.mcpConfigPath(servers: [])
+        #expect(noServers == nil, "No servers, no flag to add")
+
+        let disabled = AIMCPServerConfig(name: "disabled", command: "npx", isEnabled: false)
+        #expect(AIAssistantService.mcpConfigPath(servers: [disabled]) == nil)
+
+        let servers = [
+            AIMCPServerConfig(name: "fs", command: "npx", arguments: "-y server-fs /tmp"),
+            AIMCPServerConfig(name: "off", command: "npx", isEnabled: false)
+        ]
+        let path = try #require(AIAssistantService.mcpConfigPath(servers: servers))
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let list = try #require(json["mcpServers"] as? [String: Any])
+        #expect(list["fs"] != nil)
+        #expect(list["off"] == nil, "Disabled servers must not be launched")
+        let entry = try #require(list["fs"] as? [String: Any])
+        #expect(entry["command"] as? String == "npx")
+        #expect((entry["args"] as? [String]) == ["-y", "server-fs", "/tmp"])
+
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/Users/x/.local/bin/claude",
+            promptText: "go",
+            mcpConfigPath: path
+        )
+        #expect(args.contains("--mcp-config"))
+        #expect(args.contains(path))
+    }
+
+    @Test("Invoking a skill turns pi's tools back on")
+    func testPiToolsStayOffWithoutSkills() {
+        let bare = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "hello"
+        )
+        #expect(bare.contains("-nt"), "A chat prompt should not reach for the shell")
+
+        let withSkill = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "hello",
+            additionalDirectories: ["/skills/write-swift"]
+        )
+        #expect(!withSkill.contains("-nt"),
+                "A skill is only useful when the agent can act on it")
+    }
+
+    @Test("Skill directories are resolved from the active or slash-invoked skill")
+    func testSkillDirectoryResolution() {
+        let skill = AILocalSkill(
+            id: "write-swift",
+            name: "write-swift",
+            description: "d",
+            trigger: "write-swift",
+            directoryPath: "/skills/write-swift",
+            promptTemplate: "body",
+            source: .claude
+        )
+        #expect(AIAssistantService.skillDirectories(
+            activeSkill: skill, prompt: "", availableSkills: []
+        ) == ["/skills/write-swift"])
+
+        #expect(AIAssistantService.skillDirectories(
+            activeSkill: nil, prompt: "/write-swift do it", availableSkills: [skill]
+        ) == ["/skills/write-swift"])
+
+        #expect(AIAssistantService.skillDirectories(
+            activeSkill: nil, prompt: "plain question", availableSkills: [skill]
+        ).isEmpty)
+    }
+
+    @MainActor
+    @Test("Session switching and creation resets isEditingSource")
+    func testSessionSwitchingResetsIsEditingSource() {
+        let storage = ScopedPluginStorage(pluginId: "test_ai_session_reset_\(UUID().uuidString)")
+        let state = AIAssistantPluginState(storage: storage)
+        state.createNewSession()
+        let session1Id = state.activeSessionId
+
+        state.createNewSession()
+
+        // Set isEditingSource to true
+        state.isEditingSource = true
+        #expect(state.isEditingSource)
+
+        // Switch to session 1
+        state.switchSession(to: session1Id)
+        #expect(state.activeSessionId == session1Id)
+        #expect(!state.isEditingSource)
+
+        // Set isEditingSource to true again and create new session
+        state.isEditingSource = true
+        state.createNewSession()
+        #expect(!state.isEditingSource)
+    }
+
+    @Test("AIAssistantService executeCLIProcess handles task cancellation")
+    func testCLIProcessCancellation() async {
+        let task = Task {
+            try await AIAssistantService.shared.streamChat(
+                messages: [AIChatMessage(role: .user, content: "10")],
+                provider: .localCLI,
+                cliExecutable: .custom,
+                customCLIPath: "/bin/sleep",
+                customCLIArguments: "{prompt}",
+                onChunk: { _ in }
+            )
+        }
+
+        try? await Task.sleep(nanoseconds: 80_000_000) // 80ms
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            #expect(Bool(false), "Task should have been cancelled or failed")
+        } catch {
+            #expect(error is CancellationError || Task.isCancelled)
         }
     }
 }

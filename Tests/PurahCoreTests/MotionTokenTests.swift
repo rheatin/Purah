@@ -47,6 +47,7 @@ struct MotionTokenTests {
             ("surfaceSoft", PurahMotionPolicy.surfaceSoft, 0.25, 0.82),
             ("micro", PurahMotionPolicy.micro, 0.22, 0.82),
             ("microLight", PurahMotionPolicy.microLight, 0.24, 0.85),
+            ("menuCommit", PurahMotionPolicy.menuCommit, 0.22, 0.85),
             ("pin", PurahMotionPolicy.pin, 0.28, 0.65),
             ("buttonPop", PurahMotionPolicy.buttonPop, 0.26, 0.55),
             ("confirm", PurahMotionPolicy.confirm, 0.20, 0.80),

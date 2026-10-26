@@ -10,6 +10,7 @@ public enum AIProviderKind: String, Codable, CaseIterable, Sendable, Identifiabl
     case httpOllama = "http_ollama"
 
     public var id: String { rawValue }
+    public var title: String { displayName }
 
     public var displayName: String {
         switch self {
@@ -45,6 +46,7 @@ public enum AIProviderKind: String, Codable, CaseIterable, Sendable, Identifiabl
 // MARK: - CLI Executable
 public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiable {
     case claude = "claude"
+    case pi = "pi"
     case codex = "codex"
     case ollama = "ollama"
     case custom = "custom"
@@ -55,6 +57,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     public var displayName: String {
         switch self {
         case .claude: return "Claude CLI"
+        case .pi: return "Pi (AI Agent)"
         case .codex: return "Codex CLI"
         case .ollama: return "Ollama CLI"
         case .custom: return "Custom CLI"
@@ -64,6 +67,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     public var defaultSubcommand: [String] {
         switch self {
         case .claude: return ["-p"]
+        case .pi: return ["-p"]
         case .codex: return ["exec"]
         case .ollama: return ["run", "llama3.2"]
         case .custom: return ["{prompt}"]
@@ -446,6 +450,23 @@ public enum AIAttachmentBudget {
     public static let maxAttachments: Int = 6
     public static let maxTotalBytes: Int = 10 * 1_048_576 // 10 MB
     public static let maxTextSnippetChars: Int = 24_000
+    /// A SKILL.md body is inlined into the prompt, so it competes with history
+    /// for the context window. Real skills run from ~8 KB to over 40 KB; the
+    /// cap keeps a large one from evicting the conversation it was invoked in.
+    public static let maxSkillBodyChars: Int = 32_000
+}
+
+// MARK: - Skill Delivery
+
+/// How a resolved skill reaches the model.
+public enum AISkillDelivery: Sendable, Equatable {
+    /// Write the instructions into the prompt. Correct for providers that have
+    /// no skill system of their own (HTTP APIs, Apple Intelligence).
+    case inlineBody
+    /// Name the skill and let the agent CLI resolve it. Correct for local CLI
+    /// providers, which already scan `~/.claude/skills` and friends; their copy
+    /// carries the tool grants, and ours would not.
+    case nativeCommand
 }
 
 // MARK: - Persistable Protocol
@@ -476,6 +497,10 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     public var systemPromptOverride: String?
     public var roleTitle: String?
     public var roleId: String?
+    /// `/trigger` plus the skill's instructions, recorded when the send was
+    /// driven by a skill rather than by typed text. Without it a skill-only
+    /// message is an empty bubble whose meaning is unrecoverable.
+    public var skillInvocation: String?
 
     public init(
         id: UUID = UUID(),
@@ -489,7 +514,8 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         originalSelection: String? = nil,
         systemPromptOverride: String? = nil,
         roleTitle: String? = nil,
-        roleId: String? = nil
+        roleId: String? = nil,
+        skillInvocation: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -503,6 +529,31 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         self.systemPromptOverride = systemPromptOverride
         self.roleTitle = roleTitle
         self.roleId = roleId
+        self.skillInvocation = skillInvocation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, role, content, reasoningContent, choices, attachments
+        case timestamp, quickAction, originalSelection, systemPromptOverride
+        case roleTitle, roleId, skillInvocation
+    }
+
+    /// Tolerant decode so sessions written before skills existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.role = try container.decode(Role.self, forKey: .role)
+        self.content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        self.reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent)
+        self.choices = try container.decodeIfPresent([String].self, forKey: .choices) ?? []
+        self.attachments = try container.decodeIfPresent([AIAttachmentItem].self, forKey: .attachments) ?? []
+        self.timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? Date()
+        self.quickAction = try container.decodeIfPresent(AIQuickActionType.self, forKey: .quickAction)
+        self.originalSelection = try container.decodeIfPresent(String.self, forKey: .originalSelection)
+        self.systemPromptOverride = try container.decodeIfPresent(String.self, forKey: .systemPromptOverride)
+        self.roleTitle = try container.decodeIfPresent(String.self, forKey: .roleTitle)
+        self.roleId = try container.decodeIfPresent(String.self, forKey: .roleId)
+        self.skillInvocation = try container.decodeIfPresent(String.self, forKey: .skillInvocation)
     }
 }
 
@@ -723,16 +774,203 @@ public struct AIMCPServerConfig: Identifiable, Codable, Equatable, Sendable {
 public struct AIBuiltInSkillConfig: Codable, Equatable, Sendable {
     public var enableFileReadSkill: Bool
     public var enableDirectoryListSkill: Bool
+    /// Retained for configuration compatibility only.
+    ///
+    /// The settings toggle that drove this was removed: no code path ever read
+    /// the flag, so the switch promised clipboard and shell context that was
+    /// never collected. Shipping it as a real feature would mean quietly
+    /// putting clipboard contents — passwords included — into prompts by
+    /// default, which is not a decision a dead default should make.
     public var enableShellSnippetSkill: Bool
+    public var enableLocalSkills: Bool
+    public var customSkillDirectories: [String]
+    public var disabledSkillIds: [String]
 
     public init(
         enableFileReadSkill: Bool = true,
         enableDirectoryListSkill: Bool = true,
-        enableShellSnippetSkill: Bool = true
+        enableShellSnippetSkill: Bool = true,
+        enableLocalSkills: Bool = true,
+        customSkillDirectories: [String] = [],
+        disabledSkillIds: [String] = []
     ) {
         self.enableFileReadSkill = enableFileReadSkill
         self.enableDirectoryListSkill = enableDirectoryListSkill
         self.enableShellSnippetSkill = enableShellSnippetSkill
+        self.enableLocalSkills = enableLocalSkills
+        self.customSkillDirectories = customSkillDirectories
+        self.disabledSkillIds = disabledSkillIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case enableFileReadSkill
+        case enableDirectoryListSkill
+        case enableShellSnippetSkill
+        case enableLocalSkills
+        case customSkillDirectories
+        case disabledSkillIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enableFileReadSkill = try container.decodeIfPresent(Bool.self, forKey: .enableFileReadSkill) ?? true
+        self.enableDirectoryListSkill = try container.decodeIfPresent(Bool.self, forKey: .enableDirectoryListSkill) ?? true
+        self.enableShellSnippetSkill = try container.decodeIfPresent(Bool.self, forKey: .enableShellSnippetSkill) ?? true
+        self.enableLocalSkills = try container.decodeIfPresent(Bool.self, forKey: .enableLocalSkills) ?? true
+        self.customSkillDirectories = try container.decodeIfPresent([String].self, forKey: .customSkillDirectories) ?? []
+        self.disabledSkillIds = try container.decodeIfPresent([String].self, forKey: .disabledSkillIds) ?? []
+    }
+}
+
+// MARK: - Tool Permission Requests
+
+/// A permission gate the agent CLI itself raised mid-run.
+///
+/// The agent decides when it needs permission; Purah's job is to ask the
+/// person instead of answering for them. One request is outstanding at a time
+/// because the hook that produces it is blocking the tool call until we reply.
+public struct PendingToolPermissionRequest: Identifiable, Equatable, Sendable {
+    public let id: String
+    /// Tool the agent wants to use (`Bash`, `Read`, `Edit`, …).
+    public let toolName: String
+    /// The tool's own arguments, formatted for a one-line glance.
+    public let commandPreview: String
+    /// Extra context worth showing before the user decides, when the CLI
+    /// supplied any (a file path, a reason, the working directory).
+    public let context: String?
+    /// Serialized `permission_suggestions`. Echoing them back on "always
+    /// allow" is what actually persists the decision for the session — the
+    /// button means nothing without it.
+    public let suggestionPayload: Data?
+    public let suggestionsDescription: String?
+
+    public init(
+        id: String = UUID().uuidString,
+        toolName: String,
+        commandPreview: String,
+        context: String? = nil,
+        suggestionPayload: Data? = nil,
+        suggestionsDescription: String? = nil
+    ) {
+        self.id = id
+        self.toolName = toolName
+        self.commandPreview = commandPreview
+        self.context = context
+        self.suggestionPayload = suggestionPayload
+        self.suggestionsDescription = suggestionsDescription
+    }
+}
+
+// MARK: - Local Skills
+public enum AILocalSkillSource: String, Codable, Sendable, CaseIterable {
+    case optimus = "optimus"
+    case claude = "claude"
+    case purah = "purah"
+    case custom = "custom"
+
+    public var displayName: String {
+        switch self {
+        case .optimus: return "Optimus"
+        case .claude: return "Claude"
+        case .purah: return "Purah"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+public struct AILocalSkill: Identifiable, Codable, Equatable, Sendable {
+    public var id: String             // Directory name or skill identifier (e.g. "write-swift")
+    public var name: String           // Display name (e.g. "write-swift")
+    public var description: String    // One-sentence summary from frontmatter or first paragraph
+    public var trigger: String        // Slash trigger without prefix (e.g. "write-swift")
+    public var directoryPath: String   // Path to skill directory
+    public var promptTemplate: String // Body text / instructions from SKILL.md
+    public var isEnabled: Bool
+    public var source: AILocalSkillSource // .optimus, .claude, .purah, .custom
+    /// Files shipped alongside `SKILL.md` in the same directory (relative names).
+    /// Skills routinely split their instructions across companions
+    /// (`STANDARDS.md`, `CATALOG.md`, a script) and expect the reader to open
+    /// them, so the prompt has to name them even when only the body is inlined.
+    public var bundledResourceNames: [String]
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        trigger: String,
+        directoryPath: String,
+        promptTemplate: String,
+        isEnabled: Bool = true,
+        source: AILocalSkillSource,
+        bundledResourceNames: [String] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.trigger = trigger
+        self.directoryPath = directoryPath
+        self.promptTemplate = promptTemplate
+        self.isEnabled = isEnabled
+        self.source = source
+        self.bundledResourceNames = bundledResourceNames
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description, trigger, directoryPath
+        case promptTemplate, isEnabled, source, bundledResourceNames
+    }
+
+    /// Tolerant decode: a skill persisted before companion files were tracked
+    /// has no `bundledResourceNames`, and that must not fail the whole scan.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        self.trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? id
+        self.directoryPath = try container.decodeIfPresent(String.self, forKey: .directoryPath) ?? ""
+        self.promptTemplate = try container.decodeIfPresent(String.self, forKey: .promptTemplate) ?? ""
+        self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        self.source = try container.decodeIfPresent(AILocalSkillSource.self, forKey: .source) ?? .custom
+        self.bundledResourceNames = try container.decodeIfPresent([String].self, forKey: .bundledResourceNames) ?? []
+    }
+}
+
+// MARK: - Slash Command Item
+public struct AISlashCommandItem: Identifiable, Equatable, Sendable {
+    public enum Kind: Sendable, Equatable {
+        case role(AIRolePreset)
+        case skill(AILocalSkill)
+    }
+
+    public var id: String {
+        switch kind {
+        case .role(let role): return "role_\(role.id)"
+        case .skill(let skill): return "skill_\(skill.id)"
+        }
+    }
+
+    public var trigger: String // e.g. "ask", "translate", "write-swift"
+    public var title: String
+    public var subtitle: String
+    public var icon: String
+    public var colorHex: String
+    public var kind: Kind
+
+    public init(
+        trigger: String,
+        title: String,
+        subtitle: String,
+        icon: String,
+        colorHex: String,
+        kind: Kind
+    ) {
+        self.trigger = trigger
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = icon
+        self.colorHex = colorHex
+        self.kind = kind
     }
 }
 

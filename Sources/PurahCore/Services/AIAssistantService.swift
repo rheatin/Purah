@@ -231,6 +231,7 @@ public final class AIAssistantService {
             "\(NSHomeDirectory())/.local/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
+            "\(NSHomeDirectory())/.npm-global/bin",
             "\(NSHomeDirectory())/.cargo/bin",
             "\(NSHomeDirectory())/.optimus/bin",
             "/usr/bin"
@@ -241,6 +242,17 @@ public final class AIAssistantService {
                 let path = (dir as NSString).appendingPathComponent(name)
                 if fm.isExecutableFile(atPath: path) {
                     return path
+                }
+            }
+        }
+        if executable == .pi {
+            let cellarPi = "/opt/homebrew/Cellar/pi"
+            if let versions = try? fm.contentsOfDirectory(atPath: cellarPi) {
+                for version in versions.sorted().reversed() {
+                    let binaryPath = "\(cellarPi)/\(version)/bin/pi"
+                    if fm.isExecutableFile(atPath: binaryPath) {
+                        return binaryPath
+                    }
                 }
             }
         }
@@ -396,6 +408,8 @@ public final class AIAssistantService {
         model: String? = nil,
         targetLanguage: String = "Auto (Chinese <-> English)",
         systemPromptOverride: String? = nil,
+        skillDirectories: [String] = [],
+        mcpConfigPath: String? = nil,
         onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
@@ -499,6 +513,8 @@ public final class AIAssistantService {
                     model: model,
                     targetLanguage: targetLanguage,
                     systemPromptOverride: systemPromptOverride,
+                    skillDirectories: skillDirectories,
+                    mcpConfigPath: mcpConfigPath,
                     onChunk: onChunk
                 )
             }
@@ -735,6 +751,8 @@ public final class AIAssistantService {
         model: String?,
         targetLanguage: String,
         systemPromptOverride: String?,
+        skillDirectories: [String] = [],
+        mcpConfigPath: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastMsg = messages.last
@@ -749,7 +767,10 @@ public final class AIAssistantService {
             cliPath: cliPath,
             customCLIArguments: customCLIArguments,
             promptText: promptText,
-            model: model
+            model: model,
+            additionalDirectories: skillDirectories,
+            permissionSettingsPath: Self.permissionSettingsPath(for: executable),
+            mcpConfigPath: mcpConfigPath
         )
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
@@ -769,11 +790,18 @@ public final class AIAssistantService {
         cliPath: String,
         customCLIArguments: String? = nil,
         promptText: String,
-        model: String? = nil
+        model: String? = nil,
+        additionalDirectories: [String] = [],
+        permissionSettingsPath: String? = nil,
+        mcpConfigPath: String? = nil
     ) -> [String] {
         var args: [String] = []
         let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasCustomTemplate = trimmedCustomArgs != nil && !trimmedCustomArgs!.isEmpty && trimmedCustomArgs != "{prompt}"
+        // A hand-written template means the user already decided how the CLI
+        // should be invoked; adding settings they did not ask for would be us
+        // overriding that.
+        let canRoutePermissions = !hasCustomTemplate
 
         if executable == .custom || hasCustomTemplate {
             let template = hasCustomTemplate ? trimmedCustomArgs! : "{prompt}"
@@ -781,6 +809,8 @@ public final class AIAssistantService {
         } else {
             switch executable {
             case .claude:
+                args = ["-p", promptText]
+            case .pi:
                 args = ["-p", promptText]
             case .codex:
                 args = ["exec", promptText]
@@ -793,6 +823,21 @@ public final class AIAssistantService {
         }
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
+        // `-nt` disables tools. It was there to keep a chat-shaped CLI from
+        // reaching for the shell on its own, but a skill is only worth
+        // invoking when the agent can act, so supplying a skill directory
+        // means the run is expected to have tools.
+        let wantsTools = !additionalDirectories.isEmpty
+        let isPi = executable == .pi || filename == "pi" || cliPath.contains("/pi/") || cliPath.hasSuffix("/pi")
+        if isPi {
+            if !wantsTools, !args.contains("-nt"), !args.contains("--no-tools"), !args.contains("--tools") {
+                args.insert("-nt", at: 0)
+            }
+            if !args.contains("-p") && !args.contains("--print") {
+                args.insert("-p", at: 0)
+            }
+        }
+
         let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
         if isOpenCodeFamily {
             if !hasCustomTemplate {
@@ -802,7 +847,122 @@ public final class AIAssistantService {
             }
         }
 
+        // Skill directories are read with no prompt in `claude` (its permission
+        // docs treat added directories like the working directory), which is
+        // exactly the access a skill's companion files need. Codex is
+        // deliberately not given the same flag: there `--add-dir` means
+        // *writable*, and reading is already allowed by its sandbox.
+        if executable == .claude, !additionalDirectories.isEmpty, !hasCustomTemplate {
+            args.insert(contentsOf: additionalDirectories.flatMap { ["--add-dir", $0] }, at: 0)
+        }
+
+        // Route the agent's own permission prompts to Purah. The CLI is put in
+        // `manual` so nothing is auto-approved on the user's behalf, and the
+        // hook in the settings file is what turns each gate into a banner.
+        if executable == .claude, canRoutePermissions, let permissionSettingsPath {
+            args.insert(contentsOf: ["--settings", permissionSettingsPath, "--permission-mode", "manual"], at: 0)
+        }
+
+        if executable == .claude, canRoutePermissions, let mcpConfigPath {
+            args.insert(contentsOf: ["--mcp-config", mcpConfigPath], at: 0)
+        }
+
         return args
+    }
+
+    // MARK: - MCP Server Routing
+
+    /// Writes the `--mcp-config` file for the enabled servers, or nil when
+    /// there are none. The MCP panel used to save entries that no run ever
+    /// read; this is what makes them mean something.
+    public nonisolated static func mcpConfigPath(servers: [AIMCPServerConfig]) -> String? {
+        let enabled = servers.filter { $0.isEnabled && !$0.command.isEmpty }
+        guard !enabled.isEmpty else { return nil }
+
+        var payload: [String: Any] = [:]
+        for server in enabled {
+            var entry: [String: Any] = [
+                "command": server.command,
+                "args": server.arguments
+                    .split(separator: " ")
+                    .map(String.init)
+            ]
+            if let data = server.envJSON.data(using: .utf8),
+               let env = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+               !env.isEmpty {
+                entry["env"] = env
+            }
+            payload[server.name] = entry
+        }
+
+        let document: [String: Any] = ["mcpServers": payload]
+        guard let data = try? JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted]) else {
+            return nil
+        }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-ai-mcp", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("servers.json")
+        do {
+            try data.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            return nil
+        }
+    }
+
+    // MARK: - Permission Routing
+
+    /// Writes the hook settings the CLI needs to reach `AIPermissionBridge`.
+    ///
+    /// Returns nil when the bridge is not listening, and that is deliberate:
+    /// the hook is configured with `onFailure: "block"`, so pointing it at a
+    /// dead port would turn every gated call into a denial. Without the file
+    /// the CLI keeps its stock behaviour and simply refuses the gated call.
+    public nonisolated static func permissionSettingsPath(for executable: AICLIExecutable) -> String? {
+        guard executable == .claude else { return nil }
+
+        let bridge = AIPermissionBridge.shared
+        // Mount starts the listener asynchronously. A brief settle is enough
+        // because the first send is always a user action later than that; if
+        // it still is not up we return nil rather than hand the CLI a dead
+        // endpoint it would fail closed against.
+        if !bridge.isListening {
+            bridge.waitUntilListening(timeout: 0.5)
+        }
+        guard bridge.isListening, let port = bridge.port else { return nil }
+
+        let settings: [String: Any] = [
+            "hooks": [
+                "PermissionRequest": [[
+                    "matcher": "*",
+                    "hooks": [[
+                        "type": "http",
+                        "url": "http://127.0.0.1:\(port)/permission",
+                        // Fail closed: a timeout must deny, never approve.
+                        "timeout": 30,
+                        "onFailure": "block"
+                    ]]
+                ]]
+            ]
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted]) else {
+            return nil
+        }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-ai-permissions", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let url = directory.appendingPathComponent("claude-hooks-\(port).json")
+        do {
+            try data.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - ANSI Escape Stripping & NDJSON Stream Parsing
@@ -897,6 +1057,27 @@ public final class AIAssistantService {
         return result
     }
 
+    private final class SafeAtomicBool: @unchecked Sendable {
+        private let lock = NSLock()
+        private var val: Bool
+
+        init(_ initial: Bool = false) {
+            self.val = initial
+        }
+
+        func set(_ newValue: Bool) {
+            lock.lock()
+            val = newValue
+            lock.unlock()
+        }
+
+        var value: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return val
+        }
+    }
+
     private final class SafeTextBuffer: @unchecked Sendable {
         private let lock = NSLock()
         private var text = ""
@@ -934,17 +1115,56 @@ public final class AIAssistantService {
         }
     }
 
+    private final class SafeProcessBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var process: Process?
+        private var _isCancelled = false
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return _isCancelled
+        }
+
+        func set(_ process: Process) {
+            lock.lock()
+            defer { lock.unlock() }
+            self.process = process
+            if _isCancelled && process.isRunning {
+                process.terminate()
+            }
+        }
+
+        func terminate() {
+            lock.lock()
+            defer { lock.unlock() }
+            _isCancelled = true
+            if let process = process, process.isRunning {
+                process.terminate()
+            }
+        }
+    }
+
     private func executeCLIProcess(
         executablePath: String,
         arguments: [String],
         isNDJSON: Bool = false,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: executablePath)
-                process.arguments = arguments
+        let processBox = SafeProcessBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if processBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+
+                    let process = Process()
+                    processBox.set(process)
+                    process.executableURL = URL(fileURLWithPath: executablePath)
+                    process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+                    process.arguments = arguments
 
                 var env = ProcessInfo.processInfo.environment
                 env["TERM"] = "dumb"
@@ -964,12 +1184,26 @@ public final class AIAssistantService {
                 let buffer = SafeTextBuffer()
                 let lineBuffer = SafeTextBuffer()
                 let errorBuffer = SafeTextBuffer()
+                let bytesEmitted = SafeAtomicBool(false)
+                let isTimedOut = SafeAtomicBool(false)
+
+                let watchdog = DispatchWorkItem { [weak process] in
+                    guard let process = process, process.isRunning else { return }
+                    if !bytesEmitted.value {
+                        isTimedOut.set(true)
+                        process.terminate()
+                    }
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 180.0, execute: watchdog)
 
                 defer {
+                    watchdog.cancel()
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
                     try? outputPipe.fileHandleForReading.close()
                     try? errorPipe.fileHandleForReading.close()
+                    try? stdinPipe.fileHandleForWriting.close()
+                    try? stdinPipe.fileHandleForReading.close()
                 }
 
                 let processChunk: @Sendable (String) -> Void = { text in
@@ -980,51 +1214,50 @@ public final class AIAssistantService {
                         for line in lines {
                             if let parsed = Self.parseNDJSONLine(line) {
                                 buffer.append(parsed)
-                                if let onChunk = onChunk {
-                                    Task { @MainActor in
-                                        onChunk(parsed)
-                                    }
-                                }
+                                onChunk?(parsed)
                             }
                         }
                     } else {
                         let cleaned = Self.stripANSIEscapeSequences(text)
                         if !cleaned.isEmpty {
                             buffer.append(cleaned)
-                            if let onChunk = onChunk {
-                                Task { @MainActor in
-                                    onChunk(cleaned)
-                                }
-                            }
+                            onChunk?(cleaned)
                         }
                     }
                 }
 
                 outputPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
-                    guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                    guard !data.isEmpty else { return }
+                    bytesEmitted.set(true)
+                    guard let text = String(data: data, encoding: .utf8) else { return }
                     processChunk(text)
                 }
 
                 errorPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
-                    guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                    guard !data.isEmpty else { return }
+                    bytesEmitted.set(true)
+                    guard let text = String(data: data, encoding: .utf8) else { return }
                     errorBuffer.append(text)
                 }
 
                 do {
                     try process.run()
+                    try? stdinPipe.fileHandleForWriting.close()
                     process.waitUntilExit()
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
 
                     let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     if !remainingData.isEmpty, let remainingText = String(data: remainingData, encoding: .utf8) {
+                        bytesEmitted.set(true)
                         processChunk(remainingText)
                     }
 
                     let remainingErrData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     if !remainingErrData.isEmpty, let remainingErrText = String(data: remainingErrData, encoding: .utf8) {
+                        bytesEmitted.set(true)
                         errorBuffer.append(remainingErrText)
                     }
 
@@ -1033,30 +1266,56 @@ public final class AIAssistantService {
                         if !leftover.isEmpty {
                             if let parsed = Self.parseNDJSONLine(leftover) {
                                 buffer.append(parsed)
-                                if let onChunk = onChunk {
-                                    Task { @MainActor in
-                                        onChunk(parsed)
-                                    }
-                                }
+                                onChunk?(parsed)
                             }
                         }
+                    }
+
+                    if processBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                        return
                     }
 
                     if process.terminationStatus == 0 {
                         let result = buffer.value()
                         continuation.resume(returning: result)
                     } else {
-                        let errText = errorBuffer.value()
-                        let fallbackMsg = errText.isEmpty ? "Unknown error" : errText
-                        continuation.resume(throwing: AIAssistantError.processExecutionFailed(
-                            exitCode: process.terminationStatus,
-                            errorOutput: Self.stripANSIEscapeSequences(fallbackMsg)
-                        ))
+                        let result = buffer.value()
+                        if isTimedOut.value {
+                            // Partial output from a killed process is a
+                            // truncated answer, not an answer: surfacing it
+                            // would present a half-finished response as done.
+                            continuation.resume(throwing: AIAssistantError.processExecutionFailed(
+                                exitCode: process.terminationStatus,
+                                errorOutput: "Process timed out after 180 seconds without finishing."
+                            ))
+                        } else {
+                            let errText = errorBuffer.value()
+                            let fallbackMsg = errText.isEmpty ? "Unknown error" : errText
+                            var message = Self.stripANSIEscapeSequences(fallbackMsg)
+                            if !result.isEmpty {
+                                // A CLI that emits output and then exits non-zero
+                                // has failed mid-answer. Say so, and keep what it
+                                // produced so the user is not left with nothing.
+                                message += "\n\nPartial output before failure:\n\(result)"
+                            }
+                            continuation.resume(throwing: AIAssistantError.processExecutionFailed(
+                                exitCode: process.terminationStatus,
+                                errorOutput: message
+                            ))
+                        }
                     }
                 } catch {
-                    continuation.resume(throwing: error)
+                    if processBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        }
+        } onCancel: {
+            processBox.terminate()
         }
     }
 
@@ -1350,6 +1609,30 @@ public final class AIAssistantService {
         return paths
     }
 
+    /// Which delivery mode fits a provider. Only a local agent CLI has its own
+    /// skill system; everything else can only be told about the skill in text.
+    public nonisolated static func skillDelivery(for provider: AIProviderKind) -> AISkillDelivery {
+        provider == .localCLI ? .nativeCommand : .inlineBody
+    }
+
+    /// Skill directories the resolved skill needs access to, so a CLI agent can
+    /// open the companion files the instructions refer to.
+    public nonisolated static func skillDirectories(
+        activeSkill: AILocalSkill?,
+        prompt: String,
+        availableSkills: [AILocalSkill]
+    ) -> [String] {
+        var directories: [String] = []
+        var skill = activeSkill
+        if skill == nil, !availableSkills.isEmpty {
+            skill = extractSlashSkillCommand(from: prompt, availableSkills: availableSkills).skill
+        }
+        if let path = skill?.directoryPath, !path.isEmpty {
+            directories.append(path)
+        }
+        return directories
+    }
+
     public nonisolated static func isPathPermitted(_ path: String, allowedPaths: Set<String>?) -> Bool {
         guard let allowedPaths else { return true }
         if allowedPaths.contains(path) { return true }
@@ -1360,77 +1643,201 @@ public final class AIAssistantService {
         return false
     }
 
+    public nonisolated static func extractSlashSkillCommand(
+        from prompt: String,
+        availableSkills: [AILocalSkill]
+    ) -> (skill: AILocalSkill?, strippedPrompt: String) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/") else {
+            return (nil, prompt)
+        }
+
+        let textAfterSlash = trimmed.dropFirst()
+        let token = textAfterSlash.prefix { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        let commandToken = String(token)
+        guard !commandToken.isEmpty else {
+            return (nil, prompt)
+        }
+
+        if let matched = availableSkills.first(where: {
+            $0.isEnabled && (
+                $0.trigger.caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.trigger.replacingOccurrences(of: "-", with: "_").caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.trigger.replacingOccurrences(of: "_", with: "-").caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.id.caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.name.caseInsensitiveCompare(commandToken) == .orderedSame
+            )
+        }) {
+            let afterToken = textAfterSlash.dropFirst(commandToken.count)
+            let stripped = afterToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (matched, stripped)
+        }
+
+        return (nil, prompt)
+    }
+
     public nonisolated static func enrichPromptWithLocalSkills(
         _ prompt: String,
         skills: AIBuiltInSkillConfig,
-        allowedPaths: Set<String>? = nil
+        allowedPaths: Set<String>? = nil,
+        activeSkill: AILocalSkill? = nil,
+        referencedSkills: [AILocalSkill] = [],
+        availableSkills: [AILocalSkill] = [],
+        skillDelivery: AISkillDelivery = .inlineBody
     ) -> (enrichedPrompt: String, attachedFilesSummary: [String]) {
-        guard skills.enableFileReadSkill || skills.enableDirectoryListSkill else {
-            return (prompt, [])
-        }
+        var resolvedSkill: AILocalSkill? = activeSkill
+        var userPrompt = prompt
 
-        let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return (prompt, [])
-        }
-
-        let nsPrompt = prompt as NSString
-        let matches = regex.matches(in: prompt, options: [], range: NSRange(location: 0, length: nsPrompt.length))
-        guard !matches.isEmpty else {
-            return (prompt, [])
-        }
-
-        var enrichedPrompt = prompt
-        var attachedFilesSummary: [String] = []
-        var processedPaths = Set<String>()
-
-        for match in matches {
-            let rawPath = nsPrompt.substring(with: match.range)
-            var expandedPath = (rawPath as NSString).expandingTildeInPath
-
-            var isDir: ObjCBool = false
-            if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
-                let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
-                let exp = (trimmed as NSString).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
-                    expandedPath = exp
-                } else {
-                    continue
+        // 1. Support extracting /skill-name from the prompt if present at the start
+        if skills.enableLocalSkills {
+            let candidateSkills = availableSkills.isEmpty ? referencedSkills : availableSkills
+            if resolvedSkill == nil && !candidateSkills.isEmpty {
+                let extraction = extractSlashSkillCommand(from: userPrompt, availableSkills: candidateSkills)
+                if let extracted = extraction.skill {
+                    resolvedSkill = extracted
+                    userPrompt = extraction.strippedPrompt
+                }
+            } else if let skill = resolvedSkill {
+                let trimmed = userPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                let triggerToken = "/" + skill.trigger
+                let idToken = "/" + skill.id
+                if trimmed.hasPrefix(triggerToken) {
+                    let afterToken = trimmed.dropFirst(triggerToken.count)
+                    userPrompt = afterToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if trimmed.hasPrefix(idToken) {
+                    let afterToken = trimmed.dropFirst(idToken.count)
+                    userPrompt = afterToken.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
+        }
 
-            guard !processedPaths.contains(expandedPath) else { continue }
-            processedPaths.insert(expandedPath)
+        // 2. Built-in file read and directory list skills
+        var enrichedPrompt = userPrompt
+        var attachedFilesSummary: [String] = []
 
-            // Permission guard if allowedPaths is provided
-            guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
-                continue
-            }
+        if skills.enableFileReadSkill || skills.enableDirectoryListSkill {
+            let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let nsPrompt = userPrompt as NSString
+                let matches = regex.matches(in: userPrompt, options: [], range: NSRange(location: 0, length: nsPrompt.length))
+                var processedPaths = Set<String>()
 
-            if !isDir.boolValue && skills.enableFileReadSkill {
-                let url = URL(fileURLWithPath: expandedPath)
-                let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
-                let fileSize = (attrs?[.size] as? Int64) ?? 0
-                let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+                for match in matches {
+                    let rawPath = nsPrompt.substring(with: match.range)
+                    var expandedPath = (rawPath as NSString).expandingTildeInPath
 
-                var sampleContent = ""
-                if let handle = try? FileHandle(forReadingFrom: url) {
-                    defer { try? handle.close() }
-                    if let data = try? handle.read(upToCount: 65_536) {
-                        let decoded = String(decoding: data, as: UTF8.self)
-                        sampleContent = String(decoded.prefix(16_000))
+                    var isDir: ObjCBool = false
+                    if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
+                        let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
+                        let exp = (trimmed as NSString).expandingTildeInPath
+                        if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
+                            expandedPath = exp
+                        } else {
+                            continue
+                        }
+                    }
+
+                    guard !processedPaths.contains(expandedPath) else { continue }
+                    processedPaths.insert(expandedPath)
+
+                    // Permission guard if allowedPaths is provided
+                    guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
+                        continue
+                    }
+
+                    if !isDir.boolValue && skills.enableFileReadSkill {
+                        let url = URL(fileURLWithPath: expandedPath)
+                        let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
+                        let fileSize = (attrs?[.size] as? Int64) ?? 0
+                        let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+
+                        var sampleContent = ""
+                        if let handle = try? FileHandle(forReadingFrom: url) {
+                            defer { try? handle.close() }
+                            if let data = try? handle.read(upToCount: 65_536) {
+                                let decoded = String(decoding: data, as: UTF8.self)
+                                sampleContent = String(decoded.prefix(16_000))
+                            }
+                        }
+
+                        if !sampleContent.isEmpty {
+                            enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
+                            attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
+                        }
+                    } else if isDir.boolValue && skills.enableDirectoryListSkill {
+                        if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
+                            let sortedEntries = entries.sorted()
+                            let limitedEntries = Array(sortedEntries.prefix(60))
+                            enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
+                        }
                     }
                 }
+            }
+        }
 
-                if !sampleContent.isEmpty {
-                    enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
-                    attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
+        // 3. Prepend active and referenced local skill instructions
+        if skills.enableLocalSkills || activeSkill != nil {
+            var skillsToAttach: [AILocalSkill] = []
+            if let resolvedSkill, (resolvedSkill.isEnabled || activeSkill != nil) {
+                skillsToAttach.append(resolvedSkill)
+            }
+            for ref in referencedSkills where ref.isEnabled && !skillsToAttach.contains(where: { $0.id == ref.id }) {
+                skillsToAttach.append(ref)
+            }
+
+            var skillBlocks: [String] = []
+            for skill in skillsToAttach {
+                let trimmedTemplate = skill.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+                let body = !trimmedTemplate.isEmpty ? trimmedTemplate : skill.description
+                guard !body.isEmpty else { continue }
+
+                switch skillDelivery {
+                case .nativeCommand:
+                    // A local agent CLI already owns skill resolution and the
+                    // filesystem access that comes with it. Re-reading the
+                    // instructions here would load the same skill twice — once
+                    // as a system skill, once as this prompt block — and the
+                    // prompt copy has no tool grants behind it.
+                    skillBlocks.append(
+                        """
+                        [Skill Invocation]
+                        Invoke the `\(skill.trigger)` skill before answering. \
+                        Its directory is `\(skill.directoryPath)`.
+                        """
+                    )
+                case .inlineBody:
+                    var block = "[Local Skill: \(skill.name)]"
+                    if !skill.directoryPath.isEmpty {
+                        block += "\nSkill directory: \(skill.directoryPath)"
+                    }
+                    if !skill.bundledResourceNames.isEmpty {
+                        block += "\nBundled files in that directory: \(skill.bundledResourceNames.joined(separator: ", "))"
+                    }
+
+                    // Skills are prose and can run to tens of KB; a long skill
+                    // plus a long history is the quickest way to blow the
+                    // context window. Truncation is explicit so the model knows
+                    // the instruction set is incomplete rather than assuming
+                    // it read everything.
+                    let isTruncated = body.count > AIAttachmentBudget.maxSkillBodyChars
+                    if isTruncated {
+                        block += "\n" + String(body.prefix(AIAttachmentBudget.maxSkillBodyChars))
+                        block += "\n[Skill instructions truncated at \(AIAttachmentBudget.maxSkillBodyChars) characters]"
+                    } else {
+                        block += "\n" + body
+                    }
+                    block += "\n[End of Skill: \(skill.name)]"
+                    skillBlocks.append(block)
                 }
-            } else if isDir.boolValue && skills.enableDirectoryListSkill {
-                if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
-                    let sortedEntries = entries.sorted()
-                    let limitedEntries = Array(sortedEntries.prefix(60))
-                    enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
+            }
+
+            if !skillBlocks.isEmpty {
+                let header = skillBlocks.joined(separator: "\n\n")
+                let trimmed = enrichedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    enrichedPrompt = header + "\n\nUser: Please execute the skill above and generate the result."
+                } else {
+                    enrichedPrompt = header + "\n\n" + enrichedPrompt
                 }
             }
         }

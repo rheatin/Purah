@@ -31,6 +31,9 @@ public enum PurahMotionPolicy {
     public static let micro = Animation.spring(response: 0.22, dampingFraction: 0.82)
     /// The lightest touch: toggles, ticks, inline badges.
     public static let microLight = Animation.spring(response: 0.24, dampingFraction: 0.85)
+    /// Committing a choice from a floating menu — the chip flies in, the menu
+    /// unwinds. Firm enough that the selection reads as landed, not drifting.
+    public static let menuCommit = Animation.spring(response: 0.22, dampingFraction: 0.85)
 
     /// A pin being tacked into the board — deliberately springy.
     public static let pin = Animation.spring(response: 0.28, dampingFraction: 0.65)

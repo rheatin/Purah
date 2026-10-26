@@ -19,19 +19,27 @@ public struct PendingFilePermissionRequest: Equatable, Sendable {
     public let role: AIRolePreset?
     public let originalSelection: String?
     public let includeHistory: Bool
+    /// The skill that was selected when the prompt was first submitted.
+    ///
+    /// `sendPrompt` clears `activeSkill` the moment it enriches a prompt, so
+    /// without carrying it here the re-send after approval would silently drop
+    /// the skill the user had picked.
+    public let activeSkill: AILocalSkill?
 
     public init(
         paths: [String],
         prompt: String,
         role: AIRolePreset? = nil,
         originalSelection: String? = nil,
-        includeHistory: Bool = false
+        includeHistory: Bool = false,
+        activeSkill: AILocalSkill? = nil
     ) {
         self.paths = paths
         self.prompt = prompt
         self.role = role
         self.originalSelection = originalSelection
         self.includeHistory = includeHistory
+        self.activeSkill = activeSkill
     }
 }
 
@@ -49,6 +57,22 @@ public final class AIAssistantPluginState: Sendable {
     public var allowedFilePaths: Set<String> = []
     public var pendingPermissionRequest: PendingFilePermissionRequest? = nil
 
+    // MARK: - Tool Permission Control
+    /// A gate the agent CLI raised mid-run. Unlike `pendingPermissionRequest`
+    /// — which is Purah deciding whether to *send* a prompt that references a
+    /// path — this is the agent deciding, while running, that it needs the
+    /// user's consent before touching something.
+    public var pendingToolPermission: PendingToolPermissionRequest? = nil
+
+    // MARK: - Local Skills & Slash Commands
+    public var localSkills: [AILocalSkill] = []
+    public var activeSkill: AILocalSkill? = nil
+    public var isSlashMenuVisible: Bool = false
+    public var slashQuery: String = ""
+    public var selectedSlashIndex: Int = 0
+    public var slashTokenRange: NSRange? = nil
+    private var previousSlashQuery: String = ""
+
     // MARK: - Provider Settings
     public var selectedProvider: AIProviderKind {
         didSet {
@@ -60,6 +84,10 @@ public final class AIAssistantPluginState: Sendable {
         didSet {
             storage.set(selectedCLI.rawValue, forKey: "selectedCLI")
         }
+    }
+
+    public var activeCLIExecutable: AICLIExecutable {
+        selectedCLI
     }
 
     public var customCLIPath: String {
@@ -189,6 +217,7 @@ public final class AIAssistantPluginState: Sendable {
     public var skillConfig: AIBuiltInSkillConfig {
         didSet {
             storage.setCodable(skillConfig, forKey: "skillConfig")
+            self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: skillConfig)
         }
     }
 
@@ -220,6 +249,7 @@ public final class AIAssistantPluginState: Sendable {
     public var activeSessionId: String = "" {
         didSet {
             viewingStepIndex = nil
+            isEditingSource = false
         }
     }
     public var inputText: String {
@@ -292,6 +322,7 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     public func stepHistory(by delta: Int) {
+        isEditingSource = false
         guard totalStepsCount > 0 else {
             viewingStepIndex = 0
             return
@@ -311,6 +342,7 @@ public final class AIAssistantPluginState: Sendable {
 
     public func switchRoleInTopBar(to role: AIRolePreset, sourceText: String = "") {
         selectedRoleId = role.id
+        isEditingSource = false
 
         // Check if assistantSteps in active session ALREADY has a step matching role.id
         if let existingIndex = assistantSteps.lastIndex(where: { step in
@@ -385,6 +417,208 @@ public final class AIAssistantPluginState: Sendable {
         let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
         let refinementPrompt = "Previous output:\n\(prevOutput)\n\nUser refinement instruction: \(trimmed)\n\nPlease output the updated result directly following the instruction."
         sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
+    }
+
+    // MARK: - Slash Command Autocomplete
+    public var allSlashCommands: [AISlashCommandItem] {
+        var items: [AISlashCommandItem] = []
+
+        // Built-in / enabled roles
+        let roles = enabledRoles.isEmpty ? rolePresets : enabledRoles
+        for r in roles {
+            let subtitle: String = {
+                switch r.id {
+                case "ask": return "General AI assistant"
+                case "translate": return "Translate text between languages"
+                case "polish": return "Polish prose and elevate tone"
+                case "grammar": return "Fix spelling and syntax errors"
+                case "explain": return "Explain code structure and logic"
+                case "summarize": return "Summarize key points and takeaways"
+                default: return r.title
+                }
+            }()
+            items.append(
+                AISlashCommandItem(
+                    trigger: r.id,
+                    title: r.title,
+                    subtitle: subtitle,
+                    icon: r.systemIcon,
+                    colorHex: r.colorHex,
+                    kind: .role(r)
+                )
+            )
+        }
+
+        // Local skills
+        for s in localSkills where s.isEnabled {
+            items.append(
+                AISlashCommandItem(
+                    trigger: s.trigger,
+                    title: s.name,
+                    subtitle: s.description,
+                    icon: "bolt.fill",
+                    colorHex: "#34D399",
+                    kind: .skill(s)
+                )
+            )
+        }
+
+        return items
+    }
+
+    public var filteredSlashCommands: [AISlashCommandItem] {
+        let all = allSlashCommands
+        let query = slashQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else {
+            return all
+        }
+
+        return all.filter { item in
+            let trigger = item.trigger.lowercased()
+            let title = item.title.lowercased()
+            let subtitle = item.subtitle.lowercased()
+
+            if trigger.hasPrefix(query) || title.hasPrefix(query) {
+                return true
+            }
+            if trigger.contains(query) || title.contains(query) || subtitle.contains(query) {
+                return true
+            }
+            return fuzzyMatch(query: query, target: trigger) || fuzzyMatch(query: query, target: title)
+        }.sorted { a, b in
+            let aTrig = a.trigger.lowercased()
+            let bTrig = b.trigger.lowercased()
+            let aPrefix = aTrig.hasPrefix(query)
+            let bPrefix = bTrig.hasPrefix(query)
+            if aPrefix != bPrefix { return aPrefix }
+
+            let aTitlePrefix = a.title.lowercased().hasPrefix(query)
+            let bTitlePrefix = b.title.lowercased().hasPrefix(query)
+            if aTitlePrefix != bTitlePrefix { return aTitlePrefix }
+
+            // `sorted` requires a strict weak ordering. Returning false for
+            // every tie left the order up to the algorithm's internals, so the
+            // list could reshuffle between keystrokes; the trigger is unique,
+            // so it makes a stable final key.
+            return aTrig < bTrig
+        }
+    }
+
+    private func fuzzyMatch(query: String, target: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        var targetIdx = target.startIndex
+        for qChar in query {
+            guard let matchIdx = target[targetIdx...].firstIndex(where: { $0 == qChar }) else {
+                return false
+            }
+            targetIdx = target.index(after: matchIdx)
+        }
+        return true
+    }
+
+    public func moveSlashSelection(delta: Int) {
+        let items = filteredSlashCommands
+        guard !items.isEmpty else {
+            selectedSlashIndex = 0
+            return
+        }
+        let count = items.count
+        var next = (selectedSlashIndex + delta) % count
+        if next < 0 {
+            next += count
+        }
+        selectedSlashIndex = next
+    }
+
+    public func dismissSlashMenu() {
+        self.isSlashMenuVisible = false
+        self.slashQuery = ""
+        self.slashTokenRange = nil
+        self.selectedSlashIndex = 0
+    }
+
+    public func checkSlashTrigger(in text: String, cursorLocation: Int) {
+        let nsText = text as NSString
+        let safeLocation = max(0, min(cursorLocation, nsText.length))
+
+        var lastWhitespaceIndex = -1
+        if safeLocation > 0 {
+            for i in stride(from: safeLocation - 1, through: 0, by: -1) {
+                let char = nsText.character(at: i)
+                if let scalar = UnicodeScalar(char), CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                    lastWhitespaceIndex = i
+                    break
+                }
+            }
+        }
+
+        let tokenStart = lastWhitespaceIndex + 1
+        let tokenLength = safeLocation - tokenStart
+
+        guard tokenLength > 0 else {
+            dismissSlashMenu()
+            return
+        }
+
+        let token = nsText.substring(with: NSRange(location: tokenStart, length: tokenLength))
+        guard token.hasPrefix("/") else {
+            dismissSlashMenu()
+            return
+        }
+
+        let query = String(token.dropFirst())
+        // Only a plausible trigger opens the menu. A typed path
+        // (`/usr/local/bin`) or any token with a slash or punctuation in it is
+        // a path far more often than a command, and popping a menu over it
+        // would interrupt exactly the person who is mid-way through pasting one.
+        let isPlausibleTrigger = query.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        guard isPlausibleTrigger else {
+            dismissSlashMenu()
+            return
+        }
+        self.slashQuery = query
+        self.slashTokenRange = NSRange(location: tokenStart, length: tokenLength)
+        self.isSlashMenuVisible = true
+
+        // A narrower result list is a different list: keeping the old index
+        // means the highlighted row silently becomes a different command under
+        // the cursor, and Enter commits something the user never aimed at.
+        if query != previousSlashQuery {
+            self.selectedSlashIndex = 0
+            previousSlashQuery = query
+        } else {
+            let count = filteredSlashCommands.count
+            self.selectedSlashIndex = count > 0 ? min(self.selectedSlashIndex, count - 1) : 0
+        }
+    }
+
+    public func selectSlashCommand(_ item: AISlashCommandItem) {
+        switch item.kind {
+        case .role(let role):
+            self.selectedRoleId = role.id
+            self.activeRole = role
+            self.activeQuickAction = AIQuickActionType(rawValue: role.id)
+            removeSlashTokenFromInput()
+        case .skill(let skill):
+            self.activeSkill = skill
+            removeSlashTokenFromInput()
+        }
+        dismissSlashMenu()
+    }
+
+    private func removeSlashTokenFromInput() {
+        if let tokenRange = slashTokenRange,
+           let textRange = Range(tokenRange, in: currentInputText) {
+            currentInputText.removeSubrange(textRange)
+            slashTokenRange = nil
+            return
+        }
+
+        let token = "/" + slashQuery
+        if let range = currentInputText.range(of: token, options: .backwards) {
+            currentInputText.removeSubrange(range)
+        }
+        slashTokenRange = nil
     }
 
     // MARK: - Initializer
@@ -518,6 +752,8 @@ public final class AIAssistantPluginState: Sendable {
             self.allowedFilePaths = []
         }
 
+        self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
+
         self.sessions = repository.items
         pruneExpiredSessions()
 
@@ -570,6 +806,7 @@ public final class AIAssistantPluginState: Sendable {
             }
         }
         self.pendingPermissionRequest = nil
+        if activeSkill == nil { activeSkill = req.activeSkill }
         sendPrompt(
             req.prompt,
             quickAction: nil,
@@ -602,7 +839,9 @@ public final class AIAssistantPluginState: Sendable {
         self.maxRailRoles = store.aiMaxRailRoles
         self.rolePresets = store._aiRolePresets
         self.enabledActions = store._aiRolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
+        self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
         refreshCapturedSelection()
+        bindPermissionBridge()
 
         if selectedProvider == .httpOpenAI || selectedProvider == .httpOllama {
             Task { [weak self] in
@@ -611,8 +850,38 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    /// Routes the agent's own permission gates into this state.
+    ///
+    /// The bridge starts on mount and stops on unmount, so a disabled or
+    /// unmounted plugin leaves no listener behind (AGENTS.md §3, polling and
+    /// lifecycle suspension).
+    private func bindPermissionBridge() {
+        let bridge = AIPermissionBridge.shared
+        bridge.onRequest = { [weak self] request in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.pendingToolPermission = request
+                // Bring the drawer forward: a gate the user never sees is a
+                // hung agent, and the hook is blocking on this answer.
+                self.boundStore?.activateDrawer(podId: "ai")
+            }
+        }
+        bridge.start()
+    }
+
+    // MARK: - Tool Permission Decisions
+
+    public func resolveToolPermission(_ decision: AIPermissionBridge.Decision) {
+        guard let request = pendingToolPermission else { return }
+        pendingToolPermission = nil
+        AIPermissionBridge.shared.resolve(request.id, decision: decision)
+    }
+
     public func unmount(store: PurahWorkspaceStore) {
         stopStreaming()
+        AIPermissionBridge.shared.onRequest = nil
+        AIPermissionBridge.shared.stop()
+        pendingToolPermission = nil
         save()
         if boundStore === store {
             boundStore = nil
@@ -664,8 +933,15 @@ public final class AIAssistantPluginState: Sendable {
         repository.insert(newSession, at: 0)
         self.sessions = repository.items
         self.activeSessionId = newSession.id
+        self.isEditingSource = false
         self.inputText = ""
         self.stagedAttachments.removeAll()
+    }
+
+    public func switchSession(to id: String) {
+        guard sessions.contains(where: { $0.id == id }) else { return }
+        self.activeSessionId = id
+        self.isEditingSource = false
     }
 
     public func toggleFavoriteSession(id: String) {
@@ -767,6 +1043,36 @@ public final class AIAssistantPluginState: Sendable {
             rolePresets[idx].isTransform = defaultRole.isTransform
             save()
         }
+    }
+
+    // MARK: - Local Skills Management
+    public func rescanLocalSkills() {
+        self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
+    }
+
+    public func toggleSkillEnabled(id: String) {
+        if let idx = skillConfig.disabledSkillIds.firstIndex(of: id) {
+            skillConfig.disabledSkillIds.remove(at: idx)
+        } else {
+            skillConfig.disabledSkillIds.append(id)
+        }
+        if let skillIdx = localSkills.firstIndex(where: { $0.id == id }) {
+            localSkills[skillIdx].isEnabled = !skillConfig.disabledSkillIds.contains(id)
+        }
+        if activeSkill?.id == id && skillConfig.disabledSkillIds.contains(id) {
+            activeSkill = nil
+        }
+    }
+
+    public func addCustomSkillDirectory(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !skillConfig.customSkillDirectories.contains(trimmed) else { return }
+        skillConfig.customSkillDirectories.append(trimmed)
+    }
+
+    public func removeCustomSkillDirectory(_ path: String) {
+        skillConfig.customSkillDirectories.removeAll(where: { $0 == path })
     }
 
     // MARK: - MCP Servers Management
@@ -1002,7 +1308,7 @@ public final class AIAssistantPluginState: Sendable {
         skipFileEnrichment: Bool = false
     ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
+        guard !trimmed.isEmpty || !stagedAttachments.isEmpty || activeSkill != nil else { return }
 
         // Interactive local file access permission check
         if !bypassFileCheck && !skipFileEnrichment {
@@ -1014,7 +1320,8 @@ public final class AIAssistantPluginState: Sendable {
                     prompt: trimmed,
                     role: role,
                     originalSelection: originalSelection,
-                    includeHistory: includeHistory
+                    includeHistory: includeHistory,
+                    activeSkill: activeSkill
                 )
                 return
             }
@@ -1032,20 +1339,46 @@ public final class AIAssistantPluginState: Sendable {
         let effectiveAction = quickAction ?? (role.flatMap { AIQuickActionType(rawValue: $0.id) })
         let effectiveRoleTitle = role?.title ?? effectiveAction?.title
         let effectiveRoleId = role?.id ?? effectiveAction?.id
-        let resolvedOriginal = originalSelection ?? (trimmed.isEmpty ? nil : trimmed)
+        let skillInvocationTrigger = activeSkill.map { "/\($0.trigger)" }
+        let resolvedOriginal: String?
+        if let originalSelection = originalSelection, !originalSelection.isEmpty {
+            resolvedOriginal = originalSelection
+        } else if !trimmed.isEmpty {
+            resolvedOriginal = trimmed
+        } else if let skillTrigger = skillInvocationTrigger {
+            resolvedOriginal = skillTrigger
+        } else {
+            resolvedOriginal = nil
+        }
 
         // Built-in skills local enrichment
+        let skillBlocksForHistory: String? = activeSkill.map { skill in
+            let trigger = "/\(skill.trigger)"
+            let body = skill.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+            return body.isEmpty ? trigger : "\(trigger)\n\n\(body)"
+        }
         let enrichedPrompt: String
+        let skillDirectories: [String]
         if skipFileEnrichment {
             enrichedPrompt = trimmed
+            skillDirectories = []
         } else {
             let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
                 trimmed,
                 skills: skillConfig,
-                allowedPaths: allowedFilePaths
+                allowedPaths: allowedFilePaths,
+                activeSkill: activeSkill,
+                availableSkills: localSkills,
+                skillDelivery: AIAssistantService.skillDelivery(for: selectedProvider)
             )
             enrichedPrompt = enriched
+            skillDirectories = AIAssistantService.skillDirectories(
+                activeSkill: activeSkill,
+                prompt: trimmed,
+                availableSkills: localSkills
+            )
         }
+        activeSkill = nil
 
         var effectivePromptOverride = customSystemPrompt ?? role?.systemPrompt ?? quickAction?.buildSystemPrompt()
         if customSystemPrompt == nil {
@@ -1122,16 +1455,32 @@ public final class AIAssistantPluginState: Sendable {
             }
         }
 
+        let userMessageContent: String
+        if !trimmed.isEmpty {
+            userMessageContent = trimmed
+        } else if let skillTrigger = skillInvocationTrigger {
+            userMessageContent = skillTrigger
+        } else {
+            userMessageContent = "Sent attachments"
+        }
+
+        // A skill-only send has no text of its own. Storing just `/trigger`
+        // left the transcript showing a bare token with the instructions that
+        // actually ran nowhere in it, so the message could not be re-read or
+        // re-sent meaningfully.
+        let skillRecord: String? = trimmed.isEmpty ? skillBlocksForHistory : nil
+
         let userMsg = AIChatMessage(
             role: .user,
-            content: trimmed.isEmpty ? "Sent attachments" : trimmed,
+            content: userMessageContent,
             attachments: stagedAttachments,
             timestamp: Date(),
             quickAction: effectiveAction,
             originalSelection: resolvedOriginal,
             systemPromptOverride: effectivePromptOverride,
             roleTitle: effectiveRoleTitle,
-            roleId: effectiveRoleId
+            roleId: effectiveRoleId,
+            skillInvocation: skillRecord
         )
         stagedAttachments.removeAll()
 
@@ -1221,6 +1570,8 @@ public final class AIAssistantPluginState: Sendable {
                     endpoint: endpoint,
                     model: model,
                     systemPromptOverride: effectivePromptOverride,
+                    skillDirectories: skillDirectories,
+                    mcpConfigPath: AIAssistantService.mcpConfigPath(servers: mcpServers),
                     onResolvedModel: { [weak self] resolved in
                         Task { @MainActor [weak self] in
                             guard let self else { return }
@@ -1265,6 +1616,9 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     private func handleStreamingError(_ error: Error, forSession sessionId: String, assistantMsgId: UUID) {
+        if error is CancellationError {
+            return
+        }
         if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }),
            let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == assistantMsgId }) {
             if sessions[sIdx].messages[aIdx].content.isEmpty {

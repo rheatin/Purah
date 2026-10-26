@@ -606,6 +606,10 @@ public struct AIAssistantRoleWorkbenchView: View {
         Color(hex: role.colorHex)
     }
 
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
     private var lastUserMsg: AIChatMessage? {
         state.currentViewedUserMessage ?? state.latestUserMessage(for: role.id)
     }
@@ -645,6 +649,14 @@ public struct AIAssistantRoleWorkbenchView: View {
         VStack(spacing: 0) {
             if let req = state.pendingPermissionRequest {
                 filePermissionBanner(req: req)
+                    .padding(.bottom, 6)
+            }
+
+            // The agent's own gate takes precedence: it is blocking a running
+            // turn, while the file banner only holds back a prompt that has not
+            // been sent yet.
+            if let toolRequest = state.pendingToolPermission {
+                toolPermissionBanner(req: toolRequest)
                     .padding(.bottom, 6)
             }
 
@@ -714,7 +726,9 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .onExitCommand {
-            if state.isRefiningOutput || state.isEditingSource {
+            if state.isStreaming {
+                state.stopStreaming()
+            } else if state.isRefiningOutput || state.isEditingSource {
                 withAnimation(PurahMotionPolicy.microLight) {
                     state.isRefiningOutput = false
                     state.isEditingSource = false
@@ -808,6 +822,105 @@ public struct AIAssistantRoleWorkbenchView: View {
         )
     }
 
+    /// Banner for a permission the agent asked for while running.
+    ///
+    /// Same anatomy as the file banner on purpose: one card, one decision, the
+    /// same three weights of answer. "Always allow" is only offered when the
+    /// CLI supplied a suggestion to persist — a button that silently did
+    /// nothing would be worse than not showing it.
+    private func toolPermissionBanner(req: PendingToolPermissionRequest) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(Color(hex: "#F59E0B"))
+
+                Text(req.toolName)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("ai.permission.agentBadge".localized)
+                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color(hex: "#F59E0B").opacity(0.18))
+                    .foregroundColor(Color(hex: "#F59E0B"))
+                    .cornerRadius(3)
+            }
+
+            Text(req.commandPreview)
+                .font(.system(size: 8.5, design: .monospaced))
+                .foregroundColor(Color.white.opacity(0.80))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let context = req.context {
+                Text(context)
+                    .font(.system(size: 8.5))
+                    .foregroundColor(Color.white.opacity(0.50))
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 5) {
+                Button {
+                    state.resolveToolPermission(.allow)
+                } label: {
+                    Text("ai.permission.allow".localized)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(hex: "#0F111A"))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color(hex: "#10B981"))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+
+                if let scope = req.suggestionsDescription {
+                    Button {
+                        state.resolveToolPermission(.alwaysAllow)
+                    } label: {
+                        Text(String(format: "ai.permission.alwaysAllow".localized, scope))
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.12))
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                Button {
+                    state.resolveToolPermission(.deny)
+                } label: {
+                    Text("ai.permission.deny".localized)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(hex: "#1F1B12").opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(hex: "#F59E0B").opacity(0.60), lineWidth: 1.0)
+        )
+    }
+
     // MARK: - Drop Target Overlay
     private var dropOverlayView: some View {
         ZStack {
@@ -883,6 +996,44 @@ public struct AIAssistantRoleWorkbenchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func activeSkillCapsule(skill: AILocalSkill) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 8.5, weight: .bold))
+                .foregroundColor(Color(hex: "#34D399"))
+            Text(skill.name)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(Color.white.opacity(0.95))
+            Text("/\(skill.trigger)")
+                .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                .foregroundColor(Color(hex: "#34D399").opacity(0.85))
+
+            Button {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
+                    state.activeSkill = nil
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 7.5, weight: .bold))
+                    .foregroundColor(Color.white.opacity(0.60))
+                    .padding(2)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+            .help("Remove active skill")
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .background(
+            Capsule()
+                .fill(Color(hex: "#34D399").opacity(0.18))
+        )
+        .overlay(
+            Capsule()
+                .stroke(Color(hex: "#34D399").opacity(0.45), lineWidth: 0.8)
+        )
+    }
+
     // MARK: - Stage 1: Input Stage (When latestResult.isEmpty && !isRoleStreaming)
     private var stage1InputView: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -890,15 +1041,45 @@ public struct AIAssistantRoleWorkbenchView: View {
             VStack(alignment: .leading, spacing: 5) {
                 // Inner recessed well around the Return-to-send composer
                 ZStack(alignment: .topLeading) {
-                    PurahAIComposerEditor(
-                        text: $state.currentInputText,
-                        fontSize: 11.5,
-                        focusRequest: sourceFocusRequest,
-                        onSubmit: sendSourcePrompt
-                    )
-                    .padding(5)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let skill = state.activeSkill {
+                            activeSkillCapsule(skill: skill)
+                                .padding(.horizontal, 5)
+                                .padding(.top, 4)
+                        }
 
-                    if state.currentInputText.isEmpty {
+                        PurahAIComposerEditor(
+                            text: $state.currentInputText,
+                            fontSize: 11.5,
+                            focusRequest: sourceFocusRequest,
+                            isSlashMenuVisible: state.isSlashMenuVisible,
+                            onSlashKeyNavigate: { delta in
+                                state.moveSlashSelection(delta: delta)
+                                return true
+                            },
+                            onSlashKeyCommit: {
+                                let items = state.filteredSlashCommands
+                                guard state.isSlashMenuVisible, !items.isEmpty else { return false }
+                                let idx = min(max(0, state.selectedSlashIndex), items.count - 1)
+                                withAnimation(PurahMotionPolicy.menuCommit) {
+                                    state.selectSlashCommand(items[idx])
+                                }
+                                return true
+                            },
+                            onSlashDismiss: {
+                                withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
+                                    state.dismissSlashMenu()
+                                }
+                            },
+                            onTextAndCursorChange: { newText, cursor in
+                                state.checkSlashTrigger(in: newText, cursorLocation: cursor)
+                            },
+                            onSubmit: sendSourcePrompt
+                        )
+                        .padding(5)
+                    }
+
+                    if state.currentInputText.isEmpty && state.activeSkill == nil {
                         VStack(spacing: 5) {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 15))
@@ -925,7 +1106,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .foregroundColor(Color.white.opacity(0.45))
                     Spacer()
 
-                    if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.activeSkill != nil {
                         PurahClearButton(
                             title: "ai.action.clear".localized,
                             icon: "trash",
@@ -935,6 +1116,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             state.inputText = ""
                             state.originalSelectedText = ""
                             state.stagedDropText = nil
+                            state.activeSkill = nil
                             store.triggerControlHaptic(.alignment)
                         }
                     }
@@ -962,6 +1144,26 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .stroke(roleColor.opacity(0.55), lineWidth: 1.2)
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomLeading) {
+                if state.isSlashMenuVisible && !state.filteredSlashCommands.isEmpty {
+                    AISlashSuggestionsPopupView(
+                        state: state,
+                        palette: palette,
+                        onSelect: { item in
+                            withAnimation(PurahMotionPolicy.menuCommit) {
+                                state.selectSlashCommand(item)
+                            }
+                        }
+                    )
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 36)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)),
+                        removal: .opacity
+                    ))
+                    .zIndex(100)
+                }
+            }
 
             // 2. Bottom: Available Roles Bar
             VStack(alignment: .leading, spacing: 5) {
@@ -1108,13 +1310,55 @@ public struct AIAssistantRoleWorkbenchView: View {
     @ViewBuilder
     private var topStatusBar: some View {
         if state.isEditingSource {
-            // Expanded Source Editing Card (~96pt)
+            // Expanded Source Editing Card
             VStack(alignment: .leading, spacing: 5) {
+                // Header row
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 9.5, weight: .semibold))
+                        Text("ai.source.editSource".localized)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(roleColor)
+
+                    Spacer()
+
+                    Button {
+                        withAnimation(PurahMotionPolicy.microLight) {
+                            state.isEditingSource = false
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("Done")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                                .fill(Color.white.opacity(0.12))
+                        )
+                        .foregroundColor(Color.white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Collapse Source Editor (Esc)")
+                }
+                .padding(.horizontal, 2)
+                .padding(.top, 1)
+
                 PurahAIComposerEditor(
                     text: $state.currentInputText,
                     fontSize: 11,
                     focusRequest: sourceFocusRequest,
                     autoFocus: true,
+                    onEscape: {
+                        withAnimation(PurahMotionPolicy.microLight) {
+                            state.isEditingSource = false
+                        }
+                    },
                     onSubmit: sendSourcePromptFromEditCard
                 )
                 .frame(height: 58)
@@ -1171,6 +1415,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(roleColor.opacity(0.40), lineWidth: 1.0)
             )
+            .onExitCommand {
+                withAnimation(PurahMotionPolicy.microLight) {
+                    state.isEditingSource = false
+                }
+            }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
         } else {
             // Collapsed 3-in-1 Compact Status Bar (height: 22pt)
@@ -1631,9 +1880,68 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
             } else {
-                AIShimmerSkeletonView(roleColor: roleColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 4)
+                VStack(spacing: 12) {
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(roleColor)
+                            .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+                    }
+
+                    VStack(spacing: 3) {
+                        Text("Waiting for model response...")
+                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.90))
+
+                        let activeSubtitle: String = (state.selectedProvider == .localCLI)
+                            ? state.activeCLIExecutable.displayName
+                            : state.selectedProvider.title
+
+                        Text(activeSubtitle)
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.55))
+                    }
+
+                    Button {
+                        state.stopStreaming()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text("Stop Generation")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(Color(hex: "#FCA5A5"))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color(hex: "#EF4444").opacity(0.20))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(hex: "#EF4444").opacity(0.50), lineWidth: 0.9)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Stop Generation (Esc)")
+
+                    Spacer(minLength: 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.black.opacity(0.25))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(roleColor.opacity(0.20), lineWidth: 0.8)
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -2000,9 +2308,9 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     private func sendSourcePrompt() {
         let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || state.activeSkill != nil else { return }
         state.isEditingSource = false
-        state.sendPrompt(text, role: role, originalSelection: text)
+        state.sendPrompt(text, role: role, originalSelection: text.isEmpty ? (state.activeSkill.map { "/\($0.trigger)" } ?? "") : text)
     }
 
     private func sendSourcePromptFromEditCard() {
@@ -2079,6 +2387,164 @@ public struct AIAssistantRoleWorkbenchView: View {
             result.append(part)
         }
         return result
+    }
+}
+
+// MARK: - Slash Command Suggestions Popup
+public struct AISlashSuggestionsPopupView: View {
+    @Bindable public var state: AIAssistantPluginState
+    public let palette: ThemePalette
+    public let onSelect: (AISlashCommandItem) -> Void
+
+    public init(
+        state: AIAssistantPluginState,
+        palette: ThemePalette = ThemeManager.shared.palette,
+        onSelect: @escaping (AISlashCommandItem) -> Void
+    ) {
+        self.state = state
+        self.palette = palette
+        self.onSelect = onSelect
+    }
+
+    public var body: some View {
+        let commands = state.filteredSlashCommands
+        VStack(alignment: .leading, spacing: 0) {
+            // Header hint row
+            HStack(spacing: 4) {
+                Image(systemName: "slash.circle.fill")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(palette.primaryAccent)
+                Text("COMMANDS & SKILLS")
+                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.45))
+                Spacer()
+                Text("↑↓ navigate · ↵ select · esc dismiss")
+                    .font(.system(size: 7.5, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.35))
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 7)
+            .padding(.bottom, 5)
+
+            Divider()
+                .background(palette.borderColor.opacity(0.20))
+
+            // Suggestions List
+            ScrollViewReader { proxy in
+                PurahScrollableBody(
+                    .vertical,
+                    indicators: commands.count > 4 ? .automatic : .hidden,
+                    contentInsets: EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
+                ) {
+                    LazyVStack(spacing: 2) {
+                        ForEach(Array(commands.enumerated()), id: \.element.id) { index, item in
+                            let isSelected = index == state.selectedSlashIndex
+                            suggestionRow(item: item, isSelected: isSelected)
+                                .id(item.id)
+                                .onHover { hovering in
+                                    if hovering {
+                                        state.selectedSlashIndex = index
+                                    }
+                                }
+                        }
+                    }
+                }
+                .frame(maxHeight: min(CGFloat(commands.count) * 40.0 + 8.0, 180.0))
+                .onChange(of: state.selectedSlashIndex) { _, newIndex in
+                    if commands.indices.contains(newIndex) {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            proxy.scrollTo(commands[newIndex].id, anchor: .center)
+                        }
+                    }
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(hex: "#10131A").opacity(0.92))
+                .background(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1.0)
+        )
+        .shadow(color: Color.black.opacity(0.55), radius: 14, x: 0, y: -4)
+    }
+
+    private func suggestionRow(item: AISlashCommandItem, isSelected: Bool) -> some View {
+        let itemColor = Color(hex: item.colorHex)
+        return Button {
+            onSelect(item)
+        } label: {
+            HStack(spacing: 8) {
+                // Kind badge / Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(itemColor.opacity(isSelected ? 0.35 : 0.18))
+                        .frame(width: 24, height: 24)
+                    Image(systemName: item.icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(itemColor)
+                }
+
+                // Title + Subtitle / trigger + Description
+                VStack(alignment: .leading, spacing: 1.5) {
+                    HStack(spacing: 5) {
+                        Text(item.title)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.90))
+
+                        Text("/\(item.trigger)")
+                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                            .foregroundColor(itemColor.opacity(isSelected ? 1.0 : 0.85))
+
+                        Spacer(minLength: 4)
+
+                        // Kind indicator pill
+                        switch item.kind {
+                        case .role:
+                            Text("ROLE")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(itemColor.opacity(0.90))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    Capsule().fill(itemColor.opacity(0.16))
+                                )
+                        case .skill(let skill):
+                            Text(skill.source.displayName.uppercased())
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(Color(hex: "#34D399").opacity(0.90))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    Capsule().fill(Color(hex: "#34D399").opacity(0.16))
+                                )
+                        }
+                    }
+
+                    if !item.subtitle.isEmpty {
+                        Text(item.subtitle)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(Color.white.opacity(isSelected ? 0.75 : 0.55))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? itemColor.opacity(0.20) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isSelected ? itemColor.opacity(0.50) : Color.clear, lineWidth: 0.8)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(TactileButtonStyle())
     }
 }
 
@@ -2279,7 +2745,7 @@ public struct AISessionHistoryManagerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    state.activeSessionId = session.id
+                    state.switchSession(to: session.id)
                     withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel = false
                     }
