@@ -46,14 +46,15 @@ jobs:
 
       # `-warnings-as-errors` is the whole point of running this in CI: the
       # release script has always enforced it, but only once per release, so a
-      # warning introduced mid-cycle survived until the next tag. Strict
-      # concurrency is pinned for the same reason — a data race is cheap to fix
-      # on the commit that introduces it and expensive a month later.
-      - name: Build (strict concurrency, warnings as errors)
-        run: |
-          swift build --disable-sandbox \
-            -Xswiftc -strict-concurrency=complete \
-            -Xswiftc -warnings-as-errors
+      # warning introduced mid-cycle survived until the next tag.
+      #
+      # `-strict-concurrency=complete` is NOT passed here. A `-Xswiftc` flag
+      # applies to every target in the graph, including the vendored SwiftTerm,
+      # which is Swift 5 code that cannot satisfy it — that produced 1,050
+      # errors in a dependency nobody is editing. It is declared per target in
+      # `Package.swift` instead, where it reaches only first-party code.
+      - name: Build (warnings as errors)
+        run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
 
       # Tests are NOT run with `-warnings-as-errors`: test code legitimately
       # uses constructs (force-unwrapping fixtures, unused bindings) that the

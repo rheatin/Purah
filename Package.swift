@@ -1,6 +1,15 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+// Strict concurrency is a property of the code this repo owns. Passing it on
+// the command line with `-Xswiftc` applies it to every target in the graph,
+// including the vendored SwiftTerm, which is Swift 5 code that cannot satisfy
+// it — CI then reports hundreds of errors in a dependency nobody is editing.
+// Declaring it here scopes it to the three targets that must comply.
+let firstPartyStrictness: [SwiftSetting] = [
+    .unsafeFlags(["-strict-concurrency=complete"])
+]
+
 let package = Package(
     name: "Purah",
     defaultLocalization: "en",
@@ -21,14 +30,16 @@ let package = Package(
             dependencies: [],
             resources: [
                 .process("Resources")
-            ]
+            ],
+            swiftSettings: firstPartyStrictness
         ),
         .target(
             name: "PurahUI",
             dependencies: [
                 "PurahCore",
                 .product(name: "SwiftTerm", package: "SwiftTerm")
-            ]
+            ],
+            swiftSettings: firstPartyStrictness
         ),
         .executableTarget(
             name: "PurahApp",
@@ -39,6 +50,7 @@ let package = Package(
             resources: [
                 .process("Resources")
             ],
+            swiftSettings: firstPartyStrictness,
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",

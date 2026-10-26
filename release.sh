@@ -182,7 +182,7 @@ echo -e "\n${BOLD}${CYAN}🚀 [Purah Release] Preparing release ${TAG_NAME}...${
 # 2. Run full test verification
 if [ "$SKIP_TESTS" = false ]; then
     echo -e "${CYAN}🧪 Step 1/5: Running test suite verification...${RESET}"
-    swift test --disable-sandbox -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors --no-parallel
+    swift test --disable-sandbox -Xswiftc -warnings-as-errors --no-parallel
     echo -e "${GREEN}✓ All tests passed successfully.${RESET}\n"
 else
     echo -e "${YELLOW}⚠️  Skipping test execution (--skip-tests specified)${RESET}\n"

@@ -101,11 +101,14 @@ if [ -d ".build/out" ]; then
     fi
 fi
 
-# 1. Compile Swift package with strict concurrency
+# 1. Compile Swift package
+#
+# Strict concurrency is declared per target in Package.swift rather than passed
+# here: `-Xswiftc` reaches every target in the graph including the vendored
+# SwiftTerm, which is Swift 5 code and cannot satisfy it.
 BUILD_FLAGS=(
     -c "$CONFIGURATION"
     --disable-sandbox
-    -Xswiftc -strict-concurrency=complete
     -Xswiftc -warnings-as-errors
 )
 
