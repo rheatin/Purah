@@ -24,13 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # No `xcode-select` step: the runner's default Xcode is the one that
-      # matches its Swift, and switching to `/Applications/Xcode.app` by name
-      # was a no-op that only looked like configuration.
-      - name: Show toolchain
+      # The runner's default Xcode is 16.4 (SDK 15.5, Swift 6.1). The vendored
+      # SwiftTerm uses isolated conformances (`@MainActor Protocol` in an
+      # inheritance clause), which is Swift 6.2 syntax; under 16.4 it fails
+      # with "unknown attribute 'MainActor'" and 1,597 follow-on errors. Pin the
+      # newest Xcode on the image instead of inheriting whatever is default.
+      - name: Select newest Xcode
         run: |
+          newest=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $newest"
+          sudo xcode-select -s "$newest"
           swift --version
-          xcodebuild -version || true
+          xcodebuild -version
 
       - name: Cache SwiftPM build
         uses: actions/cache@v4
