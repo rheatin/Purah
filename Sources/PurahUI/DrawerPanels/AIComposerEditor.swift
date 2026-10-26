@@ -16,8 +16,44 @@ import AppKit
 @MainActor
 public final class PurahAIComposerTextView: NSTextView {
     public var onSubmit: (() -> Void)?
+    public var isSlashMenuVisible: Bool = false
+    public var onSlashKeyNavigate: ((Int) -> Bool)?
+    public var onSlashKeyCommit: (() -> Bool)?
+    public var onSlashDismiss: (() -> Void)?
+    public var onTextAndCursorChange: ((String, Int) -> Void)?
 
     private var hasAutoFocused = false
+
+    public override func keyDown(with event: NSEvent) {
+        guard !hasMarkedText() else {
+            super.keyDown(with: event)
+            return
+        }
+
+        if isSlashMenuVisible {
+            if event.keyCode == 126 { // Up arrow
+                if onSlashKeyNavigate?(-1) == true {
+                    return
+                }
+            } else if event.keyCode == 125 { // Down arrow
+                if onSlashKeyNavigate?(1) == true {
+                    return
+                }
+            } else if event.keyCode == 36 || event.keyCode == 48 { // Return or Tab
+                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                if !flags.contains(.shift) && !flags.contains(.option) {
+                    if onSlashKeyCommit?() == true {
+                        return
+                    }
+                }
+            } else if event.keyCode == 53 { // Escape
+                onSlashDismiss?()
+                return
+            }
+        }
+
+        super.keyDown(with: event)
+    }
 
     public override func insertNewline(_ sender: Any?) {
         guard !hasMarkedText() else {
@@ -29,11 +65,20 @@ public final class PurahAIComposerTextView: NSTextView {
             super.insertNewline(sender)
             return
         }
+        if isSlashMenuVisible, onSlashKeyCommit?() == true {
+            return
+        }
         guard let onSubmit else {
             super.insertNewline(sender)
             return
         }
         onSubmit()
+    }
+
+    public override func didChangeText() {
+        super.didChangeText()
+        let cursor = selectedRange().location
+        onTextAndCursorChange?(string, cursor)
     }
 
     public func focusIfNeededOnMount() {
@@ -70,6 +115,11 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
     private let fontSize: CGFloat
     private let focusRequest: Int
     private let autoFocus: Bool
+    private let isSlashMenuVisible: Bool
+    private let onSlashKeyNavigate: ((Int) -> Bool)?
+    private let onSlashKeyCommit: (() -> Bool)?
+    private let onSlashDismiss: (() -> Void)?
+    private let onTextAndCursorChange: ((String, Int) -> Void)?
     private let onSubmit: () -> Void
 
     public init(
@@ -77,12 +127,22 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         fontSize: CGFloat = 11.5,
         focusRequest: Int = 0,
         autoFocus: Bool = false,
+        isSlashMenuVisible: Bool = false,
+        onSlashKeyNavigate: ((Int) -> Bool)? = nil,
+        onSlashKeyCommit: (() -> Bool)? = nil,
+        onSlashDismiss: (() -> Void)? = nil,
+        onTextAndCursorChange: ((String, Int) -> Void)? = nil,
         onSubmit: @escaping () -> Void
     ) {
         self._text = text
         self.fontSize = fontSize
         self.focusRequest = focusRequest
         self.autoFocus = autoFocus
+        self.isSlashMenuVisible = isSlashMenuVisible
+        self.onSlashKeyNavigate = onSlashKeyNavigate
+        self.onSlashKeyCommit = onSlashKeyCommit
+        self.onSlashDismiss = onSlashDismiss
+        self.onTextAndCursorChange = onTextAndCursorChange
         self.onSubmit = onSubmit
     }
 
@@ -128,6 +188,11 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         ]
         textView.string = text
         textView.onSubmit = onSubmit
+        textView.isSlashMenuVisible = isSlashMenuVisible
+        textView.onSlashKeyNavigate = onSlashKeyNavigate
+        textView.onSlashKeyCommit = onSlashKeyCommit
+        textView.onSlashDismiss = onSlashDismiss
+        textView.onTextAndCursorChange = onTextAndCursorChange
         textView.unregisterDraggedTypes()
 
         scrollView.documentView = textView
@@ -139,6 +204,11 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         guard let textView = nsView.documentView as? PurahAIComposerTextView else { return }
 
         textView.onSubmit = onSubmit
+        textView.isSlashMenuVisible = isSlashMenuVisible
+        textView.onSlashKeyNavigate = onSlashKeyNavigate
+        textView.onSlashKeyCommit = onSlashKeyCommit
+        textView.onSlashDismiss = onSlashDismiss
+        textView.onTextAndCursorChange = onTextAndCursorChange
 
         if textView.font?.pointSize != fontSize {
             textView.font = .systemFont(ofSize: fontSize)
@@ -195,6 +265,14 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         public func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            let cursor = textView.selectedRange().location
+            parent.onTextAndCursorChange?(textView.string, cursor)
+        }
+
+        public func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            let cursor = textView.selectedRange().location
+            parent.onTextAndCursorChange?(textView.string, cursor)
         }
     }
 }

@@ -1384,28 +1384,28 @@ public struct AIAssistantPluginSettingsView: View {
         )
     }
 
-    // MARK: - Card 3: Built-in Skills & MCP Servers
+    // MARK: - Card 3: Skills & Model Context Protocol
     @ViewBuilder
     private var skillsAndMCPServersCard: some View {
         PurahPluginSettingsCard(
-            title: "Built-in Skills & MCP Servers",
-            subtitle: "Extend AI capabilities with local filesystem intelligence and Model Context Protocol",
+            title: "ai.skills.card.title".localized,
+            subtitle: "ai.skills.card.subtitle".localized,
             icon: "puzzlepiece.extension.fill",
             iconColor: palette.primaryAccent
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 // 1. Built-in Local Skills Section
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Built-in Local Skills")
+                    Text("ai.skills.builtin.title".localized)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             VStack(alignment: .leading, spacing: 1.5) {
-                                Text("Auto-Read Local File Paths")
+                                Text("ai.skills.builtin.fileRead.title".localized)
                                     .font(.system(size: 10.5, weight: .medium))
-                                Text("Automatically reads local files (e.g. ~/Documents/script.py) referenced in prompts")
+                                Text("ai.skills.builtin.fileRead.desc".localized)
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
@@ -1420,9 +1420,9 @@ public struct AIAssistantPluginSettingsView: View {
 
                         HStack {
                             VStack(alignment: .leading, spacing: 1.5) {
-                                Text("Auto-Inspect Directories")
+                                Text("ai.skills.builtin.dirList.title".localized)
                                     .font(.system(size: 10.5, weight: .medium))
-                                Text("Lists folder contents when a local directory path is referenced")
+                                Text("ai.skills.builtin.dirList.desc".localized)
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
@@ -1437,9 +1437,9 @@ public struct AIAssistantPluginSettingsView: View {
 
                         HStack {
                             VStack(alignment: .leading, spacing: 1.5) {
-                                Text("Shell & Clipboard Context")
+                                Text("ai.skills.builtin.shellSnippet.title".localized)
                                     .font(.system(size: 10.5, weight: .medium))
-                                Text("Permits AI to read relevant clipboard text and local shell context")
+                                Text("ai.skills.builtin.shellSnippet.desc".localized)
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
@@ -1457,7 +1457,12 @@ public struct AIAssistantPluginSettingsView: View {
 
                 Divider().opacity(0.4)
 
-                // 2. MCP Servers Section
+                // 2. Local Skills Section
+                localSkillsSection
+
+                Divider().opacity(0.4)
+
+                // 3. MCP Servers Section
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 1.5) {
@@ -1689,6 +1694,256 @@ public struct AIAssistantPluginSettingsView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(palette.primaryAccent.opacity(0.25), lineWidth: 0.8)
         )
+    }
+
+    // MARK: - Local Skills Sub-Section
+    @ViewBuilder
+    private var localSkillsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header with title, subtitle & master toggle
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 1.5) {
+                    HStack(spacing: 6) {
+                        Text("ai.skills.local.title".localized)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        if state.skillConfig.enableLocalSkills {
+                            Text(String(format: "ai.skills.local.count".localized, state.localSkills.count))
+                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(palette.primaryAccent.opacity(0.14))
+                                .foregroundColor(palette.primaryAccent)
+                                .cornerRadius(4)
+                        }
+                    }
+
+                    Text("ai.skills.local.subtitle".localized)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $state.skillConfig.enableLocalSkills)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            if state.skillConfig.enableLocalSkills {
+                // Action row: Rescan Skills & Add Directory
+                HStack(spacing: 8) {
+                    Button {
+                        state.rescanLocalSkills()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 8.5, weight: .semibold))
+                            Text("ai.skills.local.rescan".localized)
+                                .font(.system(size: 9.5, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.06))
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        browseForSkillDirectory()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 8.5, weight: .semibold))
+                            Text("ai.skills.local.addDirectory".localized)
+                                .font(.system(size: 9.5, weight: .medium))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(palette.primaryAccent.opacity(0.15))
+                        .foregroundColor(palette.primaryAccent)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+
+                // Custom Directories if any
+                if !state.skillConfig.customSkillDirectories.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ai.skills.local.customDirectories".localized)
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(.secondary)
+
+                        ForEach(state.skillConfig.customSkillDirectories, id: \.self) { dir in
+                            customSkillDirectoryRow(path: dir)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(6)
+                }
+
+                // Discovered Skills List
+                if state.localSkills.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.slash")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("ai.skills.local.noSkills".localized)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(6)
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(state.localSkills) { skill in
+                            localSkillRowView(skill: skill)
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Text("ai.skills.local.disabledNotice".localized)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.02))
+                .cornerRadius(6)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func localSkillRowView(skill: AILocalSkill) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Toggle("", isOn: Binding(
+                get: { skill.isEnabled },
+                set: { _ in state.toggleSkillEnabled(id: skill.id) }
+            ))
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Text(skill.name)
+                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    Text("/\(skill.trigger)")
+                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1)
+                        .background(Color.primary.opacity(0.07))
+                        .foregroundColor(palette.primaryAccent)
+                        .cornerRadius(3.5)
+
+                    skillSourceTagBadge(source: skill.source)
+
+                    Spacer()
+
+                    Text(skill.isEnabled ? "ai.skills.local.activeBadge".localized : "ai.skills.local.disabledBadge".localized)
+                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background((skill.isEnabled ? Color.green : Color.secondary).opacity(0.15))
+                        .foregroundColor(skill.isEnabled ? .green : .secondary)
+                        .cornerRadius(3)
+                }
+
+                if !skill.description.isEmpty {
+                    Text(skill.description)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.025))
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.8)
+        )
+        .help(skill.directoryPath)
+    }
+
+    @ViewBuilder
+    private func skillSourceTagBadge(source: AILocalSkillSource) -> some View {
+        let (color, bg): (Color, Color) = {
+            switch source {
+            case .optimus:
+                return (Color(hex: "#A855F7"), Color.purple.opacity(0.15))
+            case .claude:
+                return (Color(hex: "#F97316"), Color.orange.opacity(0.15))
+            case .purah:
+                return (palette.primaryAccent, palette.primaryAccent.opacity(0.15))
+            case .custom:
+                return (Color.blue, Color.blue.opacity(0.15))
+            }
+        }()
+        Text(source.displayName)
+            .font(.system(size: 7.5, weight: .bold, design: .rounded))
+            .padding(.horizontal, 4.5)
+            .padding(.vertical, 1.2)
+            .background(bg)
+            .foregroundColor(color)
+            .cornerRadius(3.5)
+    }
+
+    @ViewBuilder
+    private func customSkillDirectoryRow(path: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "folder")
+                .font(.system(size: 9.5))
+                .foregroundColor(palette.primaryAccent)
+
+            Text(path)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            Button {
+                state.removeCustomSkillDirectory(path)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove Directory")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.primary.opacity(0.03))
+        .cornerRadius(5)
+    }
+
+    private func browseForSkillDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.prompt = "ai.skills.local.selectFolder".localized
+        if panel.runModal() == .OK, let url = panel.url {
+            state.addCustomSkillDirectory(url.path)
+        }
     }
 
     // MARK: - Card 4: Session History & Retention

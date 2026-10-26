@@ -724,15 +724,129 @@ public struct AIBuiltInSkillConfig: Codable, Equatable, Sendable {
     public var enableFileReadSkill: Bool
     public var enableDirectoryListSkill: Bool
     public var enableShellSnippetSkill: Bool
+    public var enableLocalSkills: Bool
+    public var customSkillDirectories: [String]
+    public var disabledSkillIds: [String]
 
     public init(
         enableFileReadSkill: Bool = true,
         enableDirectoryListSkill: Bool = true,
-        enableShellSnippetSkill: Bool = true
+        enableShellSnippetSkill: Bool = true,
+        enableLocalSkills: Bool = true,
+        customSkillDirectories: [String] = [],
+        disabledSkillIds: [String] = []
     ) {
         self.enableFileReadSkill = enableFileReadSkill
         self.enableDirectoryListSkill = enableDirectoryListSkill
         self.enableShellSnippetSkill = enableShellSnippetSkill
+        self.enableLocalSkills = enableLocalSkills
+        self.customSkillDirectories = customSkillDirectories
+        self.disabledSkillIds = disabledSkillIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case enableFileReadSkill
+        case enableDirectoryListSkill
+        case enableShellSnippetSkill
+        case enableLocalSkills
+        case customSkillDirectories
+        case disabledSkillIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enableFileReadSkill = try container.decodeIfPresent(Bool.self, forKey: .enableFileReadSkill) ?? true
+        self.enableDirectoryListSkill = try container.decodeIfPresent(Bool.self, forKey: .enableDirectoryListSkill) ?? true
+        self.enableShellSnippetSkill = try container.decodeIfPresent(Bool.self, forKey: .enableShellSnippetSkill) ?? true
+        self.enableLocalSkills = try container.decodeIfPresent(Bool.self, forKey: .enableLocalSkills) ?? true
+        self.customSkillDirectories = try container.decodeIfPresent([String].self, forKey: .customSkillDirectories) ?? []
+        self.disabledSkillIds = try container.decodeIfPresent([String].self, forKey: .disabledSkillIds) ?? []
+    }
+}
+
+// MARK: - Local Skills
+public enum AILocalSkillSource: String, Codable, Sendable, CaseIterable {
+    case optimus = "optimus"
+    case claude = "claude"
+    case purah = "purah"
+    case custom = "custom"
+
+    public var displayName: String {
+        switch self {
+        case .optimus: return "Optimus"
+        case .claude: return "Claude"
+        case .purah: return "Purah"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+public struct AILocalSkill: Identifiable, Codable, Equatable, Sendable {
+    public var id: String             // Directory name or skill identifier (e.g. "write-swift")
+    public var name: String           // Display name (e.g. "write-swift")
+    public var description: String    // One-sentence summary from frontmatter or first paragraph
+    public var trigger: String        // Slash trigger without prefix (e.g. "write-swift")
+    public var directoryPath: String   // Path to skill directory
+    public var promptTemplate: String // Body text / instructions from SKILL.md
+    public var isEnabled: Bool
+    public var source: AILocalSkillSource // .optimus, .claude, .purah, .custom
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        trigger: String,
+        directoryPath: String,
+        promptTemplate: String,
+        isEnabled: Bool = true,
+        source: AILocalSkillSource
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.trigger = trigger
+        self.directoryPath = directoryPath
+        self.promptTemplate = promptTemplate
+        self.isEnabled = isEnabled
+        self.source = source
+    }
+}
+
+// MARK: - Slash Command Item
+public struct AISlashCommandItem: Identifiable, Equatable, Sendable {
+    public enum Kind: Sendable, Equatable {
+        case role(AIRolePreset)
+        case skill(AILocalSkill)
+    }
+
+    public var id: String {
+        switch kind {
+        case .role(let role): return "role_\(role.id)"
+        case .skill(let skill): return "skill_\(skill.id)"
+        }
+    }
+
+    public var trigger: String // e.g. "ask", "translate", "write-swift"
+    public var title: String
+    public var subtitle: String
+    public var icon: String
+    public var colorHex: String
+    public var kind: Kind
+
+    public init(
+        trigger: String,
+        title: String,
+        subtitle: String,
+        icon: String,
+        colorHex: String,
+        kind: Kind
+    ) {
+        self.trigger = trigger
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = icon
+        self.colorHex = colorHex
+        self.kind = kind
     }
 }
 

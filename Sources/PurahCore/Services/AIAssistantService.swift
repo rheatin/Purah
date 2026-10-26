@@ -1352,77 +1352,166 @@ public final class AIAssistantService {
         return false
     }
 
+    public nonisolated static func extractSlashSkillCommand(
+        from prompt: String,
+        availableSkills: [AILocalSkill]
+    ) -> (skill: AILocalSkill?, strippedPrompt: String) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/") else {
+            return (nil, prompt)
+        }
+
+        let textAfterSlash = trimmed.dropFirst()
+        let token = textAfterSlash.prefix { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        let commandToken = String(token)
+        guard !commandToken.isEmpty else {
+            return (nil, prompt)
+        }
+
+        if let matched = availableSkills.first(where: {
+            $0.isEnabled && (
+                $0.trigger.caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.trigger.replacingOccurrences(of: "-", with: "_").caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.trigger.replacingOccurrences(of: "_", with: "-").caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.id.caseInsensitiveCompare(commandToken) == .orderedSame ||
+                $0.name.caseInsensitiveCompare(commandToken) == .orderedSame
+            )
+        }) {
+            let afterToken = textAfterSlash.dropFirst(commandToken.count)
+            let stripped = afterToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (matched, stripped)
+        }
+
+        return (nil, prompt)
+    }
+
     public nonisolated static func enrichPromptWithLocalSkills(
         _ prompt: String,
         skills: AIBuiltInSkillConfig,
-        allowedPaths: Set<String>? = nil
+        allowedPaths: Set<String>? = nil,
+        activeSkill: AILocalSkill? = nil,
+        referencedSkills: [AILocalSkill] = [],
+        availableSkills: [AILocalSkill] = []
     ) -> (enrichedPrompt: String, attachedFilesSummary: [String]) {
-        guard skills.enableFileReadSkill || skills.enableDirectoryListSkill else {
-            return (prompt, [])
-        }
+        var resolvedSkill: AILocalSkill? = activeSkill
+        var userPrompt = prompt
 
-        let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return (prompt, [])
-        }
-
-        let nsPrompt = prompt as NSString
-        let matches = regex.matches(in: prompt, options: [], range: NSRange(location: 0, length: nsPrompt.length))
-        guard !matches.isEmpty else {
-            return (prompt, [])
-        }
-
-        var enrichedPrompt = prompt
-        var attachedFilesSummary: [String] = []
-        var processedPaths = Set<String>()
-
-        for match in matches {
-            let rawPath = nsPrompt.substring(with: match.range)
-            var expandedPath = (rawPath as NSString).expandingTildeInPath
-
-            var isDir: ObjCBool = false
-            if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
-                let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
-                let exp = (trimmed as NSString).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
-                    expandedPath = exp
-                } else {
-                    continue
+        // 1. Support extracting /skill-name from the prompt if present at the start
+        if skills.enableLocalSkills {
+            let candidateSkills = availableSkills.isEmpty ? referencedSkills : availableSkills
+            if resolvedSkill == nil && !candidateSkills.isEmpty {
+                let extraction = extractSlashSkillCommand(from: userPrompt, availableSkills: candidateSkills)
+                if let extracted = extraction.skill {
+                    resolvedSkill = extracted
+                    userPrompt = extraction.strippedPrompt
+                }
+            } else if let skill = resolvedSkill {
+                let trimmed = userPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                let triggerToken = "/" + skill.trigger
+                let idToken = "/" + skill.id
+                if trimmed.hasPrefix(triggerToken) {
+                    let afterToken = trimmed.dropFirst(triggerToken.count)
+                    userPrompt = afterToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if trimmed.hasPrefix(idToken) {
+                    let afterToken = trimmed.dropFirst(idToken.count)
+                    userPrompt = afterToken.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
+        }
 
-            guard !processedPaths.contains(expandedPath) else { continue }
-            processedPaths.insert(expandedPath)
+        // 2. Built-in file read and directory list skills
+        var enrichedPrompt = userPrompt
+        var attachedFilesSummary: [String] = []
 
-            // Permission guard if allowedPaths is provided
-            guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
-                continue
-            }
+        if skills.enableFileReadSkill || skills.enableDirectoryListSkill {
+            let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let nsPrompt = userPrompt as NSString
+                let matches = regex.matches(in: userPrompt, options: [], range: NSRange(location: 0, length: nsPrompt.length))
+                var processedPaths = Set<String>()
 
-            if !isDir.boolValue && skills.enableFileReadSkill {
-                let url = URL(fileURLWithPath: expandedPath)
-                let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
-                let fileSize = (attrs?[.size] as? Int64) ?? 0
-                let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+                for match in matches {
+                    let rawPath = nsPrompt.substring(with: match.range)
+                    var expandedPath = (rawPath as NSString).expandingTildeInPath
 
-                var sampleContent = ""
-                if let handle = try? FileHandle(forReadingFrom: url) {
-                    defer { try? handle.close() }
-                    if let data = try? handle.read(upToCount: 65_536) {
-                        let decoded = String(decoding: data, as: UTF8.self)
-                        sampleContent = String(decoded.prefix(16_000))
+                    var isDir: ObjCBool = false
+                    if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
+                        let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
+                        let exp = (trimmed as NSString).expandingTildeInPath
+                        if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
+                            expandedPath = exp
+                        } else {
+                            continue
+                        }
+                    }
+
+                    guard !processedPaths.contains(expandedPath) else { continue }
+                    processedPaths.insert(expandedPath)
+
+                    // Permission guard if allowedPaths is provided
+                    guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
+                        continue
+                    }
+
+                    if !isDir.boolValue && skills.enableFileReadSkill {
+                        let url = URL(fileURLWithPath: expandedPath)
+                        let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
+                        let fileSize = (attrs?[.size] as? Int64) ?? 0
+                        let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+
+                        var sampleContent = ""
+                        if let handle = try? FileHandle(forReadingFrom: url) {
+                            defer { try? handle.close() }
+                            if let data = try? handle.read(upToCount: 65_536) {
+                                let decoded = String(decoding: data, as: UTF8.self)
+                                sampleContent = String(decoded.prefix(16_000))
+                            }
+                        }
+
+                        if !sampleContent.isEmpty {
+                            enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
+                            attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
+                        }
+                    } else if isDir.boolValue && skills.enableDirectoryListSkill {
+                        if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
+                            let sortedEntries = entries.sorted()
+                            let limitedEntries = Array(sortedEntries.prefix(60))
+                            enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
+                        }
                     }
                 }
+            }
+        }
 
-                if !sampleContent.isEmpty {
-                    enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
-                    attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
+        // 3. Prepend active and referenced local skill instructions
+        if skills.enableLocalSkills {
+            var skillsToAttach: [AILocalSkill] = []
+            if let resolvedSkill, resolvedSkill.isEnabled {
+                skillsToAttach.append(resolvedSkill)
+            }
+            for ref in referencedSkills where ref.isEnabled && !skillsToAttach.contains(where: { $0.id == ref.id }) {
+                skillsToAttach.append(ref)
+            }
+
+            var skillBlocks: [String] = []
+            for skill in skillsToAttach {
+                let trimmedTemplate = skill.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmedTemplate.isEmpty {
+                    let block = """
+                    [Local Skill: \(skill.name)]
+                    \(trimmedTemplate)
+                    [End of Skill: \(skill.name)]
+                    """
+                    skillBlocks.append(block)
                 }
-            } else if isDir.boolValue && skills.enableDirectoryListSkill {
-                if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
-                    let sortedEntries = entries.sorted()
-                    let limitedEntries = Array(sortedEntries.prefix(60))
-                    enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
+            }
+
+            if !skillBlocks.isEmpty {
+                let header = skillBlocks.joined(separator: "\n\n")
+                if enrichedPrompt.isEmpty {
+                    enrichedPrompt = header
+                } else {
+                    enrichedPrompt = header + "\n\n" + enrichedPrompt
                 }
             }
         }

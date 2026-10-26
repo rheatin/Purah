@@ -47,6 +47,14 @@ public final class AIAssistantPluginState: Sendable {
     public var allowedFilePaths: Set<String> = []
     public var pendingPermissionRequest: PendingFilePermissionRequest? = nil
 
+    // MARK: - Local Skills & Slash Commands
+    public var localSkills: [AILocalSkill] = []
+    public var activeSkill: AILocalSkill? = nil
+    public var isSlashMenuVisible: Bool = false
+    public var slashQuery: String = ""
+    public var selectedSlashIndex: Int = 0
+    public var slashTokenRange: NSRange? = nil
+
     // MARK: - Provider Settings
     public var selectedProvider: AIProviderKind {
         didSet {
@@ -185,6 +193,7 @@ public final class AIAssistantPluginState: Sendable {
     public var skillConfig: AIBuiltInSkillConfig {
         didSet {
             storage.setCodable(skillConfig, forKey: "skillConfig")
+            self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: skillConfig)
         }
     }
 
@@ -383,6 +392,191 @@ public final class AIAssistantPluginState: Sendable {
         sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
     }
 
+    // MARK: - Slash Command Autocomplete
+    public var allSlashCommands: [AISlashCommandItem] {
+        var items: [AISlashCommandItem] = []
+
+        // Built-in / enabled roles
+        let roles = enabledRoles.isEmpty ? rolePresets : enabledRoles
+        for r in roles {
+            let subtitle: String = {
+                switch r.id {
+                case "ask": return "General AI assistant"
+                case "translate": return "Translate text between languages"
+                case "polish": return "Polish prose and elevate tone"
+                case "grammar": return "Fix spelling and syntax errors"
+                case "explain": return "Explain code structure and logic"
+                case "summarize": return "Summarize key points and takeaways"
+                default: return r.title
+                }
+            }()
+            items.append(
+                AISlashCommandItem(
+                    trigger: r.id,
+                    title: r.title,
+                    subtitle: subtitle,
+                    icon: r.systemIcon,
+                    colorHex: r.colorHex,
+                    kind: .role(r)
+                )
+            )
+        }
+
+        // Local skills
+        for s in localSkills where s.isEnabled {
+            items.append(
+                AISlashCommandItem(
+                    trigger: s.trigger,
+                    title: s.name,
+                    subtitle: s.description,
+                    icon: "bolt.fill",
+                    colorHex: "#34D399",
+                    kind: .skill(s)
+                )
+            )
+        }
+
+        return items
+    }
+
+    public var filteredSlashCommands: [AISlashCommandItem] {
+        let all = allSlashCommands
+        let query = slashQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else {
+            return all
+        }
+
+        return all.filter { item in
+            let trigger = item.trigger.lowercased()
+            let title = item.title.lowercased()
+            let subtitle = item.subtitle.lowercased()
+
+            if trigger.hasPrefix(query) || title.hasPrefix(query) {
+                return true
+            }
+            if trigger.contains(query) || title.contains(query) || subtitle.contains(query) {
+                return true
+            }
+            return fuzzyMatch(query: query, target: trigger) || fuzzyMatch(query: query, target: title)
+        }.sorted { a, b in
+            let aTrig = a.trigger.lowercased()
+            let bTrig = b.trigger.lowercased()
+            let aPrefix = aTrig.hasPrefix(query)
+            let bPrefix = bTrig.hasPrefix(query)
+            if aPrefix != bPrefix { return aPrefix }
+
+            let aTitlePrefix = a.title.lowercased().hasPrefix(query)
+            let bTitlePrefix = b.title.lowercased().hasPrefix(query)
+            if aTitlePrefix != bTitlePrefix { return aTitlePrefix }
+
+            return false
+        }
+    }
+
+    private func fuzzyMatch(query: String, target: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        var targetIdx = target.startIndex
+        for qChar in query {
+            guard let matchIdx = target[targetIdx...].firstIndex(where: { $0 == qChar }) else {
+                return false
+            }
+            targetIdx = target.index(after: matchIdx)
+        }
+        return true
+    }
+
+    public func moveSlashSelection(delta: Int) {
+        let items = filteredSlashCommands
+        guard !items.isEmpty else {
+            selectedSlashIndex = 0
+            return
+        }
+        let count = items.count
+        var next = (selectedSlashIndex + delta) % count
+        if next < 0 {
+            next += count
+        }
+        selectedSlashIndex = next
+    }
+
+    public func dismissSlashMenu() {
+        self.isSlashMenuVisible = false
+        self.slashQuery = ""
+        self.slashTokenRange = nil
+        self.selectedSlashIndex = 0
+    }
+
+    public func checkSlashTrigger(in text: String, cursorLocation: Int) {
+        let nsText = text as NSString
+        let safeLocation = max(0, min(cursorLocation, nsText.length))
+
+        var lastWhitespaceIndex = -1
+        if safeLocation > 0 {
+            for i in stride(from: safeLocation - 1, through: 0, by: -1) {
+                let char = nsText.character(at: i)
+                if let scalar = UnicodeScalar(char), CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                    lastWhitespaceIndex = i
+                    break
+                }
+            }
+        }
+
+        let tokenStart = lastWhitespaceIndex + 1
+        let tokenLength = safeLocation - tokenStart
+
+        guard tokenLength > 0 else {
+            dismissSlashMenu()
+            return
+        }
+
+        let token = nsText.substring(with: NSRange(location: tokenStart, length: tokenLength))
+        guard token.hasPrefix("/") else {
+            dismissSlashMenu()
+            return
+        }
+
+        let query = String(token.dropFirst())
+        self.slashQuery = query
+        self.slashTokenRange = NSRange(location: tokenStart, length: tokenLength)
+        self.isSlashMenuVisible = true
+
+        let count = filteredSlashCommands.count
+        if count > 0 {
+            self.selectedSlashIndex = min(max(0, self.selectedSlashIndex), count - 1)
+        } else {
+            self.selectedSlashIndex = 0
+        }
+    }
+
+    public func selectSlashCommand(_ item: AISlashCommandItem) {
+        switch item.kind {
+        case .role(let role):
+            self.selectedRoleId = role.id
+            self.activeRole = role
+            self.activeQuickAction = AIQuickActionType(rawValue: role.id)
+            removeSlashTokenFromInput()
+        case .skill(let skill):
+            self.activeSkill = skill
+            removeSlashTokenFromInput()
+        }
+        dismissSlashMenu()
+    }
+
+    private func removeSlashTokenFromInput() {
+        if let tokenRange = slashTokenRange,
+           let textRange = Range(tokenRange, in: currentInputText) {
+            currentInputText.removeSubrange(textRange)
+            slashTokenRange = nil
+            return
+        }
+
+        let token = "/" + slashQuery
+        if let range = currentInputText.range(of: token, options: .backwards) {
+            currentInputText.removeSubrange(range)
+        }
+        slashTokenRange = nil
+    }
+
     // MARK: - Initializer
     public init(
         storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "ai"),
@@ -504,6 +698,8 @@ public final class AIAssistantPluginState: Sendable {
             self.allowedFilePaths = []
         }
 
+        self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
+
         self.sessions = repository.items
         pruneExpiredSessions()
 
@@ -588,6 +784,7 @@ public final class AIAssistantPluginState: Sendable {
         self.maxRailRoles = store.aiMaxRailRoles
         self.rolePresets = store._aiRolePresets
         self.enabledActions = store._aiRolePresets.filter(\.isEnabled).compactMap { AIQuickActionType(rawValue: $0.id) }
+        self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
         refreshCapturedSelection()
 
         if selectedProvider == .httpOpenAI || selectedProvider == .httpOllama {
@@ -753,6 +950,36 @@ public final class AIAssistantPluginState: Sendable {
             rolePresets[idx].isTransform = defaultRole.isTransform
             save()
         }
+    }
+
+    // MARK: - Local Skills Management
+    public func rescanLocalSkills() {
+        self.localSkills = LocalSkillDiscoveryService.shared.scanSkills(config: self.skillConfig)
+    }
+
+    public func toggleSkillEnabled(id: String) {
+        if let idx = skillConfig.disabledSkillIds.firstIndex(of: id) {
+            skillConfig.disabledSkillIds.remove(at: idx)
+        } else {
+            skillConfig.disabledSkillIds.append(id)
+        }
+        if let skillIdx = localSkills.firstIndex(where: { $0.id == id }) {
+            localSkills[skillIdx].isEnabled = !skillConfig.disabledSkillIds.contains(id)
+        }
+        if activeSkill?.id == id && skillConfig.disabledSkillIds.contains(id) {
+            activeSkill = nil
+        }
+    }
+
+    public func addCustomSkillDirectory(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !skillConfig.customSkillDirectories.contains(trimmed) else { return }
+        skillConfig.customSkillDirectories.append(trimmed)
+    }
+
+    public func removeCustomSkillDirectory(_ path: String) {
+        skillConfig.customSkillDirectories.removeAll(where: { $0 == path })
     }
 
     // MARK: - MCP Servers Management
@@ -1028,10 +1255,13 @@ public final class AIAssistantPluginState: Sendable {
             let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
                 trimmed,
                 skills: skillConfig,
-                allowedPaths: allowedFilePaths
+                allowedPaths: allowedFilePaths,
+                activeSkill: activeSkill,
+                availableSkills: localSkills
             )
             enrichedPrompt = enriched
         }
+        activeSkill = nil
 
         var effectivePromptOverride = customSystemPrompt ?? role?.systemPrompt ?? quickAction?.buildSystemPrompt()
         if customSystemPrompt == nil {
