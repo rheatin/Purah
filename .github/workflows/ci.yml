@@ -36,7 +36,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          # The vendored SwiftTerm package is part of the tree, so its manifest
+          # has to be in the key. Without it, changing how that package is
+          # compiled left a stale module in the cache and CI kept reporting the
+          # errors the change had already fixed.
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved', 'Package.swift', 'Packages/SwiftTerm/Package.swift') }}
           restore-keys: |
             ${{ runner.os }}-spm-
 
