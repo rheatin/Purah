@@ -31,9 +31,13 @@ public struct PurahScrollableBody<Content: View>: View {
     public var contentInsets: EdgeInsets
     @ViewBuilder public var content: () -> Content
 
+    /// Indicators default to hidden: a rail drawer is a glanceable surface, and
+    /// the built-in drawers all chose that. Use `.automatic` for long-form
+    /// content (a transcript, a document preview) where the reader needs to
+    /// know there is more.
     public init(
         _ axis: Axis.Set = .vertical,
-        indicators: Indicators = .automatic,
+        indicators: Indicators = .hidden,
         contentInsets: EdgeInsets = EdgeInsets(),
         @ViewBuilder content: @escaping () -> Content
     ) {

@@ -2210,7 +2210,7 @@ public struct AISessionHistoryManagerView: View {
             .padding(.horizontal, 4)
 
             // Session List
-            ScrollView(.vertical, showsIndicators: false) {
+            PurahScrollableBody {
                 LazyVStack(spacing: 5) {
                     ForEach(filteredSessions) { session in
                         sessionRow(session)

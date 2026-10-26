@@ -195,7 +195,7 @@ public struct TodoDrawerView: View {
                 // Single item stepped drawer mode
                 todoCard(todo: activeItem)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
+                PurahScrollableBody {
                     VStack(spacing: 5) {
                         ForEach(state.todos.filter { !excludeIDs.contains($0.id) }) { todo in
                             todoCard(todo: todo)

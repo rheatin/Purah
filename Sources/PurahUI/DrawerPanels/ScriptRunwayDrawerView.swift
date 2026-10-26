@@ -27,7 +27,7 @@ public struct ScriptRunwayDrawerView: View {
         let scriptColor = palette.podColor(for: "scripts")
 
         VStack(alignment: .leading, spacing: 6) {
-            ScrollView(.vertical, showsIndicators: false) {
+            PurahScrollableBody {
                 VStack(spacing: 5) {
                     ForEach(state.actions) { action in
                         let isThisRunning = (state.isRunning && state.lastExecutedActionId == action.id) || (runway.isRunning && runway.lastExecutedActionId == action.id)

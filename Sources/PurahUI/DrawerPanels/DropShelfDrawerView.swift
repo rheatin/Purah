@@ -316,7 +316,7 @@ public struct DropShelfDrawerView: View {
 
                 // File List with Automatic Direct Left-Click Drag Marquee Selection
                 let shelfEdge = store.pods.first(where: { $0.id == "shelf" })?.edge ?? .left
-                ScrollView(.vertical, showsIndicators: false) {
+                PurahScrollableBody {
                     VStack(spacing: 6) {
                         ForEach(state.files) { file in
                             ShelfFileRowView(

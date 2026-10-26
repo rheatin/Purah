@@ -209,7 +209,7 @@ public struct HardwareVitalsDrawerView: View {
             topNavigationBar(metrics: metrics, cpuColor: cpuColor)
                 .frame(height: 24)
 
-            PurahScrollableBody(indicators: .hidden) {
+            PurahScrollableBody {
                 VStack(alignment: .leading, spacing: 6) {
                     switch selectedTab {
                     case .overview:
