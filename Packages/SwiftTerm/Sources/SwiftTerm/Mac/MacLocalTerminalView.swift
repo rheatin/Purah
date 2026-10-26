@@ -65,7 +65,7 @@ public protocol LocalProcessTerminalViewDelegate: AnyObject {
  * subclass this and override the methods
  */
 @MainActor
-open class LocalProcessTerminalView: TerminalView, @MainActor TerminalViewDelegate, @MainActor LocalProcessDelegate {
+open class LocalProcessTerminalView: TerminalView, TerminalViewDelegate, LocalProcessDelegate {
     
     public internal(set) var process: LocalProcess!
 
@@ -174,24 +174,38 @@ open class LocalProcessTerminalView: TerminalView, @MainActor TerminalViewDelega
     /**
      * Implements the LocalProcessDelegate method.
      */
-    open func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        processDelegate?.processTerminated(source: self, exitCode: exitCode)
+    nonisolated open func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.processDelegate?.processTerminated(source: self, exitCode: exitCode)
+        }
     }
     
     /**
      * Implements the LocalProcessDelegate.dataReceived method
+
+     * `LocalProcess` calls this from its own dispatch queue, while `feed` drives
+     * the terminal buffer and the view that draws it, both of which belong to
+     * the main actor. Hopping first is what makes the conformance below legal
+     * without an isolated conformance (`@MainActor` in the inheritance clause),
+     * which requires Swift 6.2.
      */
-    open func dataReceived(slice: ArraySlice<UInt8>) {
-        feed (byteArray: slice)
+    nonisolated open func dataReceived(slice: ArraySlice<UInt8>) {
+        let copy = Array(slice)
+        DispatchQueue.main.async { [weak self] in
+            self?.feed(byteArray: copy[...])
+        }
     }
     
     /**
      * Implements the LocalProcessDelegate.getWindowSize method
      */
-    open func getWindowSize () -> winsize
+    nonisolated open func getWindowSize () -> winsize
     {
-        let f: CGRect = self.frame
-        return winsize(ws_row: UInt16(terminal.rows), ws_col: UInt16(terminal.cols), ws_xpixel: UInt16 (f.width), ws_ypixel: UInt16 (f.height))
+        MainActor.assumeIsolated {
+            let f: CGRect = self.frame
+            return winsize(ws_row: UInt16(terminal.rows), ws_col: UInt16(terminal.cols), ws_xpixel: UInt16 (f.width), ws_ypixel: UInt16 (f.height))
+        }
     }
 }
 

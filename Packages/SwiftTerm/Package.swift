@@ -28,8 +28,7 @@ let package = Package(
             // `.unsafeFlags` were used before and are unreliable when the
             // package is consumed as a dependency, which is what this is.
             swiftSettings: [
-                .swiftLanguageMode(.v5),
-                .unsafeFlags(["-strict-concurrency=minimal"])
+                .swiftLanguageMode(.v5)
             ]
         )
     ]
