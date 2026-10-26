@@ -386,6 +386,35 @@ let package = Package(
 )
 ```
 
+Copy `PurahExternalPluginSDK.swift` next to your sources and export these
+`@_cdecl` symbols — the host discovers them with `dlsym`:
+
+| Symbol | Required | Purpose |
+| :--- | :--- | :--- |
+| `purahPluginManifestJSON` | yes | Manifest JSON decoded into `PurahPluginManifest` |
+| `purahPluginABIVersion` | recommended | `"1"`; a newer major version is rejected before any call |
+| `purahSetHostActionBridge` | recommended | Host injects its action dispatcher for `PurahHostBridge` |
+| `purahCreateRailViewWithContext` / `purahCreateDrawerViewWithContext` | recommended | Context JSON → retained `NSView` pointer |
+| `purahCreateSettingsViewWithContext` | optional | Plugin settings page |
+| `purahCreateHeaderAccessoryView` / `purahCreateHeaderTrailingView` | optional | Header slot views |
+| `purahOnRailBarTap` / `purahOnMount` / `purahOnUnmount` | optional | Interaction and lifecycle callbacks |
+
+The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
+`slotHeight`, `drawerWidth`, `isExpanded`, `isPinned`, `isDark`,
+`accentColorHex` and `storageDirectoryPath` — the last one is the plugin's own
+sandbox, so history and config files belong there.
+
+**Working reference:** `Examples/PurahNetPulsePlugin` (a real latency probe with
+rolling history, sparkline, telemetry colouring and a settings panel). Load it
+with **Settings → Plugins → Dev: Load Package...**.
+
+> The loader accepts a folder containing `Package.swift` or a built `.dylib`.
+> A bare `manifest.json` is rejected: metadata declares a plugin, but only
+> exported view factories can actually draw one. For the same reason the
+> marketplace no longer lists manifest-only placeholders —
+> `PluginMarketManager.install(id:)` asks the registry whether an
+> implementation exists and refuses (returning `false`) when it does not.
+
 ---
 
 ## 10. Automated Unit Testing

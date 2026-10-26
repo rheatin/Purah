@@ -1,0 +1,192 @@
+// Tests/PurahCoreTests/ExternalPluginABITests.swift
+import Testing
+import Foundation
+@testable import PurahCore
+@testable import PurahUI
+
+/// Pins the contract the two `Examples/` plugins are built against.
+///
+/// The ABI is discovered purely through `dlsym` at runtime, so a host-side
+/// rename (`purahCreateDrawerViewWithContext` → something else) would not fail
+/// to compile — it would silently load a plugin that draws nothing. These
+/// tests keep the documented symbol names and the context payload honest.
+@Suite("External Plugin ABI Contract")
+struct ExternalPluginABITests {
+
+    private static let sdkFile = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Examples/PurahNetPulsePlugin/Sources/PurahNetPulsePlugin/PurahExternalPluginSDK.swift")
+
+    private static let pluginFile = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Examples/PurahNetPulsePlugin/Sources/PurahNetPulsePlugin/PurahNetPulsePlugin.swift")
+
+    /// Every symbol the host looks up in `PluginDynamicLoader.loadPlugin`.
+    private static let requiredSymbols = [
+        "purahPluginABIVersion",
+        "purahPluginManifestJSON",
+        "purahCreateRailViewWithContext",
+        "purahCreateDrawerViewWithContext",
+        "purahCreateSettingsViewWithContext",
+        "purahCreateHeaderAccessoryView",
+        "purahCreateHeaderTrailingView",
+        "purahSetHostActionBridge",
+        "purahOnRailBarTap",
+        "purahOnMount",
+        "purahOnUnmount"
+    ]
+
+    @Test("The example plugin exports every symbol the host looks up")
+    func testExamplePluginExportsABI() throws {
+        // `purahSetHostActionBridge` ships in the SDK file, the rest in the plugin.
+        let sources = [
+            try String(contentsOf: Self.pluginFile, encoding: .utf8),
+            try String(contentsOf: Self.sdkFile, encoding: .utf8)
+        ]
+        for symbol in Self.requiredSymbols {
+            #expect(sources.contains { $0.contains("@_cdecl(\"\(symbol)\")") },
+                    "Example plugin is missing @_cdecl(\"\(symbol)\")")
+        }
+    }
+
+    @Test("ABI version on both sides is compatible")
+    func testABIVersionCompatibility() {
+        #expect(PurahPluginABI.current == "1")
+        #expect(PurahPluginABI.isCompatible("1"))
+        #expect(PurahPluginABI.isCompatible("1.0"))
+        #expect(!PurahPluginABI.isCompatible("2"))
+        #expect(!PurahPluginABI.isCompatible("2.0.1"))
+    }
+
+    /// The plugin decodes its own copy of the payload; if the host changes a
+    /// field name the plugin's `PurahExternalContext` silently loses it.
+    @Test("Context payload round-trips through the JSON the plugin decodes")
+    func testContextPayloadShape() throws {
+        let payload = PurahABIContextPayload(
+            pluginId: "com.example.netpulse",
+            edge: "right",
+            railWidth: 8,
+            slotHeight: 140,
+            drawerWidth: 300,
+            isExpanded: true,
+            isPinned: false,
+            isDark: true,
+            accentColorHex: "#00C7F0",
+            storageDirectoryPath: "/tmp/purah-netpulse"
+        )
+
+        let data = try JSONEncoder().encode(payload)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        for field in [
+            "pluginId", "edge", "railWidth", "slotHeight", "drawerWidth",
+            "isExpanded", "isPinned", "isDark", "accentColorHex", "storageDirectoryPath"
+        ] {
+            #expect(object[field] != nil, "payload lost the '\(field)' field")
+        }
+        #expect(object["pluginId"] as? String == "com.example.netpulse")
+        #expect(object["edge"] as? String == "right")
+    }
+
+    /// The copied SDK must stay in step with the host's payload: the plugin is
+    /// compiled against its own struct, so a drift here is a silent data loss.
+    @Test("Copied SDK declares the same payload fields as the host")
+    func testSDKMatchesHostPayload() throws {
+        let sdk = try String(contentsOf: Self.sdkFile, encoding: .utf8)
+        for field in [
+            "pluginId", "edge", "railWidth", "slotHeight", "drawerWidth",
+            "isExpanded", "isPinned", "isDark", "accentColorHex", "storageDirectoryPath"
+        ] {
+            #expect(sdk.contains("let \(field):"),
+                    "PurahExternalPluginSDK.swift is missing '\(field)'")
+        }
+    }
+
+    @Test("Host action names used by the SDK are all handled by the loader")
+    func testHostActionCoverage() throws {
+        let sdk = try String(contentsOf: Self.sdkFile, encoding: .utf8)
+        let loaderSource = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/PurahUI/Plugins/PluginDynamicLoader.swift")
+        let loader = try String(contentsOf: loaderSource, encoding: .utf8)
+
+        // Actions the SDK can dispatch: `action: "<name>"` in PurahHostBridge.
+        let actions = ["expand", "dismiss", "togglePin", "showToast",
+                       "showWarning", "openSettings", "performHaptic",
+                       "requestLayoutRecalculation"]
+        for action in actions {
+            #expect(sdk.contains("action: \"\(action)\""),
+                    "SDK no longer dispatches '\(action)' — update this list")
+            #expect(loader.contains("case \"\(action)\""),
+                    "Host does not handle the '\(action)' action the SDK can send")
+        }
+    }
+
+    private static var builtExampleDylib: URL? {
+        let candidates = [
+            "Examples/PurahNetPulsePlugin/.build/release/libPurahNetPulsePlugin.dylib",
+            "Examples/PurahNetPulsePlugin/.build/debug/libPurahNetPulsePlugin.dylib"
+        ]
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return candidates
+            .map { root.appendingPathComponent($0) }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// End-to-end: run the exact path `Dev: Load Package...` runs, minus the
+    /// `swift build` step. Skips when the example has not been compiled yet
+    /// (`cd Examples/PurahNetPulsePlugin && swift build -c release`).
+    @Test("The compiled example plugin dlopens and builds both views",
+          .enabled(if: ExternalPluginABITests.builtExampleDylib != nil,
+                   "Build Examples/PurahNetPulsePlugin first"))
+    @MainActor
+    func testExamplePluginLoadsThroughHostLoader() async throws {
+        let dylib = try #require(Self.builtExampleDylib)
+        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
+        defer { PluginDynamicLoader.shared.unloadPlugin(id: plugin.manifest.id) }
+
+        #expect(plugin.manifest.id == "com.example.netpulse")
+        #expect(plugin.manifest.displayName == "Net Pulse")
+        #expect(plugin.manifest.defaultEdge == .right)
+
+        let store = PurahWorkspaceStore()
+        let pod = plugin.manifest.makeDefaultSlotPod(isEnabled: true)
+        store.pods.append(pod)
+        PluginDynamicLoader.shared.registerStore(store, for: plugin.manifest.id)
+        store.registerCapabilityProvider(plugin)
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8,
+            slotHeight: 140,
+            drawerWidth: 300,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        // Both factories cross the C boundary and must return real NSViews —
+        // a NULL return is exactly what a broken ABI looks like at runtime.
+        let railView = plugin.makeRailBarView(context: context)
+        let drawerView = plugin.makeDrawerView(context: context)
+        _ = railView
+        _ = drawerView
+
+        #expect(store.minimumDrawerHeight(for: plugin.manifest.id) > 0)
+    }
+}

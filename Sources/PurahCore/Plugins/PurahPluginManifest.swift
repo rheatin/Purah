@@ -410,67 +410,15 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         )
     ]
 
-    public static let communityCatalog: [PurahPluginManifest] = [
-        PurahPluginManifest(
-            id: "com.community.git-radar",
-            displayName: "Git Radar",
-            systemIcon: "point.topleft.down.to.point.bottomright.curvepath",
-            author: "GitHub Contributor",
-            version: "0.1.0",
-            description: "Live Git status and repository radar along your screen bezel.",
-            defaultEdge: .left,
-            preferredZone: .quickFlick,
-            ergonomicWeight: 30.0,
-            minLengthRatio: 0.16,
-            defaultColorHex: "#F05032",
-            defaultDrawerWidth: 280.0,
-            category: .systemService,
-            permissions: [.shellExecution, .fileSystem],
-            website: "https://github.com/purah-community/git-radar",
-            tags: ["git", "repo", "vcs", "code", "radar"],
-            isCommunity: true
-        ),
-        PurahPluginManifest(
-            id: "com.community.weather-aura",
-            displayName: "Weather Aura",
-            systemIcon: "cloud.sun.rain.fill",
-            author: "Aurora Labs",
-            version: "0.1.0",
-            description: "Real-time micro-climate weather radar with animated ambient rain glow.",
-            defaultEdge: .right,
-            preferredZone: .glance,
-            ergonomicWeight: 25.0,
-            minLengthRatio: 0.14,
-            defaultColorHex: "#00B4D8",
-            defaultDrawerWidth: 260.0,
-            category: .lightweight,
-            permissions: [],
-            website: "https://auroralabs.dev/weather",
-            tags: ["weather", "forecast", "climate", "ambient"],
-            isCommunity: true
-        ),
-        PurahPluginManifest(
-            id: "com.community.docker-fleet",
-            displayName: "Docker Fleet",
-            systemIcon: "shippingbox.fill",
-            author: "DevOps Tools",
-            version: "0.1.0",
-            description: "Container lifecycle monitor, live log stream, and quick restart runway.",
-            defaultEdge: .left,
-            preferredZone: .goldenAction,
-            ergonomicWeight: 35.0,
-            minLengthRatio: 0.18,
-            defaultColorHex: "#2496ED",
-            defaultDrawerWidth: 320.0,
-            category: .heavyGPU,
-            permissions: [.shellExecution],
-            website: "https://github.com/docker-fleet/purah",
-            tags: ["docker", "containers", "devops", "cloud"],
-            isCommunity: true
-        )
-    ]
-
+    /// The marketplace ships only manifests backed by a real plugin.
+    ///
+    /// A hardcoded "community catalog" used to sit here with three invented
+    /// entries (Git Radar, Weather Aura, Docker Fleet) and fabricated websites.
+    /// Installing one mounted `CommunityPodPlugin`, which renders the manifest's
+    /// own description back at the user — a pod that looked alive in the store
+    /// and did nothing on the rail. Third-party pods now arrive exclusively
+    /// through `Dev: Load Package...`, which compiles and dlopens actual code.
     public static var fullCatalog: [PurahPluginManifest] {
-        builtInCatalog + communityCatalog
+        builtInCatalog
     }
 }

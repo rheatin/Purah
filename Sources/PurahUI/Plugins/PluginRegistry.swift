@@ -29,15 +29,6 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         register(TodoPlugin())
         register(ClipboardPlugin())
         register(AIAssistantPlugin())
-
-        for manifest in PurahPluginManifest.communityCatalog {
-            catalogPlugins[manifest.id] = CommunityPodPlugin(manifest: manifest)
-        }
-    }
-
-    public func registerManifestOnly(_ manifest: PurahPluginManifest) {
-        let plugin = CommunityPodPlugin(manifest: manifest)
-        catalogPlugins[manifest.id] = plugin
     }
 
     public func register(_ plugin: any PurahPodPlugin, store: PurahWorkspaceStore? = nil) {
@@ -173,14 +164,19 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         catalogPlugins[id]?.manifest
     }
 
+    public func hasImplementation(for id: String) -> Bool {
+        catalogPlugins[id] != nil
+    }
+
     public func pluginMarketDidInstall(id: String, store: PurahWorkspaceStore) {
-        if let plugin = catalogPlugins[id] {
-            register(plugin, store: store)
-        } else if let manifest = PurahPluginManifest.fullCatalog.first(where: { $0.id == id }) {
-            let plugin = CommunityPodPlugin(manifest: manifest)
-            catalogPlugins[id] = plugin
-            register(plugin, store: store)
+        // Installing a manifest never conjures a plugin: the store's catalog is
+        // exactly the set of plugins that registered real code, so a pod can
+        // only reach the rail with views behind it.
+        guard let plugin = catalogPlugins[id] else {
+            DiagnosticLogger.shared.info("Plugin", "Install ignored: no implementation registered for \(id)")
+            return
         }
+        register(plugin, store: store)
     }
 
     public func pluginMarketDidUninstall(id: String, store: PurahWorkspaceStore) {
