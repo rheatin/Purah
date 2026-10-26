@@ -3192,6 +3192,63 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    /// Drops every pod whose id has no implementation behind it.
+    ///
+    /// A saved layout outlives the code that produced it: a dynamically loaded
+    /// plugin can be unloaded, uninstalled or simply deleted from the project,
+    /// and its pod then renders a bare rail bar with no drawer to open. The
+    /// caller supplies `hasImplementation` because the store cannot see plugin
+    /// code — `PurahUI` owns the registry, and `PurahCore` must not depend on it.
+    ///
+    /// Built-in pods are never candidates: their ids are the product's own
+    /// vocabulary, and a transient registration gap must not delete a user's
+    /// carefully sculpted layout. Only unknown ids are pruned, which is exactly
+    /// the set that could never open a drawer.
+    ///
+    /// - Parameter hasImplementation: Whether a live plugin exists for an id.
+    /// - Returns: The ids that were removed.
+    @discardableResult
+    public func pruneOrphanedPods(hasImplementation: (String) -> Bool) -> [String] {
+        let builtInIds = Set(Self.defaultPods().map(\.id))
+        let orphanIds = pods
+            .map(\.id)
+            .filter { !builtInIds.contains($0) && !hasImplementation($0) }
+        guard !orphanIds.isEmpty else { return [] }
+
+        let removed = Set(orphanIds)
+        if let activeId = activeDrawerPodId, removed.contains(activeId) {
+            dismissActiveDrawer()
+        }
+        pinnedDrawerItemIds = pinnedDrawerItemIds.filter { itemId in
+            !removed.contains { itemId == $0 || itemId.hasPrefix("\($0)-") }
+        }
+        let affectedEdges = Set(pods.filter { removed.contains($0.id) }.map(\.edge))
+        pods.removeAll { removed.contains($0.id) }
+        for id in orphanIds {
+            unregisterCapabilityProvider(for: id)
+        }
+        if let market = _marketManager {
+            var installed = market.installedPluginIds
+            var enabled = market.enabledPluginIds
+            installed.subtract(removed)
+            enabled.subtract(removed)
+            market.installedPluginIds = installed
+            market.enabledPluginIds = enabled
+        }
+
+        // Reflow only the rails that lost a pod. `autoLayoutAll()` would also
+        // discard the user's hand-sculpted heights and zone ordering, which has
+        // nothing to do with a plugin disappearing.
+        for edge in affectedEdges {
+            normalizePageRanges(for: edge)
+        }
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+        DiagnosticLogger.shared.info("Store", "Pruned orphaned pods: \(orphanIds.joined(separator: ", "))")
+        return orphanIds
+    }
+
     public func fillRail(podId: String) {
         guard let currentPod = pods.first(where: { $0.id == podId && $0.isEnabled }) else { return }
         let edge = currentPod.edge

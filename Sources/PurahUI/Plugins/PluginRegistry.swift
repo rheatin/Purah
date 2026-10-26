@@ -77,6 +77,16 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
                 }
             }
         }
+
+        // A saved layout outlives the code that produced it. Once every real
+        // implementation is registered, any remaining pod with no plugin behind
+        // it is an orphan — a dynamically loaded plugin that was unloaded or
+        // deleted from the project. Left alone it reserves rail space and draws
+        // a bar whose drawer can never open, so it is pruned here rather than in
+        // the store, which cannot see plugin code.
+        store.pruneOrphanedPods { [weak self] id in
+            self?.catalogPlugins[id] != nil
+        }
     }
 
     public func mountPlugin(id: String, store: PurahWorkspaceStore) {
