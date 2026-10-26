@@ -2,6 +2,7 @@
 import Foundation
 import AppKit
 import ApplicationServices
+import Darwin
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -777,6 +778,14 @@ public final class AIAssistantService {
         let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
         let isNDJSON = isOpenCodeFamily || (args.contains("json") || args.contains("--format"))
 
+        // When a run hangs, the first question is always "what did we actually
+        // pass?". Answering it from a diagnostics report beats asking the user
+        // to read their settings back to us.
+        DiagnosticLogger.shared.info(
+            "AI",
+            "CLI launch: \(cliPath) \(Self.describeArguments(args)) (ndjson=\(isNDJSON), skillDirs=\(skillDirectories.count))"
+        )
+
         return try await executeCLIProcess(
             executablePath: cliPath,
             arguments: args,
@@ -835,6 +844,15 @@ public final class AIAssistantService {
             }
             if !args.contains("-p") && !args.contains("--print") {
                 args.insert("-p", at: 0)
+            }
+            // Pi only discovers skills under `~/.pi/agent/skills` and project
+            // directories. A skill Purah found in `~/.claude/skills` (or a
+            // custom directory) is not loaded there, so "invoke that skill"
+            // would send the agent looking for something it never had. Point
+            // it at the exact directory instead of relying on discovery.
+            if !hasCustomTemplate, !additionalDirectories.isEmpty,
+               !args.contains("--skill"), !args.contains("-ns"), !args.contains("--no-skills") {
+                args.insert(contentsOf: additionalDirectories.flatMap { ["--skill", $0] }, at: 0)
             }
         }
 
@@ -1057,25 +1075,97 @@ public final class AIAssistantService {
         return result
     }
 
-    private final class SafeAtomicBool: @unchecked Sendable {
+    private final class SafeBox<Value>: @unchecked Sendable {
         private let lock = NSLock()
-        private var val: Bool
+        private var stored: Value
 
-        init(_ initial: Bool = false) {
-            self.val = initial
+        init(_ initial: Value) {
+            self.stored = initial
         }
 
-        func set(_ newValue: Bool) {
+        func set(_ newValue: Value) {
             lock.lock()
-            val = newValue
+            stored = newValue
             lock.unlock()
         }
 
-        var value: Bool {
+        var value: Value {
             lock.lock()
             defer { lock.unlock() }
-            return val
+            return stored
         }
+    }
+
+    /// `Process` is not `Sendable`, but an escalation timer only needs to ask
+    /// "is this still running", which is thread-safe on `Process` itself.
+    private final class ProcessEscalation: @unchecked Sendable {
+        let process: Process
+        init(_ process: Process) { self.process = process }
+    }
+
+    /// Two independent deadlines, because one is not enough to call a run hung.
+    ///
+    /// Silence is the honest signal: a CLI that has printed nothing for
+    /// `idleTimeout` is either waiting on input that will never arrive (a
+    /// permission prompt with no terminal to answer it) or on a request that
+    /// will never come back. The ceiling exists for the case silence cannot
+    /// see — a runaway agent that keeps emitting progress forever while never
+    /// finishing.
+    private nonisolated static let cliIdleTimeout: TimeInterval = 180
+    /// Silence *after* the first byte. Longer than the idle window because a
+    /// run that has started may legitimately sit inside one slow tool call,
+    /// but not indefinitely.
+    private nonisolated static let cliSilenceTimeout: TimeInterval = 300
+    private nonisolated static let cliHardCeiling: TimeInterval = 1_800
+    private nonisolated static let cliWatchdogInterval: TimeInterval = 5
+    private nonisolated static let cliKillEscalationDelay: TimeInterval = 5
+
+    /// Test-only override so the watchdog can be exercised against a real
+    /// hanging process without waiting out production deadlines. The AI test
+    /// suite is `.serialized` and resets this in `defer`.
+    nonisolated(unsafe) static var cliTimeoutsForTesting: (idle: TimeInterval, silence: TimeInterval, poll: TimeInterval)?
+
+    /// The watchdog's whole decision, kept pure so it can be tested without
+    /// waiting out a real timeout.
+    nonisolated static func cliTimeoutReason(
+        hasEmittedOutput: Bool,
+        idleFor idle: TimeInterval,
+        totalElapsed total: TimeInterval,
+        idleTimeout: TimeInterval = cliIdleTimeout,
+        silenceTimeout: TimeInterval = cliSilenceTimeout,
+        hardCeiling: TimeInterval = cliHardCeiling
+    ) -> String? {
+        // Silence before the first byte is a different failure from silence
+        // after it: nothing ever started, so the invocation itself is wrong
+        // (no TTY for a prompt, dead endpoint, bad flags).
+        if !hasEmittedOutput {
+            guard total >= idleTimeout else { return nil }
+            return "the CLI produced no output for \(Int(idleTimeout))s"
+        }
+        if idle >= silenceTimeout { return "the CLI went silent for \(Int(silenceTimeout))s" }
+        if total >= hardCeiling { return "the run exceeded \(Int(hardCeiling / 60)) minutes" }
+        return nil
+    }
+
+    /// SIGTERM, then SIGKILL if the CLI ignores it. A hung Node CLI that traps
+    /// TERM would otherwise keep running after the user already pressed Stop.
+    private nonisolated static func terminate(_ process: Process, escalating: Bool) {
+        process.terminate()
+        guard escalating, process.isRunning else { return }
+        let box = ProcessEscalation(process)
+        DispatchQueue.global().asyncAfter(deadline: .now() + cliKillEscalationDelay) {
+            guard box.process.isRunning else { return }
+            kill(box.process.processIdentifier, SIGKILL)
+        }
+    }
+
+    /// Argument shapes for the diagnostic log: flags survive, long values are
+    /// replaced by their length. Prompts and chat history routinely exceed the
+    /// whole log, and a diagnostics report gets pasted into issues.
+    nonisolated static func describeArguments(_ arguments: [String]) -> String {
+        arguments.map { arg in
+            arg.count > 80 ? "<\(arg.count) chars>" : arg
+        }.joined(separator: " ")
     }
 
     private final class SafeTextBuffer: @unchecked Sendable {
@@ -1184,17 +1274,39 @@ public final class AIAssistantService {
                 let buffer = SafeTextBuffer()
                 let lineBuffer = SafeTextBuffer()
                 let errorBuffer = SafeTextBuffer()
-                let bytesEmitted = SafeAtomicBool(false)
-                let isTimedOut = SafeAtomicBool(false)
+                let bytesEmitted = SafeBox(false)
+                let lastOutputAt = SafeBox(Date())
+                let timeoutReason = SafeBox<String?>(nil)
+                let startedAt = Date()
 
-                let watchdog = DispatchWorkItem { [weak process] in
-                    guard let process = process, process.isRunning else { return }
-                    if !bytesEmitted.value {
-                        isTimedOut.set(true)
-                        process.terminate()
-                    }
+                // The previous watchdog asked one question, once, at 180s: "has
+                // this emitted nothing?" A CLI that prints a warning and then
+                // waits forever on a prompt nobody can answer answered "no" and
+                // was left running until the user quit the app. Polling keeps
+                // the run bounded no matter where it stalls.
+                let timeouts = Self.cliTimeoutsForTesting
+                let pollInterval = timeouts?.poll ?? Self.cliWatchdogInterval
+                let watchdog = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+                watchdog.schedule(
+                    deadline: .now() + pollInterval,
+                    repeating: pollInterval
+                )
+                watchdog.setEventHandler {
+                    guard process.isRunning, timeoutReason.value == nil else { return }
+                    let now = Date()
+                    let reason = Self.cliTimeoutReason(
+                        hasEmittedOutput: bytesEmitted.value,
+                        idleFor: now.timeIntervalSince(lastOutputAt.value),
+                        totalElapsed: now.timeIntervalSince(startedAt),
+                        idleTimeout: timeouts?.idle ?? Self.cliIdleTimeout,
+                        silenceTimeout: timeouts?.silence ?? Self.cliSilenceTimeout
+                    )
+                    guard let reason else { return }
+                    timeoutReason.set(reason)
+                    DiagnosticLogger.shared.warn("AI", "Terminating CLI: \(reason)")
+                    Self.terminate(process, escalating: true)
                 }
-                DispatchQueue.global().asyncAfter(deadline: .now() + 180.0, execute: watchdog)
+                watchdog.resume()
 
                 defer {
                     watchdog.cancel()
@@ -1230,6 +1342,7 @@ public final class AIAssistantService {
                     let data = handle.availableData
                     guard !data.isEmpty else { return }
                     bytesEmitted.set(true)
+                    lastOutputAt.set(Date())
                     guard let text = String(data: data, encoding: .utf8) else { return }
                     processChunk(text)
                 }
@@ -1238,6 +1351,7 @@ public final class AIAssistantService {
                     let data = handle.availableData
                     guard !data.isEmpty else { return }
                     bytesEmitted.set(true)
+                    lastOutputAt.set(Date())
                     guard let text = String(data: data, encoding: .utf8) else { return }
                     errorBuffer.append(text)
                 }
@@ -1281,13 +1395,18 @@ public final class AIAssistantService {
                         continuation.resume(returning: result)
                     } else {
                         let result = buffer.value()
-                        if isTimedOut.value {
+                        if let reason = timeoutReason.value {
                             // Partial output from a killed process is a
                             // truncated answer, not an answer: surfacing it
                             // would present a half-finished response as done.
+                            var message = "Stopped because \(reason).\n\nMost likely causes: the CLI is waiting for input it cannot receive (a permission or trust prompt with no terminal attached), or the provider never answered. Running the same command in a terminal shows which."
+                            let errText = Self.stripANSIEscapeSequences(errorBuffer.value())
+                            if !errText.isEmpty {
+                                message += "\n\nThe CLI last reported:\n\(errText)"
+                            }
                             continuation.resume(throwing: AIAssistantError.processExecutionFailed(
                                 exitCode: process.terminationStatus,
-                                errorOutput: "Process timed out after 180 seconds without finishing."
+                                errorOutput: message
                             ))
                         } else {
                             let errText = errorBuffer.value()
@@ -1609,10 +1728,32 @@ public final class AIAssistantService {
         return paths
     }
 
-    /// Which delivery mode fits a provider. Only a local agent CLI has its own
-    /// skill system; everything else can only be told about the skill in text.
-    public nonisolated static func skillDelivery(for provider: AIProviderKind) -> AISkillDelivery {
-        provider == .localCLI ? .nativeCommand : .inlineBody
+    /// Which delivery mode fits the CLI that will actually run.
+    ///
+    /// "Native" is only honest for a CLI that will genuinely load the skill by
+    /// name. Purah discovers skills in `~/.agents/skills`, `~/.claude/skills`,
+    /// `~/Library/Application Support/Purah/Skills` and the user's custom
+    /// directories; `claude` scans `~/.claude/skills`, and `pi` scans
+    /// `~/.pi/agent/skills` and project dirs. Telling `pi` to "invoke the
+    /// `foo` skill" for a skill living anywhere else asks for something it
+    /// never loaded — it hunts for files, fails, and can keep going. So `pi`
+    /// gets the native command *and* an explicit `--skill <dir>` (see
+    /// `resolveCLIArguments`), which removes the guesswork.
+    ///
+    /// Codex, Ollama and custom binaries have no skill system to address, so
+    /// the body is inlined: that always works, and a wrong guess here is
+    /// invisible to the user — the agent simply answers without the skill.
+    public nonisolated static func skillDelivery(
+        for provider: AIProviderKind,
+        cli: AICLIExecutable
+    ) -> AISkillDelivery {
+        guard provider == .localCLI else { return .inlineBody }
+        switch cli {
+        case .claude, .pi:
+            return .nativeCommand
+        case .codex, .ollama, .custom:
+            return .inlineBody
+        }
     }
 
     /// Skill directories the resolved skill needs access to, so a CLI agent can

@@ -1369,7 +1369,7 @@ public final class AIAssistantPluginState: Sendable {
                 allowedPaths: allowedFilePaths,
                 activeSkill: activeSkill,
                 availableSkills: localSkills,
-                skillDelivery: AIAssistantService.skillDelivery(for: selectedProvider)
+                skillDelivery: AIAssistantService.skillDelivery(for: selectedProvider, cli: selectedCLI)
             )
             enrichedPrompt = enriched
             skillDirectories = AIAssistantService.skillDirectories(

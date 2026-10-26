@@ -2080,12 +2080,26 @@ struct AIAssistantPluginTests {
         #expect(inline.contains("Skill directory: /skills/write-swift"))
     }
 
-    @Test("Only a local CLI gets native skill delivery")
+    @Test("Skill delivery follows the CLI that will actually run")
     func testSkillDeliveryPerProvider() {
-        #expect(AIAssistantService.skillDelivery(for: .localCLI) == .nativeCommand)
         for provider in [AIProviderKind.appleIntelligence, .httpOpenAI, .httpAnthropic, .httpOllama] {
-            #expect(AIAssistantService.skillDelivery(for: provider) == .inlineBody,
-                    "\(provider.displayName) has no skill system to defer to")
+            for cli in AICLIExecutable.allCases {
+                #expect(AIAssistantService.skillDelivery(for: provider, cli: cli) == .inlineBody,
+                        "\(provider.displayName) has no skill system to defer to")
+            }
+        }
+
+        // Both of these have a skill system and are given the explicit
+        // directory, so naming the skill is enough.
+        #expect(AIAssistantService.skillDelivery(for: .localCLI, cli: .claude) == .nativeCommand)
+        #expect(AIAssistantService.skillDelivery(for: .localCLI, cli: .pi) == .nativeCommand)
+
+        // These have no way to resolve a skill name. Inlining the body is the
+        // only delivery that works; telling them to "invoke the skill" would
+        // leave the instructions unread.
+        for cli in [AICLIExecutable.codex, .ollama, .custom] {
+            #expect(AIAssistantService.skillDelivery(for: .localCLI, cli: cli) == .inlineBody,
+                    "\(cli.displayName) cannot resolve a skill by name")
         }
     }
 
@@ -2213,6 +2227,32 @@ struct AIAssistantPluginTests {
                 "A skill is only useful when the agent can act on it")
     }
 
+    @Test("pi is pointed at the skill directory Purah actually found")
+    func testPiLoadsExplicitSkillDirectory() {
+        // Pi discovers skills under ~/.pi/agent/skills and project dirs. A
+        // skill discovered from ~/.claude/skills is invisible to it, so an
+        // "invoke that skill" prompt would send it hunting for files it never
+        // loaded instead of doing the work.
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "do it",
+            additionalDirectories: ["/Users/x/.claude/skills/vmt-weekly-report"]
+        )
+        #expect(args.contains("--skill"))
+        #expect(args.contains("/Users/x/.claude/skills/vmt-weekly-report"))
+
+        // A hand-written template is the user's decision; do not add flags.
+        let templated = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/pi",
+            customCLIArguments: "-p {prompt}",
+            promptText: "do it",
+            additionalDirectories: ["/skills/x"]
+        )
+        #expect(!templated.contains("--skill"))
+    }
+
     @Test("Skill directories are resolved from the active or slash-invoked skill")
     func testSkillDirectoryResolution() {
         let skill = AILocalSkill(
@@ -2260,6 +2300,88 @@ struct AIAssistantPluginTests {
         state.isEditingSource = true
         state.createNewSession()
         #expect(!state.isEditingSource)
+    }
+
+    @Test("A silent CLI is stopped, not waited on forever")
+    func testCLIWatchdogBoundaries() {
+        // Before any deadline, keep waiting.
+        #expect(AIAssistantService.cliTimeoutReason(
+            hasEmittedOutput: false, idleFor: 10, totalElapsed: 10
+        ) == nil)
+        #expect(AIAssistantService.cliTimeoutReason(
+            hasEmittedOutput: true, idleFor: 10, totalElapsed: 10
+        ) == nil)
+
+        // The regression this replaced: a CLI printed one line and then hung.
+        // The old watchdog only fired when *nothing* had been emitted, so this
+        // run never got killed and the drawer sat at "Waiting for model
+        // response..." indefinitely.
+        let stalledAfterOutput = AIAssistantService.cliTimeoutReason(
+            hasEmittedOutput: true, idleFor: 301, totalElapsed: 400
+        )
+        #expect(stalledAfterOutput != nil,
+                "Output followed by silence must still time out")
+
+        // Nothing at all, ever: the invocation itself is broken.
+        #expect(AIAssistantService.cliTimeoutReason(
+            hasEmittedOutput: false, idleFor: 200, totalElapsed: 200
+        ) != nil)
+
+        // Progress forever is still not completion.
+        #expect(AIAssistantService.cliTimeoutReason(
+            hasEmittedOutput: true, idleFor: 1, totalElapsed: 2_000
+        ) != nil)
+
+        // Silence while still inside every window is normal, not a hang.
+        #expect(AIAssistantService.cliTimeoutReason(
+            hasEmittedOutput: true, idleFor: 120, totalElapsed: 200
+        ) == nil)
+    }
+
+    @Test("A CLI that prints once and then hangs is actually killed")
+    func testWatchdogKillsStalledProcess() async throws {
+        // The fake CLI writes a banner then blocks forever: the exact shape
+        // the old watchdog could not rescue, because it only fired when a run
+        // had emitted *nothing*.
+        let script = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-fake-hang-\(UUID().uuidString).sh")
+        try "#!/bin/bash\necho 'starting agent...'\nexec sleep 100\n"
+            .write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: script.path
+        )
+        defer { try? FileManager.default.removeItem(at: script) }
+
+        AIAssistantService.cliTimeoutsForTesting = (idle: 60, silence: 0.6, poll: 0.2)
+        defer { AIAssistantService.cliTimeoutsForTesting = nil }
+
+        let started = Date()
+        do {
+            _ = try await AIAssistantService.shared.streamChat(
+                messages: [AIChatMessage(role: .user, content: "go")],
+                provider: .localCLI,
+                cliExecutable: .custom,
+                customCLIPath: script.path,
+                customCLIArguments: "{prompt}"
+            )
+            Issue.record("A hanging CLI must not return success")
+        } catch let error as AIAssistantError {
+            let message = error.localizedDescription
+            #expect(message.contains("went silent"), "Got: \(message)")
+            // It must have been the watchdog, not the process finishing on
+            // its own (the fake sleeps for 100s).
+            #expect(Date().timeIntervalSince(started) < 20)
+        }
+    }
+
+    @Test("Diagnostic log keeps flags but not whole prompts")
+    func testArgumentDescription() {
+        let prompt = String(repeating: "x", count: 5_000)
+        let described = AIAssistantService.describeArguments(["-p", prompt, "--settings", "/tmp/h.json"])
+        #expect(described.contains("-p"))
+        #expect(described.contains("--settings"))
+        #expect(!described.contains(prompt), "A whole prompt would flood the diagnostics report")
+        #expect(described.contains("5000"))
     }
 
     @Test("AIAssistantService executeCLIProcess handles task cancellation")
