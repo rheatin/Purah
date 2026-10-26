@@ -35,6 +35,12 @@ public final class PluginMarketManager: Sendable {
     }
     public var availableCatalog: [PurahPluginManifest]
 
+    /// Built-in entries. Kept separate from `availableCatalog` because a remote
+    /// refresh replaces only the remote half — a server can never remove a
+    /// built-in plugin from the grid.
+    @ObservationIgnored
+    public let builtInCatalog: [PurahPluginManifest]
+
     @ObservationIgnored
     private weak var store: PurahWorkspaceStore?
 
@@ -57,6 +63,7 @@ public final class PluginMarketManager: Sendable {
     ) {
         self.store = store
         self.availableCatalog = availableCatalog
+        self.builtInCatalog = availableCatalog
         self.userDefaults = userDefaults
         self.lifecycleDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
 
@@ -183,6 +190,34 @@ public final class PluginMarketManager: Sendable {
 
     public func uninstall(pluginId: String) {
         uninstall(id: pluginId)
+    }
+
+    /// Merges a remote catalog into the grid.
+    ///
+    /// Built-ins always win an id collision: a remote entry claiming `vitals`
+    /// must not replace the shipped plugin's name, permissions or download
+    /// target. Remote-only ids are appended, so the grid order stays
+    /// built-ins-first.
+    ///
+    /// The entries are only made visible here — nothing is installed, and
+    /// `install(id:)` still refuses any id the registry cannot back with a real
+    /// implementation.
+    public func applyRemoteCatalog(_ entries: [PurahPluginManifest]) {
+        var merged = builtInCatalog
+        let builtInIds = Set(builtInCatalog.map(\.id))
+        for entry in entries where !builtInIds.contains(entry.id) {
+            merged.append(entry)
+        }
+        availableCatalog = merged
+        DiagnosticLogger.shared.info(
+            "Market",
+            "Catalog merged: \(builtInCatalog.count) built-in + \(merged.count - builtInCatalog.count) remote"
+        )
+    }
+
+    /// Rebuilds the catalog from built-ins only, dropping remote entries.
+    public func resetToBuiltInCatalog() {
+        availableCatalog = builtInCatalog
     }
 
     public func addCatalogManifest(_ manifest: PurahPluginManifest) {
