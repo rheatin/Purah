@@ -1,6 +1,13 @@
 // Sources/PurahCore/Permissions/PermissionManager.swift
 import Foundation
-import EventKit
+// EventKit's headers predate Swift concurrency: `EKEventStore` is neither
+// `Sendable` nor main-actor isolated, and its `request…` methods are imported
+// as non-isolated `async`, so a Swift 6 compiler reads `await
+// eventStore.requestFullAccessToEvents()` from `@MainActor` code as sending a
+// non-Sendable value across an isolation boundary. `@preconcurrency` states
+// what is actually true — the class is only used from the main actor — instead
+// of silencing the diagnostic at the call site.
+@preconcurrency import EventKit
 import AppKit
 import Observation
 
