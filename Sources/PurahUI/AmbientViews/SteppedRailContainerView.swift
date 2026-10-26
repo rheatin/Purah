@@ -291,18 +291,20 @@ public struct SteppedRailContainerView: View {
     @ViewBuilder
     private func subItemIndicatorBar(subItem: PurahPluginSubItem, itemH: CGFloat, tintColor: Color) -> some View {
         let barW = CGFloat(store.railBarWidth)
-        let radius = min(barW / 2, 4)
+        let fill = subItem.gaugeStyle == .solid ? subItem.gaugeRatio : nil
 
         ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: radius)
-                .fill(baseFillColor(for: subItem.state, tintColor: tintColor))
-                .frame(width: barW, height: itemH)
-
-            if subItem.gaugeStyle == .solid, let ratio = subItem.gaugeRatio {
-                RoundedRectangle(cornerRadius: radius)
-                    .fill(tintColor)
-                    .frame(width: barW, height: max(itemH * CGFloat(min(max(ratio, 0.0), 1.0)), 4.0))
-            }
+            PurahSegmentGaugeBarView(
+                segments: fill.map {
+                    [PurahGaugeSegment(id: subItem.id, ratio: $0, color: tintColor)]
+                } ?? [],
+                barWidth: barW,
+                height: itemH,
+                trackColor: baseFillColor(for: subItem.state, tintColor: tintColor)
+            )
+            // The chip's glow follows its activity state, not the metric level,
+            // so it stays on the bar rather than on the filled channel.
+            .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
 
             if subItem.state == .running {
                 Circle()
@@ -312,7 +314,6 @@ public struct SteppedRailContainerView: View {
             }
         }
         .frame(width: barW, height: itemH)
-        .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
     }
 
     private func baseFillColor(for state: RailItemActivityState, tintColor: Color) -> Color {

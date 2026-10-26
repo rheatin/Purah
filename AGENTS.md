@@ -109,9 +109,10 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 - **`PurahPluginContext`**: Supplies layout geometry (`edge`, `railWidth`, `slotHeight`, `drawerWidth`), state (`isExpanded`, `isPinned`), theme palette, isolated storage, and action triggers (`requestExpand`, `requestDismiss`, `togglePin`, `isItemPinned`, `acknowledgeAlert`, `requestLayoutRecalculation`, `openSettings`, `showToast`, `showWarning`, `performHaptic`). Third-party plugins communicate through context actions rather than mutating host store internals directly.
 - **Unified Decomposed Policy (`PurahDecomposedPolicy`)**: Plugins supporting stepped sub-item modes declare `decomposedPolicy` (maxRailItems, minChipHeight, maxChipHeight, spacing, overflowStrategy). The layout engine and base container automatically compute ergonomic height bounds and handle `+N More` smart folding capsules, completely freeing plugins from manual height math.
 - **Pod Presentation Kit**: Reusable standardized visual presentation components:
-  - `PurahAdaptiveTierDrawer`: Standardized 3-tier height-adaptive card container (Compact, Standard, Immersive) enforcing the Adaptive Mode Minimum Height Grace Rule.
+  - `PurahAdaptiveTierDrawer`: Ordered height-tier container. Plugins declare any number of tiers by content-area height; the host handles switching with an 8pt hysteresis band. See the Adaptive Tier Principle below.
+  - `PurahScrollableBody`: Opt-in scroll container for drawer bodies with an incompressible natural height. Never applied automatically by the host.
   - `PurahFluidWaveformBarView`: 60/120 FPS high-performance fluid audio waveform and VU meter rail bar view.
-  - `PurahSegmentGaugeBarView`: Multi-segment and discrete metric gauge bar view.
+  - `PurahSegmentGaugeBarView`: Vertical rail gauge — one track with one or more ratio-filled channels, for single- or multi-metric rail bars.
   - `PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`: Standardized three-level (green/yellow/red) continuous telemetry threshold evaluation.
   - `PurahDecomposedCapacitySettingRow`: One-line capacity slider and overflow strategy settings UI row.
 - **Default Decomposed Principle**: Plugins that support multi-item stepped modes (Vitals, Scripts, Calendar, Todo) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and per-item direct interaction.
@@ -161,7 +162,13 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 4. **Adaptive Mode Minimum Height Grace Rule (自适应模式极限高度下完美视图呈现法则 - Mandatory)**:
    - For all plugins operating in adaptive width or dynamic height modes: **The view MUST render with absolute visual perfection even at its absolute minimum height bound (`minimumDrawerHeight`)**.
    - No content may ever clip, overflow beyond card boundaries, overlap headers, or awkwardly truncate essential UI elements.
-   - Text boxes, thumbnails, and preview panes must cleanly adopt internal scroll views (`ScrollView`) with subtle scrollbars or dynamic size adaptations when height is at the minimum threshold, ensuring that minimum height bounds never compromise aesthetics or usability.
+   - Text boxes, thumbnails, and preview panes must cleanly adopt internal scroll views (`ScrollView` / `PurahScrollableBody`) with subtle scrollbars or dynamic size adaptations when height is at the minimum threshold, ensuring that minimum height bounds never compromise aesthetics or usability.
+5. **Adaptive Tier Principle — Universal Duty Split (自适应分档义务划分 - Mandatory)**:
+   - **The universal duty (mandatory for every plugin)**: render without clipping, overlap, or shrunken hit boxes across the whole `minimumDrawerHeight ... preferredDrawerHeight` range. Solved with flexible layout (`Spacer`, `maxHeight: .infinity`, no hardcoded `frame(height:)`) and overflow handled by `PurahScrollableBody` — **not** by tiers. A tier split is never the answer to "not enough room".
+   - **The tier duty (opt-in, per plugin)**: split into a different presentation when the compact form is genuinely *another UI* rather than a smaller one. Only Music (vinyl mini-player) and Vitals (ultra-compact status pills) qualify today. Plugins declare tiers through `PurahAdaptiveTierDrawer`; writing a private `GeometryReader` + threshold switch is forbidden.
+   - **Never leave `minimumDrawerHeight == preferredDrawerHeight`** on a composite drawer: that removes the hover-expansion range and makes every tier above the first unreachable. `AdaptiveTierAndGaugeTests` enforces a real range and the >= 120pt floor.
+   - **Hysteresis rule**: a tier is entered exactly at its declared floor and left only after an 8pt drop below it, so spring-interpolated heights cannot thrash the tier across frames.
+   - **Tier thresholds are content-area heights** (after the host header row and padding), not pod slot heights. `PurahScrollableBody` is opt-in only — the host must never wrap a plugin body in a scroll view on its own, because `maxHeight: .infinity` layouts lose their fill behaviour when given unbounded proposed height.
 
 ## 6. Unified Plugin Card Design System & Safe Inset Rules (统一卡片系统与近轨人机工学 - Mandatory)
 1. **Unified Card Anatomy**:

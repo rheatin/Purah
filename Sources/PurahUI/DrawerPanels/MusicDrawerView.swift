@@ -44,22 +44,46 @@ public struct MusicDrawerView: View {
             let displayProgress = isScrubbing ? scrubbedProgress : liveProgress
             let displaySec = isScrubbing ? (scrubbedProgress * max(state.track.durationSeconds, 1.0)) : liveCurrentSec
 
+            // Thresholds are content-area heights, matching the tier builders.
+            // They describe how much room the player body has, not the pod slot.
             PurahAdaptiveTierDrawer(
-                compactThreshold: 145,
-                immersiveThreshold: 215,
-                compact: { h in
-                    compactCapsuleView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
-                },
-                standard: { h in
-                    classicStudioView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
-                },
-                immersive: { h in
-                    immersiveVinylView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: h)
-                }
-            )
+                tiers: [
+                    PurahAdaptiveTier(id: "compact", minHeight: 0),
+                    PurahAdaptiveTier(id: "standard", minHeight: 145),
+                    PurahAdaptiveTier(id: "immersive", minHeight: 215)
+                ]
+            ) { tier, h in
+                AnyView(
+                    tierBody(
+                        tier.id,
+                        displayProgress: displayProgress,
+                        displaySec: displaySec,
+                        isPlaying: isPlaying,
+                        availableHeight: h
+                    )
+                )
+            }
         }
         .onAppear {
             state.mount(store: store)
+        }
+    }
+
+    @ViewBuilder
+    private func tierBody(
+        _ tierId: String,
+        displayProgress: Double,
+        displaySec: Double,
+        isPlaying: Bool,
+        availableHeight: CGFloat
+    ) -> some View {
+        switch tierId {
+        case "compact":
+            compactCapsuleView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: availableHeight)
+        case "immersive":
+            immersiveVinylView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: availableHeight)
+        default:
+            classicStudioView(displayProgress: displayProgress, displaySec: displaySec, isPlaying: isPlaying, availableHeight: availableHeight)
         }
     }
 
