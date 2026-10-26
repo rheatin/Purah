@@ -7,8 +7,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Swift version
-        run: swift --version
+      - name: Available Xcodes
+        run: ls -d /Applications/Xcode*.app 2>/dev/null; echo ---; swift --version
       - name: Build with verbose, capture SwiftTerm command
         run: |
           swift build --disable-sandbox -Xswiftc -warnings-as-errors --verbose 2>&1 > /tmp/build.log || true
