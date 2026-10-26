@@ -60,4 +60,37 @@ struct ScrollableBodyTests {
                     "\(relative) must not impose a scroll container on a plugin body")
         }
     }
+
+    /// Every vertical scroll view inside a drawer is a `PurahScrollableBody`.
+    /// Routing them all through one container is what keeps indicators, bounce
+    /// and focus from being re-decided — and drifting — per drawer.
+    ///
+    /// Horizontal strips are exempt: a pill row is a chip strip, not a body.
+    @Test("Drawer bodies have no bare vertical scroll views left")
+    func testDrawerBodiesUseTheContainer() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/PurahUI")
+
+        let folders = ["DrawerPanels", "Plugins/BuiltIn"]
+        var offenders: [String] = []
+
+        for folder in folders {
+            let folderURL = root.appendingPathComponent(folder)
+            let files = try FileManager.default.subpathsOfDirectory(atPath: folderURL.path)
+                .filter { $0.hasSuffix(".swift") }
+            for relative in files {
+                let path = folderURL.appendingPathComponent(relative)
+                let text = try String(contentsOf: path, encoding: .utf8)
+                if text.contains("ScrollView(.vertical") {
+                    offenders.append("\(folder)/\(relative)")
+                }
+            }
+        }
+
+        #expect(offenders.isEmpty,
+                "Route these drawer bodies through PurahScrollableBody: \(offenders.joined(separator: ", "))")
+    }
 }

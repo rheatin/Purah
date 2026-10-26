@@ -461,7 +461,8 @@ public struct CalendarDrawerView: View {
             topSummaryBar()
 
             // Chrono Event Cards — the viewport lands on "now" every open
-            ScrollView(.vertical, showsIndicators: true) {
+            // A full agenda is a scrollable document; keep the indicators.
+            PurahScrollableBody(indicators: .automatic) {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(state.events) { event in
                         if event.id == nowLineEventID {

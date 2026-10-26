@@ -233,7 +233,9 @@ public struct ClipboardHoverApertureView: View {
                 pinnedHeaderBadge
             }
 
-            ScrollView(.vertical, showsIndicators: true) {
+            // A pinned full-text preview is long-form: keep the indicators so a
+            // clipped snippet never looks like a complete one.
+            PurahScrollableBody(indicators: .automatic) {
                 Text(text)
                     .font(.system(size: 11, design: .monospaced))
                     .lineSpacing(3)

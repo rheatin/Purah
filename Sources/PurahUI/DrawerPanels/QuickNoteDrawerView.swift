@@ -164,7 +164,9 @@ public struct InteractiveMarkdownPreviewView: View {
         GeometryReader { outerGeo in
             ScrollViewReader { scrollProxy in
                 ZStack(alignment: .bottomTrailing) {
-                    ScrollView(.vertical, showsIndicators: true) {
+                    // Long-form document preview: the reader needs to know
+                    // there is more below, so it keeps overlay indicators.
+                    PurahScrollableBody(indicators: .automatic) {
                         LazyVStack(alignment: .leading, spacing: 6) {
                             let blocks = parseBlocks(from: markdown)
                             if blocks.isEmpty || blocks.allSatisfy({ isBlockEmpty($0) }) {
@@ -3033,7 +3035,9 @@ public struct QuickNoteDrawerView: View {
 
             let matches = state.searchNotes(query: searchQuery)
             if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ScrollView(.vertical, showsIndicators: false) {
+                // A capped result list (6 rows) in a transient overlay: it can
+                // overflow a short drawer, but it is a picker, not a document.
+                PurahScrollableBody {
                     VStack(alignment: .leading, spacing: 3) {
                         if matches.isEmpty {
                             Text("No matching notes found")

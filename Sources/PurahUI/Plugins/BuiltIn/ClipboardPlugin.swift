@@ -629,7 +629,9 @@ public struct ClipboardFullDrawerView: View {
                 if itemsToDisplay.isEmpty {
                     emptySearchView
                 } else {
-                    ScrollView(.vertical, showsIndicators: true) {
+                    // A clipping list is long-form by nature — an overlay
+                    // scroller is the only cue that more entries exist.
+                    PurahScrollableBody(indicators: .automatic) {
                         LazyVStack(spacing: isCompact ? 4 : 8) {
                             ForEach(itemsToDisplay) { item in
                                 clipboardCard(item: item)

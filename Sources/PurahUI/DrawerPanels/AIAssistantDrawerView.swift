@@ -203,7 +203,9 @@ public struct AIAssistantSteppedDrawerView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else if !roleOutput.isEmpty {
                             // Result Ready -> Click anywhere to copy!
-                            ScrollView(.vertical, showsIndicators: false) {
+                            // A stepped chip is a glanceable surface: no
+                            // indicators, no bounce when the text already fits.
+                            PurahScrollableBody {
                                 Text(roleOutput)
                                     .font(.system(size: 10.5, weight: .regular))
                                     .lineSpacing(2)
@@ -1415,7 +1417,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         GeometryReader { outerGeo in
                             ScrollViewReader { proxy in
                                 ZStack(alignment: .bottomTrailing) {
-                                    ScrollView(.vertical, showsIndicators: false) {
+                                    PurahScrollableBody {
                                         VStack(alignment: .leading, spacing: 0) {
                                             let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
                                             Text(buildDiffAttributedString(tokens: tokens))
@@ -1537,7 +1539,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     GeometryReader { outerGeo in
                         ScrollViewReader { proxy in
                             ZStack(alignment: .bottomTrailing) {
-                                ScrollView(.vertical, showsIndicators: true) {
+                                PurahScrollableBody(indicators: .automatic) {
                                     VStack(alignment: .leading, spacing: 0) {
                                         Text(reasoning)
                                             .font(.system(size: 9.5, design: .monospaced))
@@ -1663,7 +1665,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             .buttonStyle(.plain)
 
             if isReasoningExpanded {
-                ScrollView(.vertical) {
+                PurahScrollableBody {
                     Text(reasoning)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Color.white.opacity(0.65))
@@ -2600,7 +2602,9 @@ struct InDrawerDropdown<Trigger: View>: View {
     }
 
     private var optionsList: some View {
-        ScrollView(.vertical, showsIndicators: options.count > 8) {
+        // A menu, not a document: overlay scrollers are the right affordance
+        // once the list outgrows the panel.
+        PurahScrollableBody(indicators: .automatic) {
             VStack(spacing: 0) {
                 ForEach(options) { option in
                     optionButton(option)

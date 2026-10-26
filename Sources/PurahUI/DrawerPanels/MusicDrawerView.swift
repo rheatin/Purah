@@ -967,7 +967,7 @@ public struct LyricsDisplayView: View {
         let lines = parsedLines
 
         ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
+            PurahScrollableBody {
                 VStack(alignment: .leading, spacing: 10) {
                     // Top breathing room
                     Spacer().frame(height: 12)
