@@ -2136,6 +2136,12 @@ public final class PurahWorkspaceStore {
                         }
                     }
                 } else {
+                    // Several drawers are open at once, so the expanded spans
+                    // have to share the rail. Each one holds its own declared
+                    // floor rather than a single hardcoded 110pt: a plugin that
+                    // asked for 150pt must not be clipped down to a number the
+                    // solver picked for someone else. Idle neighbours stay
+                    // squashable — they render no drawer at all.
                     let idleReserved = clusters.indices.filter { !expandedFlags[$0] }
                         .reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                     let expandedBudget = max(netAvailable - idleReserved, 160.0)
@@ -2144,8 +2150,9 @@ public final class PurahWorkspaceStore {
 
                     for idx in clusters.indices where expandedFlags[idx] {
                         if idx == anchorIdx {
-                            let granted = min(max(fullClusterSpans[idx], 120.0), expandedBudget * 0.55)
-                            clusterSpans[idx] = max(granted, 110.0)
+                            let floor = clusterMinFloors[idx]
+                            let granted = min(max(fullClusterSpans[idx], floor), expandedBudget * 0.55)
+                            clusterSpans[idx] = max(granted, floor)
                             remainingExpandedBudget = max(expandedBudget - clusterSpans[idx], 90.0)
                         } else {
                             otherExpandedIndices.append(idx)
@@ -2154,7 +2161,7 @@ public final class PurahWorkspaceStore {
                     if !otherExpandedIndices.isEmpty {
                         let share = remainingExpandedBudget / Double(otherExpandedIndices.count)
                         for idx in otherExpandedIndices {
-                            clusterSpans[idx] = max(share, 110.0)
+                            clusterSpans[idx] = max(share, clusterMinFloors[idx])
                         }
                     }
                     for idx in clusters.indices where !expandedFlags[idx] {
