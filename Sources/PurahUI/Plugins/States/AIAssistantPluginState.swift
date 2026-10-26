@@ -391,7 +391,7 @@ public final class AIAssistantPluginState: Sendable {
     public init(
         storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "ai"),
         repository: PurahDiskRepository<AIChatSession> = PurahDiskRepository(pluginId: "ai"),
-        secretStore: any SecretStore = KeychainSecretStore()
+        secretStore: any SecretStore = FileSecretStore()
     ) {
         self.storage = storage
         self.repository = repository
@@ -430,10 +430,10 @@ public final class AIAssistantPluginState: Sendable {
         self.openAIBaseURL = storage.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1"
         // One-time migration: plaintext keys used to live in the plugin storage
         // (and therefore in every exported config backup).
-        KeychainSecretStore.migrateLegacyDefaultsKey(
+        FileSecretStore.migrateLegacyDefaultsKey(
             "purah.plugin.ai.openAIAPIKey", to: "ai.openAIAPIKey", store: secretStore
         )
-        KeychainSecretStore.migrateLegacyDefaultsKey(
+        FileSecretStore.migrateLegacyDefaultsKey(
             "purah.plugin.ai.anthropicAPIKey", to: "ai.anthropicAPIKey", store: secretStore
         )
         self.openAIAPIKey = secretStore.secret(forKey: "ai.openAIAPIKey") ?? ""

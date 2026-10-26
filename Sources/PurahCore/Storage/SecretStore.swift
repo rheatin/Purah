@@ -1,68 +1,182 @@
 // Sources/PurahCore/Storage/SecretStore.swift
 import Foundation
-import Security
 
 /// Storage for credentials that must never land in `UserDefaults` or a config
-/// backup. Production uses the macOS Keychain; tests inject an in-memory store.
+/// backup. Production uses a permission-locked file inside Purah's own
+/// Application Support directory; tests inject an in-memory store.
 public protocol SecretStore: Sendable {
     func secret(forKey key: String) -> String?
     func setSecret(_ value: String?, forKey key: String)
 }
 
-/// Keychain-backed secret storage, scoped to Purah's plugin namespace.
+/// File-backed secret storage: one JSON blob, `0600`, in Purah's own sandbox.
 ///
-/// Keys are stored as generic passwords under `service = "com.purah.secret"`
-/// and the caller-supplied key as the account. Items are readable only while
-/// the login keychain is unlocked, which is the same guarantee Safari and
-/// other apps give their tokens.
-public struct KeychainSecretStore: SecretStore {
-    public let service: String
+/// Deliberately *not* the Keychain. Purah ships ad-hoc signed (see `build.sh`),
+/// so the designated requirement is the build's cdhash — it changes on every
+/// rebuild and macOS then re-prompts for keychain access each time. A file the
+/// process owns is read without any prompt, and the property that actually
+/// matters here (credentials must not travel in an exported config backup) is
+/// enforced independently by `PurahSecretKeys` in `PurahConfigBackupManager`.
+///
+/// An `environmentKey` may be supplied so users whose secret already lives in a
+/// shell profile (`ANTHROPIC_API_KEY`, 1Password `op run`, …) never store a copy
+/// at all. The environment wins over the file, matching how CLIs behave.
+public final class FileSecretStore: SecretStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private let fileURL: URL
+    private let environmentKey: String?
+    private var cached: [String: String]?
 
-    public init(service: String = "com.purah.secret") {
-        self.service = service
+    public init(fileURL: URL, environmentKey: String? = nil) {
+        self.fileURL = fileURL
+        self.environmentKey = environmentKey
     }
 
-    private func baseQuery(_ key: String) -> [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key
-        ]
+    /// Default location: `~/Library/Application Support/Purah/secrets.json`.
+    /// Sits beside — never inside — `Purah/Plugins`, so no plugin sandbox,
+    /// retention sweep or quota prune can ever reach it.
+    public static func defaultFileURL(
+        baseDirectory: URL = PurahPluginFileStorage.baseApplicationSupportDirectory
+            .deletingLastPathComponent()
+    ) -> URL {
+        baseDirectory.appendingPathComponent("secrets.json")
     }
+
+    public static let defaultEnvironmentKey = "PURAH_SECRETS_FILE"
+
+    public init(defaultStorageWithEnvironment: Bool = true) {
+        self.fileURL = Self.defaultFileURL()
+        self.environmentKey = defaultStorageWithEnvironment ? Self.defaultEnvironmentKey : nil
+    }
+
+    // MARK: - SecretStore
 
     public func secret(forKey key: String) -> String? {
-        var query = baseQuery(key)
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        guard let key = Self.normalized(key) else { return nil }
+        if let fromEnvironment = lookupInEnvironment(for: key) { return fromEnvironment }
 
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
-              let value = String(data: data, encoding: .utf8),
-              !value.isEmpty else { return nil }
-        return value
+        lock.lock(); defer { lock.unlock() }
+        let value = loadLocked()[key]
+        return (value?.isEmpty == false) ? value : nil
     }
 
     public func setSecret(_ value: String?, forKey key: String) {
-        let query = baseQuery(key)
-        guard let value, !value.isEmpty else {
-            SecItemDelete(query as CFDictionary)
+        guard let key = Self.normalized(key) else { return }
+        lock.lock(); defer { lock.unlock() }
+
+        var values = loadLocked()
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            values[key] = trimmed
+        } else {
+            guard values.removeValue(forKey: key) != nil else { return }
+        }
+        persistLocked(values)
+    }
+
+    // MARK: - Environment override
+
+    /// Anonymous-key convention so neither the file nor the UI has to know
+    /// which vendor a stored key belongs to: `PURAH_OPENAI_API_KEY`,
+    /// `PURAH_ANTHROPIC_API_KEY`, … derived from the storage key itself.
+    public static func environmentName(forKey key: String) -> String {
+        let suffix = key
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .joined(separator: "_")
+            .uppercased()
+        return "PURAH_\(suffix.isEmpty ? "SECRET" : suffix)"
+    }
+
+    private func lookupInEnvironment(for key: String) -> String? {
+        let environment = ProcessInfo.processInfo.environment
+        if let value = environment[Self.environmentName(forKey: key)]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+            return value
+        }
+        // Optional indirection: `PURAH_SECRETS_FILE=/run/secrets/purah` lets a
+        // secrets manager render the file instead of the user pasting keys in.
+        if let environmentKey, let path = environment[environmentKey], !path.isEmpty {
+            if let contents = try? String(contentsOfFile: path, encoding: .utf8) {
+                let resolved = Self.parseEnvironmentFile(contents)[Self.environmentName(forKey: key)]
+                if let resolved, !resolved.isEmpty { return resolved }
+            }
+        }
+        return nil
+    }
+
+    /// Minimal `KEY=value` parser (comments, `export ` prefix, optional quotes).
+    static func parseEnvironmentFile(_ contents: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for rawLine in contents.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#"), let equals = line.firstIndex(of: "=") else { continue }
+            var name = String(line[line.startIndex..<equals]).trimmingCharacters(in: .whitespaces)
+            if name.hasPrefix("export ") { name = String(name.dropFirst("export ".count)) }
+            var value = String(line[line.index(after: equals)...]).trimmingCharacters(in: .whitespaces)
+            if value.count >= 2,
+               (value.hasPrefix("\"") && value.hasSuffix("\"")) || (value.hasPrefix("'") && value.hasSuffix("'")) {
+                value = String(value.dropFirst().dropLast())
+            }
+            guard !name.isEmpty else { continue }
+            result[name] = value
+        }
+        return result
+    }
+
+    // MARK: - File
+
+    private func loadLocked() -> [String: String] {
+        if let cached { return cached }
+        let loaded: [String: String] = {
+            guard let data = try? Data(contentsOf: fileURL) else { return [:] }
+            guard let decoded = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+            return decoded
+        }()
+        cached = loaded
+        return loaded
+    }
+
+    private func persistLocked(_ values: [String: String]) {
+        cached = values
+        let directory = fileURL.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            try? FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        }
+
+        if values.isEmpty {
+            try? FileManager.default.removeItem(at: fileURL)
             return
         }
-        let data = Data(value.utf8)
-        let attributes: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            var insert = query
-            insert[kSecValueData as String] = data
-            insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            SecItemAdd(insert as CFDictionary, nil)
-        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(values) else { return }
+
+        // Write atomically, then tighten: `Data.write(options: .atomic)` creates
+        // with the process umask, which is commonly 0644.
+        try? data.write(to: fileURL, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+
+    // MARK: - Migration helpers
+
+    private static func normalized(_ key: String) -> String? {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// One-time migration helper: removes plaintext legacy values from
-    /// `UserDefaults` once they have been copied into the keychain.
-    public static func migrateLegacyDefaultsKey(_ fullKey: String, to key: String, store: SecretStore, defaults: UserDefaults = .standard) {
+    /// `UserDefaults` once they have been copied into the secret store.
+    public static func migrateLegacyDefaultsKey(
+        _ fullKey: String,
+        to key: String,
+        store: SecretStore,
+        defaults: UserDefaults = .standard
+    ) {
         guard let legacy = defaults.string(forKey: fullKey), !legacy.isEmpty else { return }
         if store.secret(forKey: key) == nil {
             store.setSecret(legacy, forKey: key)
