@@ -992,7 +992,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .foregroundColor(Color.white.opacity(0.45))
                     Spacer()
 
-                    if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.activeSkill != nil {
                         PurahClearButton(
                             title: "ai.action.clear".localized,
                             icon: "trash",
@@ -1002,6 +1002,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             state.inputText = ""
                             state.originalSelectedText = ""
                             state.stagedDropText = nil
+                            state.activeSkill = nil
                             store.triggerControlHaptic(.alignment)
                         }
                     }
@@ -2122,9 +2123,9 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     private func sendSourcePrompt() {
         let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || state.activeSkill != nil else { return }
         state.isEditingSource = false
-        state.sendPrompt(text, role: role, originalSelection: text)
+        state.sendPrompt(text, role: role, originalSelection: text.isEmpty ? (state.activeSkill.map { "/\($0.trigger)" } ?? "") : text)
     }
 
     private func sendSourcePromptFromEditCard() {

@@ -1215,7 +1215,7 @@ public final class AIAssistantPluginState: Sendable {
         skipFileEnrichment: Bool = false
     ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !stagedAttachments.isEmpty else { return }
+        guard !trimmed.isEmpty || !stagedAttachments.isEmpty || activeSkill != nil else { return }
 
         // Interactive local file access permission check
         if !bypassFileCheck && !skipFileEnrichment {
@@ -1245,7 +1245,17 @@ public final class AIAssistantPluginState: Sendable {
         let effectiveAction = quickAction ?? (role.flatMap { AIQuickActionType(rawValue: $0.id) })
         let effectiveRoleTitle = role?.title ?? effectiveAction?.title
         let effectiveRoleId = role?.id ?? effectiveAction?.id
-        let resolvedOriginal = originalSelection ?? (trimmed.isEmpty ? nil : trimmed)
+        let skillInvocationTrigger = activeSkill.map { "/\($0.trigger)" }
+        let resolvedOriginal: String?
+        if let originalSelection = originalSelection, !originalSelection.isEmpty {
+            resolvedOriginal = originalSelection
+        } else if !trimmed.isEmpty {
+            resolvedOriginal = trimmed
+        } else if let skillTrigger = skillInvocationTrigger {
+            resolvedOriginal = skillTrigger
+        } else {
+            resolvedOriginal = nil
+        }
 
         // Built-in skills local enrichment
         let enrichedPrompt: String
@@ -1338,9 +1348,18 @@ public final class AIAssistantPluginState: Sendable {
             }
         }
 
+        let userMessageContent: String
+        if !trimmed.isEmpty {
+            userMessageContent = trimmed
+        } else if let skillTrigger = skillInvocationTrigger {
+            userMessageContent = skillTrigger
+        } else {
+            userMessageContent = "Sent attachments"
+        }
+
         let userMsg = AIChatMessage(
             role: .user,
-            content: trimmed.isEmpty ? "Sent attachments" : trimmed,
+            content: userMessageContent,
             attachments: stagedAttachments,
             timestamp: Date(),
             quickAction: effectiveAction,

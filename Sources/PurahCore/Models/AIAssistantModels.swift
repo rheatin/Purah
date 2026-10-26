@@ -45,6 +45,7 @@ public enum AIProviderKind: String, Codable, CaseIterable, Sendable, Identifiabl
 // MARK: - CLI Executable
 public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiable {
     case claude = "claude"
+    case pi = "pi"
     case codex = "codex"
     case ollama = "ollama"
     case custom = "custom"
@@ -55,6 +56,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     public var displayName: String {
         switch self {
         case .claude: return "Claude CLI"
+        case .pi: return "Pi (AI Agent)"
         case .codex: return "Codex CLI"
         case .ollama: return "Ollama CLI"
         case .custom: return "Custom CLI"
@@ -64,6 +66,7 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     public var defaultSubcommand: [String] {
         switch self {
         case .claude: return ["-p"]
+        case .pi: return ["-p"]
         case .codex: return ["exec"]
         case .ollama: return ["run", "llama3.2"]
         case .custom: return ["{prompt}"]

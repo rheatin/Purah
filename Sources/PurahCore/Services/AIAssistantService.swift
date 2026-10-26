@@ -223,6 +223,7 @@ public final class AIAssistantService {
             "\(NSHomeDirectory())/.local/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
+            "\(NSHomeDirectory())/.npm-global/bin",
             "\(NSHomeDirectory())/.cargo/bin",
             "\(NSHomeDirectory())/.optimus/bin",
             "/usr/bin"
@@ -233,6 +234,17 @@ public final class AIAssistantService {
                 let path = (dir as NSString).appendingPathComponent(name)
                 if fm.isExecutableFile(atPath: path) {
                     return path
+                }
+            }
+        }
+        if executable == .pi {
+            let cellarPi = "/opt/homebrew/Cellar/pi"
+            if let versions = try? fm.contentsOfDirectory(atPath: cellarPi) {
+                for version in versions.sorted().reversed() {
+                    let binaryPath = "\(cellarPi)/\(version)/bin/pi"
+                    if fm.isExecutableFile(atPath: binaryPath) {
+                        return binaryPath
+                    }
                 }
             }
         }
@@ -774,6 +786,8 @@ public final class AIAssistantService {
             switch executable {
             case .claude:
                 args = ["-p", promptText]
+            case .pi:
+                args = ["-p", promptText]
             case .codex:
                 args = ["exec", promptText]
             case .ollama:
@@ -785,6 +799,13 @@ public final class AIAssistantService {
         }
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
+        let isPi = executable == .pi || filename == "pi" || cliPath.contains("/pi/") || cliPath.hasSuffix("/pi")
+        if isPi {
+            if !args.contains("-p") && !args.contains("--print") {
+                args.insert("-p", at: 0)
+            }
+        }
+
         let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
         if isOpenCodeFamily {
             if !hasCustomTemplate {
@@ -889,6 +910,27 @@ public final class AIAssistantService {
         return result
     }
 
+    private final class SafeAtomicBool: @unchecked Sendable {
+        private let lock = NSLock()
+        private var val: Bool
+
+        init(_ initial: Bool = false) {
+            self.val = initial
+        }
+
+        func set(_ newValue: Bool) {
+            lock.lock()
+            val = newValue
+            lock.unlock()
+        }
+
+        var value: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return val
+        }
+    }
+
     private final class SafeTextBuffer: @unchecked Sendable {
         private let lock = NSLock()
         private var text = ""
@@ -936,6 +978,7 @@ public final class AIAssistantService {
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executablePath)
+                process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
                 process.arguments = arguments
 
                 var env = ProcessInfo.processInfo.environment
@@ -956,12 +999,26 @@ public final class AIAssistantService {
                 let buffer = SafeTextBuffer()
                 let lineBuffer = SafeTextBuffer()
                 let errorBuffer = SafeTextBuffer()
+                let bytesEmitted = SafeAtomicBool(false)
+                let isTimedOut = SafeAtomicBool(false)
+
+                let watchdog = DispatchWorkItem { [weak process] in
+                    guard let process = process, process.isRunning else { return }
+                    if !bytesEmitted.value {
+                        isTimedOut.set(true)
+                        process.terminate()
+                    }
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 180.0, execute: watchdog)
 
                 defer {
+                    watchdog.cancel()
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
                     try? outputPipe.fileHandleForReading.close()
                     try? errorPipe.fileHandleForReading.close()
+                    try? stdinPipe.fileHandleForWriting.close()
+                    try? stdinPipe.fileHandleForReading.close()
                 }
 
                 let processChunk: @Sendable (String) -> Void = { text in
@@ -972,51 +1029,50 @@ public final class AIAssistantService {
                         for line in lines {
                             if let parsed = Self.parseNDJSONLine(line) {
                                 buffer.append(parsed)
-                                if let onChunk = onChunk {
-                                    Task { @MainActor in
-                                        onChunk(parsed)
-                                    }
-                                }
+                                onChunk?(parsed)
                             }
                         }
                     } else {
                         let cleaned = Self.stripANSIEscapeSequences(text)
                         if !cleaned.isEmpty {
                             buffer.append(cleaned)
-                            if let onChunk = onChunk {
-                                Task { @MainActor in
-                                    onChunk(cleaned)
-                                }
-                            }
+                            onChunk?(cleaned)
                         }
                     }
                 }
 
                 outputPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
-                    guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                    guard !data.isEmpty else { return }
+                    bytesEmitted.set(true)
+                    guard let text = String(data: data, encoding: .utf8) else { return }
                     processChunk(text)
                 }
 
                 errorPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
-                    guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                    guard !data.isEmpty else { return }
+                    bytesEmitted.set(true)
+                    guard let text = String(data: data, encoding: .utf8) else { return }
                     errorBuffer.append(text)
                 }
 
                 do {
                     try process.run()
+                    try? stdinPipe.fileHandleForWriting.close()
                     process.waitUntilExit()
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
 
                     let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     if !remainingData.isEmpty, let remainingText = String(data: remainingData, encoding: .utf8) {
+                        bytesEmitted.set(true)
                         processChunk(remainingText)
                     }
 
                     let remainingErrData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     if !remainingErrData.isEmpty, let remainingErrText = String(data: remainingErrData, encoding: .utf8) {
+                        bytesEmitted.set(true)
                         errorBuffer.append(remainingErrText)
                     }
 
@@ -1025,11 +1081,7 @@ public final class AIAssistantService {
                         if !leftover.isEmpty {
                             if let parsed = Self.parseNDJSONLine(leftover) {
                                 buffer.append(parsed)
-                                if let onChunk = onChunk {
-                                    Task { @MainActor in
-                                        onChunk(parsed)
-                                    }
-                                }
+                                onChunk?(parsed)
                             }
                         }
                     }
@@ -1038,12 +1090,22 @@ public final class AIAssistantService {
                         let result = buffer.value()
                         continuation.resume(returning: result)
                     } else {
-                        let errText = errorBuffer.value()
-                        let fallbackMsg = errText.isEmpty ? "Unknown error" : errText
-                        continuation.resume(throwing: AIAssistantError.processExecutionFailed(
-                            exitCode: process.terminationStatus,
-                            errorOutput: Self.stripANSIEscapeSequences(fallbackMsg)
-                        ))
+                        let result = buffer.value()
+                        if !result.isEmpty {
+                            continuation.resume(returning: result)
+                        } else if isTimedOut.value {
+                            continuation.resume(throwing: AIAssistantError.processExecutionFailed(
+                                exitCode: process.terminationStatus,
+                                errorOutput: "Process timed out after 180 seconds with 0 bytes emitted."
+                            ))
+                        } else {
+                            let errText = errorBuffer.value()
+                            let fallbackMsg = errText.isEmpty ? "Unknown error" : errText
+                            continuation.resume(throwing: AIAssistantError.processExecutionFailed(
+                                exitCode: process.terminationStatus,
+                                errorOutput: Self.stripANSIEscapeSequences(fallbackMsg)
+                            ))
+                        }
                     }
                 } catch {
                     continuation.resume(throwing: error)
@@ -1484,9 +1546,9 @@ public final class AIAssistantService {
         }
 
         // 3. Prepend active and referenced local skill instructions
-        if skills.enableLocalSkills {
+        if skills.enableLocalSkills || activeSkill != nil {
             var skillsToAttach: [AILocalSkill] = []
-            if let resolvedSkill, resolvedSkill.isEnabled {
+            if let resolvedSkill, (resolvedSkill.isEnabled || activeSkill != nil) {
                 skillsToAttach.append(resolvedSkill)
             }
             for ref in referencedSkills where ref.isEnabled && !skillsToAttach.contains(where: { $0.id == ref.id }) {
@@ -1496,10 +1558,11 @@ public final class AIAssistantService {
             var skillBlocks: [String] = []
             for skill in skillsToAttach {
                 let trimmedTemplate = skill.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmedTemplate.isEmpty {
+                let instructions = !trimmedTemplate.isEmpty ? trimmedTemplate : skill.description
+                if !instructions.isEmpty {
                     let block = """
                     [Local Skill: \(skill.name)]
-                    \(trimmedTemplate)
+                    \(instructions)
                     [End of Skill: \(skill.name)]
                     """
                     skillBlocks.append(block)

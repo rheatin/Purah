@@ -32,6 +32,10 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.claude.rawValue == "claude")
         #expect(AICLIExecutable.claude.defaultSubcommand == ["-p"])
 
+        #expect(AICLIExecutable.pi.rawValue == "pi")
+        #expect(AICLIExecutable.pi.displayName == "Pi (AI Agent)")
+        #expect(AICLIExecutable.pi.defaultSubcommand == ["-p"])
+
         #expect(AICLIExecutable.codex.rawValue == "codex")
         #expect(AICLIExecutable.codex.defaultSubcommand == ["exec"])
 
@@ -41,7 +45,7 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.custom.rawValue == "custom")
         #expect(AICLIExecutable.custom.displayName == "Custom CLI")
         #expect(AICLIExecutable.custom.defaultSubcommand == ["{prompt}"])
-        #expect(AICLIExecutable.allCases.count == 4)
+        #expect(AICLIExecutable.allCases.count == 5)
 
         #expect(AIProviderKind.appleIntelligence.shortTitle == "Apple Intel")
         #expect(AIProviderKind.localCLI.shortTitle == "Local CLI")
@@ -1781,6 +1785,16 @@ struct AIAssistantPluginTests {
         #expect(enrichedWithActive.contains("[End of Skill: write-swift]"))
         #expect(enrichedWithActive.contains("Write a function"))
 
+        // 2b. enrichPromptWithLocalSkills with empty prompt and activeSkill
+        let (enrichedEmptyPrompt, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "",
+            skills: config,
+            activeSkill: sampleSkill
+        )
+        #expect(enrichedEmptyPrompt.contains("[Local Skill: write-swift]"))
+        #expect(enrichedEmptyPrompt.contains("Always use async/await and structured concurrency."))
+        #expect(enrichedEmptyPrompt.contains("[End of Skill: write-swift]"))
+
         // 3. enrichPromptWithLocalSkills with slash command in prompt
         let (enrichedFromSlash, _) = AIAssistantService.enrichPromptWithLocalSkills(
             "/write-swift Implement a pipeline",
@@ -1907,6 +1921,15 @@ struct AIAssistantPluginTests {
         // 9. Prompt dispatch with activeSkill resets activeSkill
         state.sendPrompt("Test prompt")
         #expect(state.activeSkill == nil)
+
+        // 10. Empty prompt dispatch with activeSkill records trigger in user message and originalSelection
+        state.activeSkill = sampleSkill
+        state.currentInputText = ""
+        state.sendPrompt("", originalSelection: state.activeSkill.map { "/\($0.trigger)" })
+        #expect(state.activeSkill == nil)
+        let lastUserMsg = state.activeSession?.messages.last(where: { $0.role == .user })
+        #expect(lastUserMsg?.content == "/write-swift")
+        #expect(lastUserMsg?.originalSelection == "/write-swift")
     }
 
     @Test("AIAssistantPluginState local skills management: rescan, toggle, add/remove directory")
@@ -1968,5 +1991,26 @@ struct AIAssistantPluginTests {
         #expect(!state.skillConfig.customSkillDirectories.contains(tmpDir.path))
         #expect(!state.localSkills.contains(where: { $0.id == "code-helper" }))
         #expect(!state.localSkills.contains(where: { $0.id == "test-helper" }))
+    }
+
+    @Test("AICLIExecutable.pi resolution and argument formatting")
+    func testPiCLIExecutableAndArguments() {
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "Fix the bug"
+        )
+        #expect(args == ["-p", "Fix the bug"])
+
+        // Custom template with pi path ensures -p is present
+        let customArgs = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/pi",
+            customCLIArguments: "--thinking high {prompt}",
+            promptText: "Explain code"
+        )
+        #expect(customArgs.contains("-p"))
+        #expect(customArgs.contains("--thinking"))
+        #expect(customArgs.contains("Explain code"))
     }
 }
