@@ -389,3 +389,129 @@ public func purahOnMount() {
 public func purahOnUnmount() {
     // Optional unmount lifecycle hook
 }
+
+// MARK: - Stepped Mode (per-session chips)
+//
+// Demonstrates the optional stepped ABI: three focus sessions rendered as
+// individual rail chips, each with its own drawer. A plugin that exports none
+// of these symbols simply has no stepped mode.
+
+struct ZenSession: Identifiable {
+    let id: String
+    let title: String
+    let minutes: Int
+}
+
+@MainActor
+enum ZenSessions {
+    static let all: [ZenSession] = [
+        ZenSession(id: "deep", title: "Deep Work", minutes: 50),
+        ZenSession(id: "short", title: "Short Break", minutes: 5),
+        ZenSession(id: "review", title: "Review", minutes: 15)
+    ]
+
+    static func session(for subItemId: String) -> ZenSession? {
+        all.first { "com.example.focus-\($0.id)" == subItemId }
+    }
+}
+
+@MainActor
+@_cdecl("purahSteppedItemsJSON")
+public func purahSteppedItemsJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+
+    let payload: [[String: Any]] = ZenSessions.all.map { session in
+        [
+            "id": "com.example.focus-\(session.id)",
+            "title": session.title,
+            "subtitle": "\(session.minutes) min",
+            "systemIcon": "timer",
+            "badge": "\(session.minutes)m",
+            "state": "normal",
+            "gaugeRatio": Double(session.minutes) / 50.0,
+            "gaugeStyle": "solid"
+        ]
+    }
+
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let json = String(data: data, encoding: .utf8) else { return nil }
+    return (json as NSString).utf8String
+}
+
+@MainActor
+@_cdecl("purahDecomposedPolicyJSON")
+public func purahDecomposedPolicyJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+
+    let policy: [String: Any] = [
+        "maxRailItems": 3,
+        "minChipHeight": 56.0,
+        "maxChipHeight": 185.0,
+        "spacing": 2.5,
+        "overflowStrategy": "smartFold"
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: policy),
+          let json = String(data: data, encoding: .utf8) else { return nil }
+    return (json as NSString).utf8String
+}
+
+@MainActor
+@_cdecl("purahCreateSteppedDrawerViewWithContext")
+public func purahCreateSteppedDrawerViewWithContext(
+    contextJSON: UnsafePointer<CChar>,
+    subItemId: UnsafePointer<CChar>
+) -> UnsafeMutableRawPointer? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let id = String(cString: subItemId)
+    guard let session = ZenSessions.session(for: id) else { return nil }
+    return PurahViewHost.retain(ZenSessionDrawerView(session: session))
+}
+
+/// Dynamic telemetry: the bar turns amber once the session goal is reached.
+@MainActor
+@_cdecl("purahDynamicBarColorHex")
+public func purahDynamicBarColorHex(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let reachedGoal = ZenCounterState.shared.count >= ZenCounterState.shared.targetGoal
+    return (reachedGoal ? "#FFD166" : "#FF6B6B" as NSString).utf8String
+}
+
+/// Accent colour follows the same signal, so the drawer tint agrees with the
+/// rail bar instead of the two disagreeing at the goal boundary.
+@MainActor
+@_cdecl("purahDynamicAccentColorHex")
+public func purahDynamicAccentColorHex(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let reachedGoal = ZenCounterState.shared.count >= ZenCounterState.shared.targetGoal
+    return (reachedGoal ? "#FFD166" : "#FF6B6B" as NSString).utf8String
+}
+
+struct ZenSessionDrawerView: View {
+    let session: ZenSession
+    private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "timer")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(accentColor)
+                Text(session.title)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(session.minutes)m")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            Text("Focus for \(session.minutes) minutes. Chips like this one are contributed per sub-item through the stepped ABI.")
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}

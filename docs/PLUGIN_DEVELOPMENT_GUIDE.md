@@ -563,6 +563,18 @@ let package = Package(
 | `purahOnRailBarTap` | `() -> Void` | 可选 | 轨条被点击时的即时动作触发回调 |
 | `purahOnMount` | `() -> Void` | 可选 | 插件被挂载至边轨时的生命周期通知 |
 | `purahOnUnmount` | `() -> Void` | 可选 | 插件从边轨卸载时的生命周期通知 |
+| `purahSteppedItemsJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 接收上下文 JSON，返回子项数组 JSON；导出即获得分档 (Stepped) 模式 |
+| `purahCreateSteppedDrawerViewWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | 可选 | `(上下文 JSON, 子项 id)` → 该子项的抽屉视图指针；未知 id 返回 `NULL` |
+| `purahCreateOverviewDrawerContentWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | 可选 | `+N more` 合并概览抽屉的内容视图（外壳由宿主提供） |
+| `purahDecomposedPolicyJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 返回分档芯片策略 JSON，加载时读取一次 |
+| `purahDynamicBarColorHex` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 返回 `"#RRGGBB"` 实时轨条颜色；空串或 `NULL` 回退到清单颜色 |
+| `purahDynamicAccentColorHex` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 返回 `"#RRGGBB"` 实时强调色；空串或 `NULL` 回退到清单颜色 |
+
+**分档 (Stepped) 模式**：导出 `purahSteppedItemsJSON` 后，该插件便与 Calendar / Todo 一样在轨条上获得逐子项芯片。数组元素形如
+`{ id, title, subtitle?, systemIcon?, badge?, state?, gaugeRatio?, gaugeStyle?, tintColorHex?, isPinned? }`；
+仅 `id` 与 `title` 必填，未知枚举拼写会回退到中性值，因此旧宿主渲染新插件时不会整体失败。`state` 取值 `normal` / `ongoing` / `alerting` / `inactive` / `running`，`gaugeStyle` 取值 `solid` / `segmented` / `wave` / `none`。
+
+芯片策略为 `{ maxRailItems, minChipHeight, maxChipHeight, spacing, overflowStrategy }`，`overflowStrategy` 取值 `smartFold` / `truncate` / `compactScale`。`minChipHeight` 必须不低于对应内容类型的人机工学下限（可点击指标 56pt、事件芯片 40pt、任务芯片 32pt），宿主不会替你二次修正。
 
 #### 4. 完整独立外部插件实战范例 (Focus Zen Counter)
 

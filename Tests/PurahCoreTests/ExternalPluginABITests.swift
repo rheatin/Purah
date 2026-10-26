@@ -40,6 +40,17 @@ struct ExternalPluginABITests {
         "purahOnUnmount"
     ]
 
+    /// Optional capability symbols. A plugin without them has no stepped mode
+    /// and a static bar colour; the example exports them so the contract stays
+    /// exercised end to end.
+    private static let capabilitySymbols = [
+        "purahSteppedItemsJSON",
+        "purahCreateSteppedDrawerViewWithContext",
+        "purahDecomposedPolicyJSON",
+        "purahDynamicBarColorHex",
+        "purahDynamicAccentColorHex"
+    ]
+
     @Test("The example plugin exports every symbol the host looks up")
     func testExamplePluginExportsABI() throws {
         // `purahSetHostActionBridge` ships in the SDK file, the rest in the plugin.
@@ -186,5 +197,90 @@ struct ExternalPluginABITests {
         _ = plugin.makeDrawerView(context: context)
 
         #expect(store.minimumDrawerHeight(for: plugin.manifest.id) > 0)
+    }
+
+    @Test("The example plugin exports the optional capability symbols")
+    func testExampleExportsCapabilities() throws {
+        let source = try String(contentsOf: Self.pluginFile, encoding: .utf8)
+        for symbol in Self.capabilitySymbols {
+            #expect(source.contains("@_cdecl(\"\(symbol)\")"),
+                    "Example plugin is missing @_cdecl(\"\(symbol)\")")
+        }
+    }
+
+    /// End-to-end stepped mode: the chips come from the plugin's own JSON, and
+    /// the policy it declared at load time is what the container uses.
+    @Test("A dynamic plugin contributes stepped items and its own policy",
+          .enabled(if: ExternalPluginABITests.builtExampleDylib != nil,
+                   "Build Examples/PurahExamplePlugin first"))
+    @MainActor
+    func testDynamicSteppedMode() async throws {
+        let dylib = try #require(Self.builtExampleDylib)
+        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
+        defer { PluginDynamicLoader.shared.unloadPlugin(id: plugin.manifest.id) }
+
+        let store = PurahWorkspaceStore(
+            userDefaults: UserDefaults(suiteName: "test_abi_stepped_\(UUID().uuidString)")!
+        )
+        let pod = plugin.manifest.makeDefaultSlotPod(isEnabled: true)
+        store.pods.append(pod)
+        PluginDynamicLoader.shared.registerStore(store, for: plugin.manifest.id)
+        store.registerCapabilityProvider(plugin)
+
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .right,
+            railWidth: 8,
+            slotHeight: 140,
+            drawerWidth: 290,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .blue,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        #expect(plugin.supportedDrawerModes.contains(.stepped))
+
+        let items = plugin.steppedItems(context: context)
+        #expect(items.count == 3)
+        #expect(items.allSatisfy { !$0.id.isEmpty && !$0.title.isEmpty })
+        #expect(items.first?.gaugeRatio != nil)
+
+        // The declared policy is read at load time, not from the manifest.
+        #expect(plugin.decomposedPolicy.maxRailItems == 3)
+        #expect(plugin.decomposedPolicy.minChipHeight == 56.0)
+
+        // A stepped drawer for a known chip crosses the boundary and returns a
+        // real view; an unknown sub-item id must come back nil, not crash.
+        let firstId = try #require(items.first?.id)
+        #expect(plugin.makeSteppedDrawerView(subItemId: firstId, context: context) != nil)
+        #expect(plugin.makeSteppedDrawerView(subItemId: "nope", context: context) == nil)
+
+        // The cache lets the layout engine answer before any render happens.
+        #expect(plugin.subItemCount(store: store) == 3)
+        #expect(plugin.subItemId(at: 0, store: store) == firstId)
+    }
+
+    @Test("A plugin with no stepped symbols reports composite only")
+    @MainActor
+    func testNoSteppedSymbolsMeansComposite() {
+        let plugin = DynamicABIPodPlugin(manifest: PurahPluginManifest(
+            id: "com.example.composite",
+            displayName: "Composite Only",
+            systemIcon: "square",
+            description: "No stepped symbols",
+            defaultEdge: .right,
+            preferredZone: .glance,
+            defaultColorHex: "#888888"
+        ))
+
+        #expect(plugin.supportedDrawerModes == [.composite])
+        #expect(plugin.decomposedPolicy == .standardComposite)
+        #expect(plugin.usesAdaptiveTelemetryColor == false)
+        #expect(!plugin.isDecomposed)
     }
 }

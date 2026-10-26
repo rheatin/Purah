@@ -452,6 +452,27 @@ Copy `PurahExternalPluginSDK.swift` next to your sources and export these
 | `purahCreateSettingsViewWithContext` | optional | Plugin settings page |
 | `purahCreateHeaderAccessoryView` / `purahCreateHeaderTrailingView` | optional | Header slot views |
 | `purahOnRailBarTap` / `purahOnMount` / `purahOnUnmount` | optional | Interaction and lifecycle callbacks |
+| `purahSteppedItemsJSON` | optional | Context JSON → JSON array of sub-items. Exporting it is what gives the plugin a stepped mode |
+| `purahCreateSteppedDrawerViewWithContext` | optional | `(contextJSON, subItemId)` → retained `NSView`; return `NULL` for an unknown id |
+| `purahCreateOverviewDrawerContentWithContext` | optional | Content for the `+N more` overview drawer (the host supplies the shell) |
+| `purahDecomposedPolicyJSON` | optional | Context JSON → chip policy JSON, read once at load |
+| `purahDynamicBarColorHex` / `purahDynamicAccentColorHex` | optional | Context JSON → `"#RRGGBB"`; empty or `NULL` falls back to the manifest colour |
+
+**Stepped mode.** Export `purahSteppedItemsJSON` and the pod gains per-sub-item
+chips on the rail, exactly like Calendar or Todo. Each entry is
+`{ id, title, subtitle?, systemIcon?, badge?, state?, gaugeRatio?, gaugeStyle?,
+tintColorHex?, isPinned? }`; only `id` and `title` are required, and unknown
+enum spellings fall back to their neutral value so an older host never fails to
+render a newer plugin. `state` is one of `normal`, `ongoing`, `alerting`,
+`inactive`, `running`; `gaugeStyle` is one of `solid`, `segmented`, `wave`,
+`none`.
+
+The chip policy is
+`{ maxRailItems, minChipHeight, maxChipHeight, spacing, overflowStrategy }` with
+`overflowStrategy` one of `smartFold`, `truncate`, `compactScale`. Keep
+`minChipHeight` at or above the ergonomic floor for your content type (56pt for
+tappable metrics, 40pt for event chips, 32pt for task chips) — the host does not
+second-guess it.
 
 The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
 `slotHeight`, `drawerWidth`, `isExpanded`, `isPinned`, `isDark`,
@@ -459,7 +480,8 @@ The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
 sandbox, so history and config files belong there.
 
 **Working reference:** `Examples/PurahExamplePlugin` (Zen Counter — rail bar,
-drawer, header slots, settings panel and host-action bridge). Load it with
+drawer, header slots, settings panel, host-action bridge, stepped chips and
+dynamic telemetry colour). Load it with
 **Settings → Plugins → Dev: Load Package...**.
 
 > The loader accepts a folder containing `Package.swift` or a built `.dylib`.

@@ -152,6 +152,26 @@ public struct PurahABIContextPayload: Codable, Sendable {
             storageDirectoryPath: storagePath
         )
     }
+
+    /// Payload for load-time questions (the decomposed policy) that must be
+    /// answered before any pod or store exists. Values are neutral rather than
+    /// absent so the plugin's decoder sees the shape it expects.
+    @MainActor
+    public static func forLoadTime(pluginId: String) -> PurahABIContextPayload {
+        let isDark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return PurahABIContextPayload(
+            pluginId: pluginId,
+            edge: "right",
+            railWidth: 8,
+            slotHeight: 60,
+            drawerWidth: 320,
+            isExpanded: false,
+            isPinned: false,
+            isDark: isDark,
+            accentColorHex: "#00D1FF",
+            storageDirectoryPath: PurahPluginFileStorage(pluginId: pluginId).rootDirectory.path
+        )
+    }
 }
 
 // MARK: - C-ABI Host Action Callback
@@ -204,6 +224,21 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     private let onMountFn: (@convention(c) () -> Void)?
     private let onUnmountFn: (@convention(c) () -> Void)?
 
+    // Stepped (per-sub-item chips) capability. A plugin that exports no stepped
+    // symbols simply has no stepped mode, which is what the host already does
+    // for any plugin that reports `[.composite]`.
+    private let steppedItemsFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)?
+    private let makeSteppedDrawerViewFn: (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?)?
+    private let makeOverviewDrawerContentFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafeMutableRawPointer?)?
+    private let decomposedPolicyFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)?
+    private let dynamicBarColorFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)?
+    private let dynamicAccentColorFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)?
+
+    /// Fallback when the plugin declares no stepped policy. Matches the host's
+    /// standard composite policy so an ABI plugin without one behaves exactly
+    /// like a plugin that never opted into stepped mode.
+    private let declaredDecomposedPolicy: PurahDecomposedPolicy?
+
     public init(
         manifest: PurahPluginManifest,
         makeRailViewFn: (@convention(c) () -> UnsafeMutableRawPointer)? = nil,
@@ -218,7 +253,14 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
         makeAccessoryViewWithContextFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafeMutableRawPointer)? = nil,
         makeTrailingViewWithContextFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafeMutableRawPointer)? = nil,
         onMountFn: (@convention(c) () -> Void)? = nil,
-        onUnmountFn: (@convention(c) () -> Void)? = nil
+        onUnmountFn: (@convention(c) () -> Void)? = nil,
+        steppedItemsFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)? = nil,
+        makeSteppedDrawerViewFn: (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?)? = nil,
+        makeOverviewDrawerContentFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafeMutableRawPointer?)? = nil,
+        decomposedPolicyFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)? = nil,
+        dynamicBarColorFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)? = nil,
+        dynamicAccentColorFn: (@convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?)? = nil,
+        declaredDecomposedPolicy: PurahDecomposedPolicy? = nil
     ) {
         self.manifest = manifest
         self.makeRailViewFn = makeRailViewFn
@@ -234,6 +276,13 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
         self.makeTrailingViewWithContextFn = makeTrailingViewWithContextFn
         self.onMountFn = onMountFn
         self.onUnmountFn = onUnmountFn
+        self.steppedItemsFn = steppedItemsFn
+        self.makeSteppedDrawerViewFn = makeSteppedDrawerViewFn
+        self.makeOverviewDrawerContentFn = makeOverviewDrawerContentFn
+        self.decomposedPolicyFn = decomposedPolicyFn
+        self.dynamicBarColorFn = dynamicBarColorFn
+        self.dynamicAccentColorFn = dynamicAccentColorFn
+        self.declaredDecomposedPolicy = declaredDecomposedPolicy
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
@@ -356,6 +405,98 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
         CGFloat(manifest.defaultDrawerWidth)
     }
+
+    // MARK: - Stepped mode
+
+    /// A dynamic plugin has a stepped mode exactly when it can list its
+    /// sub-items — the container asks for items first and renders chips from
+    /// them, so exporting only the drawer factory would produce nothing.
+    public var supportedDrawerModes: Set<PurahDrawerMode> {
+        steppedItemsFn == nil ? [.composite] : [.composite, .stepped]
+    }
+
+    public var decomposedPolicy: PurahDecomposedPolicy {
+        declaredDecomposedPolicy ?? .standardComposite
+    }
+
+    public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
+        decomposedPolicy
+    }
+
+    public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        guard let steppedItemsFn else { return [] }
+        let payload = PurahABIContextPayload.from(context: context)
+        guard let json = payload.withJSONCString({ cStr -> String? in
+            guard let out = steppedItemsFn(cStr) else { return nil }
+            return String(cString: out)
+        }) ?? nil else { return [] }
+
+        let items = PurahABISubItem.decodeList(json)
+        PluginDynamicLoader.shared.cacheSteppedItems(items, for: manifest.id)
+        return items
+    }
+
+    /// The layout engine asks for a sub-item count while the drawer is closed,
+    /// when there is no `PurahPluginContext` to hand the plugin. The count
+    /// therefore comes from the last render, cached by the loader. A cold start
+    /// reports 0 — the same answer a plugin with no sub-items gives — and
+    /// self-corrects on the first render, which is also when the container
+    /// decides whether to show chips at all.
+    public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        PluginDynamicLoader.shared.cachedSteppedItems(for: manifest.id).count
+    }
+
+    public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        let items = PluginDynamicLoader.shared.cachedSteppedItems(for: manifest.id)
+        guard items.indices.contains(index) else { return nil }
+        return items[index].id
+    }
+
+    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        guard let fn = makeSteppedDrawerViewFn else { return nil }
+        let payload = PurahABIContextPayload.from(context: context)
+        guard let nsView = payload.withJSONCString({ cStr -> NSView? in
+            guard let ptr = subItemId.withCString({ idStr in fn(cStr, idStr) }) else { return nil }
+            return Unmanaged<NSView>.fromOpaque(ptr).takeRetainedValue()
+        }) ?? nil else { return nil }
+        return AnyView(HostedPluginNSView(view: nsView))
+    }
+
+    public func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView? {
+        guard let fn = makeOverviewDrawerContentFn else { return nil }
+        let payload = PurahABIContextPayload.from(context: context)
+        guard let nsView = payload.withJSONCString({ cStr -> NSView? in
+            guard let ptr = fn(cStr) else { return nil }
+            return Unmanaged<NSView>.fromOpaque(ptr).takeRetainedValue()
+        }) ?? nil else { return nil }
+        return AnyView(HostedPluginNSView(view: nsView))
+    }
+
+    // MARK: - Dynamic telemetry color
+
+    public var usesAdaptiveTelemetryColor: Bool { dynamicBarColorFn != nil }
+
+    public func dynamicBarColor(context: PurahPluginContext) -> Color? {
+        guard let dynamicBarColorFn else { return nil }
+        let payload = PurahABIContextPayload.from(context: context)
+        let hex = payload.withJSONCString { cStr -> String? in
+            guard let out = dynamicBarColorFn(cStr) else { return nil }
+            let value = String(cString: out)
+            return value.isEmpty ? nil : value
+        } ?? nil
+        return hex.flatMap { Color(hex: $0) }
+    }
+
+    public func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color? {
+        guard let dynamicAccentColorFn, let store else { return nil }
+        let payload = PurahABIContextPayload.from(store: store, pluginId: manifest.id)
+        let hex = payload.withJSONCString { cStr -> String? in
+            guard let out = dynamicAccentColorFn(cStr) else { return nil }
+            let value = String(cString: out)
+            return value.isEmpty ? nil : value
+        } ?? nil
+        return hex.flatMap { Color(hex: $0) }
+    }
 }
 
 // MARK: - Dynamic Plugin Loader Service
@@ -381,7 +522,20 @@ public final class PluginDynamicLoader {
     private var loadedHandles: [String: UnsafeMutableRawPointer] = [:]
     private var loadedDylibPaths: [String: String] = [:]
 
+    /// Last stepped items each dynamic plugin reported. The layout engine needs
+    /// a sub-item count before any context exists, so the render pass caches
+    /// what it learned here.
+    private var steppedItemCache: [String: [PurahPluginSubItem]] = [:]
+
     private init() {}
+
+    public func cacheSteppedItems(_ items: [PurahPluginSubItem], for pluginId: String) {
+        steppedItemCache[pluginId] = items
+    }
+
+    public func cachedSteppedItems(for pluginId: String) -> [PurahPluginSubItem] {
+        steppedItemCache[pluginId] ?? []
+    }
 
     public func registerStore(_ store: PurahWorkspaceStore) {
         self.currentStore = store
@@ -524,6 +678,30 @@ public final class PluginDynamicLoader {
             let mountFn = dlsym(handle, "purahOnMount").map { unsafeBitCast($0, to: VoidFunc.self) }
             let unmountFn = dlsym(handle, "purahOnUnmount").map { unsafeBitCast($0, to: VoidFunc.self) }
 
+            // Optional capability symbols. Their absence is meaningful: a plugin
+            // that exports no stepped symbols has no stepped mode, and one with
+            // no colour symbols keeps the static manifest colour.
+            typealias JSONOutFunc = @convention(c) (UnsafePointer<CChar>) -> UnsafePointer<CChar>?
+            typealias ContextOptionalViewFunc = @convention(c) (UnsafePointer<CChar>) -> UnsafeMutableRawPointer?
+            typealias SteppedViewFunc = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?
+
+            let steppedItemsFn = dlsym(handle, "purahSteppedItemsJSON").map { unsafeBitCast($0, to: JSONOutFunc.self) }
+            let steppedDrawerViewFn = dlsym(handle, "purahCreateSteppedDrawerViewWithContext").map { unsafeBitCast($0, to: SteppedViewFunc.self) }
+            let overviewContentFn = dlsym(handle, "purahCreateOverviewDrawerContentWithContext").map { unsafeBitCast($0, to: ContextOptionalViewFunc.self) }
+            let policyFn = dlsym(handle, "purahDecomposedPolicyJSON").map { unsafeBitCast($0, to: JSONOutFunc.self) }
+            let barColorFn = dlsym(handle, "purahDynamicBarColorHex").map { unsafeBitCast($0, to: JSONOutFunc.self) }
+            let accentColorFn = dlsym(handle, "purahDynamicAccentColorHex").map { unsafeBitCast($0, to: JSONOutFunc.self) }
+
+            // The policy is static, so resolve it once at load rather than
+            // calling into the plugin on every layout pass.
+            let declaredPolicy: PurahDecomposedPolicy? = policyFn.flatMap { fn in
+                PurahABIContextPayload.forLoadTime(pluginId: manifest.id)
+                    .withJSONCString { cStr -> PurahDecomposedPolicy? in
+                        guard let out = fn(cStr) else { return nil }
+                        return PurahABIDecomposedPolicy.decode(String(cString: out))
+                    } ?? nil
+            }
+
             let plugin = DynamicABIPodPlugin(
                 manifest: manifest,
                 makeRailViewFn: railViewFn,
@@ -538,7 +716,14 @@ public final class PluginDynamicLoader {
                 makeAccessoryViewWithContextFn: accessoryWithContextFn,
                 makeTrailingViewWithContextFn: trailingWithContextFn,
                 onMountFn: mountFn,
-                onUnmountFn: unmountFn
+                onUnmountFn: unmountFn,
+                steppedItemsFn: steppedItemsFn,
+                makeSteppedDrawerViewFn: steppedDrawerViewFn,
+                makeOverviewDrawerContentFn: overviewContentFn,
+                decomposedPolicyFn: policyFn,
+                dynamicBarColorFn: barColorFn,
+                dynamicAccentColorFn: accentColorFn,
+                declaredDecomposedPolicy: declaredPolicy
             )
 
             loadedHandles[plugin.manifest.id] = handle
