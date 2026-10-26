@@ -334,6 +334,7 @@ private let manifestJSON = """
     "isCommunity": true,
     "minimumDrawerHeight": 140.0,
     "preferredDrawerHeight": 320.0,
+    "defaultDecomposed": true,
     "pollingInterval": 5.0
 }
 """

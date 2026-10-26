@@ -132,6 +132,12 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     public var minimumDrawerHeight: Double?
     public var preferredDrawerHeight: Double?
 
+    /// Whether the pod starts in stepped (chips) mode. `nil` means composite.
+    /// Declaring a stepped mode in `supportedDrawerModes` only states that it
+    /// exists — the plugin still has to ask for it as the starting state.
+    /// The user's own toggle always wins over this.
+    public var defaultDecomposed: Bool?
+
     /// Interval at which the host runs `onPollingTick`. The host owns the
     /// timer, so disabling the pod, unmounting it, or freezing the rails stops
     /// the ticks — a plugin must never start its own recurring timer.
@@ -158,6 +164,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         downloadUrl: String? = nil,
         minimumDrawerHeight: Double? = nil,
         preferredDrawerHeight: Double? = nil,
+        defaultDecomposed: Bool? = nil,
         pollingInterval: Double? = nil
     ) {
         self.id = id
@@ -180,6 +187,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         self.downloadUrl = downloadUrl
         self.minimumDrawerHeight = minimumDrawerHeight
         self.preferredDrawerHeight = preferredDrawerHeight
+        self.defaultDecomposed = defaultDecomposed
         self.pollingInterval = pollingInterval
     }
 
@@ -188,7 +196,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         case defaultEdge, preferredZone, ergonomicWeight, minLengthRatio, defaultColorHex
         case defaultDrawerWidth
         case category, permissions, website, tags, isCommunity, downloadUrl
-        case minimumDrawerHeight, preferredDrawerHeight, pollingInterval
+        case minimumDrawerHeight, preferredDrawerHeight, defaultDecomposed, pollingInterval
     }
 
     public init(from decoder: Decoder) throws {
@@ -220,6 +228,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         downloadUrl = try container.decodeIfPresent(String.self, forKey: .downloadUrl)
         minimumDrawerHeight = try container.decodeIfPresent(Double.self, forKey: .minimumDrawerHeight)
         preferredDrawerHeight = try container.decodeIfPresent(Double.self, forKey: .preferredDrawerHeight)
+        defaultDecomposed = try container.decodeIfPresent(Bool.self, forKey: .defaultDecomposed)
         pollingInterval = try container.decodeIfPresent(Double.self, forKey: .pollingInterval)
     }
 
@@ -245,6 +254,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         try container.encodeIfPresent(downloadUrl, forKey: .downloadUrl)
         try container.encodeIfPresent(minimumDrawerHeight, forKey: .minimumDrawerHeight)
         try container.encodeIfPresent(preferredDrawerHeight, forKey: .preferredDrawerHeight)
+        try container.encodeIfPresent(defaultDecomposed, forKey: .defaultDecomposed)
         try container.encodeIfPresent(pollingInterval, forKey: .pollingInterval)
     }
 

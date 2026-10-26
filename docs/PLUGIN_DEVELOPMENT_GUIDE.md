@@ -582,12 +582,13 @@ let package = Package(
 **清单声明尺寸**：复合抽屉的高度区间由清单声明，三项均可选：
 
 ```json
-{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320, "pollingInterval": 5 }
+{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320,
+  "defaultDecomposed": true, "pollingInterval": 5 }
 ```
 
 宿主会将声明的最小高度向上钳制到 120pt 人机工学下限，并保证至少 24pt 的展开区间，插件无法抹平自己的分档梯度。分档 (stepped) 插件的高度由芯片策略决定，这两个字段只作用于复合抽屉。
 
-**复合 / 分档切换**：用户通过 Live Rail Sculptor (`⌃⌥E`) 的开关选择，状态由宿主持久化，插件无需自己保存。导出 `purahSteppedItemsJSON` 的插件默认处于分档模式，直到用户显式切换。若希望在自己的设置页提供同一开关，调用 `PurahHostBridge.shared.setDecomposed(pluginId:_:)`。
+**复合 / 分档切换**：具备分档能力不等于希望默认分档。在清单中声明 `"defaultDecomposed": true` 才会以芯片模式启动；未声明时即使导出了 `purahSteppedItemsJSON` 也默认复合。用户通过 Live Rail Sculptor (`⌃⌥E`) 的开关选择，状态由宿主持久化，插件无需自己保存，且用户选择始终覆盖清单声明。若希望在自己的设置页提供同一开关，调用 `PurahHostBridge.shared.setDecomposed(pluginId:_:)`。
 
 **子项 Pin**：宿主从插件上报的芯片列表推导 pinned-child 状态，因此 pin 住第三方插件的芯片后，画布宽度会自动撑开以容纳其展开抽屉，无需额外符号。
 

@@ -58,9 +58,15 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 public extension PurahPodPlugin {
     nonisolated var id: String { manifest.id }
     var podId: String { manifest.id }
-    var isDecomposed: Bool { supportedDrawerModes.contains(.stepped) }
+
+    /// Whether the pod starts in stepped (chips) mode. A plugin that wants
+    /// that must say so explicitly — declaring `supportedDrawerModes` only
+    /// states that the mode exists, not that it is the default. The base
+    /// fallback is composite, so a plugin never lands in a presentation it
+    /// did not ask for.
+    var isDecomposed: Bool { false }
     var decomposedPolicy: PurahDecomposedPolicy {
-        isDecomposed ? .calendarDefault : .standardComposite
+        supportedDrawerModes.contains(.stepped) ? .calendarDefault : .standardComposite
     }
 
     func isDecomposed(store: PurahWorkspaceStore) -> Bool { isDecomposed }

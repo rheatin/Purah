@@ -537,14 +537,16 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
 
     // MARK: - Decomposition state
 
-    /// Composite-bar ↔ stepped-chips is user state, not plugin state: it is
-    /// persisted by the store so it survives restarts and the host can offer
-    /// the same toggle it offers built-ins. Until the user touches it, a
-    /// plugin that exports stepped symbols starts decomposed.
+    /// Composite-bar ↔ stepped-chips is user state, persisted by the store so
+    /// it survives restarts and the host can offer the same toggle it offers
+    /// built-ins. When the user has never touched it, the *plugin* decides via
+    /// the manifest's `defaultDecomposed` — the base never assumes a plugin
+    /// wants chips just because it can render them. Absent that declaration
+    /// the fallback is composite.
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         guard steppedItemsFn != nil else { return false }
         if store.isInSharedMajorPod(podId: manifest.id) { return false }
-        return store.externalPodDecomposed(manifest.id) ?? true
+        return store.externalPodDecomposed(manifest.id) ?? manifest.defaultDecomposed ?? false
     }
 
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {

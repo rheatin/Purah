@@ -22,6 +22,7 @@ struct ExternalPluginCapabilityTests {
         id: String = "com.example.ext",
         minimumDrawerHeight: Double? = nil,
         preferredDrawerHeight: Double? = nil,
+        defaultDecomposed: Bool? = nil,
         pollingInterval: Double? = nil
     ) -> PurahPluginManifest {
         PurahPluginManifest(
@@ -34,6 +35,7 @@ struct ExternalPluginCapabilityTests {
             defaultColorHex: "#888888",
             minimumDrawerHeight: minimumDrawerHeight,
             preferredDrawerHeight: preferredDrawerHeight,
+            defaultDecomposed: defaultDecomposed,
             pollingInterval: pollingInterval
         )
     }
@@ -86,10 +88,12 @@ struct ExternalPluginCapabilityTests {
 
     // MARK: - Decomposition state
 
-    /// Before the user touches the toggle, a plugin that exports stepped
-    /// symbols starts decomposed — the Default Decomposed Principle.
-    @Test("Decomposition defaults to the plugin's own stepped support")
-    func testDecompositionDefault() {
+    /// Capability is not intent: exporting stepped symbols says the mode
+    /// exists, not that it is the starting state. Without `defaultDecomposed`
+    /// the base falls back to composite, so a plugin never lands in a
+    /// presentation it did not ask for.
+    @Test("Stepped capability alone does not make the pod start decomposed")
+    func testDecompositionFallsBackToComposite() {
         let composite = DynamicABIPodPlugin(manifest: manifest(id: "composite"))
         let stepped = DynamicABIPodPlugin(
             manifest: manifest(id: "stepped"),
@@ -99,7 +103,42 @@ struct ExternalPluginCapabilityTests {
 
         #expect(composite.isDecomposed(store: store) == false)
         #expect(store.externalPodDecomposed("stepped") == nil)
-        #expect(stepped.isDecomposed(store: store) == true)
+        #expect(stepped.isDecomposed(store: store) == false)
+    }
+
+    @Test("A plugin can declare stepped as its starting state")
+    func testDeclaredDecomposedDefault() {
+        let plugin = DynamicABIPodPlugin(
+            manifest: manifest(id: "declared", defaultDecomposed: true),
+            steppedItemsFn: { _ in nil }
+        )
+        let store = isolatedStore()
+
+        #expect(plugin.isDecomposed(store: store) == true)
+    }
+
+    /// The declaration is a default, not a lock: the user's toggle wins.
+    @Test("The user's choice overrides the declared default")
+    func testUserChoiceOverridesDeclaredDefault() {
+        let plugin = DynamicABIPodPlugin(
+            manifest: manifest(id: "overridden", defaultDecomposed: true),
+            steppedItemsFn: { _ in nil }
+        )
+        let store = isolatedStore()
+
+        plugin.setDecomposed(false, store: store)
+        #expect(plugin.isDecomposed(store: store) == false)
+    }
+
+    /// A plugin without stepped symbols cannot be decomposed even if it asks.
+    @Test("Declaring a decomposed default without stepped symbols is ignored")
+    func testDeclaredDefaultRequiresSteppedSymbols() {
+        let plugin = DynamicABIPodPlugin(
+            manifest: manifest(id: "no-symbols", defaultDecomposed: true)
+        )
+        let store = isolatedStore()
+
+        #expect(plugin.isDecomposed(store: store) == false)
     }
 
     @Test("The user's bar ↔ chips choice persists and overrides the default")

@@ -481,7 +481,8 @@ second-guess it.
 from the manifest:
 
 ```json
-{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320, "pollingInterval": 5 }
+{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320,
+  "defaultDecomposed": true, "pollingInterval": 5 }
 ```
 
 All three are optional. The host clamps a declared minimum up to the 120pt
@@ -489,11 +490,13 @@ ergonomic floor and keeps at least a 24pt expansion range above it, so a plugin
 cannot flatten its own tier ladder. Stepped pods take their height from the
 chip policy instead; these fields only govern the composite drawer.
 
-**Composite vs stepped.** The user chooses with the Sculptor dock toggle
-(`⌃⌥E`), and the host persists the choice — you do not store it. A plugin that
-exports `purahSteppedItemsJSON` starts in stepped mode until the user says
-otherwise. To offer the same switch on your own settings page, call
-`PurahHostBridge.shared.setDecomposed(pluginId:_:)`.
+**Composite vs stepped.** Declaring a stepped mode is not the same as wanting
+it as the starting state. Add `"defaultDecomposed": true` to the manifest to
+start in chips; without it the pod starts composite, even when
+`purahSteppedItemsJSON` is exported. The user chooses with the Sculptor dock
+toggle (`⌃⌥E`), and the host persists that choice — you do not store it, and it
+always overrides your declaration. To offer the same switch on your own
+settings page, call `PurahHostBridge.shared.setDecomposed(pluginId:_:)`.
 
 **Pinned chips.** The host derives pinned-child state from your chip list, so
 pinning one of your chips keeps the rail canvas wide enough for its open drawer
