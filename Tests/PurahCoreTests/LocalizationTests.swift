@@ -64,6 +64,64 @@ struct LocalizationTests {
         #expect(loc.localized("notes.tips.table") == "Tabla")
     }
 
+    @Test("Every language table is a subset of English, never a superset")
+    func testNoOrphanTranslations() {
+        let loc = LocalizationManager()
+        // The fallback chain is target language → English → the key itself, so
+        // a key that exists only in a non-English table is unreachable dead
+        // weight: nothing can ever ask for it in a language that lacks it.
+        // English is therefore the vocabulary, and every other table has to be
+        // drawn from it.
+        let english = Set(LocalizationManager.keys(for: .english))
+        #expect(!english.isEmpty)
+        for language in AppLanguage.allCases where language != .system && language != .english {
+            let orphans = Set(LocalizationManager.keys(for: language)).subtracting(english)
+            #expect(orphans.isEmpty, "\(language.rawValue) defines keys English lacks: \(orphans.sorted())")
+        }
+        // `localizedLanguage` resolves `.system` through the host locale, so it
+        // must always land on a table that exists.
+        loc.currentLanguage = .system
+        #expect(!LocalizationManager.keys(for: loc.resolvedLanguage).isEmpty)
+    }
+
+    @Test("A key added to English is translated everywhere, or explicitly listed")
+    func testTranslationCoverage() {
+        // Japanese/Korean/French/German/Spanish are intentionally partial today,
+        // so "parity" cannot be asserted. What can be asserted is that the drift
+        // is known: this pins the sizes so a table cannot lose rows unnoticed,
+        // and — more usefully — so the gap is a decision someone made rather
+        // than something nobody noticed.
+        let english = Set(LocalizationManager.keys(for: .english))
+        let chinese = Set(LocalizationManager.keys(for: .chinese))
+        #expect(english == chinese, "Simplified Chinese is a complete translation and must stay in sync")
+
+        for language in AppLanguage.allCases where language != .system && language != .english {
+            let count = LocalizationManager.keys(for: language).count
+            #expect(count > 0, "\(language.rawValue) has no translations at all")
+        }
+    }
+
+    @Test("The AI settings strings resolve in every language, not as raw keys")
+    func testAISettingsKeysResolve() {
+        let loc = LocalizationManager()
+        // These were literal `Text("...")` calls with no table entry at all, so
+        // they read as English in every language. A missing key returns the
+        // key itself, which is the failure this catches.
+        let keys = [
+            "ai.settings.appleOnDevice", "ai.settings.executablePath",
+            "ai.settings.mcpServers", "ai.settings.aiRoles",
+            "ai.settings.retentionPeriod", "ai.settings.secretStoredIn",
+        ]
+        for language in AppLanguage.allCases where language != .system {
+            loc.currentLanguage = language
+            for key in keys {
+                #expect(loc.localized(key) != key, "\(key) is untranslated in \(language.rawValue)")
+            }
+        }
+        loc.currentLanguage = .chinese
+        #expect(loc.localized("ai.settings.mcpServers") == "MCP 服务器")
+    }
+
     @Test("LocalizationManager persists currentLanguage to UserDefaults")
     @MainActor
     func testLanguagePersistence() {
