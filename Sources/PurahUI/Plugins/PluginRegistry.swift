@@ -150,6 +150,15 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         pollingTasks.removeValue(forKey: id)
     }
 
+    /// How many polling tasks are live right now.
+    ///
+    /// Exposed because a leaked polling task is invisible in use: the plugin
+    /// looks disabled, its drawer never opens, and the only symptom is a core
+    /// that never idles. A count is something a test can assert on.
+    public var activePollingTaskCount: Int {
+        pollingTasks.count
+    }
+
     public func plugin(for id: String) -> (any PurahPodPlugin)? {
         registeredPlugins[id]
     }
