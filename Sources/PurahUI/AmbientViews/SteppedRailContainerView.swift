@@ -12,9 +12,6 @@ public struct SteppedRailContainerView: View {
     public let store: PurahWorkspaceStore
     public let startY: CGFloat
     public let screenHeight: CGFloat
-    /// Solver-resolved chip positions. When present these drive chip heights so
-    /// the rail draws exactly the pixels the hit tester reports.
-    public let chipSlots: [PodChipSlot]
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -28,8 +25,7 @@ public struct SteppedRailContainerView: View {
         edge: MountEdge? = nil,
         store: PurahWorkspaceStore? = nil,
         startY: CGFloat = 0.0,
-        screenHeight: CGFloat = 900.0,
-        chipSlots: [PodChipSlot] = []
+        screenHeight: CGFloat = 900.0
     ) {
         self.plugin = plugin
         self.pod = pod
@@ -39,7 +35,6 @@ public struct SteppedRailContainerView: View {
         self.store = store ?? context.store
         self.startY = startY
         self.screenHeight = screenHeight
-        self.chipSlots = chipSlots
     }
 
     public var body: some View {
@@ -102,17 +97,7 @@ public struct SteppedRailContainerView: View {
         let slotH: CGFloat = isMerged
             ? totalHeight
             : min(max((totalHeight - slotSpacing) / CGFloat(slotCount), effectiveMinChipH), maxChipH)
-        let slotByID = Dictionary(uniqueKeysWithValues: chipSlots.map { ($0.id, $0) })
-        // Content height follows the solver slots so the pod frame never clips a
-        // grown card; it falls back to the uniform math for merged overviews and
-        // pods the solver could not resolve.
-        let displaySpanH: CGFloat = {
-            guard !isMerged, displayItems.allSatisfy({ slotByID[$0.id] != nil }) else {
-                return CGFloat(displayItems.count) * slotH + slotSpacing
-            }
-            let heights = displayItems.reduce(0.0) { $0 + CGFloat(slotByID[$1.id]?.height ?? slotH) }
-            return heights + slotSpacing
-        }()
+        let displaySpanH = CGFloat(displayItems.count) * slotH + slotSpacing
 
         Group {
             if displayItems.isEmpty {
@@ -125,19 +110,10 @@ public struct SteppedRailContainerView: View {
                         let isActive = (subItem.id == store.activeDrawerItemId || isPinned)
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
 
-                        // Solver-resolved slot wins: the docked chip keeps its own
-                        // height while only the active one grows, so the card
-                        // extrudes from the chip under the cursor instead of
-                        // stretching the whole pod.
-                        let slot = slotByID[subItem.id]
-                        let dockedH = slot.map { CGFloat($0.height) } ?? slotH
-                        let cardH = max(CGFloat(slot?.cardHeight ?? max(slotH, minChipH)), minChipH)
-                        let effectiveChipH = isActive ? cardH : dockedH
-                        // The VStack already flows by preceding chip heights, which
-                        // matches the solver exactly; `slot.top` is used only for
-                        // the bottom-edge overflow guard.
-                        let itemTop = slot.map { CGFloat($0.top) }
-                            ?? (startY + CGFloat(idx) * (slotH + spacing))
+                        // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
+                        let cardH = max(slotH, minChipH)
+                        let effectiveChipH = isActive ? cardH : slotH
+                        let itemTop = startY + CGFloat(idx) * (slotH + spacing)
                         let itemBottom = itemTop + cardH
                         let maxAllowedY = screenHeight - 12.0
                         let shift = isActive ? max(itemBottom - maxAllowedY, 0.0) : 0.0

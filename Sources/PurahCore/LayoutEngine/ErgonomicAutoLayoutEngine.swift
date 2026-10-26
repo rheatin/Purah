@@ -1,33 +1,6 @@
 // Sources/PurahCore/LayoutEngine/ErgonomicAutoLayoutEngine.swift
 import Foundation
 
-/// One decomposed chip's resolved position inside its pod.
-///
-/// The layout solver owns these positions so the rail, the click-through hit
-/// tester and the mouse monitor all read the same numbers. Previously each of
-/// them re-derived a uniform chip height from `spanH`, which meant an expanded
-/// drawer could be rendered at a different Y than the chip the cursor was over.
-public struct PodChipSlot: Identifiable, Sendable, Equatable {
-    /// Sub-item id, or `"<podId>_more_items"` for the smart-fold capsule.
-    public let id: String
-    /// Absolute Y offset from the top of the rail.
-    public let top: Double
-    /// Height while docked.
-    public let height: Double
-    /// True when this chip owns the currently expanded (or pinned) drawer.
-    public let isActive: Bool
-    /// Height of the drawer card once expanded; equals `height` when active.
-    public let cardHeight: Double
-
-    public init(id: String, top: Double, height: Double, isActive: Bool, cardHeight: Double) {
-        self.id = id
-        self.top = top
-        self.height = height
-        self.isActive = isActive
-        self.cardHeight = cardHeight
-    }
-}
-
 public struct ResolvedPodLayoutItem: Identifiable, Sendable {
     public var id: String { pod.id }
     public let pod: SlotPod
@@ -36,8 +9,6 @@ public struct ResolvedPodLayoutItem: Identifiable, Sendable {
     public let drawerStartY: Double
     public let drawerSpanH: Double
     public let majorGroupId: String?
-    /// Resolved decomposed chip positions. Empty for composite pods.
-    public let chipSlots: [PodChipSlot]
 
     public init(
         pod: SlotPod,
@@ -45,8 +16,7 @@ public struct ResolvedPodLayoutItem: Identifiable, Sendable {
         spanH: Double,
         drawerStartY: Double? = nil,
         drawerSpanH: Double? = nil,
-        majorGroupId: String? = nil,
-        chipSlots: [PodChipSlot] = []
+        majorGroupId: String? = nil
     ) {
         self.pod = pod
         self.startY = startY
@@ -54,7 +24,6 @@ public struct ResolvedPodLayoutItem: Identifiable, Sendable {
         self.drawerStartY = drawerStartY ?? startY
         self.drawerSpanH = drawerSpanH ?? spanH
         self.majorGroupId = majorGroupId
-        self.chipSlots = chipSlots
     }
 }
 

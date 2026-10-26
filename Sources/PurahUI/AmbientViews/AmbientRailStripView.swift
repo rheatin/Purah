@@ -114,8 +114,7 @@ public struct AmbientRailStripView: View {
                                     edge: edge,
                                     store: store,
                                     startY: startY,
-                                    screenHeight: totalHeight,
-                                    chipSlots: item.chipSlots
+                                    screenHeight: totalHeight
                                 )
                             } else {
                                 renderPluginPod(
