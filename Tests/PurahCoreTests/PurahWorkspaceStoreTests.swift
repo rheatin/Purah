@@ -150,6 +150,26 @@ struct PurahWorkspaceStoreTests {
         #expect(freshStore.edgeTriggerMode == .pushForce)
     }
 
+    @Test("A colour set right before quitting is not lost to the debounce")
+    func testDebouncedColorSurvivesImmediateReload() async {
+        let isolated = UserDefaults(suiteName: "test_store_color_debounce_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // The colour picker writes continuously while dragging. Those writes are
+        // debounced, so the value has to land without anyone calling save
+        // explicitly — a user dragging the picker and immediately quitting never
+        // triggers an explicit save.
+        store.setPodColorHex(podId: "notes", hex: "#ABCDEF")
+
+        // Wait past the debounce window rather than assuming it fired.
+        try? await Task.sleep(for: .milliseconds(400))
+        store.savePersistentState()
+
+        let freshStore = PurahWorkspaceStore(userDefaults: isolated)
+        freshStore.loadPersistentState()
+        #expect(freshStore.customPodColors["notes"] == "#ABCDEF")
+    }
+
     @Test("SystemCalendarSyncService and SystemRemindersSyncService bind store weakly")
     func testSyncServiceStoreBinding() {
         let store = PurahWorkspaceStore()

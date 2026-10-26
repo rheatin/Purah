@@ -2488,7 +2488,10 @@ public final class PurahWorkspaceStore {
 
     public func setPodColorHex(podId: String, hex: String) {
         customPodColors[podId] = hex
-        savePersistentState()
+        // Debounced: a colour well reports continuously while the user drags
+        // the picker, and a synchronous full encode per frame would stutter the
+        // drag. The debounced save coalesces those into one write on settle.
+        scheduleSavePersistentState()
     }
 
     // Internal backing storage for compatibility shims / default capability providers
