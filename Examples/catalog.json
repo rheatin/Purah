@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "com.example.focus",
+      "displayName": "Zen Counter",
+      "systemIcon": "circle.dashed",
+      "author": "Project Purah",
+      "version": "1.0.0",
+      "description": "A minimal reference plugin: one rail bar, one drawer, a header slot and a settings page.",
+      "defaultEdge": "right",
+      "preferredZone": "goldenAction",
+      "ergonomicWeight": 30,
+      "minLengthRatio": 0.12,
+      "defaultColorHex": "#00D1FF",
+      "defaultDrawerWidth": 300,
+      "category": "Lightweight",
+      "permissions": [],
+      "website": "https://github.com/rheatin/Purah/tree/main/Examples/PurahExamplePlugin",
+      "tags": ["example", "reference"],
+      "isCommunity": false,
+      "downloadUrl": "https://github.com/rheatin/Purah/releases/download/example-plugin-v1.0.0/ZenCounter.dylib"
+    }
+  ]
+}

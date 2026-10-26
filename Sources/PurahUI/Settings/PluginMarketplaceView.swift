@@ -47,16 +47,26 @@ public struct PluginMarketplaceView: View {
     @State private var isCompiling: Bool = false
     @State private var activeDevPackageURL: URL? = nil
 
+    /// Remote catalog index. Injected so previews and tests can supply a
+    /// provider (or none) without touching the network.
+    private let catalogService: PluginCatalogService
+
     public let initialPluginId: String?
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
-    public init(store: PurahWorkspaceStore, marketManager: PluginMarketManager? = nil, initialPluginId: String? = nil) {
+    public init(
+        store: PurahWorkspaceStore,
+        marketManager: PluginMarketManager? = nil,
+        initialPluginId: String? = nil,
+        catalogService: PluginCatalogService = .shared
+    ) {
         self.store = store
         self.marketManager = marketManager ?? store.marketManager
         self.initialPluginId = initialPluginId
+        self.catalogService = catalogService
         self._selectedTab = State(initialValue: .installed)
     }
 
@@ -174,6 +184,40 @@ public struct PluginMarketplaceView: View {
                     .help("Recompile active local package and hot-reload into Purah")
                 }
 
+                // Refresh the remote catalog index
+                if selectedTab == .marketplace {
+                    Button {
+                        Task {
+                            await catalogService.refresh(force: true)
+                            marketManager.applyRemoteCatalog(catalogService.remoteEntries)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if case .loading = catalogService.state {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text("Refresh")
+                                .lineLimit(1)
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(palette.surfaceBackground)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+                    .disabled(!catalogService.hasRemoteSource || catalogService.state == .loading)
+                    .help(catalogService.hasRemoteSource
+                          ? "Fetch the latest plugin catalog"
+                          : "No catalog source is configured in this build")
+                }
+
                 // "Dev: Load..." button always accessible across tabs
                 Button {
                     loadLocalPlugin()
@@ -212,6 +256,18 @@ public struct PluginMarketplaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
+        .task {
+            // Adopt whatever the cache already holds, then refresh once. The
+            // grid is never empty while the request is in flight.
+            marketManager.applyRemoteCatalog(catalogService.remoteEntries)
+            if catalogService.hasRemoteSource {
+                await catalogService.refresh()
+                marketManager.applyRemoteCatalog(catalogService.remoteEntries)
+            }
+        }
+        .onDisappear {
+            catalogService.cancel()
+        }
         .sheet(item: $securityReviewManifest) { manifest in
             SecurityConfirmationSheet(manifest: manifest, palette: palette) {
                 withAnimation(PurahMotionPolicy.hoverSoft) {
@@ -240,6 +296,31 @@ public struct PluginMarketplaceView: View {
     // MARK: - Catalog View
     private var catalogView: some View {
         VStack(spacing: 0) {
+            // A refresh failure is worth saying out loud, but it must never
+            // replace the grid: the user still has whatever catalog they last
+            // saw, and an offline machine should not look like an empty store.
+            if case .failed(let message) = catalogService.state {
+                HStack(spacing: 8) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .foregroundColor(.orange)
+                    Text(message)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color.orange.opacity(0.12))
+                .cornerRadius(7)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+            }
+
             // 1. Optional Feedback Banner
             if let feedback = feedbackBanner {
                 HStack(spacing: 8) {
