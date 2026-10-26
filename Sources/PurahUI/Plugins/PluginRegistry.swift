@@ -37,6 +37,14 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         registeredPlugins[id] = plugin
         if let store {
             self.boundStore = store
+            // A registered implementation has to be reachable by the market
+            // that is about to install it. `bindStore` sets this, but a plugin
+            // registered later — or a store created after the registry — would
+            // otherwise leave `install(id:)` unable to confirm the implementation
+            // exists and refuse a plugin that is sitting right there.
+            if store.marketManager.lifecycleDelegate == nil {
+                store.marketManager.lifecycleDelegate = self
+            }
             store.marketManager.addCatalogManifest(plugin.manifest)
             store.registerCapabilityProvider(plugin)
             mountPlugin(id: id, store: store)

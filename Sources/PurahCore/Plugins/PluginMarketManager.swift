@@ -8,14 +8,18 @@ public protocol PluginMarketLifecycleDelegate: AnyObject, Sendable {
     func pluginMarketDidUninstall(id: String, store: PurahWorkspaceStore)
     func manifest(for id: String) -> PurahPluginManifest?
     /// Whether a plugin implementation (not just a manifest) is registered for
-    /// this id. Defaults to `true` so delegates that predate the check keep
-    /// working; the live registry answers with an exact lookup.
+    /// this id. Defaults to `false`, so a delegate that predates this check
+    /// cannot accidentally vouch for an implementation that does not exist.
     func hasImplementation(for id: String) -> Bool
 }
 
 public extension PluginMarketLifecycleDelegate {
     func manifest(for id: String) -> PurahPluginManifest? { nil }
-    func hasImplementation(for id: String) -> Bool { true }
+    /// Defaults to `false`: "I have no opinion" must never be read as "yes,
+    /// there is an implementation". The registry answers with an exact lookup,
+    /// so the default only applies to delegates that never implemented it —
+    /// and for those, refusing an install is the safe answer.
+    func hasImplementation(for id: String) -> Bool { false }
 }
 
 @Observable
@@ -133,8 +137,13 @@ public final class PluginMarketManager: Sendable {
     @discardableResult
     public func install(id: String) -> Bool {
         let activeDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
-        let hasImplementation = activeDelegate?.hasImplementation(for: id) ?? true
-        guard hasImplementation else {
+        // Fail closed. A missing delegate used to read as "assume it exists",
+        // which meant an install of a manifest with no implementation could
+        // succeed whenever the registry was not wired up — in a unit test, or
+        // during a brief window at launch before `bindStore`. The whole point of
+        // this guard is to refuse pods that can never draw or open, so an
+        // unknown answer has to mean no.
+        guard let activeDelegate, activeDelegate.hasImplementation(for: id) else {
             DiagnosticLogger.shared.info("Market", "Install refused: no plugin implementation for \(id)")
             return false
         }
@@ -152,13 +161,13 @@ public final class PluginMarketManager: Sendable {
                 var pod = defaultPod
                 pod.isEnabled = true
                 store.pods.append(pod)
-            } else if let manifest = availableCatalog.first(where: { $0.id == id }) ?? activeDelegate?.manifest(for: id) {
+            } else if let manifest = availableCatalog.first(where: { $0.id == id }) ?? activeDelegate.manifest(for: id) {
                 let pod = manifest.makeDefaultSlotPod(isEnabled: true)
                 store.pods.append(pod)
             }
         }
 
-        activeDelegate?.pluginMarketDidInstall(id: id, store: store)
+        activeDelegate.pluginMarketDidInstall(id: id, store: store)
 
         store.autoLayoutAll()
         return true
