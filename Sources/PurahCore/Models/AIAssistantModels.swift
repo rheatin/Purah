@@ -450,6 +450,23 @@ public enum AIAttachmentBudget {
     public static let maxAttachments: Int = 6
     public static let maxTotalBytes: Int = 10 * 1_048_576 // 10 MB
     public static let maxTextSnippetChars: Int = 24_000
+    /// A SKILL.md body is inlined into the prompt, so it competes with history
+    /// for the context window. Real skills run from ~8 KB to over 40 KB; the
+    /// cap keeps a large one from evicting the conversation it was invoked in.
+    public static let maxSkillBodyChars: Int = 32_000
+}
+
+// MARK: - Skill Delivery
+
+/// How a resolved skill reaches the model.
+public enum AISkillDelivery: Sendable, Equatable {
+    /// Write the instructions into the prompt. Correct for providers that have
+    /// no skill system of their own (HTTP APIs, Apple Intelligence).
+    case inlineBody
+    /// Name the skill and let the agent CLI resolve it. Correct for local CLI
+    /// providers, which already scan `~/.claude/skills` and friends; their copy
+    /// carries the tool grants, and ours would not.
+    case nativeCommand
 }
 
 // MARK: - Persistable Protocol
@@ -794,6 +811,11 @@ public struct AILocalSkill: Identifiable, Codable, Equatable, Sendable {
     public var promptTemplate: String // Body text / instructions from SKILL.md
     public var isEnabled: Bool
     public var source: AILocalSkillSource // .optimus, .claude, .purah, .custom
+    /// Files shipped alongside `SKILL.md` in the same directory (relative names).
+    /// Skills routinely split their instructions across companions
+    /// (`STANDARDS.md`, `CATALOG.md`, a script) and expect the reader to open
+    /// them, so the prompt has to name them even when only the body is inlined.
+    public var bundledResourceNames: [String]
 
     public init(
         id: String,
@@ -803,7 +825,8 @@ public struct AILocalSkill: Identifiable, Codable, Equatable, Sendable {
         directoryPath: String,
         promptTemplate: String,
         isEnabled: Bool = true,
-        source: AILocalSkillSource
+        source: AILocalSkillSource,
+        bundledResourceNames: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -813,6 +836,27 @@ public struct AILocalSkill: Identifiable, Codable, Equatable, Sendable {
         self.promptTemplate = promptTemplate
         self.isEnabled = isEnabled
         self.source = source
+        self.bundledResourceNames = bundledResourceNames
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description, trigger, directoryPath
+        case promptTemplate, isEnabled, source, bundledResourceNames
+    }
+
+    /// Tolerant decode: a skill persisted before companion files were tracked
+    /// has no `bundledResourceNames`, and that must not fail the whole scan.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        self.trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? id
+        self.directoryPath = try container.decodeIfPresent(String.self, forKey: .directoryPath) ?? ""
+        self.promptTemplate = try container.decodeIfPresent(String.self, forKey: .promptTemplate) ?? ""
+        self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        self.source = try container.decodeIfPresent(AILocalSkillSource.self, forKey: .source) ?? .custom
+        self.bundledResourceNames = try container.decodeIfPresent([String].self, forKey: .bundledResourceNames) ?? []
     }
 }
 

@@ -408,6 +408,7 @@ public final class AIAssistantService {
         model: String? = nil,
         targetLanguage: String = "Auto (Chinese <-> English)",
         systemPromptOverride: String? = nil,
+        skillDirectories: [String] = [],
         onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
@@ -511,6 +512,7 @@ public final class AIAssistantService {
                     model: model,
                     targetLanguage: targetLanguage,
                     systemPromptOverride: systemPromptOverride,
+                    skillDirectories: skillDirectories,
                     onChunk: onChunk
                 )
             }
@@ -747,6 +749,7 @@ public final class AIAssistantService {
         model: String?,
         targetLanguage: String,
         systemPromptOverride: String?,
+        skillDirectories: [String] = [],
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastMsg = messages.last
@@ -761,7 +764,8 @@ public final class AIAssistantService {
             cliPath: cliPath,
             customCLIArguments: customCLIArguments,
             promptText: promptText,
-            model: model
+            model: model,
+            additionalDirectories: skillDirectories
         )
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
@@ -781,7 +785,8 @@ public final class AIAssistantService {
         cliPath: String,
         customCLIArguments: String? = nil,
         promptText: String,
-        model: String? = nil
+        model: String? = nil,
+        additionalDirectories: [String] = []
     ) -> [String] {
         var args: [String] = []
         let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -807,9 +812,14 @@ public final class AIAssistantService {
         }
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
+        // `-nt` disables tools. It was there to keep a chat-shaped CLI from
+        // reaching for the shell on its own, but a skill is only worth
+        // invoking when the agent can act, so supplying a skill directory
+        // means the run is expected to have tools.
+        let wantsTools = !additionalDirectories.isEmpty
         let isPi = executable == .pi || filename == "pi" || cliPath.contains("/pi/") || cliPath.hasSuffix("/pi")
         if isPi {
-            if !args.contains("-nt") && !args.contains("--no-tools") && !args.contains("--tools") {
+            if !wantsTools, !args.contains("-nt"), !args.contains("--no-tools"), !args.contains("--tools") {
                 args.insert("-nt", at: 0)
             }
             if !args.contains("-p") && !args.contains("--print") {
@@ -824,6 +834,15 @@ public final class AIAssistantService {
                     args = ["run", "--thinking", "--format", "json"] + args
                 }
             }
+        }
+
+        // Skill directories are read with no prompt in `claude` (its permission
+        // docs treat added directories like the working directory), which is
+        // exactly the access a skill's companion files need. Codex is
+        // deliberately not given the same flag: there `--add-dir` means
+        // *writable*, and reading is already allowed by its sandbox.
+        if executable == .claude, !additionalDirectories.isEmpty, !hasCustomTemplate {
+            args.insert(contentsOf: additionalDirectories.flatMap { ["--add-dir", $0] }, at: 0)
         }
 
         return args
@@ -1145,19 +1164,27 @@ public final class AIAssistantService {
                         continuation.resume(returning: result)
                     } else {
                         let result = buffer.value()
-                        if !result.isEmpty {
-                            continuation.resume(returning: result)
-                        } else if isTimedOut.value {
+                        if isTimedOut.value {
+                            // Partial output from a killed process is a
+                            // truncated answer, not an answer: surfacing it
+                            // would present a half-finished response as done.
                             continuation.resume(throwing: AIAssistantError.processExecutionFailed(
                                 exitCode: process.terminationStatus,
-                                errorOutput: "Process timed out after 180 seconds with 0 bytes emitted."
+                                errorOutput: "Process timed out after 180 seconds without finishing."
                             ))
                         } else {
                             let errText = errorBuffer.value()
                             let fallbackMsg = errText.isEmpty ? "Unknown error" : errText
+                            var message = Self.stripANSIEscapeSequences(fallbackMsg)
+                            if !result.isEmpty {
+                                // A CLI that emits output and then exits non-zero
+                                // has failed mid-answer. Say so, and keep what it
+                                // produced so the user is not left with nothing.
+                                message += "\n\nPartial output before failure:\n\(result)"
+                            }
                             continuation.resume(throwing: AIAssistantError.processExecutionFailed(
                                 exitCode: process.terminationStatus,
-                                errorOutput: Self.stripANSIEscapeSequences(fallbackMsg)
+                                errorOutput: message
                             ))
                         }
                     }
@@ -1465,6 +1492,30 @@ public final class AIAssistantService {
         return paths
     }
 
+    /// Which delivery mode fits a provider. Only a local agent CLI has its own
+    /// skill system; everything else can only be told about the skill in text.
+    public nonisolated static func skillDelivery(for provider: AIProviderKind) -> AISkillDelivery {
+        provider == .localCLI ? .nativeCommand : .inlineBody
+    }
+
+    /// Skill directories the resolved skill needs access to, so a CLI agent can
+    /// open the companion files the instructions refer to.
+    public nonisolated static func skillDirectories(
+        activeSkill: AILocalSkill?,
+        prompt: String,
+        availableSkills: [AILocalSkill]
+    ) -> [String] {
+        var directories: [String] = []
+        var skill = activeSkill
+        if skill == nil, !availableSkills.isEmpty {
+            skill = extractSlashSkillCommand(from: prompt, availableSkills: availableSkills).skill
+        }
+        if let path = skill?.directoryPath, !path.isEmpty {
+            directories.append(path)
+        }
+        return directories
+    }
+
     public nonisolated static func isPathPermitted(_ path: String, allowedPaths: Set<String>?) -> Bool {
         guard let allowedPaths else { return true }
         if allowedPaths.contains(path) { return true }
@@ -1514,7 +1565,8 @@ public final class AIAssistantService {
         allowedPaths: Set<String>? = nil,
         activeSkill: AILocalSkill? = nil,
         referencedSkills: [AILocalSkill] = [],
-        availableSkills: [AILocalSkill] = []
+        availableSkills: [AILocalSkill] = [],
+        skillDelivery: AISkillDelivery = .inlineBody
     ) -> (enrichedPrompt: String, attachedFilesSummary: [String]) {
         var resolvedSkill: AILocalSkill? = activeSkill
         var userPrompt = prompt
@@ -1619,13 +1671,45 @@ public final class AIAssistantService {
             var skillBlocks: [String] = []
             for skill in skillsToAttach {
                 let trimmedTemplate = skill.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-                let instructions = !trimmedTemplate.isEmpty ? trimmedTemplate : skill.description
-                if !instructions.isEmpty {
-                    let block = """
-                    [Local Skill: \(skill.name)]
-                    \(instructions)
-                    [End of Skill: \(skill.name)]
-                    """
+                let body = !trimmedTemplate.isEmpty ? trimmedTemplate : skill.description
+                guard !body.isEmpty else { continue }
+
+                switch skillDelivery {
+                case .nativeCommand:
+                    // A local agent CLI already owns skill resolution and the
+                    // filesystem access that comes with it. Re-reading the
+                    // instructions here would load the same skill twice — once
+                    // as a system skill, once as this prompt block — and the
+                    // prompt copy has no tool grants behind it.
+                    skillBlocks.append(
+                        """
+                        [Skill Invocation]
+                        Invoke the `\(skill.trigger)` skill before answering. \
+                        Its directory is `\(skill.directoryPath)`.
+                        """
+                    )
+                case .inlineBody:
+                    var block = "[Local Skill: \(skill.name)]"
+                    if !skill.directoryPath.isEmpty {
+                        block += "\nSkill directory: \(skill.directoryPath)"
+                    }
+                    if !skill.bundledResourceNames.isEmpty {
+                        block += "\nBundled files in that directory: \(skill.bundledResourceNames.joined(separator: ", "))"
+                    }
+
+                    // Skills are prose and can run to tens of KB; a long skill
+                    // plus a long history is the quickest way to blow the
+                    // context window. Truncation is explicit so the model knows
+                    // the instruction set is incomplete rather than assuming
+                    // it read everything.
+                    let isTruncated = body.count > AIAttachmentBudget.maxSkillBodyChars
+                    if isTruncated {
+                        block += "\n" + String(body.prefix(AIAttachmentBudget.maxSkillBodyChars))
+                        block += "\n[Skill instructions truncated at \(AIAttachmentBudget.maxSkillBodyChars) characters]"
+                    } else {
+                        block += "\n" + body
+                    }
+                    block += "\n[End of Skill: \(skill.name)]"
                     skillBlocks.append(block)
                 }
             }

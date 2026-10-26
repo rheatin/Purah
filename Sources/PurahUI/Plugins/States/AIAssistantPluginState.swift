@@ -1287,17 +1287,25 @@ public final class AIAssistantPluginState: Sendable {
 
         // Built-in skills local enrichment
         let enrichedPrompt: String
+        let skillDirectories: [String]
         if skipFileEnrichment {
             enrichedPrompt = trimmed
+            skillDirectories = []
         } else {
             let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
                 trimmed,
                 skills: skillConfig,
                 allowedPaths: allowedFilePaths,
                 activeSkill: activeSkill,
-                availableSkills: localSkills
+                availableSkills: localSkills,
+                skillDelivery: AIAssistantService.skillDelivery(for: selectedProvider)
             )
             enrichedPrompt = enriched
+            skillDirectories = AIAssistantService.skillDirectories(
+                activeSkill: activeSkill,
+                prompt: trimmed,
+                availableSkills: localSkills
+            )
         }
         activeSkill = nil
 
@@ -1484,6 +1492,7 @@ public final class AIAssistantPluginState: Sendable {
                     endpoint: endpoint,
                     model: model,
                     systemPromptOverride: effectivePromptOverride,
+                    skillDirectories: skillDirectories,
                     onResolvedModel: { [weak self] resolved in
                         Task { @MainActor [weak self] in
                             guard let self else { return }

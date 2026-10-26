@@ -66,6 +66,7 @@ public final class LocalSkillDiscoveryService {
                     if !seenIds.contains(skill.id) {
                         seenIds.insert(skill.id)
                         skill.isEnabled = !config.disabledSkillIds.contains(skill.id)
+                        skill.bundledResourceNames = bundledResources(in: folderPath, excluding: (skillFilePath as NSString).lastPathComponent)
                         results.append(skill)
                     }
                 }
@@ -74,6 +75,20 @@ public final class LocalSkillDiscoveryService {
 
         self.discoveredSkills = results
         return results
+    }
+
+    /// Companion files a skill ships next to its markdown, e.g. `STANDARDS.md`,
+    /// `CATALOG.md`, or a helper script. Only one level deep — a skill's own
+    /// `references/` folder still reads through the directory path we hand the
+    /// agent, but a list of its top-level siblings is what the prompt can name.
+    private nonisolated func bundledResources(in folderPath: String, excluding skillFileName: String) -> [String] {
+        let excluded: Set<String> = [skillFileName, ".DS_Store"]
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folderPath) else {
+            return []
+        }
+        return names
+            .filter { !$0.hasPrefix(".") && !excluded.contains($0) }
+            .sorted()
     }
 
     // MARK: - Skill Markdown Parsing

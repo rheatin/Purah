@@ -1814,7 +1814,9 @@ struct AIAssistantPluginTests {
         #expect(enrichedFromSlash.contains("[Local Skill: write-swift]"))
         #expect(enrichedFromSlash.contains("[End of Skill: write-swift]"))
         #expect(enrichedFromSlash.contains("Implement a pipeline"))
-        #expect(!enrichedFromSlash.contains("/write-swift"))
+        // The invocation token is consumed, not echoed — the remaining
+        // occurrences are the skill directory we hand the agent.
+        #expect(!enrichedFromSlash.contains("/write-swift Implement a pipeline"))
 
         // 4. enrichPromptWithLocalSkills disabled
         let disabledConfig = AIBuiltInSkillConfig(enableLocalSkills: false)
@@ -2036,6 +2038,169 @@ struct AIAssistantPluginTests {
         #expect(customToolsArgs.contains("-p"))
         #expect(!customToolsArgs.contains("-nt"))
         #expect(customToolsArgs.contains("--tools"))
+    }
+
+    // MARK: - Local Skill Delivery
+
+    @Test("A local agent CLI is told to invoke the skill, not re-fed its body")
+    func testNativeSkillDelivery() {
+        let skill = AILocalSkill(
+            id: "write-swift",
+            name: "write-swift",
+            description: "Swift 6 rules.",
+            trigger: "write-swift",
+            directoryPath: "/skills/write-swift",
+            promptTemplate: "# Write Swift\nAlways use structured concurrency.",
+            source: .claude
+        )
+        let config = AIBuiltInSkillConfig(enableLocalSkills: true)
+
+        let (native, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "Create an actor",
+            skills: config,
+            activeSkill: skill,
+            skillDelivery: .nativeCommand
+        )
+        #expect(native.contains("[Skill Invocation]"))
+        #expect(native.contains("`write-swift`"))
+        #expect(native.contains("/skills/write-swift"))
+        // The body belongs to the CLI's own copy of the skill; repeating it here
+        // would load the same instructions twice.
+        #expect(!native.contains("Always use structured concurrency."))
+        #expect(native.contains("Create an actor"))
+
+        let (inline, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "Create an actor",
+            skills: config,
+            activeSkill: skill,
+            skillDelivery: .inlineBody
+        )
+        #expect(inline.contains("[Local Skill: write-swift]"))
+        #expect(inline.contains("Always use structured concurrency."))
+        #expect(inline.contains("Skill directory: /skills/write-swift"))
+    }
+
+    @Test("Only a local CLI gets native skill delivery")
+    func testSkillDeliveryPerProvider() {
+        #expect(AIAssistantService.skillDelivery(for: .localCLI) == .nativeCommand)
+        for provider in [AIProviderKind.appleIntelligence, .httpOpenAI, .httpAnthropic, .httpOllama] {
+            #expect(AIAssistantService.skillDelivery(for: provider) == .inlineBody,
+                    "\(provider.displayName) has no skill system to defer to")
+        }
+    }
+
+    @Test("A skill body is capped so it cannot evict the conversation")
+    func testSkillBodyCap() {
+        let huge = String(repeating: "x", count: AIAttachmentBudget.maxSkillBodyChars + 500)
+        let skill = AILocalSkill(
+            id: "huge",
+            name: "huge",
+            description: "Big.",
+            trigger: "huge",
+            directoryPath: "/skills/huge",
+            promptTemplate: huge,
+            source: .custom
+        )
+        let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "go",
+            skills: AIBuiltInSkillConfig(enableLocalSkills: true),
+            activeSkill: skill
+        )
+        #expect(enriched.contains("[Skill instructions truncated at \(AIAttachmentBudget.maxSkillBodyChars) characters]"))
+        #expect(enriched.count < huge.count,
+                "Truncation must actually shorten the prompt")
+    }
+
+    @Test("Inlined skills name their companion files and directory")
+    func testSkillBundledResources() {
+        let skill = AILocalSkill(
+            id: "review-animations",
+            name: "review-animations",
+            description: "Motion review.",
+            trigger: "review-animations",
+            directoryPath: "/skills/review-animations",
+            promptTemplate: "See STANDARDS.md before answering.",
+            source: .claude,
+            bundledResourceNames: ["STANDARDS.md", "SKILL.md"]
+        )
+        let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "review this",
+            skills: AIBuiltInSkillConfig(enableLocalSkills: true),
+            activeSkill: skill
+        )
+        #expect(enriched.contains("Bundled files in that directory: STANDARDS.md, SKILL.md"))
+    }
+
+    @Test("Skill directories reach the CLI as --add-dir, and only there")
+    func testSkillDirectoryArguments() {
+        let claudeArgs = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/Users/x/.local/bin/claude",
+            promptText: "run it",
+            additionalDirectories: ["/skills/write-swift"]
+        )
+        #expect(claudeArgs.contains("--add-dir"))
+        #expect(claudeArgs.contains("/skills/write-swift"))
+
+        // Codex's --add-dir means writable; reading is already permitted by its
+        // sandbox, so it is deliberately not passed.
+        let codexArgs = AIAssistantService.resolveCLIArguments(
+            executable: .codex,
+            cliPath: "/opt/homebrew/bin/codex",
+            promptText: "run it",
+            additionalDirectories: ["/skills/write-swift"]
+        )
+        #expect(!codexArgs.contains("--add-dir"))
+
+        let noSkillClaude = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/Users/x/.local/bin/claude",
+            promptText: "run it"
+        )
+        #expect(!noSkillClaude.contains("--add-dir"))
+    }
+
+    @Test("Invoking a skill turns pi's tools back on")
+    func testPiToolsStayOffWithoutSkills() {
+        let bare = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "hello"
+        )
+        #expect(bare.contains("-nt"), "A chat prompt should not reach for the shell")
+
+        let withSkill = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "hello",
+            additionalDirectories: ["/skills/write-swift"]
+        )
+        #expect(!withSkill.contains("-nt"),
+                "A skill is only useful when the agent can act on it")
+    }
+
+    @Test("Skill directories are resolved from the active or slash-invoked skill")
+    func testSkillDirectoryResolution() {
+        let skill = AILocalSkill(
+            id: "write-swift",
+            name: "write-swift",
+            description: "d",
+            trigger: "write-swift",
+            directoryPath: "/skills/write-swift",
+            promptTemplate: "body",
+            source: .claude
+        )
+        #expect(AIAssistantService.skillDirectories(
+            activeSkill: skill, prompt: "", availableSkills: []
+        ) == ["/skills/write-swift"])
+
+        #expect(AIAssistantService.skillDirectories(
+            activeSkill: nil, prompt: "/write-swift do it", availableSkills: [skill]
+        ) == ["/skills/write-swift"])
+
+        #expect(AIAssistantService.skillDirectories(
+            activeSkill: nil, prompt: "plain question", availableSkills: [skill]
+        ).isEmpty)
     }
 
     @MainActor
