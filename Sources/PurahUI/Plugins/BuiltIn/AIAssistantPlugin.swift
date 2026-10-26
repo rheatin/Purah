@@ -1489,23 +1489,6 @@ public struct AIAssistantPluginSettingsView: View {
                                 .labelsHidden()
                         }
                         .frame(maxWidth: .infinity)
-
-                        Divider().opacity(0.3)
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 1.5) {
-                                Text("ai.skills.builtin.shellSnippet.title".localized)
-                                    .font(.system(size: 10.5, weight: .medium))
-                                Text("ai.skills.builtin.shellSnippet.desc".localized)
-                                    .font(.system(size: 9.5))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $state.skillConfig.enableShellSnippetSkill)
-                                .toggleStyle(.switch)
-                                .labelsHidden()
-                        }
-                        .frame(maxWidth: .infinity)
                     }
                     .padding(10)
                     .background(Color.primary.opacity(0.03))

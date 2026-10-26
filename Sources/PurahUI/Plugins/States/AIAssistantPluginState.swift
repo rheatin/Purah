@@ -19,19 +19,27 @@ public struct PendingFilePermissionRequest: Equatable, Sendable {
     public let role: AIRolePreset?
     public let originalSelection: String?
     public let includeHistory: Bool
+    /// The skill that was selected when the prompt was first submitted.
+    ///
+    /// `sendPrompt` clears `activeSkill` the moment it enriches a prompt, so
+    /// without carrying it here the re-send after approval would silently drop
+    /// the skill the user had picked.
+    public let activeSkill: AILocalSkill?
 
     public init(
         paths: [String],
         prompt: String,
         role: AIRolePreset? = nil,
         originalSelection: String? = nil,
-        includeHistory: Bool = false
+        includeHistory: Bool = false,
+        activeSkill: AILocalSkill? = nil
     ) {
         self.paths = paths
         self.prompt = prompt
         self.role = role
         self.originalSelection = originalSelection
         self.includeHistory = includeHistory
+        self.activeSkill = activeSkill
     }
 }
 
@@ -63,6 +71,7 @@ public final class AIAssistantPluginState: Sendable {
     public var slashQuery: String = ""
     public var selectedSlashIndex: Int = 0
     public var slashTokenRange: NSRange? = nil
+    private var previousSlashQuery: String = ""
 
     // MARK: - Provider Settings
     public var selectedProvider: AIProviderKind {
@@ -487,7 +496,11 @@ public final class AIAssistantPluginState: Sendable {
             let bTitlePrefix = b.title.lowercased().hasPrefix(query)
             if aTitlePrefix != bTitlePrefix { return aTitlePrefix }
 
-            return false
+            // `sorted` requires a strict weak ordering. Returning false for
+            // every tie left the order up to the algorithm's internals, so the
+            // list could reshuffle between keystrokes; the trigger is unique,
+            // so it makes a stable final key.
+            return aTrig < bTrig
         }
     }
 
@@ -554,15 +567,28 @@ public final class AIAssistantPluginState: Sendable {
         }
 
         let query = String(token.dropFirst())
+        // Only a plausible trigger opens the menu. A typed path
+        // (`/usr/local/bin`) or any token with a slash or punctuation in it is
+        // a path far more often than a command, and popping a menu over it
+        // would interrupt exactly the person who is mid-way through pasting one.
+        let isPlausibleTrigger = query.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        guard isPlausibleTrigger else {
+            dismissSlashMenu()
+            return
+        }
         self.slashQuery = query
         self.slashTokenRange = NSRange(location: tokenStart, length: tokenLength)
         self.isSlashMenuVisible = true
 
-        let count = filteredSlashCommands.count
-        if count > 0 {
-            self.selectedSlashIndex = min(max(0, self.selectedSlashIndex), count - 1)
-        } else {
+        // A narrower result list is a different list: keeping the old index
+        // means the highlighted row silently becomes a different command under
+        // the cursor, and Enter commits something the user never aimed at.
+        if query != previousSlashQuery {
             self.selectedSlashIndex = 0
+            previousSlashQuery = query
+        } else {
+            let count = filteredSlashCommands.count
+            self.selectedSlashIndex = count > 0 ? min(self.selectedSlashIndex, count - 1) : 0
         }
     }
 
@@ -780,6 +806,7 @@ public final class AIAssistantPluginState: Sendable {
             }
         }
         self.pendingPermissionRequest = nil
+        if activeSkill == nil { activeSkill = req.activeSkill }
         sendPrompt(
             req.prompt,
             quickAction: nil,
@@ -1293,7 +1320,8 @@ public final class AIAssistantPluginState: Sendable {
                     prompt: trimmed,
                     role: role,
                     originalSelection: originalSelection,
-                    includeHistory: includeHistory
+                    includeHistory: includeHistory,
+                    activeSkill: activeSkill
                 )
                 return
             }
@@ -1324,6 +1352,11 @@ public final class AIAssistantPluginState: Sendable {
         }
 
         // Built-in skills local enrichment
+        let skillBlocksForHistory: String? = activeSkill.map { skill in
+            let trigger = "/\(skill.trigger)"
+            let body = skill.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+            return body.isEmpty ? trigger : "\(trigger)\n\n\(body)"
+        }
         let enrichedPrompt: String
         let skillDirectories: [String]
         if skipFileEnrichment {
@@ -1431,6 +1464,12 @@ public final class AIAssistantPluginState: Sendable {
             userMessageContent = "Sent attachments"
         }
 
+        // A skill-only send has no text of its own. Storing just `/trigger`
+        // left the transcript showing a bare token with the instructions that
+        // actually ran nowhere in it, so the message could not be re-read or
+        // re-sent meaningfully.
+        let skillRecord: String? = trimmed.isEmpty ? skillBlocksForHistory : nil
+
         let userMsg = AIChatMessage(
             role: .user,
             content: userMessageContent,
@@ -1440,7 +1479,8 @@ public final class AIAssistantPluginState: Sendable {
             originalSelection: resolvedOriginal,
             systemPromptOverride: effectivePromptOverride,
             roleTitle: effectiveRoleTitle,
-            roleId: effectiveRoleId
+            roleId: effectiveRoleId,
+            skillInvocation: skillRecord
         )
         stagedAttachments.removeAll()
 
@@ -1531,6 +1571,7 @@ public final class AIAssistantPluginState: Sendable {
                     model: model,
                     systemPromptOverride: effectivePromptOverride,
                     skillDirectories: skillDirectories,
+                    mcpConfigPath: AIAssistantService.mcpConfigPath(servers: mcpServers),
                     onResolvedModel: { [weak self] resolved in
                         Task { @MainActor [weak self] in
                             guard let self else { return }

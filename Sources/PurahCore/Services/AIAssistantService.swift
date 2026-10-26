@@ -409,6 +409,7 @@ public final class AIAssistantService {
         targetLanguage: String = "Auto (Chinese <-> English)",
         systemPromptOverride: String? = nil,
         skillDirectories: [String] = [],
+        mcpConfigPath: String? = nil,
         onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
@@ -513,6 +514,7 @@ public final class AIAssistantService {
                     targetLanguage: targetLanguage,
                     systemPromptOverride: systemPromptOverride,
                     skillDirectories: skillDirectories,
+                    mcpConfigPath: mcpConfigPath,
                     onChunk: onChunk
                 )
             }
@@ -750,6 +752,7 @@ public final class AIAssistantService {
         targetLanguage: String,
         systemPromptOverride: String?,
         skillDirectories: [String] = [],
+        mcpConfigPath: String? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastMsg = messages.last
@@ -766,7 +769,8 @@ public final class AIAssistantService {
             promptText: promptText,
             model: model,
             additionalDirectories: skillDirectories,
-            permissionSettingsPath: Self.permissionSettingsPath(for: executable)
+            permissionSettingsPath: Self.permissionSettingsPath(for: executable),
+            mcpConfigPath: mcpConfigPath
         )
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
@@ -788,7 +792,8 @@ public final class AIAssistantService {
         promptText: String,
         model: String? = nil,
         additionalDirectories: [String] = [],
-        permissionSettingsPath: String? = nil
+        permissionSettingsPath: String? = nil,
+        mcpConfigPath: String? = nil
     ) -> [String] {
         var args: [String] = []
         let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -858,7 +863,53 @@ public final class AIAssistantService {
             args.insert(contentsOf: ["--settings", permissionSettingsPath, "--permission-mode", "manual"], at: 0)
         }
 
+        if executable == .claude, canRoutePermissions, let mcpConfigPath {
+            args.insert(contentsOf: ["--mcp-config", mcpConfigPath], at: 0)
+        }
+
         return args
+    }
+
+    // MARK: - MCP Server Routing
+
+    /// Writes the `--mcp-config` file for the enabled servers, or nil when
+    /// there are none. The MCP panel used to save entries that no run ever
+    /// read; this is what makes them mean something.
+    public nonisolated static func mcpConfigPath(servers: [AIMCPServerConfig]) -> String? {
+        let enabled = servers.filter { $0.isEnabled && !$0.command.isEmpty }
+        guard !enabled.isEmpty else { return nil }
+
+        var payload: [String: Any] = [:]
+        for server in enabled {
+            var entry: [String: Any] = [
+                "command": server.command,
+                "args": server.arguments
+                    .split(separator: " ")
+                    .map(String.init)
+            ]
+            if let data = server.envJSON.data(using: .utf8),
+               let env = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+               !env.isEmpty {
+                entry["env"] = env
+            }
+            payload[server.name] = entry
+        }
+
+        let document: [String: Any] = ["mcpServers": payload]
+        guard let data = try? JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted]) else {
+            return nil
+        }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-ai-mcp", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("servers.json")
+        do {
+            try data.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Permission Routing

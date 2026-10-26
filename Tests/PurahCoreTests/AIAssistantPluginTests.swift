@@ -2160,6 +2160,40 @@ struct AIAssistantPluginTests {
         #expect(!noSkillClaude.contains("--add-dir"))
     }
 
+    @Test("MCP servers become a --mcp-config the run actually reads")
+    func testMCPConfigRouting() throws {
+        let noServers = AIAssistantService.mcpConfigPath(servers: [])
+        #expect(noServers == nil, "No servers, no flag to add")
+
+        let disabled = AIMCPServerConfig(name: "disabled", command: "npx", isEnabled: false)
+        #expect(AIAssistantService.mcpConfigPath(servers: [disabled]) == nil)
+
+        let servers = [
+            AIMCPServerConfig(name: "fs", command: "npx", arguments: "-y server-fs /tmp"),
+            AIMCPServerConfig(name: "off", command: "npx", isEnabled: false)
+        ]
+        let path = try #require(AIAssistantService.mcpConfigPath(servers: servers))
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let list = try #require(json["mcpServers"] as? [String: Any])
+        #expect(list["fs"] != nil)
+        #expect(list["off"] == nil, "Disabled servers must not be launched")
+        let entry = try #require(list["fs"] as? [String: Any])
+        #expect(entry["command"] as? String == "npx")
+        #expect((entry["args"] as? [String]) == ["-y", "server-fs", "/tmp"])
+
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/Users/x/.local/bin/claude",
+            promptText: "go",
+            mcpConfigPath: path
+        )
+        #expect(args.contains("--mcp-config"))
+        #expect(args.contains(path))
+    }
+
     @Test("Invoking a skill turns pi's tools back on")
     func testPiToolsStayOffWithoutSkills() {
         let bare = AIAssistantService.resolveCLIArguments(

@@ -497,6 +497,10 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     public var systemPromptOverride: String?
     public var roleTitle: String?
     public var roleId: String?
+    /// `/trigger` plus the skill's instructions, recorded when the send was
+    /// driven by a skill rather than by typed text. Without it a skill-only
+    /// message is an empty bubble whose meaning is unrecoverable.
+    public var skillInvocation: String?
 
     public init(
         id: UUID = UUID(),
@@ -510,7 +514,8 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         originalSelection: String? = nil,
         systemPromptOverride: String? = nil,
         roleTitle: String? = nil,
-        roleId: String? = nil
+        roleId: String? = nil,
+        skillInvocation: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -524,6 +529,31 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         self.systemPromptOverride = systemPromptOverride
         self.roleTitle = roleTitle
         self.roleId = roleId
+        self.skillInvocation = skillInvocation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, role, content, reasoningContent, choices, attachments
+        case timestamp, quickAction, originalSelection, systemPromptOverride
+        case roleTitle, roleId, skillInvocation
+    }
+
+    /// Tolerant decode so sessions written before skills existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.role = try container.decode(Role.self, forKey: .role)
+        self.content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        self.reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent)
+        self.choices = try container.decodeIfPresent([String].self, forKey: .choices) ?? []
+        self.attachments = try container.decodeIfPresent([AIAttachmentItem].self, forKey: .attachments) ?? []
+        self.timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? Date()
+        self.quickAction = try container.decodeIfPresent(AIQuickActionType.self, forKey: .quickAction)
+        self.originalSelection = try container.decodeIfPresent(String.self, forKey: .originalSelection)
+        self.systemPromptOverride = try container.decodeIfPresent(String.self, forKey: .systemPromptOverride)
+        self.roleTitle = try container.decodeIfPresent(String.self, forKey: .roleTitle)
+        self.roleId = try container.decodeIfPresent(String.self, forKey: .roleId)
+        self.skillInvocation = try container.decodeIfPresent(String.self, forKey: .skillInvocation)
     }
 }
 
@@ -744,6 +774,13 @@ public struct AIMCPServerConfig: Identifiable, Codable, Equatable, Sendable {
 public struct AIBuiltInSkillConfig: Codable, Equatable, Sendable {
     public var enableFileReadSkill: Bool
     public var enableDirectoryListSkill: Bool
+    /// Retained for configuration compatibility only.
+    ///
+    /// The settings toggle that drove this was removed: no code path ever read
+    /// the flag, so the switch promised clipboard and shell context that was
+    /// never collected. Shipping it as a real feature would mean quietly
+    /// putting clipboard contents — passwords included — into prompts by
+    /// default, which is not a decision a dead default should make.
     public var enableShellSnippetSkill: Bool
     public var enableLocalSkills: Bool
     public var customSkillDirectories: [String]
