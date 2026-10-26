@@ -25,7 +25,7 @@ struct DragRoundTripTests {
         return (state, tempDir)
     }
 
-    @Test("A drag that ends back inside Purah must not consume the shelf item")
+    @Test("A drag that ends back on the shelf must not consume the item")
     @MainActor
     func testInternalDropKeepsShelfItem() throws {
         let (state, tempDir) = try makeShelf()
@@ -38,18 +38,79 @@ struct DragRoundTripTests {
         state.addFile(url: staged)
         let itemId = try #require(state.files.first?.id)
 
-        // The shelf only auto-removes a genuine hand-off to another app.
-        // A round-trip drag reports `succeeded == false`, so nothing is called.
-        #expect(FileManager.default.fileExists(atPath: staged.path))
+        // Drag begins.
+        ShelfDragSession.shared.begin(paths: [staged.path])
 
-        // Even if a caller did ask, the eviction path must not unlink the file
-        // it just re-accepted. `handleDragOutCompleted` is the hand-off path and
-        // is allowed to remove; what must never happen is removal + deletion of
-        // a file that is still the shelf's own content.
+        // Dropping back on the shelf's own target claims the round trip.
+        ShelfDragSession.shared.claimSelfDrop()
+        #expect(ShelfDragSession.shared.consumeSelfDrop(),
+                "the shelf's own drop target must mark this as a round trip")
+
+        // The drag source therefore reports no export, so nothing is removed.
+        #expect(FileManager.default.fileExists(atPath: staged.path))
+        #expect(state.files.contains { $0.id == itemId })
+    }
+
+    @Test("Dropping onto another pod still counts as an export")
+    @MainActor
+    func testDropOnOtherPodIsStillAnExport() throws {
+        let (state, tempDir) = try makeShelf()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let staged = tempDir.appendingPathComponent("report.txt")
+        try "report".write(to: staged, atomically: true, encoding: .utf8)
         state.addFile(url: staged)
-        #expect(state.files.contains { $0.id == itemId || $0.filePath == staged.standardizedFileURL.path })
-        #expect(FileManager.default.fileExists(atPath: staged.path),
-                "re-dropping onto the shelf must not delete the staged file")
+        let itemId = try #require(state.files.first?.id)
+
+        ShelfDragSession.shared.begin(paths: [staged.path])
+
+        // Nobody claimed it: the payload went to the clipboard, another pod, or
+        // another app. That is a hand-off.
+        #expect(!ShelfDragSession.shared.consumeSelfDrop())
+
+        state.handleBatchDragOutCompleted(ids: [itemId])
+        #expect(state.files.isEmpty)
+        // Still never deletes the file: the drag source hands out its own
+        // sandboxed copy, and losing that is exactly the bug being fixed.
+        #expect(FileManager.default.fileExists(atPath: staged.path))
+    }
+
+    @Test("The self-drop claim never leaks into the next drag")
+    @MainActor
+    func testClaimDoesNotLeak() throws {
+        let (_, tempDir) = try makeShelf()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let first = tempDir.appendingPathComponent("a.txt")
+        try "a".write(to: first, atomically: true, encoding: .utf8)
+
+        ShelfDragSession.shared.begin(paths: [first.path])
+        ShelfDragSession.shared.claimSelfDrop()
+        #expect(ShelfDragSession.shared.consumeSelfDrop())
+
+        // A brand new drag starts clean; a stale claim would swallow the export.
+        ShelfDragSession.shared.begin(paths: [first.path])
+        #expect(!ShelfDragSession.shared.consumeSelfDrop())
+    }
+
+    @Test("Only URLs from the current shelf drag are recognised")
+    @MainActor
+    func testCarriesAnyMatchesCurrentDragOnly() throws {
+        let (_, tempDir) = try makeShelf()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dragged = tempDir.appendingPathComponent("mine.txt")
+        let foreign = tempDir.appendingPathComponent("theirs.txt")
+        try "mine".write(to: dragged, atomically: true, encoding: .utf8)
+        try "theirs".write(to: foreign, atomically: true, encoding: .utf8)
+
+        ShelfDragSession.shared.begin(paths: [dragged.path])
+        #expect(ShelfDragSession.shared.carriesAny(of: [dragged]))
+        #expect(!ShelfDragSession.shared.carriesAny(of: [foreign]),
+                "an unrelated file must not be mistaken for a round trip")
+        ShelfDragSession.shared.reset()
+        #expect(!ShelfDragSession.shared.carriesAny(of: [dragged]),
+                "no drag in flight means nothing matches")
     }
 
     @Test("Dragging out to another app still removes the entry and keeps the file")

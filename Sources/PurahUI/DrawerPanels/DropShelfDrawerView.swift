@@ -664,6 +664,12 @@ public struct ShelfStashDropDelegate: DropDelegate {
         // 1. Check for file URLs first
         if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !fileURLs.isEmpty {
+            // Putting a shelf item back where it came from is a round trip, not
+            // an export — tell the drag session so the source does not delete
+            // the file it just re-accepted.
+            if ShelfDragSession.shared.carriesAny(of: fileURLs) {
+                ShelfDragSession.shared.claimSelfDrop()
+            }
             for url in fileURLs {
                 state.addFile(url: url)
             }
@@ -1051,6 +1057,9 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
             let rawBatch = filesToDragProvider?() ?? [file]
             let batchFiles = rawBatch.isEmpty ? [file] : rawBatch
             activeDraggedIds = batchFiles.map(\.id)
+            ShelfDragSession.shared.begin(
+                paths: batchFiles.compactMap { $0.resolvedURL?.path ?? $0.filePath }
+            )
 
             let localPoint = convert(current, from: nil)
             var draggingItems: [NSDraggingItem] = []
@@ -1083,33 +1092,26 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     }
 
     public func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        // A drop that lands back inside Purah's own UI (this shelf, the
-        // clipboard, any rail) is not a hand-off: the content never left.
-        // Treating it as one made the shelf delete the very file it had just
-        // re-accepted, so re-dragging an item onto the shelf destroyed it.
-        let landedInsidePurah = Self.isInsidePurahWindow(screenPoint)
-        let succeeded = !operation.isEmpty && operation != .delete && !landedInsidePurah
+        // A drop that lands back on this shelf is not a hand-off: the content
+        // never left. Treating it as one made the shelf delete the very file it
+        // had just re-accepted, so re-dragging an item onto the shelf destroyed
+        // it.
+        //
+        // Only the shelf's own drop targets claim the round trip. Geometry
+        // cannot answer this: every pod on an edge shares one rail panel, so a
+        // hit test would treat a drop on the clipboard drawer as a shelf drop.
+        //
+        // The claim is guaranteed to be in place by now — AppKit delivers the
+        // destination's `performDragOperation` before the source's session-end
+        // callback.
+        let returnedToShelf = ShelfDragSession.shared.consumeSelfDrop()
+        let succeeded = !operation.isEmpty && operation != .delete && !returnedToShelf
         let draggedIds = activeDraggedIds.isEmpty ? [file.id] : activeDraggedIds
         activeDraggedIds = []
         if let onBatchDragCompleted {
             onBatchDragCompleted(draggedIds, succeeded)
         } else {
             onDragCompleted?(succeeded)
-        }
-    }
-
-    /// True when the screen point lands on a Purah surface that can receive the
-    /// drop. Used to tell an internal drop apart from a hand-off to another app.
-    ///
-    /// `ignoresMouseEvents` is the authority here, not the window frame: an
-    /// expanded rail canvas is up to 580pt wide but stays click-through over its
-    /// transparent area, so a frame test would wrongly claim a drop onto Finder
-    /// underneath it.
-    static func isInsidePurahWindow(_ screenPoint: NSPoint) -> Bool {
-        NSApp.windows.contains { window in
-            window.isVisible
-                && !window.ignoresMouseEvents
-                && window.frame.contains(screenPoint)
         }
     }
 }

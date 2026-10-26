@@ -82,6 +82,11 @@ public struct DropShelfPlugin: PurahPodPlugin {
                     }
                     if let fileURL = url {
                         Task { @MainActor in
+                            // A shelf item dropped back on the shelf's rail is a
+                            // round trip, not an export.
+                            if ShelfDragSession.shared.carriesAny(of: [fileURL]) {
+                                ShelfDragSession.shared.claimSelfDrop()
+                            }
                             state.addFile(url: fileURL)
                             context.performHaptic(.alignment)
                             context.showToast("Stashed \(fileURL.lastPathComponent)", "tray.and.arrow.down.fill")
@@ -109,6 +114,9 @@ public struct DropShelfPlugin: PurahPodPlugin {
                                     context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
                                 }
                             } else {
+                                if ShelfDragSession.shared.carriesAny(of: [url]) {
+                                    ShelfDragSession.shared.claimSelfDrop()
+                                }
                                 state.addFile(url: url)
                                 context.performHaptic(.alignment)
                                 context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
