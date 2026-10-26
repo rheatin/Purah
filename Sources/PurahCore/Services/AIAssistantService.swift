@@ -801,6 +801,9 @@ public final class AIAssistantService {
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
         let isPi = executable == .pi || filename == "pi" || cliPath.contains("/pi/") || cliPath.hasSuffix("/pi")
         if isPi {
+            if !args.contains("-nt") && !args.contains("--no-tools") && !args.contains("--tools") {
+                args.insert("-nt", at: 0)
+            }
             if !args.contains("-p") && !args.contains("--print") {
                 args.insert("-p", at: 0)
             }
@@ -968,18 +971,56 @@ public final class AIAssistantService {
         }
     }
 
+    private final class SafeProcessBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var process: Process?
+        private var _isCancelled = false
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return _isCancelled
+        }
+
+        func set(_ process: Process) {
+            lock.lock()
+            defer { lock.unlock() }
+            self.process = process
+            if _isCancelled && process.isRunning {
+                process.terminate()
+            }
+        }
+
+        func terminate() {
+            lock.lock()
+            defer { lock.unlock() }
+            _isCancelled = true
+            if let process = process, process.isRunning {
+                process.terminate()
+            }
+        }
+    }
+
     private func executeCLIProcess(
         executablePath: String,
         arguments: [String],
         isNDJSON: Bool = false,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: executablePath)
-                process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-                process.arguments = arguments
+        let processBox = SafeProcessBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if processBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+
+                    let process = Process()
+                    processBox.set(process)
+                    process.executableURL = URL(fileURLWithPath: executablePath)
+                    process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+                    process.arguments = arguments
 
                 var env = ProcessInfo.processInfo.environment
                 env["TERM"] = "dumb"
@@ -1086,6 +1127,11 @@ public final class AIAssistantService {
                         }
                     }
 
+                    if processBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+
                     if process.terminationStatus == 0 {
                         let result = buffer.value()
                         continuation.resume(returning: result)
@@ -1108,9 +1154,16 @@ public final class AIAssistantService {
                         }
                     }
                 } catch {
-                    continuation.resume(throwing: error)
+                    if processBox.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        }
+        } onCancel: {
+            processBox.terminate()
         }
     }
 
@@ -1571,8 +1624,9 @@ public final class AIAssistantService {
 
             if !skillBlocks.isEmpty {
                 let header = skillBlocks.joined(separator: "\n\n")
-                if enrichedPrompt.isEmpty {
-                    enrichedPrompt = header
+                let trimmed = enrichedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    enrichedPrompt = header + "\n\nUser: Please execute the skill above and generate the result."
                 } else {
                     enrichedPrompt = header + "\n\n" + enrichedPrompt
                 }

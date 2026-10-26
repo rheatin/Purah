@@ -10,6 +10,7 @@ public enum AIProviderKind: String, Codable, CaseIterable, Sendable, Identifiabl
     case httpOllama = "http_ollama"
 
     public var id: String { rawValue }
+    public var title: String { displayName }
 
     public var displayName: String {
         switch self {

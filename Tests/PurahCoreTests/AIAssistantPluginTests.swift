@@ -1794,6 +1794,16 @@ struct AIAssistantPluginTests {
         #expect(enrichedEmptyPrompt.contains("[Local Skill: write-swift]"))
         #expect(enrichedEmptyPrompt.contains("Always use async/await and structured concurrency."))
         #expect(enrichedEmptyPrompt.contains("[End of Skill: write-swift]"))
+        #expect(enrichedEmptyPrompt.contains("User: Please execute the skill above and generate the result."))
+
+        // 2c. enrichPromptWithLocalSkills with slash command only
+        let (enrichedSlashOnly, _) = AIAssistantService.enrichPromptWithLocalSkills(
+            "/write-swift",
+            skills: config,
+            availableSkills: [sampleSkill]
+        )
+        #expect(enrichedSlashOnly.contains("[Local Skill: write-swift]"))
+        #expect(enrichedSlashOnly.contains("User: Please execute the skill above and generate the result."))
 
         // 3. enrichPromptWithLocalSkills with slash command in prompt
         let (enrichedFromSlash, _) = AIAssistantService.enrichPromptWithLocalSkills(
@@ -2000,9 +2010,11 @@ struct AIAssistantPluginTests {
             cliPath: "/opt/homebrew/bin/pi",
             promptText: "Fix the bug"
         )
-        #expect(args == ["-p", "Fix the bug"])
+        #expect(args.contains("-p"))
+        #expect(args.contains("-nt"))
+        #expect(args.contains("Fix the bug"))
 
-        // Custom template with pi path ensures -p is present
+        // Custom template with pi path ensures -p and -nt are present
         let customArgs = AIAssistantService.resolveCLIArguments(
             executable: .custom,
             cliPath: "/usr/local/bin/pi",
@@ -2010,7 +2022,68 @@ struct AIAssistantPluginTests {
             promptText: "Explain code"
         )
         #expect(customArgs.contains("-p"))
+        #expect(customArgs.contains("-nt"))
         #expect(customArgs.contains("--thinking"))
         #expect(customArgs.contains("Explain code"))
+
+        // Custom template with explicit --tools flag should NOT have -nt injected
+        let customToolsArgs = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "/usr/local/bin/pi",
+            customCLIArguments: "--tools read,edit {prompt}",
+            promptText: "Explain code"
+        )
+        #expect(customToolsArgs.contains("-p"))
+        #expect(!customToolsArgs.contains("-nt"))
+        #expect(customToolsArgs.contains("--tools"))
+    }
+
+    @MainActor
+    @Test("Session switching and creation resets isEditingSource")
+    func testSessionSwitchingResetsIsEditingSource() {
+        let storage = ScopedPluginStorage(pluginId: "test_ai_session_reset_\(UUID().uuidString)")
+        let state = AIAssistantPluginState(storage: storage)
+        state.createNewSession()
+        let session1Id = state.activeSessionId
+
+        state.createNewSession()
+
+        // Set isEditingSource to true
+        state.isEditingSource = true
+        #expect(state.isEditingSource)
+
+        // Switch to session 1
+        state.switchSession(to: session1Id)
+        #expect(state.activeSessionId == session1Id)
+        #expect(!state.isEditingSource)
+
+        // Set isEditingSource to true again and create new session
+        state.isEditingSource = true
+        state.createNewSession()
+        #expect(!state.isEditingSource)
+    }
+
+    @Test("AIAssistantService executeCLIProcess handles task cancellation")
+    func testCLIProcessCancellation() async {
+        let task = Task {
+            try await AIAssistantService.shared.streamChat(
+                messages: [AIChatMessage(role: .user, content: "10")],
+                provider: .localCLI,
+                cliExecutable: .custom,
+                customCLIPath: "/bin/sleep",
+                customCLIArguments: "{prompt}",
+                onChunk: { _ in }
+            )
+        }
+
+        try? await Task.sleep(nanoseconds: 80_000_000) // 80ms
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            #expect(Bool(false), "Task should have been cancelled or failed")
+        } catch {
+            #expect(error is CancellationError || Task.isCancelled)
+        }
     }
 }

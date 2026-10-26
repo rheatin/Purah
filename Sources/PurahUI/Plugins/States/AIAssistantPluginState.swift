@@ -68,6 +68,10 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    public var activeCLIExecutable: AICLIExecutable {
+        selectedCLI
+    }
+
     public var customCLIPath: String {
         didSet {
             storage.set(customCLIPath, forKey: "customCLIPath")
@@ -225,6 +229,7 @@ public final class AIAssistantPluginState: Sendable {
     public var activeSessionId: String = "" {
         didSet {
             viewingStepIndex = nil
+            isEditingSource = false
         }
     }
     public var inputText: String {
@@ -297,6 +302,7 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     public func stepHistory(by delta: Int) {
+        isEditingSource = false
         guard totalStepsCount > 0 else {
             viewingStepIndex = 0
             return
@@ -316,6 +322,7 @@ public final class AIAssistantPluginState: Sendable {
 
     public func switchRoleInTopBar(to role: AIRolePreset, sourceText: String = "") {
         selectedRoleId = role.id
+        isEditingSource = false
 
         // Check if assistantSteps in active session ALREADY has a step matching role.id
         if let existingIndex = assistantSteps.lastIndex(where: { step in
@@ -847,8 +854,15 @@ public final class AIAssistantPluginState: Sendable {
         repository.insert(newSession, at: 0)
         self.sessions = repository.items
         self.activeSessionId = newSession.id
+        self.isEditingSource = false
         self.inputText = ""
         self.stagedAttachments.removeAll()
+    }
+
+    public func switchSession(to id: String) {
+        guard sessions.contains(where: { $0.id == id }) else { return }
+        self.activeSessionId = id
+        self.isEditingSource = false
     }
 
     public func toggleFavoriteSession(id: String) {
@@ -1500,6 +1514,9 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     private func handleStreamingError(_ error: Error, forSession sessionId: String, assistantMsgId: UUID) {
+        if error is CancellationError {
+            return
+        }
         if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }),
            let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == assistantMsgId }) {
             if sessions[sIdx].messages[aIdx].content.isEmpty {

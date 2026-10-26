@@ -713,7 +713,9 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .onExitCommand {
-            if state.isRefiningOutput || state.isEditingSource {
+            if state.isStreaming {
+                state.stopStreaming()
+            } else if state.isRefiningOutput || state.isEditingSource {
                 withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
                     state.isRefiningOutput = false
                     state.isEditingSource = false
@@ -1213,13 +1215,55 @@ public struct AIAssistantRoleWorkbenchView: View {
     @ViewBuilder
     private var topStatusBar: some View {
         if state.isEditingSource {
-            // Expanded Source Editing Card (~96pt)
+            // Expanded Source Editing Card
             VStack(alignment: .leading, spacing: 5) {
+                // Header row
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 9.5, weight: .semibold))
+                        Text("ai.source.editSource".localized)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(roleColor)
+
+                    Spacer()
+
+                    Button {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                            state.isEditingSource = false
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("Done")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                                .fill(Color.white.opacity(0.12))
+                        )
+                        .foregroundColor(Color.white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Collapse Source Editor (Esc)")
+                }
+                .padding(.horizontal, 2)
+                .padding(.top, 1)
+
                 PurahAIComposerEditor(
                     text: $state.currentInputText,
                     fontSize: 11,
                     focusRequest: sourceFocusRequest,
                     autoFocus: true,
+                    onEscape: {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                            state.isEditingSource = false
+                        }
+                    },
                     onSubmit: sendSourcePromptFromEditCard
                 )
                 .frame(height: 58)
@@ -1276,6 +1320,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(roleColor.opacity(0.40), lineWidth: 1.0)
             )
+            .onExitCommand {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                    state.isEditingSource = false
+                }
+            }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
         } else {
             // Collapsed 3-in-1 Compact Status Bar (height: 22pt)
@@ -1754,9 +1803,68 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
             } else {
-                AIShimmerSkeletonView(roleColor: roleColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 4)
+                VStack(spacing: 12) {
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(roleColor)
+                            .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+                    }
+
+                    VStack(spacing: 3) {
+                        Text("Waiting for model response...")
+                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.90))
+
+                        let activeSubtitle: String = (state.selectedProvider == .localCLI)
+                            ? state.activeCLIExecutable.displayName
+                            : state.selectedProvider.title
+
+                        Text(activeSubtitle)
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.55))
+                    }
+
+                    Button {
+                        state.stopStreaming()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 8.5, weight: .bold))
+                            Text("Stop Generation")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(Color(hex: "#FCA5A5"))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color(hex: "#EF4444").opacity(0.20))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(hex: "#EF4444").opacity(0.50), lineWidth: 0.9)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Stop Generation (Esc)")
+
+                    Spacer(minLength: 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.black.opacity(0.25))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(roleColor.opacity(0.20), lineWidth: 0.8)
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -2558,7 +2666,7 @@ public struct AISessionHistoryManagerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    state.activeSessionId = session.id
+                    state.switchSession(to: session.id)
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
                         state.isShowingHistoryPanel = false
                     }

@@ -21,6 +21,7 @@ public final class PurahAIComposerTextView: NSTextView {
     public var onSlashKeyCommit: (() -> Bool)?
     public var onSlashDismiss: (() -> Void)?
     public var onTextAndCursorChange: ((String, Int) -> Void)?
+    public var onEscape: (() -> Void)?
 
     private var hasAutoFocused = false
 
@@ -50,9 +51,26 @@ public final class PurahAIComposerTextView: NSTextView {
                 onSlashDismiss?()
                 return
             }
+        } else if event.keyCode == 53 { // Escape
+            if let onEscape {
+                onEscape()
+                return
+            }
         }
 
         super.keyDown(with: event)
+    }
+
+    public override func cancelOperation(_ sender: Any?) {
+        if isSlashMenuVisible {
+            onSlashDismiss?()
+            return
+        }
+        if let onEscape {
+            onEscape()
+            return
+        }
+        super.cancelOperation(sender)
     }
 
     public override func insertNewline(_ sender: Any?) {
@@ -120,6 +138,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
     private let onSlashKeyCommit: (() -> Bool)?
     private let onSlashDismiss: (() -> Void)?
     private let onTextAndCursorChange: ((String, Int) -> Void)?
+    private let onEscape: (() -> Void)?
     private let onSubmit: () -> Void
 
     public init(
@@ -132,6 +151,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         onSlashKeyCommit: (() -> Bool)? = nil,
         onSlashDismiss: (() -> Void)? = nil,
         onTextAndCursorChange: ((String, Int) -> Void)? = nil,
+        onEscape: (() -> Void)? = nil,
         onSubmit: @escaping () -> Void
     ) {
         self._text = text
@@ -143,6 +163,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         self.onSlashKeyCommit = onSlashKeyCommit
         self.onSlashDismiss = onSlashDismiss
         self.onTextAndCursorChange = onTextAndCursorChange
+        self.onEscape = onEscape
         self.onSubmit = onSubmit
     }
 
@@ -193,6 +214,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         textView.onSlashKeyCommit = onSlashKeyCommit
         textView.onSlashDismiss = onSlashDismiss
         textView.onTextAndCursorChange = onTextAndCursorChange
+        textView.onEscape = onEscape
         textView.unregisterDraggedTypes()
 
         scrollView.documentView = textView
@@ -209,6 +231,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         textView.onSlashKeyCommit = onSlashKeyCommit
         textView.onSlashDismiss = onSlashDismiss
         textView.onTextAndCursorChange = onTextAndCursorChange
+        textView.onEscape = onEscape
 
         if textView.font?.pointSize != fontSize {
             textView.font = .systemFont(ofSize: fontSize)
