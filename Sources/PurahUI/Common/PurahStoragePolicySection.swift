@@ -336,7 +336,7 @@ public struct PurahStackedDecomposeNoticeView: View {
                 Spacer(minLength: 6)
 
                 Button {
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surface) {
                         store.splitPodFromMajorGroup(id: podId)
                     }
                 } label: {
@@ -348,7 +348,7 @@ public struct PurahStackedDecomposeNoticeView: View {
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(Color.orange)
                         )
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                 }
                 .buttonStyle(.tactile)
                 .fixedSize()

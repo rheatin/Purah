@@ -100,7 +100,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             HStack(spacing: 5) {
                 // History Toggle Button
                 Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel.toggle()
                     }
                 } label: {
@@ -176,9 +176,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
-        let count = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
         return PurahDecomposedPolicy(
-            maxRailItems: max(count, 1),
+            maxRailItems: max(state.maxRailRoles, 1),
             minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
@@ -187,9 +186,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
-        let count = min(state.enabledRoles.count, max(state.maxRailRoles, 1))
         return PurahDecomposedPolicy(
-            maxRailItems: max(count, 1),
+            maxRailItems: max(state.maxRailRoles, 1),
             minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
@@ -307,6 +305,8 @@ public struct AIRailBarPluginView: View {
     public let state: AIAssistantPluginState
     public let context: PurahPluginContext
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     public init(state: AIAssistantPluginState, context: PurahPluginContext) {
         self.state = state
         self.context = context
@@ -324,7 +324,7 @@ public struct AIRailBarPluginView: View {
                 .frame(width: barW, height: barH)
 
             if state.isStreaming {
-                TimelineView(.animation) { timeline in
+                TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                     let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
                     let spotH = max(barH * 0.28, 14.0)
@@ -814,6 +814,8 @@ public struct AIAssistantPluginSettingsView: View {
                 }
             }
 
+            secretSourcesHint(forKey: "ai.openAIAPIKey")
+
             modelSelectorRow(
                 title: "Model ID",
                 text: $state.openAIModel,
@@ -838,12 +840,35 @@ public struct AIAssistantPluginSettingsView: View {
                 }
             }
 
+            secretSourcesHint(forKey: "ai.anthropicAPIKey")
+
             modelSelectorRow(
                 title: "Model ID",
                 text: $state.anthropicModel,
                 provider: .httpAnthropic
             )
         }
+    }
+
+    /// Tells the user where a key can live besides this field. Keys saved here
+    /// go to `~/Library/Application Support/Purah/secrets.json` (owner-only,
+    /// never exported with a config backup); the environment wins if set, so a
+    /// shell profile or a secrets manager can supply the value with no copy on
+    /// disk at all.
+    @ViewBuilder
+    private func secretSourcesHint(forKey key: String) -> some View {
+        let environmentName = FileSecretStore.environmentName(forKey: key)
+        let path = FileSecretStore.defaultFileURL().path
+            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Stored owner-only in \(path)")
+            Text("Overridden by $\(environmentName)")
+                .textSelection(.enabled)
+        }
+        .font(.system(size: 9.5))
+        .foregroundColor(.secondary)
+        .padding(.leading, 98)
     }
 
     @ViewBuilder
@@ -1073,9 +1098,20 @@ public struct AIAssistantPluginSettingsView: View {
                             step: 1.0
                         )
 
-                        Text("Controls the maximum number of role chips decomposed along the screen edge.")
+                        Text("Controls the maximum number of role chips on the rail.")
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
+
+                        let hiddenRoles = max(state.enabledRoles.count - state.maxRailRoles, 0)
+                        if hiddenRoles > 0 {
+                            HStack(spacing: 5) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 9))
+                                Text("\(hiddenRoles) enabled role\(hiddenRoles == 1 ? "" : "s") hidden — raise the limit or disable roles to show them.")
+                                    .font(.system(size: 9.5, weight: .medium))
+                            }
+                            .foregroundColor(.orange)
+                        }
                     }
                     .padding(9)
                     .background(Color.primary.opacity(0.025))
@@ -1149,6 +1185,9 @@ public struct AIAssistantPluginSettingsView: View {
                 Toggle("", isOn: Binding(
                     get: { role.isEnabled },
                     set: { isChecked in
+                        // Rail slot admission: enabling beyond the on-rail
+                        // capacity is rejected (the toggle springs back).
+                        if isChecked && !store.canEnableSubItem(for: "ai") { return }
                         var updated = role
                         updated.isEnabled = isChecked
                         state.updateRole(updated)
@@ -1498,7 +1537,7 @@ public struct AIAssistantPluginSettingsView: View {
                         .buttonStyle(.plain)
 
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 isAddingMCPServer.toggle()
                             }
                         } label: {
@@ -1657,7 +1696,7 @@ public struct AIAssistantPluginSettingsView: View {
                 Spacer()
 
                 Button("Cancel") {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         isAddingMCPServer = false
                         newServerName = ""
                         newServerCommand = ""
@@ -1675,7 +1714,7 @@ public struct AIAssistantPluginSettingsView: View {
                         command: newServerCommand.trimmingCharacters(in: .whitespaces),
                         arguments: newServerArgs.trimmingCharacters(in: .whitespaces)
                     )
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         isAddingMCPServer = false
                         newServerName = ""
                         newServerCommand = ""

@@ -113,6 +113,13 @@ public extension Color {
                 return .white
             }
         }
-        return Color(red: 0.059, green: 0.067, blue: 0.102)
+        return Self.slateInk
     }
+
+    /// The slate-black used on light and mid-tone fills (#0F111A).
+    ///
+    /// `highContrastInk` needs a colour to evaluate; badges drawn on a fixed
+    /// fill (orange, green, yellow) always want this value, so it is exposed on
+    /// its own rather than spelled out as a literal at every call site.
+    static let slateInk = Color(red: 0.059, green: 0.067, blue: 0.102)
 }

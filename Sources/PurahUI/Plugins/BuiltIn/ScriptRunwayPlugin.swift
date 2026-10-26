@@ -61,7 +61,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
-            maxRailItems: state.enabledActions.count,
+            maxRailItems: min(state.maxRailActions, state.enabledActions.count),
             minChipHeight: 56.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
@@ -199,7 +199,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
                 height: context.slotHeight,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }
@@ -330,6 +330,49 @@ public struct ScriptsPluginSettingsView: View {
                     )
 
                     if !isStacked && state.isDecomposed {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Rail Slot Limit")
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Text("\(min(state.maxRailActions, state.enabledActions.count)) of \(state.enabledActions.count) scripts")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(palette.primaryAccent)
+                            }
+
+                            let scriptLimitBinding: Binding<Double> = Binding(
+                                get: { Double(min(max(state.maxRailActions, 2), 6)) },
+                                set: { (newValue: Double) in
+                                    state.setMaxRailActions(Int(newValue))
+                                    store.invalidateLayoutCache()
+                                    store.savePersistentState()
+                                }
+                            )
+                            Slider(value: scriptLimitBinding, in: 2.0...6.0, step: 1.0)
+
+                            Text("Scripts beyond this limit stay hidden on the rail — lower the limit to keep the rail compact, raise it to show more action chips.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+
+                            let hiddenScripts = max(state.enabledActions.count - min(state.maxRailActions, state.enabledActions.count), 0)
+                            if hiddenScripts > 0 {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 9))
+                                    Text("\(hiddenScripts) enabled script\(hiddenScripts == 1 ? "" : "s") hidden — raise the limit or disable scripts to show them.")
+                                        .font(.system(size: 9.5, weight: .medium))
+                                }
+                                .foregroundColor(.orange)
+                            }
+                        }
+                        .padding(9)
+                        .background(Color.primary.opacity(0.025))
+                        .cornerRadius(7)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
+                        )
+
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("Visible Stepped Action Chips")
@@ -347,7 +390,7 @@ public struct ScriptsPluginSettingsView: View {
                                 ForEach(state.actions) { action in
                                     let isIncluded = currentEnabled.contains(action.id)
                                     Button {
-                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                        withAnimation(PurahMotionPolicy.confirm) {
                                             var updated = currentEnabled
                                             if isIncluded {
                                                 if updated.count > 1 {
@@ -358,6 +401,9 @@ public struct ScriptsPluginSettingsView: View {
                                                     store.savePersistentState()
                                                 }
                                             } else {
+                                                // Rail slot admission: reject when
+                                                // every slot is already occupied.
+                                                guard store.canEnableSubItem(for: "scripts") else { return }
                                                 updated.append(action.id)
                                                 state.enabledActionIds = updated
                                                 state.save()
@@ -437,7 +483,7 @@ public struct ScriptsPluginSettingsView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                        withAnimation(PurahMotionPolicy.microLight) {
                             isAddingAction.toggle()
                             if isAddingAction {
                                 editingActionId = nil
@@ -590,7 +636,7 @@ public struct ScriptsPluginSettingsView: View {
                                         .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
 
                                     Button {
-                                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                                        withAnimation(PurahMotionPolicy.microLight) {
                                             if editingActionId == action.id {
                                                 editingActionId = nil
                                             } else {
@@ -684,7 +730,7 @@ public struct ScriptsPluginSettingsView: View {
                                             Spacer()
 
                                             Button {
-                                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                                withAnimation(PurahMotionPolicy.confirm) {
                                                     editingActionId = nil
                                                 }
                                             } label: {
@@ -712,7 +758,7 @@ public struct ScriptsPluginSettingsView: View {
                                                     description: editDescription.trimmingCharacters(in: .whitespaces),
                                                     showNotification: editShowNotification
                                                 )
-                                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                                withAnimation(PurahMotionPolicy.confirm) {
                                                     state.updateAction(updated)
                                                     editingActionId = nil
                                                 }

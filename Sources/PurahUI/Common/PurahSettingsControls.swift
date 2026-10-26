@@ -88,7 +88,7 @@ public struct PurahThemedMenuPicker<T: Hashable>: View {
         Menu {
             ForEach(options, id: \.self) { option in
                 Button {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.confirm) {
                         selection = option
                     }
                 } label: {

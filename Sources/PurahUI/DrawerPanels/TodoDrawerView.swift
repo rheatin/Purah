@@ -3,81 +3,26 @@ import SwiftUI
 import AppKit
 import PurahCore
 
-public struct TodoDrawerView: View {
-    public let state: TodoPluginState
-    public let store: PurahWorkspaceStore
+/// One reminders row, shared by the composite drawer and the "+N" overview.
+struct TodoOverviewRow: View {
+    let todo: TodoItem
+    let state: TodoPluginState
+    let store: PurahWorkspaceStore
 
-    private var palette: ThemePalette {
-        ThemeManager.shared.palette
+    private var palette: ThemePalette { ThemeManager.shared.palette }
+    private var podColor: Color { palette.podColor(for: "todo") }
+    private var isDone: Bool { todo.isCompleted }
+    private var urgency: (tintColorHex: String?, badge: String?) {
+        TodoPlugin.urgencyPresentation(for: todo)
     }
-
-    private var podColor: Color {
-        palette.podColor(for: "todo") // Amber gold for reminders
-    }
-
-    public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
-        self.state = state
-        self.store = store
-    }
-
-    public init(store: PurahWorkspaceStore) {
-        let pluginState = (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state ?? TodoPluginState()
-        self.init(state: pluginState, store: store)
-    }
-
-    public var body: some View {
-        Group {
-            if state.todos.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "checkmark.circle.badge.questionmark")
-                        .font(.system(size: 26))
-                        .foregroundColor(palette.borderColor)
-
-                    Text("todo.empty.title".localized)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                    Text("todo.empty.subtitle".localized)
-                        .font(.system(size: 10))
-                        .foregroundColor(.gray)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let activeItem = state.todos.first(where: { $0.id == store.activeDrawerItemId }) {
-                // Single item stepped drawer mode
-                todoCard(todo: activeItem)
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 5) {
-                        ForEach(state.todos) { todo in
-                            todoCard(todo: todo)
-                                .transition(.asymmetric(
-                                    insertion: .scale(scale: 0.96).combined(with: .opacity),
-                                    removal: .scale(scale: 0.95).combined(with: .opacity)
-                                ))
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
+    private var effectiveColor: Color {
+        if let hex = urgency.tintColorHex {
+            return Color(hex: hex)
         }
-        .task {
-            await state.syncReminders(into: store)
-        }
+        return podColor
     }
 
-    @ViewBuilder
-    private func todoCard(todo: TodoItem) -> some View {
-        let isDone = todo.isCompleted
-        let urgency = TodoPlugin.urgencyPresentation(for: todo)
-        let effectiveColor: Color = {
-            if let hex = urgency.tintColorHex {
-                return Color(hex: hex)
-            }
-            return podColor
-        }()
-
+    var body: some View {
         HStack(spacing: 8) {
             Button {
                 Task {
@@ -152,7 +97,7 @@ public struct TodoDrawerView: View {
                 .cornerRadius(3)
 
             Button {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.microLight) {
                     state.remove(id: todo.id)
                     store._todos.removeAll { $0.id == todo.id }
                 }
@@ -169,9 +114,109 @@ public struct TodoDrawerView: View {
             cornerRadius: 8,
             strokeColor: effectiveColor.opacity(isDone ? 0.35 : 0.9)
         )
-        .contextMenu {
-            dueDateMenuItems(for: todo.id)
+
+    }
+
+    @ViewBuilder
+    private func dueDateMenuItems(for todoId: String) -> some View {
+        Button("Due Today (18:00)") {
+            let target = TodoPluginState.dueTodayAt18()
+            state.setDueDate(id: todoId, date: target)
+            if let idx = store._todos.firstIndex(where: { $0.id == todoId }) {
+                store._todos[idx].dueDate = target
+            }
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
         }
+        Button("Due Tomorrow (09:00)") {
+            let target = TodoPluginState.dueTomorrowAt09()
+            state.setDueDate(id: todoId, date: target)
+            if let idx = store._todos.firstIndex(where: { $0.id == todoId }) {
+                store._todos[idx].dueDate = target
+            }
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+        }
+        Divider()
+        Button("Clear Due Date") {
+            state.setDueDate(id: todoId, date: nil)
+            if let idx = store._todos.firstIndex(where: { $0.id == todoId }) {
+                store._todos[idx].dueDate = nil
+            }
+        }
+    }
+}
+
+public struct TodoDrawerView: View {
+    public let state: TodoPluginState
+    public let store: PurahWorkspaceStore
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    private var podColor: Color {
+        palette.podColor(for: "todo") // Amber gold for reminders
+    }
+
+    /// Todo ids already rendered as rail chips — the "+N" drawer excludes them
+    /// so it continues the rail's list instead of repeating it.
+    private let excludeIDs: Set<String>
+
+    public init(state: TodoPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore(), excludeIDs: Set<String> = []) {
+        self.state = state
+        self.store = store
+        self.excludeIDs = excludeIDs
+    }
+
+    public init(store: PurahWorkspaceStore) {
+        let pluginState = (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?.state ?? TodoPluginState()
+        self.init(state: pluginState, store: store)
+    }
+
+    public var body: some View {
+        Group {
+            if state.todos.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "checkmark.circle.badge.questionmark")
+                        .font(.system(size: 26))
+                        .foregroundColor(palette.borderColor)
+
+                    Text("todo.empty.title".localized)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                    Text("todo.empty.subtitle".localized)
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let activeItem = state.todos.first(where: { $0.id == store.activeDrawerItemId }) {
+                // Single item stepped drawer mode
+                todoCard(todo: activeItem)
+            } else {
+                PurahScrollableBody {
+                    VStack(spacing: 5) {
+                        ForEach(state.todos.filter { !excludeIDs.contains($0.id) }) { todo in
+                            todoCard(todo: todo)
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 0.96).combined(with: .opacity),
+                                    removal: .scale(scale: 0.95).combined(with: .opacity)
+                                ))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .task {
+            await state.syncReminders(into: store)
+        }
+    }
+
+    @ViewBuilder
+    private func todoCard(todo: TodoItem) -> some View {
+        TodoOverviewRow(todo: todo, state: state, store: store)
     }
 
     @ViewBuilder

@@ -86,3 +86,25 @@ public struct PurahPluginSubItem: Identifiable, Sendable {
         self.isPinned = isPinned
     }
 }
+
+public extension PurahPluginSubItem {
+    /// Canonical id for a pod's smart-fold "+N more" chip ("calendar_more_events",
+    /// "todo_more_items", ...). Legacy spellings all contain "_more_".
+    static func moreItemsID(forPod podId: String) -> String { "\(podId)_more_items" }
+
+    static func isMoreItemsID(_ id: String) -> Bool { id.contains("_more_") }
+
+    /// The smart-fold "+N" chip whose activation merges its pod: while this chip
+    /// is hovered-open or pinned, the pod collapses its other chips into one
+    /// full-span overview slot so the drawer can be exactly pod-height.
+    /// Returns nil when no more-chip exists or it is not currently active.
+    static func mergedOverviewChip(
+        in items: [PurahPluginSubItem],
+        activeDrawerItemId: String?,
+        isItemPinned: (String) -> Bool
+    ) -> PurahPluginSubItem? {
+        guard let chip = items.first(where: { isMoreItemsID($0.id) }) else { return nil }
+        let isActive = (activeDrawerItemId == chip.id) || isItemPinned(chip.id)
+        return isActive ? chip : nil
+    }
+}

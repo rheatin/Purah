@@ -11,6 +11,9 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
     @ViewBuilder func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView?
+    // Requirement (not just an extension default) so existential calls
+    // dynamically dispatch to the plugin's override.
+    @ViewBuilder func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView?
 
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
@@ -77,6 +80,13 @@ public extension PurahPodPlugin {
     func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
     func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? { nil }
     func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? { nil }
+
+    /// Content-only view for the pod's "+N more" overview drawer. The stepped
+    /// container supplies the shared shell (rail bar, drawer-grade solid card,
+    /// edge-flush shape, slide-in transition) so every overview looks and
+    /// animates identically. Return nil if the pod has no overview drawer.
+    func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView? { nil }
+
 
     var usesAdaptiveTelemetryColor: Bool { false }
     func acknowledgeAllAlerts(context: PurahPluginContext) {}

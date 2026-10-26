@@ -41,6 +41,8 @@ public final class AIAssistantPluginState: Sendable {
     // MARK: - Storage & Persistence
     public let repository: PurahDiskRepository<AIChatSession>
     public let storage: any PurahPluginStorage
+    /// Credentials are kept out of `UserDefaults` and out of config backups.
+    public let secretStore: any SecretStore
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
 
     // MARK: - File Permission Control
@@ -100,7 +102,8 @@ public final class AIAssistantPluginState: Sendable {
 
     public var openAIAPIKey: String {
         didSet {
-            storage.set(openAIAPIKey, forKey: "openAIAPIKey")
+            guard openAIAPIKey != oldValue else { return }
+            secretStore.setSecret(openAIAPIKey, forKey: "ai.openAIAPIKey")
         }
     }
 
@@ -112,7 +115,8 @@ public final class AIAssistantPluginState: Sendable {
 
     public var anthropicAPIKey: String {
         didSet {
-            storage.set(anthropicAPIKey, forKey: "anthropicAPIKey")
+            guard anthropicAPIKey != oldValue else { return }
+            secretStore.setSecret(anthropicAPIKey, forKey: "ai.anthropicAPIKey")
         }
     }
 
@@ -587,10 +591,12 @@ public final class AIAssistantPluginState: Sendable {
     // MARK: - Initializer
     public init(
         storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "ai"),
-        repository: PurahDiskRepository<AIChatSession> = PurahDiskRepository(pluginId: "ai")
+        repository: PurahDiskRepository<AIChatSession> = PurahDiskRepository(pluginId: "ai"),
+        secretStore: any SecretStore = FileSecretStore()
     ) {
         self.storage = storage
         self.repository = repository
+        self.secretStore = secretStore
 
         if let providerStr = storage.string(forKey: "selectedProvider"),
            let provider = AIProviderKind(rawValue: providerStr) {
@@ -623,9 +629,17 @@ public final class AIAssistantPluginState: Sendable {
         self.repository.retentionPeriod = resolvedRetention
 
         self.openAIBaseURL = storage.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1"
-        self.openAIAPIKey = storage.string(forKey: "openAIAPIKey") ?? ""
+        // One-time migration: plaintext keys used to live in the plugin storage
+        // (and therefore in every exported config backup).
+        FileSecretStore.migrateLegacyDefaultsKey(
+            "purah.plugin.ai.openAIAPIKey", to: "ai.openAIAPIKey", store: secretStore
+        )
+        FileSecretStore.migrateLegacyDefaultsKey(
+            "purah.plugin.ai.anthropicAPIKey", to: "ai.anthropicAPIKey", store: secretStore
+        )
+        self.openAIAPIKey = secretStore.secret(forKey: "ai.openAIAPIKey") ?? ""
         self.openAIModel = storage.string(forKey: "openAIModel") ?? "gpt-4o-mini"
-        self.anthropicAPIKey = storage.string(forKey: "anthropicAPIKey") ?? ""
+        self.anthropicAPIKey = secretStore.secret(forKey: "ai.anthropicAPIKey") ?? ""
         self.anthropicModel = storage.string(forKey: "anthropicModel") ?? "claude-3-7-sonnet-latest"
         self.ollamaBaseURL = storage.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
         self.ollamaModel = storage.string(forKey: "ollamaModel") ?? "llama3.2"
@@ -816,9 +830,9 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(customCLIArguments, forKey: "customCLIArguments")
         storage.set(retentionPeriod.rawValue, forKey: "retentionPeriod")
         storage.set(openAIBaseURL, forKey: "openAIBaseURL")
-        storage.set(openAIAPIKey, forKey: "openAIAPIKey")
+        secretStore.setSecret(openAIAPIKey, forKey: "ai.openAIAPIKey")
         storage.set(openAIModel, forKey: "openAIModel")
-        storage.set(anthropicAPIKey, forKey: "anthropicAPIKey")
+        secretStore.setSecret(anthropicAPIKey, forKey: "ai.anthropicAPIKey")
         storage.set(anthropicModel, forKey: "anthropicModel")
         storage.set(ollamaBaseURL, forKey: "ollamaBaseURL")
         storage.set(ollamaModel, forKey: "ollamaModel")

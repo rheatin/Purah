@@ -50,8 +50,9 @@ struct PurahConfigBackupTests {
         decoder.dateDecodingStrategy = .iso8601
         let backup = try decoder.decode(PurahConfigurationBackup.self, from: data)
 
-        #expect(backup.schemaVersion == 1)
-        #expect(backup.appVersion == "0.2.0")
+        #expect(backup.schemaVersion == PurahConfigBackupManager.currentSchemaVersion)
+        // Metadata must track the shipping version, not a stale literal.
+        #expect(backup.appVersion == PurahCore.version)
         #expect(backup.settings["purah.fixedDrawerWidth"] == .double(320.0))
         #expect(backup.settings["purah.railBarWidth"] == .double(10.0))
     }
@@ -97,7 +98,9 @@ struct PurahConfigBackupTests {
 
         #expect(store.fixedDrawerWidth == 290.0)
         #expect(store.railBarWidth == 8.0)
-        #expect(store.drawerWidthMode == .fixed)
+        // A factory reset returns the user to a fresh install, and a fresh
+        // install starts on Adaptive so each plugin's declared width wins.
+        #expect(store.drawerWidthMode == .adaptive)
         #expect(store.leftRailPage == 0)
         #expect(defaults.string(forKey: "purah.customKey") == nil)
         #expect(defaults.bool(forKey: "purah.didAutoInstallAIPlugin") == true)

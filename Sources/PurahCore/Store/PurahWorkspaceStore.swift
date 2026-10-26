@@ -907,6 +907,38 @@ public final class PurahWorkspaceStore {
         let targetItemId = itemId ?? podId
         pendingHoverPodId = podId
 
+        // Overview ↔ chip switches inside one pod play sequenced: the current
+        // drawer retracts first, then the next one springs out — the stack-like
+        // collapse-then-pop feel. Hover must still be on the pod when the
+        // deferred activation fires, or it is dropped.
+        let previousItemId = activeDrawerItemId
+        // One direction only: N+ → chip retracts first, then the chip drawer
+        // springs out. Chip → N+ activates immediately (the merged state
+        // already animates the sibling chips away).
+        let isOverviewSwitch = previousItemId != nil
+            && previousItemId != targetItemId
+            && PurahPluginSubItem.isMoreItemsID(previousItemId!)
+            && !PurahPluginSubItem.isMoreItemsID(targetItemId)
+            && pod(forItemId: previousItemId!)?.id == podId
+        if isOverviewSwitch {
+            onRequestExpandCanvas?(targetEdge)
+            withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                hoveredPodId = podId
+                activeDrawerPodId = nil
+                activeDrawerItemId = nil
+                invalidateLayoutCache()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.hoveredPodId == podId || self.pendingHoverPodId == podId else { return }
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    self.activeDrawerPodId = podId
+                    self.activeDrawerItemId = targetItemId
+                    self.invalidateLayoutCache()
+                }
+            }
+            return
+        }
+
         if isAlreadyExpanded || Self.isTestingEnvironment {
             onRequestExpandCanvas?(targetEdge)
             withAnimation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08)) {
@@ -1038,8 +1070,30 @@ public final class PurahWorkspaceStore {
         )
     }
 
+    /// Alert bookkeeping is keyed by item id and never persisted, so without a
+    /// bound these sets grow for every event the user has ever acknowledged
+    /// during a session. They are pruned once they exceed this many entries.
+    private static let alertIDRetentionLimit = 256
+
+    /// Drops acknowledgements and toast receipts that no longer refer to
+    /// anything live: departed calendar events, removed pods, and the fixed
+    /// set of vitals metric ids are the only ids worth keeping.
+    public func pruneStaleAlertIDs(force: Bool = false) {
+        guard force
+            || acknowledgedAlertIds.count > Self.alertIDRetentionLimit
+            || notifiedToastEventIds.count > Self.alertIDRetentionLimit else { return }
+        let liveEventIDs = Set(_calendarEvents.map(\.id))
+        let podIDs = Set(pods.map(\.id))
+        func isLive(_ id: String) -> Bool {
+            liveEventIDs.contains(id) || podIDs.contains(id) || id.hasPrefix("vitals-")
+        }
+        acknowledgedAlertIds = acknowledgedAlertIds.filter(isLive)
+        notifiedToastEventIds = notifiedToastEventIds.filter { liveEventIDs.contains($0) }
+    }
+
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
+        pruneStaleAlertIDs()
     }
 
     public func isAlertAcknowledged(id: String) -> Bool {
@@ -1129,6 +1183,7 @@ public final class PurahWorkspaceStore {
     public func postToastNotification(id: String, message: String) {
         guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(id) else { return }
         notifiedToastEventIds.insert(id)
+        pruneStaleAlertIDs()
         onCapacityWarningToast?(message)
     }
 
@@ -1325,7 +1380,10 @@ public final class PurahWorkspaceStore {
 
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
-    public var drawerWidthMode: DrawerWidthMode = .fixed
+    /// Adaptive by default: a new user has never expressed a width preference,
+    /// and each plugin already declares the width its content wants. Starting
+    /// on `.fixed` would silently override every one of those with 290pt.
+    public var drawerWidthMode: DrawerWidthMode = .adaptive
     public var fixedDrawerWidth: Double = 290.0 // Bounds: 220px ~ 330px
     public var customPodColors: [String: String] = [:]
 
@@ -1528,6 +1586,15 @@ public final class PurahWorkspaceStore {
         }
         let minReserved = minimumDrawerHeight(for: pod.id)
         return max(podHeight, minReserved)
+    }
+
+    /// Universal rail-slot admission check for decomposed pods. Base knows the
+    /// counts (subItemCount vs policy.maxRailItems) — plugins call this before
+    /// enabling an entry and reject the enable when it returns false.
+    public func canEnableSubItem(for podId: String) -> Bool {
+        guard isPodDecomposed(podId), let provider = capabilityProvider(for: podId) else { return true }
+        let policy = provider.decomposedPolicy(store: self)
+        return provider.subItemCount(store: self) < policy.maxRailItems
     }
 
     public func isPodExpanded(_ pod: SlotPod) -> Bool {
@@ -2072,6 +2139,12 @@ public final class PurahWorkspaceStore {
                         }
                     }
                 } else {
+                    // Several drawers are open at once, so the expanded spans
+                    // have to share the rail. Each one holds its own declared
+                    // floor rather than a single hardcoded 110pt: a plugin that
+                    // asked for 150pt must not be clipped down to a number the
+                    // solver picked for someone else. Idle neighbours stay
+                    // squashable — they render no drawer at all.
                     let idleReserved = clusters.indices.filter { !expandedFlags[$0] }
                         .reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                     let expandedBudget = max(netAvailable - idleReserved, 160.0)
@@ -2080,8 +2153,9 @@ public final class PurahWorkspaceStore {
 
                     for idx in clusters.indices where expandedFlags[idx] {
                         if idx == anchorIdx {
-                            let granted = min(max(fullClusterSpans[idx], 120.0), expandedBudget * 0.55)
-                            clusterSpans[idx] = max(granted, 110.0)
+                            let floor = clusterMinFloors[idx]
+                            let granted = min(max(fullClusterSpans[idx], floor), expandedBudget * 0.55)
+                            clusterSpans[idx] = max(granted, floor)
                             remainingExpandedBudget = max(expandedBudget - clusterSpans[idx], 90.0)
                         } else {
                             otherExpandedIndices.append(idx)
@@ -2090,7 +2164,7 @@ public final class PurahWorkspaceStore {
                     if !otherExpandedIndices.isEmpty {
                         let share = remainingExpandedBudget / Double(otherExpandedIndices.count)
                         for idx in otherExpandedIndices {
-                            clusterSpans[idx] = max(share, 110.0)
+                            clusterSpans[idx] = max(share, clusterMinFloors[idx])
                         }
                     }
                     for idx in clusters.indices where !expandedFlags[idx] {
@@ -2329,12 +2403,26 @@ public final class PurahWorkspaceStore {
 
                     if itemActive || itemPinned {
                         matchedSubItem = true
-                        let itemTop = item.startY + Double(idx) * (itemH + spacing)
-                        let itemBottom = itemTop + cardH
+
+                        // Merged overview state: the "+N" chip owns the pod's full
+                        // span — its drawer is exactly pod-height, so the hit box
+                        // must be the whole pod frame, not the chip slot.
+                        let isMergedOverview = PurahPluginSubItem.isMoreItemsID(subId)
+
+                        let frameTop: Double
+                        let frameBottom: Double
+                        if isMergedOverview {
+                            frameTop = item.startY
+                            frameBottom = item.startY + item.spanH
+                        } else {
+                            let itemTop = item.startY + Double(idx) * (itemH + spacing)
+                            frameTop = itemTop
+                            frameBottom = itemTop + cardH
+                        }
                         let maxAllowedY = totalHeight - 12.0
-                        let shift = max(itemBottom - maxAllowedY, 0.0)
-                        let shiftedTop = itemTop - shift
-                        let shiftedBottom = itemBottom - shift
+                        let shift = max(frameBottom - maxAllowedY, 0.0)
+                        let shiftedTop = frameTop - shift
+                        let shiftedBottom = frameBottom - shift
                         let topOfCardY = totalHeight - shiftedTop
                         let bottomOfCardY = totalHeight - shiftedBottom
                         let minY = max(bottomOfCardY - 6.0, 0.0)
@@ -3107,49 +3195,120 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    /// Drops every pod whose id has no implementation behind it.
+    ///
+    /// A saved layout outlives the code that produced it: a dynamically loaded
+    /// plugin can be unloaded, uninstalled or simply deleted from the project,
+    /// and its pod then renders a bare rail bar with no drawer to open. The
+    /// caller supplies `hasImplementation` because the store cannot see plugin
+    /// code — `PurahUI` owns the registry, and `PurahCore` must not depend on it.
+    ///
+    /// Built-in pods are never candidates: their ids are the product's own
+    /// vocabulary, and a transient registration gap must not delete a user's
+    /// carefully sculpted layout. Only unknown ids are pruned, which is exactly
+    /// the set that could never open a drawer.
+    ///
+    /// - Parameter hasImplementation: Whether a live plugin exists for an id.
+    /// - Returns: The ids that were removed.
+    @discardableResult
+    public func pruneOrphanedPods(hasImplementation: (String) -> Bool) -> [String] {
+        let builtInIds = Set(Self.defaultPods().map(\.id))
+        let orphanIds = pods
+            .map(\.id)
+            .filter { !builtInIds.contains($0) && !hasImplementation($0) }
+        guard !orphanIds.isEmpty else { return [] }
+
+        let removed = Set(orphanIds)
+        if let activeId = activeDrawerPodId, removed.contains(activeId) {
+            dismissActiveDrawer()
+        }
+        pinnedDrawerItemIds = pinnedDrawerItemIds.filter { itemId in
+            !removed.contains { itemId == $0 || itemId.hasPrefix("\($0)-") }
+        }
+        let affectedEdges = Set(pods.filter { removed.contains($0.id) }.map(\.edge))
+        pods.removeAll { removed.contains($0.id) }
+        for id in orphanIds {
+            unregisterCapabilityProvider(for: id)
+        }
+        if let market = _marketManager {
+            var installed = market.installedPluginIds
+            var enabled = market.enabledPluginIds
+            installed.subtract(removed)
+            enabled.subtract(removed)
+            market.installedPluginIds = installed
+            market.enabledPluginIds = enabled
+        }
+
+        // Reflow only the rails that lost a pod. `autoLayoutAll()` would also
+        // discard the user's hand-sculpted heights and zone ordering, which has
+        // nothing to do with a plugin disappearing.
+        for edge in affectedEdges {
+            normalizePageRanges(for: edge)
+        }
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+        DiagnosticLogger.shared.info("Store", "Pruned orphaned pods: \(orphanIds.joined(separator: ", "))")
+        return orphanIds
+    }
+
     public func fillRail(podId: String) {
         guard let currentPod = pods.first(where: { $0.id == podId && $0.isEnabled }) else { return }
         let edge = currentPod.edge
         let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: screenH)
         let isPaged = pages.count > 1
-        let railPods = pods.filter {
+        // Sorted *ids*: the array below is a value snapshot, so a mutation made
+        // earlier in this function would leave stale `range` values behind.
+        let railPodIds = pods.filter {
             $0.edge == edge && $0.isEnabled && (!isPaged || $0.pageIndex == currentPod.pageIndex)
-        }.sorted { $0.range.start < $1.range.start }
-        guard let currentIndex = railPods.firstIndex(where: { $0.id == podId }),
+        }.sorted { $0.range.start < $1.range.start }.map(\.id)
+        guard let currentIndex = railPodIds.firstIndex(of: podId),
               let podIndex = pods.firstIndex(where: { $0.id == podId }) else { return }
+        // Live lookup: `railPods` below is indexed by id, never by snapshot.
+        func livePod(_ id: String) -> SlotPod? { pods.first(where: { $0.id == id }) }
 
-        if isPaged && railPods.count >= 2 {
+        // The layout engine spaces pods by a physical 8pt; deriving the gap the
+        // same way here keeps "fill rail" consistent with auto-layout instead of
+        // drifting to a different value on non-900pt screens.
+        let railGap = 8.0 / screenH
+
+        if isPaged && railPodIds.count >= 2 {
             // In Paged Spaces, expand target pod to fill maximum space on its page while compressing siblings on the same page to minLength
-            let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
-            let gap = 0.015
-            let totalGaps = Double(max(railPods.count - 1, 0)) * gap
-            let otherMins = railPods.enumerated().reduce(0.0) { acc, pair in
+            let gap = railGap
+            let totalGaps = Double(max(railPodIds.count - 1, 0)) * gap
+            let otherMins = railPodIds.enumerated().reduce(0.0) { acc, pair in
                 if pair.offset == currentIndex { return acc }
-                let minH = Double(minimumDrawerHeight(for: pair.element.id))
-                return acc + max(pair.element.minLength, minH / screenH)
+                guard let p = livePod(pair.element) else { return acc }
+                let minH = Double(minimumDrawerHeight(for: p.id))
+                return acc + max(p.minLength, minH / screenH)
             }
             let targetLen = max(0.94 - totalGaps - otherMins, max(currentPod.minLength, Double(minimumDrawerHeight(for: podId)) / screenH))
             var curStart = 0.02
-            for (offset, p) in railPods.enumerated() {
-                if let idx = pods.firstIndex(where: { $0.id == p.id }) {
-                    let minH = Double(minimumDrawerHeight(for: p.id))
-                    let len = (offset == currentIndex) ? targetLen : max(p.minLength, minH / screenH)
-                    pods[idx].range = NormalizedRange(start: curStart, length: len)
-                    curStart += len + gap
-                }
+            for (offset, id) in railPodIds.enumerated() {
+                guard let p = livePod(id),
+                      let idx = pods.firstIndex(where: { $0.id == id }) else { continue }
+                let minH = Double(minimumDrawerHeight(for: p.id))
+                let len = (offset == currentIndex) ? targetLen : max(p.minLength, minH / screenH)
+                pods[idx].range = NormalizedRange(start: curStart, length: len)
+                curStart += len + gap
             }
-        } else if currentIndex == railPods.count - 1 {
+        } else if currentIndex == railPodIds.count - 1 {
             // Last pod on the rail (e.g. Music): expand length down to 0.98 to fill all remaining space!
             let start = pods[podIndex].range.start
             let newLength = max(0.98 - start, currentPod.minLength)
             pods[podIndex].range.length = newLength
         } else {
-            // Expand towards successor above/below
-            let nextPod = railPods[currentIndex + 1]
+            // Expand towards successor above/below, stopping one rail gap short so
+            // the rigid zero-overlap invariant still holds. When the successor
+            // already sits closer than the pod's *current* length (tightly packed
+            // rail) there is nothing ergonomically sane to gain, so leave the pod
+            // untouched instead of shrinking it or spilling over the neighbour.
+            guard let nextPod = livePod(railPodIds[currentIndex + 1]) else { return }
             let start = pods[podIndex].range.start
-            let newLength = max(nextPod.range.start - start - 0.015, currentPod.minLength)
-            pods[podIndex].range.length = newLength
+            let allowedLength = nextPod.range.start - start - railGap
+            guard allowedLength > pods[podIndex].range.length, allowedLength >= currentPod.minLength else { return }
+            pods[podIndex].range.length = allowedLength
         }
 
         invalidateLayoutCache()

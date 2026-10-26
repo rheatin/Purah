@@ -182,8 +182,10 @@ struct PluginPolishBatch2Tests {
             requestDismiss: {},
             togglePin: {}
         )
-        #expect(calPlugin.makeSteppedDrawerView(subItemId: "calendar_more_items", context: calContext) != nil)
-        #expect(calPlugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: calContext) != nil)
+        // Overview moved to the shared shell: content comes from
+        // makeOverviewDrawerContent, makeSteppedDrawerView hands it off.
+        #expect(calPlugin.makeOverviewDrawerContent(context: calContext) != nil)
+        #expect(calPlugin.makeSteppedDrawerView(subItemId: "calendar_more_events", context: calContext) == nil)
 
         // 2. Todo Plugin
         let todoPlugin = TodoPlugin()
@@ -205,7 +207,8 @@ struct PluginPolishBatch2Tests {
             requestDismiss: {},
             togglePin: {}
         )
-        #expect(todoPlugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: todoContext) != nil)
+        #expect(todoPlugin.makeOverviewDrawerContent(context: todoContext) != nil)
+        #expect(todoPlugin.makeSteppedDrawerView(subItemId: "todo_more_items", context: todoContext) == nil)
     }
 
     // MARK: - Task 3: Automatic Layout Recalculation on Changes
@@ -240,7 +243,14 @@ struct PluginPolishBatch2Tests {
         #expect(rebuildCount > beforeRemoveRebuilds, "Removing todo must trigger rebuild")
 
         // 2. Calendar sync events with count or ID changes
-        let calState = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_test_\(UUID().uuidString)"))
+        let calState = CalendarPluginState(
+            storage: ScopedPluginStorage(pluginId: "cal_test_\(UUID().uuidString)"),
+            // Pin the permission so the sync always takes the synchronous
+            // sample-event path. On a machine where Calendar access is granted
+            // the sync is asynchronous, so the rebuild count would be checked
+            // before EventKit ever returned.
+            permissionStatus: { .denied }
+        )
         calState.events = []
         let beforeCalRebuilds = rebuildCount
         calState.syncEvents(into: store)

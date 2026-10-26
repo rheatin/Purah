@@ -20,6 +20,11 @@ public final class NotesPluginState: Sendable {
     public let storage: any PurahPluginStorage
     public let fileStorage: PurahPluginFileStorage
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+    /// Pending coalesced flush. Typing goes through `updateNoteContent` on
+    /// every keystroke, and the old implementation re-wrote `index.json` plus
+    /// *every* document's `.md` file each time — a long notebook turned a
+    /// paragraph into megabytes of main-thread disk IO.
+    @ObservationIgnored private var coalescedSaveTask: Task<Void, Never>?
 
     public var quickNote: NoteContent {
         get { noteContent }
@@ -140,7 +145,26 @@ public final class NotesPluginState: Sendable {
         saveToDisk()
     }
 
+    /// Flushes everything to disk immediately.
     public func saveToDisk() {
+        coalescedSaveTask?.cancel()
+        coalescedSaveTask = nil
+        writeToDisk()
+    }
+
+    /// Coalesces rapid edits into one disk write. Used by the typing path so a
+    /// burst of keystrokes produces a single flush instead of one per key.
+    public func scheduleSave(after delay: Duration = .milliseconds(400)) {
+        coalescedSaveTask?.cancel()
+        coalescedSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.coalescedSaveTask = nil
+            self.writeToDisk()
+        }
+    }
+
+    private func writeToDisk() {
         storage.setCodable(noteContent, forKey: "noteContent")
         storage.setCodable(availableFolders, forKey: "availableFolders")
         storage.set(selectedFolder, forKey: "selectedFolder")
@@ -195,7 +219,8 @@ public final class NotesPluginState: Sendable {
         noteContent.text = content
         noteContent.lastModified = documents[idx].timestamp
 
-        saveToDisk()
+        // Typing path: never block the keystroke on disk IO.
+        scheduleSave()
         if let boundStore {
             boundStore._quickNote = noteContent
         }

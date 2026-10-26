@@ -96,7 +96,7 @@ public struct CalendarItemDrawerView: View {
             }
         }
         .frame(height: cardH, alignment: .top)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
         .onAppear {
             if isAlerting {
                 store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
@@ -119,8 +119,8 @@ public struct CalendarItemDrawerView: View {
 
     @ViewBuilder
     private func expandedCard(cardH: CGFloat, isPast: Bool, isOngoing: Bool, isImminent: Bool, isAlerting: Bool, calColor: Color) -> some View {
-        let baseW: CGFloat = event.url != nil ? 310.0 : 280.0
-        let effectiveW = store.effectiveDrawerWidth(for: event.title, baseWidth: baseW)
+        // Pod-level adaptive width — never guess the pod from the event title.
+        let effectiveW = store.effectiveDrawerWidth(baseWidth: 310.0, podId: "calendar")
         let floatingEdgePadding: CGFloat = (edge == .left ? 18.0 : 12.0)
         let railEdgePadding: CGFloat = (edge == .left ? 12.0 : 18.0)
 
@@ -136,7 +136,7 @@ public struct CalendarItemDrawerView: View {
         .padding(.leading, edge == .left ? railEdgePadding : floatingEdgePadding)
         .padding(.trailing, edge == .right ? railEdgePadding : floatingEdgePadding)
         .padding(.vertical, 8)
-        .frame(width: effectiveW, height: cardH, alignment: .top)
+        .frame(width: effectiveW, height: cardH, alignment: .center)
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: calColor.opacity(isAlerting ? 1.0 : (isPast ? 0.35 : 0.85))
@@ -201,7 +201,7 @@ public struct CalendarItemDrawerView: View {
                             .padding(.horizontal, 5.5)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(Color.orange))
-                            .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                            .foregroundColor(Color.slateInk)
                             .shadow(color: Color.orange.opacity(0.45), radius: 3)
                         } else if isPast {
                             HStack(spacing: 2.5) {
@@ -233,6 +233,8 @@ public struct CalendarItemDrawerView: View {
 
             categoryTag(calColor: calColor, isPast: isPast)
             sampleConnectBadge()
+
+            Spacer(minLength: 4)
 
             pinButton(calColor: calColor)
         }
@@ -271,7 +273,7 @@ public struct CalendarItemDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                 } else if isPast {
                     HStack(spacing: 2.5) {
@@ -372,7 +374,7 @@ public struct CalendarItemDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                 } else if isPast {
                     HStack(spacing: 2.5) {
@@ -610,6 +612,7 @@ public struct CalendarItemDrawerView: View {
                 .frame(width: 5, height: 5)
             Text(event.calendarTitle)
                 .purahBadge(size: 8.5, weight: .bold)
+                .lineLimit(1)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2.5)
@@ -700,43 +703,17 @@ public struct CalendarItemDrawerView: View {
     }
 
     private func pinButton(calColor: Color) -> some View {
-        HStack(spacing: 4) {
-            Button {
-                store.openPluginSettings(id: "calendar")
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.tactile)
-            .help("Open Calendar Settings")
-
-            PurahPinButton(isPinned: isPinned, tintColor: calColor, action: onTogglePin)
-        }
+        PurahDrawerHeaderTools(
+            onSettings: { store.openPluginSettings(id: "calendar") },
+            settingsHelp: "Open Calendar Settings",
+            isPinned: isPinned,
+            tintColor: calColor,
+            onTogglePin: onTogglePin
+        )
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
-    }
-
-    private var pinButton: some View {
-        PurahPinButton(isPinned: isPinned, tintColor: podColor, action: onTogglePin)
+        PurahDrawerShape.stepped(edge: edge)
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {

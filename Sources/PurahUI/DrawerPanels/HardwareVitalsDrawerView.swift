@@ -38,6 +38,7 @@ public struct HardwareVitalsDrawerView: View {
     @State private var selectedTab: VitalsDashboardTab = .overview
     @State private var sortProcessesByCPU: Bool = true
     @State private var isPulsing: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var vitals: HardwareVitalsService {
         HardwareVitalsService.shared
@@ -99,69 +100,33 @@ public struct HardwareVitalsDrawerView: View {
         let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let netColor = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        GeometryReader { outerGeo in
-            let h = outerGeo.size.height
-
-            if h < 108.0 {
-                // Tier 1: Ultra-Compact Height (< 108pt)
-                ultraCompactDashboard(
+        PurahAdaptiveTierDrawer(
+            tiers: [
+                PurahAdaptiveTier(id: "compact", minHeight: 0),
+                PurahAdaptiveTier(id: "standard", minHeight: 108),
+                PurahAdaptiveTier(id: "immersive", minHeight: 235)
+            ]
+        ) { tier, h in
+            AnyView(
+                tierContent(
+                    tierId: tier.id,
+                    height: h,
                     metrics: metrics,
                     cpuColor: cpuColor,
                     gpuColor: gpuColor,
                     ramColor: ramColor,
+                    diskColor: diskColor,
                     powerColor: powerColor,
                     netColor: netColor
                 )
-            } else {
-                // Tier 2 & Tier 3: Standard (108pt <= h < 235pt) and Tall (h >= 235pt)
-                VStack(alignment: .leading, spacing: 6) {
-                    topNavigationBar(metrics: metrics, cpuColor: cpuColor)
-                        .frame(height: 24)
-
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            switch selectedTab {
-                            case .overview:
-                                overviewTabContent(
-                                    metrics: metrics,
-                                    height: h,
-                                    cpuColor: cpuColor,
-                                    gpuColor: gpuColor,
-                                    ramColor: ramColor,
-                                    diskColor: diskColor,
-                                    powerColor: powerColor,
-                                    netColor: netColor
-                                )
-                            case .compute:
-                                computeTabContent(
-                                    metrics: metrics,
-                                    cpuColor: cpuColor,
-                                    gpuColor: gpuColor,
-                                    ramColor: ramColor
-                                )
-                            case .io:
-                                ioTabContent(
-                                    metrics: metrics,
-                                    diskColor: diskColor,
-                                    netColor: netColor,
-                                    powerColor: powerColor
-                                )
-                            case .processes:
-                                processesTabContent(
-                                    metrics: metrics,
-                                    cpuColor: cpuColor
-                                )
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-            }
+            )
         }
         .onAppear {
             vitals.isDrawerVisible = true
-            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                isPulsing = true
+            if PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) {
+                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                    isPulsing = true
+                }
             }
             state.mount(store: store)
             vitals.startMonitoring()
@@ -172,6 +137,115 @@ public struct HardwareVitalsDrawerView: View {
         }
         .onDisappear {
             vitals.isDrawerVisible = false
+        }
+    }
+
+    // MARK: - Tier Routing
+    /// The tier id decides the presentation; `height` is passed through so
+    /// content inside a tier can still refine itself (the overview appends its
+    /// deep-telemetry strip only when there is room).
+    @ViewBuilder
+    private func tierContent(
+        tierId: String,
+        height: CGFloat,
+        metrics: HardwareVitalsInfo,
+        cpuColor: Color,
+        gpuColor: Color,
+        ramColor: Color,
+        diskColor: Color,
+        powerColor: Color,
+        netColor: Color
+    ) -> some View {
+        switch tierId {
+        case "compact":
+            ultraCompactDashboard(
+                metrics: metrics,
+                cpuColor: cpuColor,
+                gpuColor: gpuColor,
+                ramColor: ramColor,
+                powerColor: powerColor,
+                netColor: netColor
+            )
+        case "immersive":
+            tabbedDashboard(
+                metrics: metrics,
+                height: height,
+                showsDeepTelemetry: true,
+                cpuColor: cpuColor,
+                gpuColor: gpuColor,
+                ramColor: ramColor,
+                diskColor: diskColor,
+                powerColor: powerColor,
+                netColor: netColor
+            )
+        default:
+            tabbedDashboard(
+                metrics: metrics,
+                height: height,
+                showsDeepTelemetry: false,
+                cpuColor: cpuColor,
+                gpuColor: gpuColor,
+                ramColor: ramColor,
+                diskColor: diskColor,
+                powerColor: powerColor,
+                netColor: netColor
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func tabbedDashboard(
+        metrics: HardwareVitalsInfo,
+        height: CGFloat,
+        showsDeepTelemetry: Bool,
+        cpuColor: Color,
+        gpuColor: Color,
+        ramColor: Color,
+        diskColor: Color,
+        powerColor: Color,
+        netColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            topNavigationBar(metrics: metrics, cpuColor: cpuColor)
+                .frame(height: 24)
+
+            PurahScrollableBody {
+                VStack(alignment: .leading, spacing: 6) {
+                    switch selectedTab {
+                    case .overview:
+                        overviewTabContent(
+                            metrics: metrics,
+                            showsDeepTelemetry: showsDeepTelemetry,
+                            cpuColor: cpuColor,
+                            gpuColor: gpuColor,
+                            ramColor: ramColor,
+                            diskColor: diskColor,
+                            powerColor: powerColor,
+                            netColor: netColor
+                        )
+                    case .compute:
+                        computeTabContent(
+                            metrics: metrics,
+                            cpuColor: cpuColor,
+                            gpuColor: gpuColor,
+                            ramColor: ramColor
+                        )
+                    case .io:
+                        ioTabContent(
+                            metrics: metrics,
+                            diskColor: diskColor,
+                            netColor: netColor,
+                            powerColor: powerColor
+                        )
+                    case .processes:
+                        processesTabContent(
+                            metrics: metrics,
+                            cpuColor: cpuColor
+                        )
+                    }
+                }
+                .padding(.vertical, 2)
+            }
         }
     }
 
@@ -279,7 +353,7 @@ public struct HardwareVitalsDrawerView: View {
             HStack(spacing: 2) {
                 ForEach(VitalsDashboardTab.allCases) { tab in
                     Button {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.micro) {
                             selectedTab = tab
                         }
                         if tab == .processes {
@@ -341,7 +415,7 @@ public struct HardwareVitalsDrawerView: View {
     @ViewBuilder
     private func overviewTabContent(
         metrics: HardwareVitalsInfo,
-        height: CGFloat,
+        showsDeepTelemetry: Bool,
         cpuColor: Color,
         gpuColor: Color,
         ramColor: Color,
@@ -525,8 +599,9 @@ public struct HardwareVitalsDrawerView: View {
             .cornerRadius(7)
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
 
-            // Tier 3 Extension: If height >= 235pt, append CPU/RAM Breakdown Strip + Top Processes
-            if height >= 235.0 {
+            // Deep telemetry strip + top processes belong to the immersive
+            // tier only; the standard tier keeps the 2x2 grid plus I/O.
+            if showsDeepTelemetry {
                 // CPU/RAM Breakdown Strip
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Deep Compute & Memory Telemetry")
@@ -949,7 +1024,7 @@ public struct VitalsFocusedDrawerView: View {
         HStack(spacing: 2) {
             ForEach(VitalsTimeScope.allCases) { sc in
                 Button {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.80)) {
+                    withAnimation(PurahMotionPolicy.confirm) {
                         timeScope = sc
                     }
                 } label: {

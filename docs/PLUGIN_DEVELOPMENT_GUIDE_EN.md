@@ -151,19 +151,47 @@ public struct PurahPluginContext: Sendable {
 Purah provides standardized reusable UI components to ensure visual consistency:
 
 ### 1. Multi-Tier Adaptive Drawer (`PurahAdaptiveTierDrawer`)
-Enforces the *Adaptive Mode Minimum Height Grace Rule*. Automatically adapts across Compact (<145pt), Standard (145~265pt), and Immersive (>265pt) height tiers with 0 content clipping:
+Drawer heights are not fixed: a pod rests at its own span, expands to `preferredDrawerHeight` on hover, and is squeezed when several drawers are pinned at once. Rather than shipping a layout that clips or squashes, declare how many presentations you have and let the host run the switching.
+
+**Thresholds are content-area heights** — the space the drawer body receives after the host's header row and 8pt padding, not the pod slot height. That is the same coordinate space you already reason in when hand-tuning a layout.
+
 ```swift
 PurahAdaptiveTierDrawer(
-    compactThreshold: 145,
-    immersiveThreshold: 265,
-    compact: { h in CompactCapsuleView() },
-    standard: { h in StandardCardView() },
-    immersive: { h in ImmersiveStudioView(height: h) }
-)
+    tiers: [
+        PurahAdaptiveTier(id: "compact", minHeight: 0),
+        PurahAdaptiveTier(id: "standard", minHeight: 145),
+        PurahAdaptiveTier(id: "immersive", minHeight: 215)
+    ]
+) { tier, height in
+    AnyView(switch tier.id {
+    case "standard":  StandardCardView(height: height)
+    case "immersive": ImmersiveStudioView(height: height)
+    default:          CompactCapsuleView(height: height)
+    })
+}
 ```
 
-### 2. 60/120 FPS Fluid Waveform Bar (`PurahFluidWaveformBarView`)
-High-performance Metal-driven fluid audio waveform and VU meter for audio players, recorders, and monitors:
+- **Any number of tiers**: `tiers` is an ordered array sorted by `minHeight`. Two, three, or five all work. Give the first one `minHeight: 0` so a tier is always reachable.
+- **8pt hysteresis**: promotion happens exactly at the declared floor (the same result as picking from scratch by height); demotion needs an 8pt drop below it. A spring easing through a threshold, or a metric nudging the height, cannot flip the tier frame by frame. Pass `hysteresis: 0` to switch exactly on the boundary.
+- **Use the height**: every builder receives the measured height. A tier that assumes a fixed size is the one thing this container cannot fix for you.
+
+### 2. Scrollable Content Container (`PurahScrollableBody`)
+When content has an incompressible natural height, let it scroll instead of squeezing further:
+
+```swift
+VStack(alignment: .leading, spacing: 6) {
+    header
+    PurahScrollableBody { longList }
+}
+```
+
+- **Opt-in only.** The host never wraps your body in a scroll view on its own: a layout that relies on `maxHeight: .infinity` (a vinyl disc, an equal-height card grid) would stop filling its card inside a `ScrollView`, because a scroll view proposes unbounded height to its content.
+- Indicators default to `.automatic` (system overlay scrollers — invisible at rest, fading in while scrolling). Pass `.hidden` to suppress them.
+- Bounce is size-based (`.scrollBounceBehavior(.basedOnSize)`), so content that fits does not rubber-band inside a short drawer.
+- Stays out of the focus chain, so hovering never pulls key focus from the app underneath.
+
+### 3. 60/120 FPS Fluid Waveform Bar (`PurahFluidWaveformBarView`)
+High-performance fluid audio waveform and VU meter for audio players, recorders, and monitors:
 ```swift
 PurahFluidWaveformBarView(
     tintColor: context.accentColor,
@@ -173,11 +201,37 @@ PurahFluidWaveformBarView(
 )
 ```
 
-### 3. Metric Gauge & Telemetry Threshold Resolver
-- **`PurahSegmentGaugeBarView`**: Renders multi-segment progress and discrete item completion bars.
-- **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**: Standardized continuous telemetry color resolver (Green -> Yellow -> Red danger pulsing) supporting both direct and inverted metrics (e.g. Battery Low).
+### 4. Multi-Channel Metric Gauge (`PurahSegmentGaugeBarView`)
+A vertical gauge: one rounded track plus one or more filled channels growing from the bottom edge.
 
-### 4. Decomposed Capacity Setting Row (`PurahDecomposedCapacitySettingRow`)
+```swift
+// Single metric — the classic rail bar
+PurahSegmentGaugeBarView(
+    segments: [PurahGaugeSegment(id: "cpu", ratio: cpuUsage, color: tint, isAlerting: cpuUsage > 0.85)],
+    barWidth: context.railWidth,
+    height: context.slotHeight,
+    trackColor: tint.opacity(0.25)
+)
+
+// Several metrics — the track splits into equal-width channels,
+// so one bar shows multiple readings at a glance
+PurahSegmentGaugeBarView(
+    segments: [
+        PurahGaugeSegment(id: "cpu", ratio: cpu, color: cpuColor),
+        PurahGaugeSegment(id: "gpu", ratio: gpu, color: gpuColor),
+        PurahGaugeSegment(id: "mem", ratio: mem, color: ramColor, isAlerting: mem > 0.9)
+    ],
+    barWidth: context.railWidth,
+    height: context.slotHeight
+)
+```
+
+- `ratio` is clamped to `0...1` on construction, so raw telemetry can be passed straight in.
+- An empty `segments` array draws the track alone — for chips that keep a tinted rail with no metric behind it.
+- `minimumVisibleFill` (default 4pt) keeps a near-zero metric readable; pass `0` to draw nothing at all.
+- **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**: standardized continuous telemetry colour resolver (Green → Yellow → Red danger pulsing) supporting both direct and inverted metrics (e.g. Battery Low). Feed its result into `color` / `isAlerting` above.
+
+### 5. Decomposed Capacity Setting Row (`PurahDecomposedCapacitySettingRow`)
 One-line slider and overflow strategy configuration row for settings views:
 ```swift
 PurahDecomposedCapacitySettingRow(
@@ -385,6 +439,35 @@ let package = Package(
     targets: [.target(name: "MyCustomPlugin", dependencies: [])]
 )
 ```
+
+Copy `PurahExternalPluginSDK.swift` next to your sources and export these
+`@_cdecl` symbols — the host discovers them with `dlsym`:
+
+| Symbol | Required | Purpose |
+| :--- | :--- | :--- |
+| `purahPluginManifestJSON` | yes | Manifest JSON decoded into `PurahPluginManifest` |
+| `purahPluginABIVersion` | recommended | `"1"`; a newer major version is rejected before any call |
+| `purahSetHostActionBridge` | recommended | Host injects its action dispatcher for `PurahHostBridge` |
+| `purahCreateRailViewWithContext` / `purahCreateDrawerViewWithContext` | recommended | Context JSON → retained `NSView` pointer |
+| `purahCreateSettingsViewWithContext` | optional | Plugin settings page |
+| `purahCreateHeaderAccessoryView` / `purahCreateHeaderTrailingView` | optional | Header slot views |
+| `purahOnRailBarTap` / `purahOnMount` / `purahOnUnmount` | optional | Interaction and lifecycle callbacks |
+
+The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
+`slotHeight`, `drawerWidth`, `isExpanded`, `isPinned`, `isDark`,
+`accentColorHex` and `storageDirectoryPath` — the last one is the plugin's own
+sandbox, so history and config files belong there.
+
+**Working reference:** `Examples/PurahExamplePlugin` (Zen Counter — rail bar,
+drawer, header slots, settings panel and host-action bridge). Load it with
+**Settings → Plugins → Dev: Load Package...**.
+
+> The loader accepts a folder containing `Package.swift` or a built `.dylib`.
+> A bare `manifest.json` is rejected: metadata declares a plugin, but only
+> exported view factories can actually draw one. For the same reason the
+> marketplace no longer lists manifest-only placeholders —
+> `PluginMarketManager.install(id:)` asks the registry whether an
+> implementation exists and refuses (returning `false`) when it does not.
 
 ---
 

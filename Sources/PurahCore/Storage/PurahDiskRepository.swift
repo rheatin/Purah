@@ -151,13 +151,28 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         let activeQuota = quota ?? self.diskQuota
         let shouldPrune = autoPrune ?? self.autoPruneOnQuota
         guard let maxBytes = activeQuota.maxBytes else { return 0 }
+        return enforceQuota(maxBytes: maxBytes, autoPrune: shouldPrune, onRemoveAssociatedFiles: onRemoveAssociatedFiles)
+    }
 
+    /// Byte-budget form of `enforceQuota`, also used by tests so pruning can be
+    /// exercised without writing hundreds of megabytes of fixture data.
+    @discardableResult
+    public func enforceQuota(
+        maxBytes: Int64,
+        autoPrune: Bool,
+        onRemoveAssociatedFiles: ((Item) -> Void)? = nil
+    ) -> Int {
+        let shouldPrune = autoPrune
         var currentSize = storage.computeDiskUsageBytes()
         guard currentSize > maxBytes else { return 0 }
 
         var prunedCount = 0
 
         if shouldPrune {
+            // Every iteration must re-measure *after* the index has been
+            // rewritten. The old loop measured before saving, so the on-disk
+            // index never shrank and the loop pruned every non-favourite item
+            // (plus their files) instead of stopping at the quota.
             while currentSize > maxBytes {
                 guard let oldestIdx = items.indices
                     .filter({ !items[$0].isFavorite })
@@ -168,11 +183,8 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
                 let removed = items.remove(at: oldestIdx)
                 prunedCount += 1
                 onRemoveAssociatedFiles?(removed)
-                currentSize = storage.computeDiskUsageBytes()
-            }
-
-            if prunedCount > 0 {
                 saveToDisk()
+                currentSize = storage.computeDiskUsageBytes()
             }
         }
 

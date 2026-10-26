@@ -13,17 +13,56 @@ public enum UpdateCheckState: Sendable, Equatable {
     case failed(error: String)
 }
 
+/// Source of the latest release manifest. Injected so update checks can be
+/// tested without touching the network (a live GitHub query made the integration
+/// suite fail whenever the API rate-limited or a release was published).
+public protocol UpdateManifestProviding: Sendable {
+    func fetchLatestRelease() async throws -> (data: Data, statusCode: Int)
+}
+
+/// Production provider: GitHub Releases API over `URLSession`.
+public struct GitHubReleaseProvider: UpdateManifestProviding {
+    public static let endpoint = URL(string: "https://api.github.com/repos/rheatin/Purah/releases/latest")!
+    public let currentVersion: String
+    public let session: URLSession
+
+    public init(currentVersion: String, session: URLSession = .shared) {
+        self.currentVersion = currentVersion
+        self.session = session
+    }
+
+    public func fetchLatestRelease() async throws -> (data: Data, statusCode: Int) {
+        var request = URLRequest(url: Self.endpoint)
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 10.0
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        return (data, status)
+    }
+}
+
 @Observable
 @MainActor
 public final class AppUpdaterManager {
     public static let shared = AppUpdaterManager()
 
+    /// Developer ID team that is allowed to sign a Purah update. Empty means the
+    /// build is unsigned/ad-hoc (local development), in which case replacement
+    /// fails closed rather than trusting an unknown signature.
+    public static let expectedTeamIdentifier = ""
+
     public let currentVersion: String
     public var state: UpdateCheckState = .idle
     public var lastCheckDate: Date?
+    private let manifestProvider: (any UpdateManifestProviding)?
 
-    public init(currentVersion: String = PurahCore.version) {
+    public init(
+        currentVersion: String = PurahCore.version,
+        manifestProvider: (any UpdateManifestProviding)? = nil
+    ) {
         self.currentVersion = currentVersion
+        self.manifestProvider = manifestProvider
     }
 
     public func isNewer(release: AppReleaseInfo) -> Bool {
@@ -48,30 +87,18 @@ public final class AppUpdaterManager {
         }
 
         // Real GitHub Releases API query
-        guard let url = URL(string: "https://api.github.com/repos/rheatin/Purah/releases/latest") else {
-            state = .failed(error: "Invalid update endpoint URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-        request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10.0
+        let provider = manifestProvider ?? GitHubReleaseProvider(currentVersion: currentVersion)
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                state = .failed(error: "Invalid server response")
-                return
-            }
+            let (data, statusCode) = try await provider.fetchLatestRelease()
 
-            guard httpResponse.statusCode == 200 else {
-                if httpResponse.statusCode == 404 {
+            guard statusCode == 200 else {
+                if statusCode == 404 {
                     // No releases published yet on repository
                     state = .upToDate(currentVersion: currentVersion)
                     return
                 }
-                state = .failed(error: "HTTP error \(httpResponse.statusCode)")
+                state = .failed(error: "HTTP error \(statusCode)")
                 return
             }
 
@@ -169,6 +196,7 @@ public final class AppUpdaterManager {
         PID="$1"
         ARCHIVE="$2"
         TARGET="$3"
+        EXPECTED_TEAM_ID="$4"
         SCRIPT_SELF="$0"
 
         # 1. Wait for current instance to exit
@@ -192,7 +220,23 @@ public final class AppUpdaterManager {
         NEW_APP=$(/usr/bin/find "$TEMP_DIR" -maxdepth 2 -name "Purah.app" | head -n 1)
 
         if [[ -n "$NEW_APP" && -d "$NEW_APP" ]]; then
+            # Integrity: bundle matches its own signature.
             /usr/bin/codesign --verify --deep --strict "$NEW_APP" || { /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"; exit 1; }
+            # Publisher: signature belongs to Purah's Developer ID team and is not
+            # ad-hoc. codesign --verify alone accepts any signer, so without this
+            # check a replaced download would be trusted.
+            TEAM_ID=$(/usr/bin/codesign -dv --verbose=4 "$NEW_APP" 2>&1 | /usr/bin/awk -F= '/^TeamIdentifier/ {print $2; exit}')
+            if [[ "$TEAM_ID" != "$EXPECTED_TEAM_ID" ]]; then
+                /bin/echo "Purah update rejected: unexpected signing team '$TEAM_ID'" >&2
+                /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"
+                exit 1
+            fi
+            # Notarization / Gatekeeper assessment.
+            /usr/sbin/spctl --assess --type execute --verbose=2 "$NEW_APP" || {
+                /bin/echo "Purah update rejected: failed Gatekeeper assessment" >&2
+                /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"
+                exit 1
+            }
             BACKUP="${TARGET}.backup.$$"
             if /bin/mv "$TARGET" "$BACKUP"; then
                 if /bin/mv "$NEW_APP" "$TARGET"; then
@@ -217,7 +261,7 @@ public final class AppUpdaterManager {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path]
+        process.arguments = [scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path, Self.expectedTeamIdentifier]
         try? process.run()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {

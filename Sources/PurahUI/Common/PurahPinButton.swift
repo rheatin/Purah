@@ -27,7 +27,7 @@ public struct PurahPinButton: View {
                 enabled: (UserDefaults.standard.object(forKey: "purah.isTrackpadHapticsEnabled") as? Bool ?? true) &&
                          (UserDefaults.standard.object(forKey: "purah.isControlHapticEnabled") as? Bool ?? true)
             )
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+            withAnimation(PurahMotionPolicy.buttonPop) {
                 action()
             }
         } label: {
@@ -41,13 +41,16 @@ public struct PurahPinButton: View {
                     .font(.system(size: size < 20 ? 8 : 9.5, weight: .semibold))
                     .rotationEffect(.degrees(isPinned ? -25 : 0))
                     .scaleEffect(isPinned ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.26, dampingFraction: 0.55), value: isPinned)
+                    .animation(PurahMotionPolicy.buttonPop, value: isPinned)
             }
             .frame(width: size, height: size)
             .contentShape(Rectangle())
         }
         .buttonStyle(.tactile)
         .frame(width: size, height: size)
+        // `.help` is a mouse tooltip only; VoiceOver needs the semantic label.
+        .accessibilityLabel(isPinned ? "Unpin Drawer" : "Pin Drawer")
+        .accessibilityAddTraits(isPinned ? [.isSelected] : [])
         .help(isPinned ? "Unpin Drawer" : "Pin Drawer")
     }
 }

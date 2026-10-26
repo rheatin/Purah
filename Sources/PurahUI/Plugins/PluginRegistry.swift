@@ -29,15 +29,6 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         register(TodoPlugin())
         register(ClipboardPlugin())
         register(AIAssistantPlugin())
-
-        for manifest in PurahPluginManifest.communityCatalog {
-            catalogPlugins[manifest.id] = CommunityPodPlugin(manifest: manifest)
-        }
-    }
-
-    public func registerManifestOnly(_ manifest: PurahPluginManifest) {
-        let plugin = CommunityPodPlugin(manifest: manifest)
-        catalogPlugins[manifest.id] = plugin
     }
 
     public func register(_ plugin: any PurahPodPlugin, store: PurahWorkspaceStore? = nil) {
@@ -59,13 +50,12 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         market.lifecycleDelegate = self
         PluginMarketManager.globalLifecycleDelegate = self
 
+        // Capability-driven: every plugin that owns a decomposed mode
+        // implements `setDecomposed`, so the host never needs to know which
+        // pod ids happen to be stepped today (this used to special-case
+        // "scripts" and "vitals" only).
         store.onDecomposedStateSync = { [weak self] podId, isDecomp in
-            if podId == "scripts", let p = self?.plugin(for: "scripts") as? ScriptRunwayPlugin {
-                p.state.isDecomposed = isDecomp
-            }
-            if podId == "vitals", let p = self?.plugin(for: "vitals") as? HardwareVitalsPlugin {
-                p.state.isDecomposed = isDecomp
-            }
+            self?.plugin(for: podId)?.setDecomposed(isDecomp, store: store)
         }
         for plugin in catalogPlugins.values {
             let id = plugin.manifest.id
@@ -86,6 +76,16 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
                     unmountPlugin(id: id, store: store)
                 }
             }
+        }
+
+        // A saved layout outlives the code that produced it. Once every real
+        // implementation is registered, any remaining pod with no plugin behind
+        // it is an orphan — a dynamically loaded plugin that was unloaded or
+        // deleted from the project. Left alone it reserves rail space and draws
+        // a bar whose drawer can never open, so it is pruned here rather than in
+        // the store, which cannot see plugin code.
+        store.pruneOrphanedPods { [weak self] id in
+            self?.catalogPlugins[id] != nil
         }
     }
 
@@ -174,14 +174,19 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         catalogPlugins[id]?.manifest
     }
 
+    public func hasImplementation(for id: String) -> Bool {
+        catalogPlugins[id] != nil
+    }
+
     public func pluginMarketDidInstall(id: String, store: PurahWorkspaceStore) {
-        if let plugin = catalogPlugins[id] {
-            register(plugin, store: store)
-        } else if let manifest = PurahPluginManifest.fullCatalog.first(where: { $0.id == id }) {
-            let plugin = CommunityPodPlugin(manifest: manifest)
-            catalogPlugins[id] = plugin
-            register(plugin, store: store)
+        // Installing a manifest never conjures a plugin: the store's catalog is
+        // exactly the set of plugins that registered real code, so a pod can
+        // only reach the rail with views behind it.
+        guard let plugin = catalogPlugins[id] else {
+            DiagnosticLogger.shared.info("Plugin", "Install ignored: no implementation registered for \(id)")
+            return
         }
+        register(plugin, store: store)
     }
 
     public func pluginMarketDidUninstall(id: String, store: PurahWorkspaceStore) {

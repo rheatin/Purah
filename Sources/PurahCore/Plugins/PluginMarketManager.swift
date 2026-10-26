@@ -7,10 +7,15 @@ public protocol PluginMarketLifecycleDelegate: AnyObject, Sendable {
     func pluginMarketDidInstall(id: String, store: PurahWorkspaceStore)
     func pluginMarketDidUninstall(id: String, store: PurahWorkspaceStore)
     func manifest(for id: String) -> PurahPluginManifest?
+    /// Whether a plugin implementation (not just a manifest) is registered for
+    /// this id. Defaults to `true` so delegates that predate the check keep
+    /// working; the live registry answers with an exact lookup.
+    func hasImplementation(for id: String) -> Bool
 }
 
 public extension PluginMarketLifecycleDelegate {
     func manifest(for id: String) -> PurahPluginManifest? { nil }
+    func hasImplementation(for id: String) -> Bool { true }
 }
 
 @Observable
@@ -112,12 +117,26 @@ public final class PluginMarketManager: Sendable {
         return enabledPluginIds.contains(id)
     }
 
-    public func install(id: String) {
+    /// Installs a plugin that has a real implementation registered.
+    ///
+    /// A manifest alone is metadata; mounting a pod from one produced a rail
+    /// entry whose drawer could only echo the manifest's own description back
+    /// at the user. Installs are therefore refused unless the lifecycle
+    /// delegate can name an implementation for the id.
+    @discardableResult
+    public func install(id: String) -> Bool {
+        let activeDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
+        let hasImplementation = activeDelegate?.hasImplementation(for: id) ?? true
+        guard hasImplementation else {
+            DiagnosticLogger.shared.info("Market", "Install refused: no plugin implementation for \(id)")
+            return false
+        }
+
         installedPluginIds.insert(id)
         enabledPluginIds.insert(id)
         savePersistentState()
 
-        guard let store else { return }
+        guard let store else { return true }
 
         if let index = store.pods.firstIndex(where: { $0.id == id }) {
             store.pods[index].isEnabled = true
@@ -126,16 +145,16 @@ public final class PluginMarketManager: Sendable {
                 var pod = defaultPod
                 pod.isEnabled = true
                 store.pods.append(pod)
-            } else if let manifest = availableCatalog.first(where: { $0.id == id }) ?? (lifecycleDelegate ?? Self.globalLifecycleDelegate)?.manifest(for: id) {
+            } else if let manifest = availableCatalog.first(where: { $0.id == id }) ?? activeDelegate?.manifest(for: id) {
                 let pod = manifest.makeDefaultSlotPod(isEnabled: true)
                 store.pods.append(pod)
             }
         }
 
-        let activeDelegate = lifecycleDelegate ?? Self.globalLifecycleDelegate
         activeDelegate?.pluginMarketDidInstall(id: id, store: store)
 
         store.autoLayoutAll()
+        return true
     }
 
     public func install(pluginId: String) {

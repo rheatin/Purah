@@ -7,6 +7,7 @@ public struct CalendarDrawerView: View {
     public let state: CalendarPluginState
     public let store: PurahWorkspaceStore
     @State private var activeIndex: Int = 0
+    @State private var agendaAnchorID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {
@@ -134,7 +135,7 @@ public struct CalendarDrawerView: View {
                         .padding(.horizontal, 5.5)
                         .padding(.vertical, 2)
                         .background(Capsule().fill(Color.orange))
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                     } else if isPast {
                         HStack(spacing: 2.5) {
@@ -379,7 +380,7 @@ public struct CalendarDrawerView: View {
                     ForEach(CalendarTimeScope.allCases) { scopeCase in
                         let isSelected = state.scope == scopeCase
                         Button {
-                            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.micro) {
                                 state.scope = scopeCase
                                 state.save()
                                 store.calendarScope = scopeCase
@@ -459,16 +460,57 @@ public struct CalendarDrawerView: View {
         VStack(alignment: .leading, spacing: 8) {
             topSummaryBar()
 
-            // Chrono Event Cards
-            ScrollView(.vertical, showsIndicators: true) {
+            // Chrono Event Cards — the viewport lands on "now" every open
+            // A full agenda is a scrollable document; keep the indicators.
+            PurahScrollableBody(indicators: .automatic) {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(state.events) { event in
+                        if event.id == nowLineEventID {
+                            nowDividerRow()
+                        }
                         agendaRow(event: event)
                     }
                 }
                 .padding(.vertical, 2)
             }
+            .scrollPosition(id: $agendaAnchorID)
+            .onAppear { anchorAgendaViewport() }
+            .onChange(of: store.calendarScope) { anchorAgendaViewport() }
         }
+    }
+
+    /// First event that has not ended — the "now" boundary in this list.
+    private var nowLineEventID: String? {
+        CalendarOrdering.recentAnchorID(in: state.events)
+    }
+
+    /// Lands the viewport on "now" with up to two ended rows visible above,
+    /// so the present reads as a position on the timeline rather than a cut.
+    private func anchorAgendaViewport() {
+        guard let upcomingID = nowLineEventID,
+              let upcomingIndex = state.events.firstIndex(where: { $0.id == upcomingID }) else {
+            agendaAnchorID = state.events.first?.id
+            return
+        }
+        if upcomingIndex >= 2 {
+            agendaAnchorID = state.events[upcomingIndex - 2].id
+        } else {
+            agendaAnchorID = state.events.first?.id
+        }
+    }
+
+    @ViewBuilder
+    private func nowDividerRow() -> some View {
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.orange.opacity(0.55))
+                .frame(height: 1)
+            Text("calendar.status.now".localized)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .foregroundColor(.orange)
+                .fixedSize()
+        }
+        .padding(.vertical, 1)
     }
 
     @ViewBuilder
@@ -577,7 +619,7 @@ public struct CalendarDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                     .fixedSize()
                 } else if isPast {
@@ -687,73 +729,41 @@ fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
 public struct CalendarAgendaOverviewDrawerView: View {
     public let events: [CalendarEventItem]
     public let edge: MountEdge
-    public let state: ItemDrawerState
     public let isPinned: Bool
-    public let slotHeight: CGFloat
     public let store: PurahWorkspaceStore
+    @State private var overviewAnchorID: String?
+
+    /// Upcoming ascending, then ended descending — both sides hug "now".
+    private var orderedBatches: (upcoming: [CalendarEventItem], ended: [CalendarEventItem]) {
+        CalendarOrdering.splitByNow(events)
+    }
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
     public init(
         events: [CalendarEventItem],
         edge: MountEdge,
-        state: ItemDrawerState = .expandedDrawer,
         isPinned: Bool = false,
-        slotHeight: CGFloat,
         store: PurahWorkspaceStore
     ) {
         self.events = events
         self.edge = edge
-        self.state = state
         self.isPinned = isPinned
-        self.slotHeight = slotHeight
         self.store = store
     }
 
     public var body: some View {
         let podColor = palette.podColor(for: "calendar")
-        let cardH = max(slotHeight, 32.0)
-        let isExpanded = (state == .expandedDrawer)
-
-        ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // Rail-anchored baseline bar
-            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(podColor.opacity(0.85))
-                .frame(width: CGFloat(store.railBarWidth), height: cardH)
-
-            // Glides out full agenda overview drawer only when hovered or pinned
-            if isExpanded {
-                expandedAgendaCard(podColor: podColor)
-                    .transition(.move(edge: edge == .right ? .trailing : .leading))
-            }
-        }
-        .frame(height: cardH, alignment: .top)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
-    }
-
-    @ViewBuilder
-    private func expandedAgendaCard(podColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Row 1: Header
-            HStack(spacing: 8) {
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(podColor)
-
-                Text("calendar.overview.title".localized)
-                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-
-                Text("\(events.count)")
-                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(podColor)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(podColor.opacity(0.18))
-                    .cornerRadius(4)
-
-                if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
+        let batches = orderedBatches
+        return PurahOverviewList(
+            icon: "calendar.badge.clock",
+            title: "calendar.overview.title".localized,
+            count: events.count,
+            accent: podColor,
+            showsSettings: true,
+            onSettings: { store.openPluginSettings(id: "calendar") },
+            headerTrailing: sampleConnectHidden ? nil : {
+                AnyView(
                     Button {
                         Task {
                             let granted = await PermissionManager.shared.requestCalendarAccess()
@@ -780,90 +790,41 @@ public struct CalendarAgendaOverviewDrawerView: View {
                     }
                     .buttonStyle(.tactile)
                     .help("Using sample events. Click to connect system Apple Calendar")
+                )
+            },
+            isPinned: isPinned,
+            onPin: {
+                withAnimation(PurahMotionPolicy.pin) {
+                    store.togglePinItem(id: "calendar_more_events")
                 }
-
-                Spacer()
-
-                Button {
-                    store.openPluginSettings(id: "calendar")
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+            },
+            showsBoundary: !batches.ended.isEmpty,
+            boundaryTitle: "calendar.overview.pastBoundary".localized,
+            boundaryColor: .orange,
+            primary: {
+                ForEach(batches.upcoming) { event in
+                    agendaRow(event: event, podColor: podColor)
                 }
-                .buttonStyle(.tactile)
-                .help("Open Calendar Settings")
-
-                PurahPinButton(isPinned: isPinned, tintColor: podColor) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                        store.togglePinItem(id: "calendar_more_events")
-                    }
+            },
+            secondary: {
+                ForEach(batches.ended) { event in
+                    agendaRow(event: event, podColor: podColor)
                 }
-            }
-
-            Divider()
-                .background(palette.borderColor.opacity(0.35))
-
-            // Row 2: Scrollable Event List
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(events) { event in
-                        agendaRow(event: event, podColor: podColor)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .frame(maxHeight: 280)
-
-            Divider()
-                .background(palette.borderColor.opacity(0.35))
-
-            // Row 3: Action Bar
-            HStack {
-                Text(store.calendarScope.title)
-                    .font(.system(size: 9.5, weight: .medium))
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                Button {
-                    launchAppleCalendar()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 8.5))
-                        Text("Apple Calendar")
-                            .font(.system(size: 9.5, weight: .medium))
-                    }
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(palette.surfaceBackground)
-                    .cornerRadius(5)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.tactile)
-            }
-        }
-        .padding(.leading, edge == .left ? 12.0 : 18.0)
-        .padding(.trailing, edge == .left ? 18.0 : 12.0)
-        .padding(.vertical, 10)
-        .frame(width: 320, height: max(slotHeight, 140.0), alignment: .top)
-        .liquidCardBackground(
-            cornerRadius: 10,
-            strokeColor: podColor.opacity(0.8)
+            },
+            footerCaption: store.calendarScope.title,
+            actionIcon: "arrow.up.forward.app",
+            actionTitle: "Apple Calendar",
+            onAction: { launchAppleCalendar() },
+            scrollAnchor: $overviewAnchorID
         )
-        .contextMenu {
+.contextMenu {
             Button {
                 store.openPluginSettings(id: "calendar")
             } label: {
                 Label("Configure Calendar...", systemImage: "gearshape")
             }
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: "calendar_more_events")
                 }
             } label: {
@@ -876,6 +837,18 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 Label("Open in Apple Calendar", systemImage: "calendar")
             }
         }
+    }
+
+    /// Sample-mode connect prompt shows only before the system calendar is linked.
+    private var sampleConnectHidden: Bool {
+        store.isUsingRealCalendar && PermissionManager.shared.calendarStatus == .authorized
+    }
+
+    /// Lands the viewport on the nearest upcoming event — the overview
+    /// continues the rail's flow, so "what's next" is on screen at open.
+    private func anchorOverviewViewport() {
+        let batches = orderedBatches
+        overviewAnchorID = batches.upcoming.first?.id ?? batches.ended.first?.id
     }
 
     @ViewBuilder
@@ -942,7 +915,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1.5)
                         .background(Capsule().fill(Color.orange))
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                         .fixedSize()
                     } else if isPast {

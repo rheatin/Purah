@@ -26,6 +26,14 @@ public final class CalendarPluginState: Sendable {
     public var dismissAlertOnHover: Bool
     public var isEventGlowAlertEnabled: Bool
     public var isEventToastAlertEnabled: Bool
+    /// Unified mode authority (Base semantics): decomposed rail chips vs the
+    /// single composite drawer. `overflowStrategy` stays pinned to .smartFold.
+    public var isDecomposed: Bool {
+        didSet {
+            cachedSubItemHeaders = []
+            cacheTimestamp = 0
+        }
+    }
     public var overflowStrategy: CalendarOverflowStrategy {
         didSet {
             cachedSubItemHeaders = []
@@ -51,6 +59,10 @@ public final class CalendarPluginState: Sendable {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var syncGeneration: UInt64 = 0
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+    /// Calendar permission probe. Tests inject a fixed status so a sync never
+    /// depends on the developer machine's TCC state (granted machines took the
+    /// async EventKit path and made the rebuild assertions timing-dependent).
+    @ObservationIgnored private let permissionStatus: @MainActor () -> AccessStatus
 
     public var calendarEvents: [CalendarEventItem] {
         get { events }
@@ -62,14 +74,26 @@ public final class CalendarPluginState: Sendable {
         set { scope = newValue }
     }
 
-    public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "calendar")) {
+    public init(
+        storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "calendar"),
+        permissionStatus: @escaping @MainActor () -> AccessStatus = {
+            PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event))
+        }
+    ) {
         self.storage = storage
+        self.permissionStatus = permissionStatus
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
         self.alertStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) ?? .subtleGlow
         self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
         self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         self.isEventGlowAlertEnabled = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
         self.isEventToastAlertEnabled = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) ?? true
+        if storage.string(forKey: "isDecomposed") != nil {
+            self.isDecomposed = storage.bool(forKey: "isDecomposed")
+        } else {
+            // Legacy migration: continuousStream meant the composite mode.
+            self.isDecomposed = (storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold) != .continuousStream
+        }
         self.overflowStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold
         let savedMax = storage.int(forKey: "maxRailEvents")
         self.maxRailEvents = (savedMax > 0) ? savedMax : 4
@@ -117,6 +141,7 @@ public final class CalendarPluginState: Sendable {
         storage.set(dismissAlertOnHover, forKey: "dismissAlertOnHover")
         storage.setCodable(isEventGlowAlertEnabled, forKey: "isEventGlowAlertEnabled")
         storage.setCodable(isEventToastAlertEnabled, forKey: "isEventToastAlertEnabled")
+        storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(overflowStrategy, forKey: "overflowStrategy")
         storage.set(maxRailEvents, forKey: "maxRailEvents")
         storage.setCodable(events, forKey: "events")
@@ -128,6 +153,13 @@ public final class CalendarPluginState: Sendable {
 
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
+        // Both sets are keyed by event id and unpersisted, so past events would
+        // otherwise accumulate acknowledgements for the whole session.
+        if acknowledgedAlertIds.count > 256 || notifiedToastEventIds.count > 256 {
+            let liveIDs = Set(events.map(\.id))
+            acknowledgedAlertIds = acknowledgedAlertIds.filter { liveIDs.contains($0) }
+            notifiedToastEventIds = notifiedToastEventIds.filter { liveIDs.contains($0) }
+        }
     }
 
     public func resetAcknowledgedAlerts() {
@@ -194,7 +226,7 @@ public final class CalendarPluginState: Sendable {
         let currentScope = self.scope
         let interval = currentScope.dateInterval(from: Date())
 
-        let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event))
+        let status = permissionStatus()
         guard status.isGranted else {
             isUsingRealCalendar = false
             targetStore?.isUsingRealCalendar = false

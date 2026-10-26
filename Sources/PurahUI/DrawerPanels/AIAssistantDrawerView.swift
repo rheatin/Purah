@@ -26,7 +26,7 @@ public struct AIAssistantDrawerView: View {
                     isPinned: isPinned,
                     cardHeight: geo.size.height,
                     onTogglePin: {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                        withAnimation(PurahMotionPolicy.pin) {
                             store.togglePinItem(id: "ai")
                         }
                     }
@@ -57,6 +57,7 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isCopiedFeedback: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
     @State private var currentStreamTask: Task<Void, Never>? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
         self.role = role
@@ -90,7 +91,7 @@ public struct AIAssistantSteppedDrawerView: View {
                     .frame(width: barW, height: slotH)
 
                 if isRoleRunning {
-                    TimelineView(.animation) { timeline in
+                    TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                         let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
                         let spotH = max(slotH * 0.28, 14.0)
@@ -160,6 +161,14 @@ public struct AIAssistantSteppedDrawerView: View {
                             .help("Reset / New Session")
                         }
 
+                        PurahDrawerHeaderTools(
+                            onSettings: { context.store.openPluginSettings(id: "ai") },
+                            settingsHelp: "Open AI Settings",
+                            isPinned: isPinned,
+                            tintColor: roleColor,
+                            onTogglePin: { context.togglePin(subItemId) }
+                        )
+
                         if isRoleRunning {
                             Button {
                                 stopSteppedRun()
@@ -175,12 +184,6 @@ public struct AIAssistantSteppedDrawerView: View {
                             .help("Stop Generation")
                         }
 
-                        PurahPinButton(isPinned: isPinned, tintColor: roleColor, size: 16) {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                context.togglePin(subItemId)
-                            }
-                        }
-                        .frame(width: 16, height: 16)
                     }
                     .frame(height: 16)
 
@@ -200,7 +203,9 @@ public struct AIAssistantSteppedDrawerView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else if !roleOutput.isEmpty {
                             // Result Ready -> Click anywhere to copy!
-                            ScrollView(.vertical, showsIndicators: false) {
+                            // A stepped chip is a glanceable surface: no
+                            // indicators, no bounce when the text already fits.
+                            PurahScrollableBody {
                                 Text(roleOutput)
                                     .font(.system(size: 10.5, weight: .regular))
                                     .lineSpacing(2)
@@ -291,7 +296,7 @@ public struct AIAssistantSteppedDrawerView: View {
         }
         }
         .frame(height: slotH, alignment: .top)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     private func resetSteppedState() {
@@ -716,7 +721,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             if state.isStreaming {
                 state.stopStreaming()
             } else if state.isRefiningOutput || state.isEditingSource {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.microLight) {
                     state.isRefiningOutput = false
                     state.isEditingSource = false
                 }
@@ -949,7 +954,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 let items = state.filteredSlashCommands
                                 guard state.isSlashMenuVisible, !items.isEmpty else { return false }
                                 let idx = min(max(0, state.selectedSlashIndex), items.count - 1)
-                                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                withAnimation(PurahMotionPolicy.menuCommit) {
                                     state.selectSlashCommand(items[idx])
                                 }
                                 return true
@@ -1009,23 +1014,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                         }
                     }
 
-                    if !showRoleSwitcher {
-                        Button {
-                            onTogglePin()
-                        } label: {
-                            Image(systemName: isPinned ? "pin.fill" : "pin")
-                                .font(.system(size: 9))
-                                .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                                .frame(width: 20, height: 20)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(Color.white.opacity(0.06))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .help("Pin Drawer")
-                    }
-
                     // Hidden button for ⌘↩, kept for muscle memory alongside Return-to-send.
                     Button {
                         sendSourcePrompt()
@@ -1055,7 +1043,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         state: state,
                         palette: palette,
                         onSelect: { item in
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                            withAnimation(PurahMotionPolicy.menuCommit) {
                                 state.selectSlashCommand(item)
                             }
                         }
@@ -1147,7 +1135,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         Color.black.opacity(0.001)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                withAnimation(PurahMotionPolicy.microLight) {
                                     state.isEditingSource = false
                                     state.isRefiningOutput = false
                                 }
@@ -1157,7 +1145,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .simultaneousGesture(
                     TapGesture().onEnded {
                         if state.isEditingSource || state.isRefiningOutput {
-                            withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                            withAnimation(PurahMotionPolicy.microLight) {
                                 state.isEditingSource = false
                                 state.isRefiningOutput = false
                             }
@@ -1230,7 +1218,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     Spacer()
 
                     Button {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                        withAnimation(PurahMotionPolicy.microLight) {
                             state.isEditingSource = false
                         }
                     } label: {
@@ -1260,7 +1248,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     focusRequest: sourceFocusRequest,
                     autoFocus: true,
                     onEscape: {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                        withAnimation(PurahMotionPolicy.microLight) {
                             state.isEditingSource = false
                         }
                     },
@@ -1282,7 +1270,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 state.selectedRoleId = r.id
                                 let text = state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines)
                                 if !text.isEmpty {
-                                    withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                                    withAnimation(PurahMotionPolicy.microLight) {
                                         state.isEditingSource = false
                                     }
                                     state.sendPrompt(text, role: r, originalSelection: text)
@@ -1321,7 +1309,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .stroke(roleColor.opacity(0.40), lineWidth: 1.0)
             )
             .onExitCommand {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.microLight) {
                     state.isEditingSource = false
                 }
             }
@@ -1415,7 +1403,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 // Inline Source Preview Pill (| Overall, TDL is... ✏️)
                 if !sourceText.isEmpty {
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             state.currentInputText = sourceText
                             state.isEditingSource = true
                             state.isRefiningOutput = false
@@ -1452,7 +1440,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 if state.totalStepsCount > 1 {
                     HStack(spacing: 2) {
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 state.stepHistory(by: -1)
                             }
                         } label: {
@@ -1469,7 +1457,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             .foregroundColor(Color.white.opacity(0.75))
 
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                 state.stepHistory(by: 1)
                             }
                         } label: {
@@ -1504,30 +1492,12 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
                 .buttonStyle(.plain)
                 .help("ai.action.copyResult".localized)
-
-                // Pin Button (if !showRoleSwitcher)
-                if !showRoleSwitcher {
-                    Button {
-                        onTogglePin()
-                    } label: {
-                        Image(systemName: isPinned ? "pin.fill" : "pin")
-                            .font(.system(size: 9))
-                            .foregroundColor(isPinned ? roleColor : Color.white.opacity(0.75))
-                            .frame(width: 22, height: 22)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Pin Drawer")
-                }
             }
             .frame(height: 22)
             .simultaneousGesture(
                 TapGesture().onEnded {
                     if state.isRefiningOutput {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                        withAnimation(PurahMotionPolicy.microLight) {
                             state.isRefiningOutput = false
                         }
                     }
@@ -1589,7 +1559,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         GeometryReader { outerGeo in
                             ScrollViewReader { proxy in
                                 ZStack(alignment: .bottomTrailing) {
-                                    ScrollView(.vertical, showsIndicators: false) {
+                                    PurahScrollableBody {
                                         VStack(alignment: .leading, spacing: 0) {
                                             let tokens = AITextDiffEngine.diffWords(original: sourceText, modified: latestResult)
                                             Text(buildDiffAttributedString(tokens: tokens))
@@ -1619,11 +1589,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                                     .onPreferenceChange(BottomAnchorMaxYPreferenceKey.self) { bottomMaxY in
                                         guard bottomMaxY > 0 && outerGeo.size.height > 0 else { return }
                                         if bottomMaxY > outerGeo.size.height + 24 {
-                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                                 isDiffScrolledUp = true
                                             }
                                         } else if bottomMaxY <= outerGeo.size.height + 14 {
-                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                                 isDiffScrolledUp = false
                                             }
                                             diffFollowsTail = true
@@ -1644,7 +1614,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                             diffScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
                                                 if isHoveringDiffScroll && event.scrollingDeltaY > 1.0 {
                                                     diffFollowsTail = false
-                                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                                                         isDiffScrolledUp = true
                                                     }
                                                 }
@@ -1661,7 +1631,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                                     if isDiffScrolledUp {
                                         FloatingScrollToBottomButton(accentColor: roleColor) {
-                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                            withAnimation(PurahMotionPolicy.surfaceSoft) {
                                                 diffFollowsTail = true
                                                 isDiffScrolledUp = false
                                                 proxy.scrollTo("diffBottomAnchor", anchor: .bottom)
@@ -1711,7 +1681,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     GeometryReader { outerGeo in
                         ScrollViewReader { proxy in
                             ZStack(alignment: .bottomTrailing) {
-                                ScrollView(.vertical, showsIndicators: true) {
+                                PurahScrollableBody(indicators: .automatic) {
                                     VStack(alignment: .leading, spacing: 0) {
                                         Text(reasoning)
                                             .font(.system(size: 9.5, design: .monospaced))
@@ -1740,11 +1710,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .onPreferenceChange(BottomAnchorMaxYPreferenceKey.self) { bottomMaxY in
                                     guard bottomMaxY > 0 && outerGeo.size.height > 0 else { return }
                                     if bottomMaxY > outerGeo.size.height + 24 {
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                        withAnimation(PurahMotionPolicy.surfaceSoft) {
                                             isThinkingScrolledUp = true
                                         }
                                     } else if bottomMaxY <= outerGeo.size.height + 14 {
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                        withAnimation(PurahMotionPolicy.surfaceSoft) {
                                             isThinkingScrolledUp = false
                                         }
                                         thinkingFollowsTail = true
@@ -1763,7 +1733,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                         thinkingScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
                                             if isHoveringThinkingScroll && event.scrollingDeltaY > 1.0 {
                                                 thinkingFollowsTail = false
-                                                withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                                withAnimation(PurahMotionPolicy.surfaceSoft) {
                                                     isThinkingScrolledUp = true
                                                 }
                                             }
@@ -1780,7 +1750,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                                 if isThinkingScrolledUp {
                                     FloatingScrollToBottomButton(accentColor: roleColor) {
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                        withAnimation(PurahMotionPolicy.surfaceSoft) {
                                             thinkingFollowsTail = true
                                             isThinkingScrolledUp = false
                                             proxy.scrollTo("streamingReasoningAnchor", anchor: .bottom)
@@ -1875,7 +1845,7 @@ public struct AIAssistantRoleWorkbenchView: View {
     private func collapsibleReasoningView(reasoning: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                withAnimation(PurahMotionPolicy.surfaceSoft) {
                     isReasoningExpanded.toggle()
                 }
             } label: {
@@ -1896,7 +1866,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             .buttonStyle(.plain)
 
             if isReasoningExpanded {
-                ScrollView(.vertical) {
+                PurahScrollableBody {
                     Text(reasoning)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Color.white.opacity(0.65))
@@ -2159,7 +2129,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                 // 5. Expandable Refine Trigger Pill ([✨ Refine / Follow-up... ⬆])
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                    withAnimation(PurahMotionPolicy.surface) {
                         state.isRefiningOutput = true
                         state.isEditingSource = false
                     }
@@ -2192,7 +2162,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             .simultaneousGesture(
                 TapGesture().onEnded {
                     if state.isEditingSource {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                        withAnimation(PurahMotionPolicy.microLight) {
                             state.isEditingSource = false
                         }
                     }
@@ -2213,7 +2183,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             sourceFocusRequest += 1
         case .followUp:
             state.isEditingSource = false
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+            withAnimation(PurahMotionPolicy.surface) {
                 state.isRefiningOutput = true
             }
             refineFocusRequest += 1
@@ -2238,7 +2208,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     private func sendSourcePromptFromEditCard() {
         sendSourcePrompt()
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+        withAnimation(PurahMotionPolicy.microLight) {
             state.isEditingSource = false
         }
     }
@@ -2247,7 +2217,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         let text = state.refineInputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !state.isStreaming else { return }
         state.refineInputText = ""
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+        withAnimation(PurahMotionPolicy.microLight) {
             state.isRefiningOutput = false
         }
         state.refineCurrentOutput(instruction: text)
@@ -2354,7 +2324,11 @@ public struct AISlashSuggestionsPopupView: View {
 
             // Suggestions List
             ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: commands.count > 4) {
+                PurahScrollableBody(
+                    .vertical,
+                    indicators: commands.count > 4 ? .automatic : .hidden,
+                    contentInsets: EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
+                ) {
                     LazyVStack(spacing: 2) {
                         ForEach(Array(commands.enumerated()), id: \.element.id) { index, item in
                             let isSelected = index == state.selectedSlashIndex
@@ -2367,8 +2341,6 @@ public struct AISlashSuggestionsPopupView: View {
                                 }
                         }
                     }
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 4)
                 }
                 .frame(maxHeight: min(CGFloat(commands.count) * 40.0 + 8.0, 180.0))
                 .onChange(of: state.selectedSlashIndex) { _, newIndex in
@@ -2566,7 +2538,7 @@ public struct AISessionHistoryManagerView: View {
                 // + New Button
                 Button {
                     state.createNewSession()
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel = false
                     }
                 } label: {
@@ -2582,7 +2554,7 @@ public struct AISessionHistoryManagerView: View {
 
                 // Done Button
                 Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel = false
                     }
                 } label: {
@@ -2599,7 +2571,7 @@ public struct AISessionHistoryManagerView: View {
             .padding(.horizontal, 4)
 
             // Session List
-            ScrollView(.vertical, showsIndicators: false) {
+            PurahScrollableBody {
                 LazyVStack(spacing: 5) {
                     ForEach(filteredSessions) { session in
                         sessionRow(session)
@@ -2667,7 +2639,7 @@ public struct AISessionHistoryManagerView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     state.switchSession(to: session.id)
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel = false
                     }
                 }
@@ -2920,7 +2892,7 @@ struct InDrawerDropdown<Trigger: View>: View {
     var body: some View {
         ZStack(alignment: (expandsUpward ? Alignment.bottomLeading : Alignment.topLeading)) {
             Button {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.microLight) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -2989,7 +2961,9 @@ struct InDrawerDropdown<Trigger: View>: View {
     }
 
     private var optionsList: some View {
-        ScrollView(.vertical, showsIndicators: options.count > 8) {
+        // A menu, not a document: overlay scrollers are the right affordance
+        // once the list outgrows the panel.
+        PurahScrollableBody(indicators: .automatic) {
             VStack(spacing: 0) {
                 ForEach(options) { option in
                     optionButton(option)

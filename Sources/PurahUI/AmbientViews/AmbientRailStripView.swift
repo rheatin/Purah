@@ -54,7 +54,7 @@ public struct AmbientRailStripView: View {
                         alertStyle: store.alertStyle
                     ) {
                         store.dismissActiveDrawer()
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.pageFlip) {
                             store.cycleRailPage(for: edge, delta: -1)
                             store.triggerControlHaptic(.alignment)
                         }
@@ -76,7 +76,7 @@ public struct AmbientRailStripView: View {
                         alertStyle: store.alertStyle
                     ) {
                         store.dismissActiveDrawer()
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.pageFlip) {
                             store.cycleRailPage(for: edge, delta: 1)
                             store.triggerControlHaptic(.alignment)
                         }
@@ -136,14 +136,14 @@ public struct AmbientRailStripView: View {
                     .opacity(isBreathing && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
                     .offset(y: startY)
                     .zIndex(shouldShowDrawer ? 120 : (isThisPodActive ? 100 : 1))
-                    .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: spanH)
-                    .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: startY)
+                    .animation(PurahMotionPolicy.railReflow, value: spanH)
+                    .animation(PurahMotionPolicy.railReflow, value: startY)
                     .animation(.spring(response: 0.26, dampingFraction: 0.78), value: isThisPodActive)
                 }
             }
             .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
             .animation(
-                .spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08),
+                PurahMotionPolicy.railReflow,
                 value: layoutItems.map { "\($0.id)_\(Int($0.startY))_\(Int($0.spanH))" }
             )
             }
@@ -171,7 +171,7 @@ public struct AmbientRailStripView: View {
                 store.activateDrawer(podId: pod.id)
             },
             requestDismiss: {
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                withAnimation(PurahMotionPolicy.drawerExit) {
                     if store.activeDrawerItemId == pod.id {
                         store.activeDrawerItemId = nil
                     }
@@ -187,7 +187,7 @@ public struct AmbientRailStripView: View {
                 }
             },
             togglePin: {
-                withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                withAnimation(PurahMotionPolicy.buttonPop) {
                     store.togglePinItem(id: pod.id)
                 }
             }
@@ -195,25 +195,7 @@ public struct AmbientRailStripView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            // Right rail: 10px continuous radius on the left, 0px flush against right bezel
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 10,
-                bottomLeadingRadius: 10,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            // Left rail: 10px continuous radius on the right, 0px flush against left bezel
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 10,
-                topTrailingRadius: 10,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.composite(edge: edge)
     }
 
     private var drawerTransition: AnyTransition {
@@ -282,7 +264,7 @@ public struct AmbientRailStripView: View {
                 store.activateDrawer(podId: pod.id)
             },
             requestDismiss: {
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                withAnimation(PurahMotionPolicy.drawerExit) {
                     if store.activeDrawerItemId == pod.id {
                         store.activeDrawerItemId = nil
                     }
@@ -298,7 +280,7 @@ public struct AmbientRailStripView: View {
                 }
             },
             togglePin: {
-                withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                withAnimation(PurahMotionPolicy.buttonPop) {
                     store.togglePinItem(id: pod.id)
                 }
             }
@@ -338,6 +320,17 @@ public struct AmbientRailStripView: View {
                 }
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
+                // The rail bar is an icon-only, gesture-driven target; without
+                // an explicit element VoiceOver reads nothing and cannot
+                // activate it.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(pod.name)
+                .accessibilityValue(isThisPodActive ? "Expanded" : "Collapsed")
+                .accessibilityHint("Open \(pod.name) drawer")
+                .accessibilityAddTraits(isThisPodActive ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction {
+                    plugin.onRailBarTap(subItemId: nil, context: barContext)
+                }
                 .onTapGesture {
                     if store.dismissAlertOnHover && isPodAlerting {
                         acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
@@ -593,7 +586,7 @@ public struct RailPagePortalView: View {
         .buttonStyle(.plain)
         .opacity(visible ? 1.0 : 0.0)
         .offset(x: visible ? 0 : (edge == .left ? -16 : 16))
-        .animation(.spring(response: 0.24, dampingFraction: 0.82), value: visible)
+        .animation(PurahMotionPolicy.micro, value: visible)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering

@@ -101,6 +101,7 @@ public struct KeyboardShortcutRecorderView: View {
     public let store: PurahWorkspaceStore
     public let target: HotKeyTarget
     @State public var state: ShortcutRecorderState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public var isRecording: Bool {
         state.isRecording
@@ -265,6 +266,10 @@ public struct KeyboardShortcutRecorderView: View {
             stopRecording()
         }
         .onChange(of: state.isRecording) { _, newValue in
+            guard PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) else {
+                state.pulseOutline = newValue
+                return
+            }
             if newValue {
                 withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
                     state.pulseOutline = true

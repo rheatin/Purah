@@ -363,6 +363,9 @@ public final class LocalizationManager {
 
             // Todo & Calendar
             "todo.empty.title": "No pending tasks",
+            "todo.overview.title": "Reminders",
+            "todo.overview.completed": "Completed",
+            "todo.overview.openApp": "Open Reminders",
             "todo.empty.subtitle": "Configure filter in Settings",
             "calendar.empty.title": "No events in current range",
             "calendar.empty.subtitle": "Configure scope in Settings",
@@ -389,12 +392,6 @@ public final class LocalizationManager {
             "pod.notes": "Quick Scratchpad",
 
             // Presets
-            "preset.balanced.title": "Balanced Ergonomics",
-            "preset.balanced.desc": "Evenly split between left & right rails. Timeline on right, shelf & notes on left, music on bottom.",
-            "preset.sprint.title": "Sprint Productivity",
-            "preset.sprint.desc": "Left rail dedicated to drop shelf & notes. Right rail focused on timeline & todo lists.",
-            "preset.media.title": "Immersive Multimedia",
-            "preset.media.desc": "Audio wave meter on left, minimal glance calendar on right.",
 
             // Calendar Overflow Strategy
             "calendar.overflow.smartFold": "Smart Fold (+N More)",
@@ -402,6 +399,7 @@ public final class LocalizationManager {
             "calendar.overflow.continuous": "Continuous Stream",
             "calendar.overflow.continuous.desc": "Consolidates into a sleek ambient time gauge that expands to full agenda",
             "calendar.overview.title": "Upcoming Agenda",
+            "calendar.overview.pastBoundary": "Past",
             "calendar.overview.moreEvents": "+%d More Events",
 
             // Calendar Alert Lead Time
@@ -927,6 +925,9 @@ public final class LocalizationManager {
 
             // 待办与日历
             "todo.empty.title": "无待办事项",
+            "todo.overview.title": "提醒事项",
+            "todo.overview.completed": "已完成",
+            "todo.overview.openApp": "打开提醒事项",
             "todo.empty.subtitle": "可在设置中调整过滤条件",
             "calendar.empty.title": "当前时段无日程安排",
             "calendar.empty.subtitle": "可在设置中调整时间跨度",
@@ -953,12 +954,6 @@ public final class LocalizationManager {
             "pod.notes": "即时便签",
 
             // Presets
-            "preset.balanced.title": "平衡人体工学",
-            "preset.balanced.desc": "左右双轨均匀分布。右轨承载日程与待办，左轨承载暂存架与便签，音乐居于底部。",
-            "preset.sprint.title": "冲刺生产力",
-            "preset.sprint.desc": "左轨聚焦暂存与代码草稿，右轨全力聚焦日程时间线与待办任务。",
-            "preset.media.title": "沉浸式影音",
-            "preset.media.desc": "左轨全尺寸律动波形表，右轨极简微光日历。",
 
             // Calendar Overflow Strategy
             "calendar.overflow.smartFold": "智能时空折叠 (+N 胶囊)",
@@ -966,6 +961,7 @@ public final class LocalizationManager {
             "calendar.overflow.continuous": "连续时间流光表",
             "calendar.overflow.continuous.desc": "折叠为纯粹沉静的边缘时间光柱，悬停滑出全天日程大抽屉",
             "calendar.overview.title": "全日程总览",
+            "calendar.overview.pastBoundary": "已过去",
             "calendar.overview.moreEvents": "+%d 个更多日程",
 
             // Calendar Alert Lead Time

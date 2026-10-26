@@ -426,7 +426,9 @@ struct PluginArchitectureTests {
         #expect(vitalsPlugin.supportedDrawerModes.contains(.stepped))
         #expect(scriptsPlugin.supportedDrawerModes.contains(.stepped))
         #expect(todoPlugin.supportedDrawerModes == [.stepped])
-        #expect(calPlugin.supportedDrawerModes == [.stepped])
+        // Calendar's mode authority is isDecomposed: decomposed serves both
+        // the stepped chips and the composite drawer.
+        #expect(calPlugin.supportedDrawerModes == [.composite, .stepped])
         #expect(shelfPlugin.supportedDropTypes.contains(.fileURL))
 
         let pod = store.pods.first(where: { $0.id == "vitals" }) ?? SlotPod(
@@ -805,7 +807,7 @@ struct PluginArchitectureTests {
     func testDrawerPanelsAcceptStateContainers() {
         let store = PurahWorkspaceStore()
 
-        let calState = CalendarPluginState()
+        let calState = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         let calDrawerWithState = CalendarDrawerView(state: calState, store: store)
         let calDrawerWithStore = CalendarDrawerView(store: store)
         _ = calDrawerWithState
@@ -987,10 +989,9 @@ struct PluginArchitectureTests {
         #expect(decodedLegacy.isCommunity == false)
     }
 
-    @Test("PluginMarketManager community catalog installation and zero-footprint lifecycle")
+    @Test("Marketplace install only accepts plugins with a real implementation")
     @MainActor
-    func testCommunityPluginMarketplaceLifecycle() {
-        _ = PluginRegistry.shared
+    func testMarketplaceRefusesManifestOnlyInstall() {
         UserDefaults.standard.removeObject(forKey: "purah.installedPluginIds")
         UserDefaults.standard.removeObject(forKey: "purah.market.enabledPluginIds")
         defer {
@@ -1000,26 +1001,56 @@ struct PluginArchitectureTests {
 
         let store = PurahWorkspaceStore()
         let market = store.marketManager
+        let registry = PluginRegistry.shared
 
-        let communityId = "com.community.git-radar"
-        #expect(!market.isInstalled(id: communityId))
+        // The store used to ship three invented "community" manifests whose
+        // installation mounted a pod that only echoed its own description.
+        for inventedId in ["com.community.git-radar", "com.community.weather-aura", "com.community.docker-fleet"] {
+            #expect(!PurahPluginManifest.fullCatalog.contains { $0.id == inventedId },
+                    "\(inventedId) must not appear in the marketplace catalog")
+            #expect(market.install(id: inventedId) == false,
+                    "installing a manifest with no implementation must be refused")
+            #expect(!market.isInstalled(id: inventedId))
+            #expect(!store.pods.contains { $0.id == inventedId })
+            #expect(registry.plugin(for: inventedId) == nil)
+        }
 
-        // Install community plugin
-        market.install(id: communityId)
-        #expect(market.isInstalled(id: communityId))
-        #expect(store.pods.contains { $0.id == communityId })
-        #expect(PluginRegistry.shared.plugin(for: communityId) != nil)
+        // A registered implementation installs and unmounts cleanly. The mock
+        // uses a unique id so this test never disturbs the shared registry's
+        // built-in entries (other suites read them).
+        final class InstallableMockPlugin: PurahPodPlugin {
+            nonisolated let manifest = PurahPluginManifest(
+                id: "com.purah.installable-mock",
+                displayName: "Installable Mock",
+                systemIcon: "shippingbox",
+                description: "Mock implementation behind a manifest",
+                defaultEdge: .left,
+                preferredZone: .glance,
+                defaultColorHex: "#00FF88"
+            )
 
-        // Verify slot pod properties
-        let pod = store.pods.first { $0.id == communityId }
-        #expect(pod?.name == "Git Radar")
-        #expect(pod?.edge == .left)
+            func makeRailBarView(context: PurahPluginContext) -> AnyView {
+                AnyView(Color.clear)
+            }
 
-        // Uninstall community plugin
-        market.uninstall(id: communityId)
-        #expect(!market.isInstalled(id: communityId))
-        #expect(!store.pods.contains { $0.id == communityId })
-        #expect(PluginRegistry.shared.plugin(for: communityId) == nil)
+            func makeDrawerView(context: PurahPluginContext) -> AnyView {
+                AnyView(Color.clear)
+            }
+        }
+
+        let mock = InstallableMockPlugin()
+        registry.register(mock, store: store)
+        defer { registry.unregister(id: mock.manifest.id, store: store) }
+
+        #expect(market.install(id: mock.manifest.id) == true)
+        #expect(market.isInstalled(id: mock.manifest.id))
+        #expect(store.pods.contains { $0.id == mock.manifest.id })
+        #expect(registry.plugin(for: mock.manifest.id) != nil)
+
+        market.uninstall(id: mock.manifest.id)
+        #expect(!market.isInstalled(id: mock.manifest.id))
+        #expect(!store.pods.contains { $0.id == mock.manifest.id })
+        #expect(registry.plugin(for: mock.manifest.id) == nil)
     }
 
     @Test("PluginMarketplaceView instantiates and PreferencesTab renders marketplace view")

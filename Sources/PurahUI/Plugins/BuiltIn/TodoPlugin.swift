@@ -60,7 +60,9 @@ public struct TodoPlugin: PurahPodPlugin {
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
             maxRailItems: state.maxRailTodos,
-            minChipHeight: 32.0,
+            // Must carry the expanded TodoItemDrawerView's minimum readable
+            // height: the drawer is exactly chip-height (co-planar rule).
+            minChipHeight: 48.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
             overflowStrategy: .smartFold
@@ -72,10 +74,18 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        if !isDecomposed(store: store) || state.incompleteTodos.isEmpty {
-            return 130.0
+        // The floor is the TALLER of the two modes: the composite drawer's
+        // minimum, or the decomposed rail (chip min-height × on-rail count +
+        // spacing). The on-rail count is the incomplete todos actually shown,
+        // clamped to the rail capacity — completed ones occupy no slot.
+        let compositeMinimum: CGFloat = 130.0
+        guard isDecomposed(store: store), !state.incompleteTodos.isEmpty else {
+            return compositeMinimum
         }
-        return decomposedPolicy.calculateMinimumHeight(activeCount: state.todos.count)
+        let decomposedMinimum = decomposedPolicy.calculateMinimumHeight(
+            activeCount: state.incompleteTodos.count
+        )
+        return max(compositeMinimum, decomposedMinimum)
     }
 
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
@@ -122,19 +132,23 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
+        // FULL count — the container/monitor need the true overflow signal
+        // (count > capacity) to place the "+N" chip. Never pre-truncate here.
         guard isDecomposed(store: store) else { return 0 }
-        return min(effectiveTodos(store: store).count, store.todoMaxRailTasks)
+        return effectiveTodos(store: store).count
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
+        // Plain mapping: the monitor injects the "+N" chip id itself when the
+        // hovered slot is the smart-fold slot (see EdgeMouseMonitor).
         let todos = effectiveTodos(store: store)
-        guard index < store.todoMaxRailTasks, todos.indices.contains(index) else { return nil }
+        guard todos.indices.contains(index) else { return nil }
         return todos[index].id
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
         let todos = effectiveTodos(store: store)
-        guard index < store.todoMaxRailTasks, todos.indices.contains(index) else { return nil }
+        guard todos.indices.contains(index) else { return nil }
         return todos[index].title
     }
 
@@ -154,11 +168,12 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
+        // Full list — the stepped container folds to the rail capacity and
+        // appends the "+N" chip. Truncating here would swallow the overflow
+        // and the "+N" chip would never appear.
         let items = effectiveTodos(store: context.store)
-        let maxTasks = max(context.store.todoMaxRailTasks, 1)
-        let displayItems = items.prefix(maxTasks)
         let now = Date()
-        return displayItems.map { todo in
+        return items.map { todo in
             let urgency = Self.urgencyPresentation(for: todo, now: now)
             return PurahPluginSubItem(
                 id: todo.id,
@@ -175,6 +190,54 @@ public struct TodoPlugin: PurahPodPlugin {
         }
     }
 
+    /// "+N" overview content: everything not already rendered as a rail chip,
+    /// split at the completed boundary. The host supplies the shared shell.
+    public func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView? {
+        let railIDs = context.visibleSubItemIds
+        let overflow = effectiveTodos(store: context.store)
+            .filter { !railIDs.contains($0.id) }
+        let incomplete = overflow.filter { !$0.isCompleted }
+        let completed = overflow.filter { $0.isCompleted }
+        return AnyView(
+            PurahOverviewList(
+                icon: "checklist",
+                title: "todo.overview.title".localized,
+                count: overflow.count,
+                accent: context.accentColor,
+                showsSettings: true,
+                onSettings: { context.store.openPluginSettings(id: "todo") },
+                isPinned: context.isItemPinned("todo_more_items"),
+                onPin: {
+                    withAnimation(PurahMotionPolicy.pin) {
+                        context.togglePin("todo_more_items")
+                    }
+                },
+                showsBoundary: !completed.isEmpty && !incomplete.isEmpty,
+                boundaryTitle: "todo.overview.completed".localized,
+                boundaryColor: context.accentColor,
+                primary: {
+                    ForEach(incomplete) { todo in
+                        TodoOverviewRow(todo: todo, state: state, store: context.store)
+                    }
+                },
+                secondary: {
+                    ForEach(completed) { todo in
+                        TodoOverviewRow(todo: todo, state: state, store: context.store)
+                            .transition(.opacity)
+                    }
+                },
+                footerCaption: "Reminders",
+                actionIcon: "arrow.up.forward.app",
+                actionTitle: "todo.overview.openApp".localized,
+                onAction: {
+                    if let url = URL(string: "x-apple-reminderkit://") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            )
+        )
+    }
+
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
         if let id = subItemId {
             context.performHaptic(.levelChange)
@@ -187,37 +250,6 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        if subItemId == "todo_more_items" {
-            let isPinned = context.isItemPinned(subItemId)
-            let isExpanded = context.isExpanded || isPinned
-            let barW = max(context.railWidth, CGFloat(context.store.railBarWidth))
-            let barH = max(context.slotHeight, 6.0)
-            let radius = min(barW / 2, 4)
-            return AnyView(
-                ZStack(alignment: context.edge == .right ? .topTrailing : .topLeading) {
-                    RoundedRectangle(cornerRadius: radius)
-                        .fill(context.accentColor.opacity(0.85))
-                        .frame(width: barW, height: barH)
-
-                    if isExpanded {
-                        TodoDrawerView(state: state, store: context.store)
-                            .padding(8)
-                            .frame(width: context.drawerWidth, height: max(barH, 180.0))
-                            .liquidDrawerBackground(
-                                shape: UnevenRoundedRectangle(
-                                    topLeadingRadius: context.edge == .right ? 8 : 0,
-                                    bottomLeadingRadius: context.edge == .right ? 8 : 0,
-                                    bottomTrailingRadius: context.edge == .left ? 8 : 0,
-                                    topTrailingRadius: context.edge == .left ? 8 : 0,
-                                    style: .continuous
-                                ),
-                                accentColor: context.accentColor
-                            )
-                    }
-                }
-                .frame(height: barH, alignment: .top)
-            )
-        }
         let todos = effectiveTodos(store: context.store)
         guard let todo = todos.first(where: { $0.id == subItemId }) else { return nil }
         let isPinned = context.isItemPinned(subItemId)
@@ -231,7 +263,7 @@ public struct TodoPlugin: PurahPodPlugin {
                 height: context.slotHeight,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }

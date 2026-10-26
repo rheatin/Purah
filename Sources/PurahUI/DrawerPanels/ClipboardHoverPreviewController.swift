@@ -182,8 +182,7 @@ public struct ClipboardHoverApertureView: View {
                 pinnedHeaderBadge
             }
 
-            if let nsImg = NSImage(contentsOfFile: path) {
-                let _ = { nsImg.cacheMode = .never }()
+            if let nsImg = PurahFilePreviewLoader.loadImagePreview(at: URL(fileURLWithPath: path))?.image {
                 Image(nsImage: nsImg)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -234,7 +233,9 @@ public struct ClipboardHoverApertureView: View {
                 pinnedHeaderBadge
             }
 
-            ScrollView(.vertical, showsIndicators: true) {
+            // A pinned full-text preview is long-form: keep the indicators so a
+            // clipped snippet never looks like a complete one.
+            PurahScrollableBody(indicators: .automatic) {
                 Text(text)
                     .font(.system(size: 11, design: .monospaced))
                     .lineSpacing(3)
@@ -476,16 +477,16 @@ public final class ClipboardHoverPreviewController {
 
         var convertedItem: ClipboardItem? = nil
 
-        // 1. Image preview
-        if imageExtensions.contains(ext), let img = NSImage(contentsOf: url) {
+        // 1. Image preview (downsampled; the full bitmap is never decoded)
+        if imageExtensions.contains(ext), let preview = PurahFilePreviewLoader.loadImagePreview(at: url) {
             let byteSize = shelfFile.fileSize > 0 ? shelfFile.fileSize : ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0)
             convertedItem = ClipboardItem(
                 id: shelfFile.id,
                 type: .image(
                     filePath: url.path,
                     thumbnailPath: "",
-                    pixelWidth: Int(img.size.width),
-                    pixelHeight: Int(img.size.height),
+                    pixelWidth: preview.pixelWidth,
+                    pixelHeight: preview.pixelHeight,
                     byteSize: byteSize
                 )
             )
@@ -500,9 +501,11 @@ public final class ClipboardHoverPreviewController {
                 "java", "kt", "dart", "gradle", "properties"
             ]
             let byteSize = shelfFile.fileSize > 0 ? shelfFile.fileSize : ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0)
-            if (textExtensions.contains(ext) || byteSize <= 512 * 1024),
-               let content = try? String(contentsOf: url, encoding: .utf8) {
-                let previewText = String(content.prefix(8000))
+            // The extension check used to bypass the size gate entirely, so a
+            // `.log` of any size was read whole. Always go through the bounded
+            // reader.
+            if textExtensions.contains(ext) || byteSize <= 512 * 1024,
+               let previewText = PurahFilePreviewLoader.loadTextPreview(at: url) {
                 convertedItem = ClipboardItem(
                     id: shelfFile.id,
                     type: .text(previewText)

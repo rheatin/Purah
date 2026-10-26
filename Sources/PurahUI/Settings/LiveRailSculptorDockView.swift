@@ -37,7 +37,7 @@ public struct LiveRailSculptorDockView: View {
 
                     // Quick Dynamic Breathing Toggle
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.setDynamicBreathingEnabled(!store.isDynamicBreathingEnabled)
                             store.triggerControlHaptic(.alignment)
                         }
@@ -61,7 +61,7 @@ public struct LiveRailSculptorDockView: View {
 
                     // Auto-Layout Button
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.autoLayoutAll()
                             store.triggerControlHaptic(.alignment)
                         }
@@ -161,7 +161,7 @@ public struct LiveRailSculptorDockView: View {
                                          .lineLimit(1)
 
                                      Button {
-                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                         withAnimation(PurahMotionPolicy.surface) {
                                              store.mountPod(id: pod.id, to: .left)
                                              store.triggerControlHaptic(.alignment)
                                          }
@@ -178,7 +178,7 @@ public struct LiveRailSculptorDockView: View {
                                      .help("Mount \(pod.name) to Left Rail")
 
                                      Button {
-                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                         withAnimation(PurahMotionPolicy.surface) {
                                              store.mountPod(id: pod.id, to: .right)
                                              store.triggerControlHaptic(.alignment)
                                          }
@@ -232,7 +232,7 @@ public struct LiveRailSculptorDockView: View {
                                         }
                                         .onEnded { _ in
                                             let screenFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-                                            withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                            withAnimation(PurahMotionPolicy.drawerEntrance) {
                                                 store.commitExternalPodDrag(
                                                     podId: pod.id,
                                                     screenFrame: screenFrame
@@ -295,7 +295,7 @@ public struct LiveRailSculptorDockView: View {
                 HStack(spacing: 6) {
                     ForEach(OnboardingGuideStep.allCases) { step in
                         Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.surface) {
                                 store.selectOnboardingStep(step)
                                 store.triggerControlHaptic(.alignment)
                             }
@@ -336,7 +336,7 @@ public struct LiveRailSculptorDockView: View {
             // Footer Navigation Row
             HStack(spacing: 10) {
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    withAnimation(PurahMotionPolicy.surface) {
                         store.previousOnboardingStep()
                         store.triggerControlHaptic(.alignment)
                     }
@@ -360,7 +360,7 @@ public struct LiveRailSculptorDockView: View {
 
                 if store.onboardingStep != .antiTouchCalibration {
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.skipCurrentOnboardingStep()
                             store.triggerControlHaptic(.alignment)
                         }
@@ -376,7 +376,7 @@ public struct LiveRailSculptorDockView: View {
                     .buttonStyle(.tactile)
 
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.nextOnboardingStep()
                             store.triggerControlHaptic(.levelChange)
                         }
@@ -505,7 +505,7 @@ public struct LiveRailSculptorDockView: View {
                     }
                     Spacer(minLength: 8)
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.rehearseMountSamplePods()
                         }
                     } label: {
@@ -553,7 +553,7 @@ public struct LiveRailSculptorDockView: View {
                     }
                     Spacer(minLength: 8)
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.rehearseDecomposeDemo()
                         }
                     } label: {
@@ -581,7 +581,7 @@ public struct LiveRailSculptorDockView: View {
                         HStack(spacing: 8) {
                             let isVitalsDecomp = store.isPodDecomposed("vitals")
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.togglePodDecomposedInSculptor(podId: "vitals")
                                 }
                             } label: {
@@ -596,7 +596,7 @@ public struct LiveRailSculptorDockView: View {
                             .buttonStyle(.tactile)
 
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.isRehearsingBreathingInSculptor.toggle()
                                     store.onWindowsRebuildNeeded?()
                                 }
@@ -634,7 +634,7 @@ public struct LiveRailSculptorDockView: View {
                     }
                     Spacer(minLength: 8)
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.rehearseStackMerge()
                         }
                     } label: {
@@ -699,7 +699,7 @@ public struct LiveRailSculptorDockView: View {
                     }
                     Spacer(minLength: 8)
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.rehearsePaginationFlip()
                         }
                     } label: {
@@ -749,7 +749,7 @@ public struct LiveRailSculptorDockView: View {
 
                     // Temporary 7-Pod Sandbox Toggle / Restore My Layout Button
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.toggleTemporaryBreathingSandbox()
                             store.triggerControlHaptic(.alignment)
                         }
@@ -769,7 +769,7 @@ public struct LiveRailSculptorDockView: View {
                     .buttonStyle(.tactile)
 
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        withAnimation(PurahMotionPolicy.surface) {
                             store.rehearseDynamicBreathing()
                         }
                     } label: {
@@ -798,7 +798,7 @@ public struct LiveRailSculptorDockView: View {
                             Spacer(minLength: 4)
 
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.setDynamicBreathingEnabled(true)
                                     store.triggerControlHaptic(.alignment)
                                 }
@@ -845,7 +845,7 @@ public struct LiveRailSculptorDockView: View {
                         // Mode Selector Pills
                         HStack(spacing: 4) {
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.edgeTriggerMode = .hoverDwell
                                     store.onboardingDidSwitchTriggerMode = true
                                     store.onboardingGateState = .idle
@@ -867,7 +867,7 @@ public struct LiveRailSculptorDockView: View {
                             .buttonStyle(.tactile)
 
                             Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                withAnimation(PurahMotionPolicy.surface) {
                                     store.edgeTriggerMode = .pushForce
                                     store.onboardingDidSwitchTriggerMode = true
                                     store.onboardingGateState = .idle
@@ -893,7 +893,7 @@ public struct LiveRailSculptorDockView: View {
                         HStack(spacing: 3) {
                             ForEach([EdgeTriggerSensitivity.agile, .balanced, .cautious]) { sens in
                                 Button {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    withAnimation(PurahMotionPolicy.surface) {
                                         store.edgeTriggerSensitivity = sens
                                         store.onboardingGateState = .idle
                                         store.onboardingGateProgress = 0.0
