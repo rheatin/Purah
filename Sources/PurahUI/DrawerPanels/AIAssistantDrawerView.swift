@@ -158,7 +158,8 @@ public struct AIAssistantSteppedDrawerView: View {
                                     .cornerRadius(3)
                             }
                             .buttonStyle(.plain)
-                            .help("Reset / New Session")
+                            .help("help.resetSession".localized)
+                            .accessibilityLabel("help.resetSession".localized)
                         }
 
                         PurahDrawerHeaderTools(
@@ -181,7 +182,8 @@ public struct AIAssistantSteppedDrawerView: View {
                                     .cornerRadius(3)
                             }
                             .buttonStyle(.plain)
-                            .help("Stop Generation")
+                            .help("help.stopGeneration".localized)
+                            .accessibilityLabel("help.stopGeneration".localized)
                         }
 
                     }
@@ -258,6 +260,7 @@ public struct AIAssistantSteppedDrawerView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .help(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
+                                .accessibilityLabel(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
                             }
                             .padding(.horizontal, 8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1020,7 +1023,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .background(Circle().fill(Color.white.opacity(0.12)))
             }
             .buttonStyle(.plain)
-            .help("Remove active skill")
+            .help("help.removeActiveSkill".localized)
+            .accessibilityLabel("help.removeActiveSkill".localized)
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 3.5)
@@ -1218,6 +1222,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         }
                         .buttonStyle(.plain)
                         .help("ai.topbar.configureRoles".localized)
+                        .accessibilityLabel("ai.topbar.configureRoles".localized)
                     }
                     .padding(.horizontal, 1)
                 }
@@ -1344,7 +1349,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .foregroundColor(Color.white.opacity(0.85))
                     }
                     .buttonStyle(.plain)
-                    .help("Collapse Source Editor (Esc)")
+                    .help("help.collapseSourceEditor".localized)
+                    .accessibilityLabel("help.collapseSourceEditor".localized)
                 }
                 .padding(.horizontal, 2)
                 .padding(.top, 1)
@@ -1539,6 +1545,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                     .buttonStyle(.plain)
                     .help("ai.source.editSource".localized)
+                    .accessibilityLabel("ai.source.editSource".localized)
                 }
 
                 Spacer(minLength: 2)
@@ -1599,6 +1606,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
                 .buttonStyle(.plain)
                 .help("ai.action.copyResult".localized)
+                .accessibilityLabel("ai.action.copyResult".localized)
             }
             .frame(height: 22)
             .simultaneousGesture(
@@ -1929,7 +1937,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help("Stop Generation (Esc)")
+                    .help("help.stopGenerationEsc".localized)
+                    .accessibilityLabel("help.stopGenerationEsc".localized)
 
                     Spacer(minLength: 8)
                 }
@@ -2086,7 +2095,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help("Stop Generation")
+                    .help("help.stopGeneration".localized)
+                    .accessibilityLabel("help.stopGeneration".localized)
                 } else {
                     // 1. Primary Pill (Replace Selection / Copy Result)
                     Button {
@@ -2190,6 +2200,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                 }
                 .help("ai.action.saveToNotes".localized)
+                .accessibilityLabel("ai.action.saveToNotes".localized)
 
                 // 4. Retry
                 Button {
@@ -2233,6 +2244,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                 }
                 .help("ai.action.retry".localized)
+                .accessibilityLabel("ai.action.retry".localized)
 
                 // 5. Expandable Refine Trigger Pill ([✨ Refine / Follow-up... ⬆])
                 Button {
@@ -2658,6 +2670,7 @@ public struct AISessionHistoryManagerView: View {
                 }
                 .buttonStyle(.plain)
                 .help("ai.history.newChat".localized)
+                .accessibilityLabel("ai.history.newChat".localized)
 
                 // Done Button
                 Button {
@@ -2765,7 +2778,8 @@ public struct AISessionHistoryManagerView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
-                    .help("Rename")
+                    .help("help.rename".localized)
+                    .accessibilityLabel("help.rename".localized)
 
                     // Star button
                     Button {
@@ -2779,7 +2793,8 @@ public struct AISessionHistoryManagerView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
-                    .help("Favorite")
+                    .help("help.favorite".localized)
+                    .accessibilityLabel("help.favorite".localized)
 
                     // Export button
                     Button {
@@ -2793,7 +2808,8 @@ public struct AISessionHistoryManagerView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
-                    .help("Export Markdown")
+                    .help("help.exportMarkdown".localized)
+                    .accessibilityLabel("help.exportMarkdown".localized)
 
                     // Delete button
                     Button {
@@ -2807,7 +2823,8 @@ public struct AISessionHistoryManagerView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
-                    .help("Delete")
+                    .help("help.delete".localized)
+                    .accessibilityLabel("help.delete".localized)
                 }
             }
         }

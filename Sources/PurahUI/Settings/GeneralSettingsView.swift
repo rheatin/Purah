@@ -116,6 +116,7 @@ public struct GeneralSettingsView: View {
                             ))
                             .toggleStyle(.switch)
                             .labelsHidden()
+                            .purahRowAccessibility("general.startup.launchAtLogin.title".localized, detail: "general.startup.launchAtLogin.subtitle".localized)
                         }
 
                         Divider()

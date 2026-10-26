@@ -133,6 +133,7 @@ public struct NotesPluginSettingsView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .help("notes.settings.deleteFolderHelp".localized)
+                                    .accessibilityLabel("notes.settings.deleteFolderHelp".localized)
                                 }
                             }
                             .padding(.horizontal, 10)

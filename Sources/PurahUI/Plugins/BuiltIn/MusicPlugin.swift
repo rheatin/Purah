@@ -295,6 +295,7 @@ public struct MusicPluginSettingsView: View {
                                     SystemAudioLiveMonitor.shared.latencyOffsetMs = $0
                                 }
                             ), in: 0...200, step: 10)
+                            .accessibilityLabel("music.beatAlignment".localized)
 
                             HStack {
                                 Text("music.outputSpeakers".localized)
@@ -335,6 +336,7 @@ public struct MusicPluginSettingsView: View {
                             .toggleStyle(.switch)
                             .controlSize(.small)
                             .labelsHidden()
+                            .purahRowAccessibility("music.rhythmAnimation".localized, detail: "music.rhythmAnimation.desc".localized)
                         }
                         .padding(9)
                         .background(

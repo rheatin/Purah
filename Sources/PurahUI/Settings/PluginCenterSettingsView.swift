@@ -169,6 +169,7 @@ public struct PluginCenterSettingsView: View {
                                     Toggle("", isOn: isEnabledBinding)
                                         .toggleStyle(.switch)
                                         .scaleEffect(0.75)
+                                        .accessibilityLabel(activePlugin.manifest.displayName)
                                 }
 
                                 Text(activePlugin.manifest.description)

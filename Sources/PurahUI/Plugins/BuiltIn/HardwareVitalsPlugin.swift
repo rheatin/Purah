@@ -302,6 +302,7 @@ public struct VitalsPluginSettingsView: View {
                         .controlSize(.small)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("vitals.decompose.title".localized, detail: "vitals.decompose.desc".localized)
                     }
                     .padding(9)
                     .background(
@@ -336,6 +337,7 @@ public struct VitalsPluginSettingsView: View {
                                 in: 2.0...6.0,
                                 step: 1.0
                             )
+                            .accessibilityLabel("vitals.railSlotLimit".localized)
 
                             Text("vitals.railSlotLimit.desc".localized)
                                 .font(.system(size: 9.5))
@@ -589,6 +591,7 @@ public struct VitalsPluginSettingsView: View {
                                     in: 5...50,
                                     step: 1
                                 )
+                                .accessibilityLabel("vitals.batteryLowWarning".localized)
                             }
                         }
                         .padding(9)
@@ -634,6 +637,7 @@ public struct VitalsPluginSettingsView: View {
                                     in: 1...100,
                                     step: 1
                                 )
+                                .accessibilityLabel("vitals.warnValue".localized)
 
                                 Text("vitals.danger".localized)
                                     .font(.system(size: 10))
@@ -652,6 +656,7 @@ public struct VitalsPluginSettingsView: View {
                                     in: 10...200,
                                     step: 1
                                 )
+                                .accessibilityLabel("vitals.dangerValue".localized)
                             }
                         }
                         .padding(9)
@@ -750,12 +755,14 @@ public struct VitalsPluginSettingsView: View {
                     .foregroundColor(.secondary)
                     .frame(width: 32, alignment: .leading)
                 Slider(value: warningValue, in: warningRange, step: 1)
+                .accessibilityLabel("vitals.warn".localized)
 
                 Text("vitals.danger".localized)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                     .frame(width: 42, alignment: .leading)
                 Slider(value: dangerValue, in: dangerRange, step: 1)
+                .accessibilityLabel("vitals.danger".localized)
             }
         }
     }

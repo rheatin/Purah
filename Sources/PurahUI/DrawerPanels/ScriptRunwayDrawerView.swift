@@ -91,7 +91,8 @@ public struct ScriptRunwayDrawerView: View {
                                         .cornerRadius(5)
                                     }
                                     .buttonStyle(.tactile)
-                                    .help("Stop running script")
+                                    .help("help.stopScript".localized)
+                                    .accessibilityLabel("help.stopScript".localized)
                                 }
                                 .fixedSize()
                             } else {

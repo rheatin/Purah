@@ -458,5 +458,6 @@ public struct ScreenSimulationCanvas: View {
         }
         .buttonStyle(.tactile)
         .help(direction == .previous ? "Previous Page" : "Next Page")
+        .accessibilityLabel(direction == .previous ? "Previous Page" : "Next Page")
     }
 }

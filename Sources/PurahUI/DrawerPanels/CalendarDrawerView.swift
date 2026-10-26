@@ -110,7 +110,8 @@ public struct CalendarDrawerView: View {
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
-                    .help("Open in Apple Calendar")
+                    .help("help.openInAppleCalendar".localized)
+                    .accessibilityLabel("help.openInAppleCalendar".localized)
 
                     if isOngoing {
                         HStack(spacing: 3) {
@@ -172,7 +173,8 @@ public struct CalendarDrawerView: View {
                             .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                         }
                         .buttonStyle(.tactile)
-                        .help("Open link: \(url.absoluteString)")
+                        .help(String(format: "help.openLink".localized, url.absoluteString))
+                        .accessibilityLabel(String(format: "help.openLink".localized, url.absoluteString))
                     }
                 }
 
@@ -326,7 +328,8 @@ public struct CalendarDrawerView: View {
                     )
                 }
                 .buttonStyle(.tactile)
-                .help("Using sample events. Click to connect system Apple Calendar")
+                .help("help.sampleCalendar".localized)
+                .accessibilityLabel("help.sampleCalendar".localized)
             }
 
             Button {
@@ -348,7 +351,8 @@ public struct CalendarDrawerView: View {
                 )
             }
             .buttonStyle(.tactile)
-            .help("Open Apple Calendar")
+            .help("help.openAppleCalendar".localized)
+            .accessibilityLabel("help.openAppleCalendar".localized)
         }
     }
 
@@ -789,7 +793,8 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         .cornerRadius(4)
                     }
                     .buttonStyle(.tactile)
-                    .help("Using sample events. Click to connect system Apple Calendar")
+                    .help("help.sampleCalendar".localized)
+                    .accessibilityLabel("help.sampleCalendar".localized)
                 )
             },
             isPinned: isPinned,

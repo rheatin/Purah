@@ -380,7 +380,8 @@ public struct AmbientRailStripView: View {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
-                .help("Open \(plugin.manifest.displayName) Settings")
+                .help(String(format: "help.openSettingsNamed".localized, plugin.manifest.displayName))
+                .accessibilityLabel(String(format: "help.openSettingsNamed".localized, plugin.manifest.displayName))
 
                 pinButton(id: pod.id, isPinned: isPinned, color: color)
             }

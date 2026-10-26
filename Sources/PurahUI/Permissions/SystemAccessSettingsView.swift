@@ -62,7 +62,8 @@ public struct SystemAccessSettingsView: View {
                         .foregroundColor(palette.primaryAccent)
                 }
                 .buttonStyle(.plain)
-                .help("Refresh permission statuses")
+                .help("help.refreshPermissions".localized)
+                .accessibilityLabel("help.refreshPermissions".localized)
             }
 
             Divider()

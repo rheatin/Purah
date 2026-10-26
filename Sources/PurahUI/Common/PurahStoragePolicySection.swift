@@ -228,6 +228,7 @@ public struct PurahStoragePolicySection: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .purahRowAccessibility("clipboard.settings.autoPrune".localized, detail: "storage.autoPurge".localized)
                 }
                 .padding(9)
                 .background(
@@ -422,5 +423,6 @@ public struct PurahClearButton: View {
             }
         }
         .help(helpText ?? (title ?? "Clear"))
+        .accessibilityLabel(helpText ?? (title ?? "Clear"))
     }
 }

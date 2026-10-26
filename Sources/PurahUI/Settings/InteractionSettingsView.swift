@@ -276,7 +276,8 @@ public struct InteractionSettingsView: View {
                                         )
                                     }
                                     .buttonStyle(.tactile)
-                                    .help("Preview selected sound")
+                                    .help("help.previewSound".localized)
+                                    .accessibilityLabel("help.previewSound".localized)
                                 }
                                 .padding(.leading, 18)
                             }

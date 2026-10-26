@@ -212,6 +212,7 @@ public struct VisualLayoutSimulatorView: View {
                     ))
                     .toggleStyle(.switch)
                     .labelsHidden()
+                    .purahRowAccessibility("overflow.breathing.toggleTitle".localized, detail: "overflow.breathing.toggleSubtitle".localized)
                 }
 
                 // Toggle 2: Always Compact Breathing (when breathing is enabled)
@@ -248,6 +249,7 @@ public struct VisualLayoutSimulatorView: View {
                         ))
                         .toggleStyle(.switch)
                         .labelsHidden()
+                        .purahRowAccessibility("overflow.breathing.alwaysCompactTitle".localized, detail: "overflow.breathing.alwaysCompactSubtitle".localized)
                     }
                     .padding(.leading, 12)
                 }
@@ -464,7 +466,8 @@ public struct VisualLayoutSimulatorView: View {
                                     )
                                 }
                                 .buttonStyle(.tactile)
-                                .help("Mount \(pod.name) to rail")
+                                .help(String(format: "help.mountToRail".localized, pod.name))
+                                .accessibilityLabel(String(format: "help.mountToRail".localized, pod.name))
                             }
                         }
                     }
@@ -621,7 +624,8 @@ public struct VisualLayoutSimulatorView: View {
                         .foregroundColor(Color.red.opacity(0.85))
                 }
                 .buttonStyle(.tactile)
-                .help("Unmount \(pod.name) from rail")
+                .help(String(format: "help.unmountFromRail".localized, pod.name))
+                .accessibilityLabel(String(format: "help.unmountFromRail".localized, pod.name))
             }
 
             // Row 2: Tactile Action Pill Bar
@@ -658,7 +662,8 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize(horizontal: true, vertical: false)
-                .help("Assign \(pod.name) to a specific rail page")
+                .help(String(format: "help.assignPage".localized, pod.name))
+                .accessibilityLabel(String(format: "help.assignPage".localized, pod.name))
 
                 // Stack / Unstack Pill
                 if isStackedInCluster {
@@ -683,7 +688,8 @@ public struct VisualLayoutSimulatorView: View {
                     }
                     .buttonStyle(.tactile)
                     .fixedSize(horizontal: true, vertical: false)
-                    .help("Unstack \(pod.name) from its Shared Major Pod")
+                    .help(String(format: "help.unstackNamed".localized, pod.name))
+                    .accessibilityLabel(String(format: "help.unstackNamed".localized, pod.name))
                 } else if !otherPods.isEmpty {
                     Menu {
                         ForEach(otherPods) { otherPod in
@@ -712,7 +718,8 @@ public struct VisualLayoutSimulatorView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize(horizontal: true, vertical: false)
-                    .help("Stack \(pod.name) with another module on this rail")
+                    .help(String(format: "help.stackWithModule".localized, pod.name))
+                    .accessibilityLabel(String(format: "help.stackWithModule".localized, pod.name))
                 }
 
                 Spacer(minLength: 2)
@@ -732,7 +739,8 @@ public struct VisualLayoutSimulatorView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.tactile)
-                    .help("Move \(pod.name) up")
+                    .help(String(format: "help.moveUpNamed".localized, pod.name))
+                    .accessibilityLabel(String(format: "help.moveUpNamed".localized, pod.name))
                 }
 
                 // Reorder: Move Down
@@ -750,7 +758,8 @@ public struct VisualLayoutSimulatorView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.tactile)
-                    .help("Move \(pod.name) down")
+                    .help(String(format: "help.moveDownNamed".localized, pod.name))
+                    .accessibilityLabel(String(format: "help.moveDownNamed".localized, pod.name))
                 }
 
                 // Transfer Edge (Switch Rail Button)
@@ -774,7 +783,8 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .buttonStyle(.tactile)
                 .fixedSize(horizontal: true, vertical: false)
-                .help("Move \(pod.name) to \(pod.edge == .left ? "Right" : "Left") Rail")
+                .help(String(format: "help.moveOtherRail".localized, pod.name, pod.edge == .left ? "Right" : "Left"))
+                .accessibilityLabel(String(format: "help.moveOtherRail".localized, pod.name, pod.edge == .left ? "Right" : "Left"))
             }
         }
         .padding(.horizontal, 10)

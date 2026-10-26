@@ -209,7 +209,8 @@ public struct ScriptItemDrawerView: View {
                     .cornerRadius(4)
                 }
                 .buttonStyle(.tactile)
-                .help("Stop running script")
+                .help("help.stopScript".localized)
+                .accessibilityLabel("help.stopScript".localized)
             }
 
             // Pin button (Matches Hardware Vitals design)

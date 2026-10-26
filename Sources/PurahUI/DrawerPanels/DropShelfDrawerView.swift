@@ -272,6 +272,7 @@ public struct DropShelfDrawerView: View {
                     }
                     .buttonStyle(.tactile)
                     .help("dropshelf.zipHelp".localized)
+                    .accessibilityLabel("dropshelf.zipHelp".localized)
 
                     let allSelected = !state.files.isEmpty && state.selectedFileIds.count == state.files.count
                     Button {
@@ -1284,6 +1285,7 @@ public struct BatchShelfDragPillView: View {
             )
         )
         .help("dropshelf.dragBatchHelp".localized)
+        .accessibilityLabel("dropshelf.dragBatchHelp".localized)
     }
 }
 
@@ -1460,6 +1462,7 @@ public struct ShelfFileRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help(isPreviewPinned ? "Unpin preview" : "dropshelf.quickLook".localized)
+                .accessibilityLabel(isPreviewPinned ? "Unpin preview" : "dropshelf.quickLook".localized)
 
                 Button {
                     if let onToggleFavorite {
@@ -1476,6 +1479,7 @@ public struct ShelfFileRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
+                .accessibilityLabel(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
 
                 Button {
                     let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
@@ -1488,6 +1492,7 @@ public struct ShelfFileRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help("dropshelf.airdrop".localized)
+                .accessibilityLabel("dropshelf.airdrop".localized)
 
                 Button(action: onReveal) {
                     Image(systemName: "magnifyingglass")
@@ -1497,6 +1502,7 @@ public struct ShelfFileRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help("dropshelf.reveal".localized)
+                .accessibilityLabel("dropshelf.reveal".localized)
 
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
@@ -1506,6 +1512,7 @@ public struct ShelfFileRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help("dropshelf.remove".localized)
+                .accessibilityLabel("dropshelf.remove".localized)
             }
         }
         .padding(.horizontal, 8)
@@ -1529,6 +1536,7 @@ public struct ShelfFileRowView: View {
         .animation(PurahMotionPolicy.shelfRow, value: isDragging)
         .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
+        .accessibilityLabel("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }
         .onChange(of: isHovered) { _, hovered in
             if hovered {

@@ -79,7 +79,8 @@ public struct ClipboardHoverApertureView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Close pinned preview")
+                .help("help.closePreview".localized)
+                .accessibilityLabel("help.closePreview".localized)
             }
         }
     }

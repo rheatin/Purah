@@ -117,7 +117,8 @@ public struct PodCapsuleView: View {
                             .foregroundColor(palette.primaryAccent)
                     }
                     .buttonStyle(.tactile)
-                    .help("Snap to module above (eliminate gap)")
+                    .help("help.snapToModuleAbove".localized)
+                    .accessibilityLabel("help.snapToModuleAbove".localized)
                 }
 
                 // Fill rail button
@@ -127,7 +128,8 @@ public struct PodCapsuleView: View {
                         .foregroundColor(podColor.opacity(0.85))
                 }
                 .buttonStyle(.tactile)
-                .help("Expand to fill available rail")
+                .help("help.expandRail".localized)
+                .accessibilityLabel("help.expandRail".localized)
 
                 // Transfer edge button
                 Button(action: onTransferEdge) {
@@ -137,6 +139,7 @@ public struct PodCapsuleView: View {
                 }
                 .buttonStyle(.tactile)
                 .help(pod.edge == .left ? "Move to Right Rail" : "Move to Left Rail")
+                .accessibilityLabel(pod.edge == .left ? "Move to Right Rail" : "Move to Left Rail")
 
                 // Disable / unmount button
                 Button(action: onDisable) {
@@ -145,7 +148,8 @@ public struct PodCapsuleView: View {
                         .foregroundColor(Color.red.opacity(0.85))
                 }
                 .buttonStyle(.tactile)
-                .help("Disable module (unmount from rail)")
+                .help("help.disableModule".localized)
+                .accessibilityLabel("help.disableModule".localized)
             }
             .padding(.horizontal, 8)
             .padding(.top, isCompactBar ? 3 : 6)
@@ -248,7 +252,8 @@ public struct PodCapsuleView: View {
                             resizeInitialLength = nil
                         }
                 )
-                .help("Drag to resize rail height")
+                .help("help.dragResizeRail".localized)
+                .accessibilityLabel("help.dragResizeRail".localized)
             }
         }
         .frame(width: 175, height: capsuleHeight, alignment: .top)

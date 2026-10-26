@@ -318,6 +318,7 @@ public struct ScriptsPluginSettingsView: View {
                         .controlSize(.small)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("runway.decompose.title".localized, detail: "runway.decompose.desc".localized)
                     }
                     .padding(9)
                     .background(
@@ -332,7 +333,7 @@ public struct ScriptsPluginSettingsView: View {
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("vitals.railSlotLimit".localized)
+                                Text("runway.railSlotLimit.title".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
                                 Text(String(format: "runway.railSlotLimit.usage".localized, min(state.maxRailActions, state.enabledActions.count), state.enabledActions.count))
@@ -349,6 +350,7 @@ public struct ScriptsPluginSettingsView: View {
                                 }
                             )
                             Slider(value: scriptLimitBinding, in: 2.0...6.0, step: 1.0)
+                            .accessibilityLabel("runway.railSlotLimit.title".localized)
 
                             Text("runway.railSlotLimit.desc".localized)
                                 .font(.system(size: 9.5))
@@ -554,7 +556,8 @@ public struct ScriptsPluginSettingsView: View {
 
                                 Toggle("Toast", isOn: $newShowNotification)
                                     .font(.system(size: 10))
-                                    .help("Show HUD Toast notification upon script completion")
+                                    .help("help.hudOnCompletion".localized)
+                                    .accessibilityLabel("help.hudOnCompletion".localized)
 
                                 Spacer()
 
@@ -634,6 +637,7 @@ public struct ScriptsPluginSettingsView: View {
                                         .font(.system(size: 9))
                                         .foregroundColor(action.showNotification ? .secondary : .secondary.opacity(0.35))
                                         .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
+                                        .accessibilityLabel(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
 
                                     Button {
                                         withAnimation(PurahMotionPolicy.microLight) {
@@ -723,7 +727,8 @@ public struct ScriptsPluginSettingsView: View {
 
                                             Toggle("Toast", isOn: $editShowNotification)
                                                 .font(.system(size: 10))
-                                                .help("Show HUD Toast notification upon script completion")
+                                                .help("help.hudOnCompletion".localized)
+                                                .accessibilityLabel("help.hudOnCompletion".localized)
                                         }
 
                                         HStack {

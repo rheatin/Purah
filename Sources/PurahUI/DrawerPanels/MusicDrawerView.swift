@@ -1280,7 +1280,8 @@ public struct AudioOutputDevicePickerView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Switch macOS Audio Output Device")
+        .help("help.switchAudioOutput".localized)
+        .accessibilityLabel("help.switchAudioOutput".localized)
         .onAppear {
             deviceManager.refreshDevices()
         }

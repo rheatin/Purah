@@ -58,6 +58,7 @@ public struct LiveRailSculptorDockView: View {
                     }
                     .buttonStyle(.tactile)
                     .help("overflow.breathing.toggleSubtitle".localized)
+                    .accessibilityLabel("overflow.breathing.toggleSubtitle".localized)
 
                     // Auto-Layout Button
                     Button {
@@ -175,7 +176,8 @@ public struct LiveRailSculptorDockView: View {
                                              .cornerRadius(4)
                                      }
                                      .buttonStyle(.tactile)
-                                     .help("Mount \(pod.name) to Left Rail")
+                                     .help(String(format: "help.mountLeftRail".localized, pod.name))
+                                     .accessibilityLabel(String(format: "help.mountLeftRail".localized, pod.name))
 
                                      Button {
                                          withAnimation(PurahMotionPolicy.surface) {
@@ -192,7 +194,8 @@ public struct LiveRailSculptorDockView: View {
                                              .cornerRadius(4)
                                      }
                                      .buttonStyle(.tactile)
-                                     .help("Mount \(pod.name) to Right Rail")
+                                     .help(String(format: "help.mountRightRail".localized, pod.name))
+                                     .accessibilityLabel(String(format: "help.mountRightRail".localized, pod.name))
 
                                      if isOnboardingDockPulse {
                                          Text("onboarding.dock.dragHint".localized)
@@ -305,7 +308,8 @@ public struct LiveRailSculptorDockView: View {
                                 .frame(width: step == store.onboardingStep ? 9 : 7, height: step == store.onboardingStep ? 9 : 7)
                         }
                         .buttonStyle(.plain)
-                        .help("Step \(step.rawValue + 1)")
+                        .help(String(format: "help.step".localized, step.rawValue + 1))
+                        .accessibilityLabel(String(format: "help.step".localized, step.rawValue + 1))
                     }
                 }
 

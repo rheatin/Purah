@@ -181,7 +181,8 @@ public struct PluginMarketplaceView: View {
                     }
                     .buttonStyle(.tactile)
                     .disabled(isCompiling)
-                    .help("Recompile active local package and hot-reload into Purah")
+                    .help("help.recompilePackage".localized)
+                    .accessibilityLabel("help.recompilePackage".localized)
                 }
 
                 // Refresh the remote catalog index
@@ -214,8 +215,11 @@ public struct PluginMarketplaceView: View {
                     .buttonStyle(.tactile)
                     .disabled(!catalogService.hasRemoteSource || catalogService.state == .loading)
                     .help(catalogService.hasRemoteSource
-                          ? "Fetch the latest plugin catalog"
-                          : "No catalog source is configured in this build")
+                          ? "help.fetchCatalog".localized
+                          : "help.noCatalogSource".localized)
+                    .accessibilityLabel(catalogService.hasRemoteSource
+                          ? "help.fetchCatalog".localized
+                          : "help.noCatalogSource".localized)
                 }
 
                 // "Dev: Load..." button always accessible across tabs
@@ -239,7 +243,8 @@ public struct PluginMarketplaceView: View {
                 }
                 .buttonStyle(.tactile)
                 .disabled(isCompiling)
-                .help("Select a local Swift Package folder (with Package.swift) to compile & dynamically load")
+                .help("help.selectPackage".localized)
+                .accessibilityLabel("help.selectPackage".localized)
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)

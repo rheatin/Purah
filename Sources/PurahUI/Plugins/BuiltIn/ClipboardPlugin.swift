@@ -391,6 +391,7 @@ public struct ClipboardItemDrawerView: View {
                 }
                 .buttonStyle(.tactile)
                 .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+                .accessibilityLabel(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
 
                 Button {
                     pluginState.copyItem(item)
@@ -404,7 +405,8 @@ public struct ClipboardItemDrawerView: View {
                         .foregroundColor(palette.style == .native ? .primary : .white)
                 }
                 .buttonStyle(.tactile)
-                .help("Copy to Clipboard")
+                .help("help.copyToClipboard".localized)
+                .accessibilityLabel("help.copyToClipboard".localized)
             }
 
             PurahPinButton(isPinned: isPinned, tintColor: itemColor) {
@@ -898,7 +900,8 @@ public struct ClipboardFullDrawerView: View {
                                     }
                                 }
                                 .buttonStyle(.tactile)
-                                .help("Copy as \(snippet)")
+                                .help(String(format: "help.copyAs".localized, snippet))
+                                .accessibilityLabel(String(format: "help.copyAs".localized, snippet))
                             }
                         }
                     } else {
@@ -1020,6 +1023,7 @@ public struct ClipboardFullDrawerView: View {
                 }
                 .buttonStyle(.plain)
                 .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+                .accessibilityLabel(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
 
                 Button {
                     state.toggleFavorite(id: item.id)
@@ -1033,6 +1037,7 @@ public struct ClipboardFullDrawerView: View {
                 }
                 .buttonStyle(.plain)
                 .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
+                .accessibilityLabel(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
             }
             .padding(isCompact ? 4 : 6)
         }
@@ -1178,6 +1183,7 @@ public struct ClipboardPluginSettingsView: View {
                         .controlSize(.small)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("clipboard.decomposedChips".localized, detail: "clipboard.decompose.desc".localized)
                     }
                     .padding(9)
                     .background(
@@ -1207,6 +1213,7 @@ public struct ClipboardPluginSettingsView: View {
                                     store.savePersistentState()
                                 }
                             ), in: 2...8, step: 1)
+                            .accessibilityLabel("clipboard.maxInRailItems".localized)
 
                             Text("clipboard.maxInRailItems.desc".localized)
                                 .font(.system(size: 9.5))

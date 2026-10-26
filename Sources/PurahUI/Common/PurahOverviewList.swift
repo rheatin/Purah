@@ -121,7 +121,8 @@ public struct PurahOverviewList<Primary: View, Secondary: View>: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.tactile)
-                .help("Open Plugin Settings")
+                .help("help.openPluginSettings".localized)
+                .accessibilityLabel("help.openPluginSettings".localized)
             }
 
             if let onPin {

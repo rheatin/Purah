@@ -905,6 +905,7 @@ public struct MarkdownCodeBlockView: View {
                 }
                 .buttonStyle(.plain)
                 .help("notes.copy".localized)
+                .accessibilityLabel("notes.copy".localized)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -3264,7 +3265,8 @@ public struct QuickNoteDrawerView: View {
                     .cornerRadius(3)
             }
             .buttonStyle(.plain)
-            .help("New Note")
+            .help("help.newNote".localized)
+            .accessibilityLabel("help.newNote".localized)
 
             Spacer(minLength: 4)
 
@@ -3286,7 +3288,8 @@ public struct QuickNoteDrawerView: View {
                     .cornerRadius(3)
             }
             .buttonStyle(.plain)
-            .help("Search across all notes")
+            .help("help.searchAllNotes".localized)
+            .accessibilityLabel("help.searchAllNotes".localized)
 
             // Markdown Tips icon: triggers popover immediately on mouse hover or click
             Button {
@@ -3318,6 +3321,7 @@ public struct QuickNoteDrawerView: View {
                 }
                 .buttonStyle(.plain)
                 .help(doc.isFavorite ? "Unstar note" : "Star note")
+                .accessibilityLabel(doc.isFavorite ? "Unstar note" : "Star note")
             }
         }
         .frame(maxWidth: .infinity)
@@ -3345,7 +3349,8 @@ public struct QuickNoteDrawerView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Open Notes directory in Finder")
+            .help("help.openNotesInFinder".localized)
+            .accessibilityLabel("help.openNotesInFinder".localized)
 
             Button {
                 exportCurrentNote()
@@ -3370,6 +3375,7 @@ public struct QuickNoteDrawerView: View {
             }
             .buttonStyle(.tactile)
             .help("notes.exportHelp".localized)
+            .accessibilityLabel("notes.exportHelp".localized)
 
             Button {
                 NSPasteboard.general.clearContents()
@@ -3399,7 +3405,8 @@ public struct QuickNoteDrawerView: View {
                 .foregroundColor(isCopied ? Color.slateInk : noteColor.highContrastInk)
             }
             .buttonStyle(.tactile)
-            .help("Copy note text to clipboard")
+            .help("help.copyNote".localized)
+            .accessibilityLabel("help.copyNote".localized)
 
             Text("\(wordCount)w · \(currentText.count)c")
                 .font(.system(size: 8, weight: .medium, design: .monospaced))

@@ -476,6 +476,7 @@ public struct CalendarPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("ai.settings.decomposition".localized, detail: "calendar.decompose.desc".localized)
                     }
                     .padding(10)
                     .background(Color.primary.opacity(0.025))
@@ -511,6 +512,7 @@ public struct CalendarPluginSettingsView: View {
                                 in: 2...6,
                                 step: 1
                             )
+                            .accessibilityLabel("calendar.maxRailEvents".localized)
 
                             Text("calendar.maxRailEvents.desc".localized)
                                 .font(.system(size: 9.5))
@@ -601,6 +603,7 @@ public struct CalendarPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .purahRowAccessibility("calendar.toastOnStart".localized, detail: nil)
                     }
                     .padding(9)
                     .background(

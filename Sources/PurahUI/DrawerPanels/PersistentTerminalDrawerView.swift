@@ -116,7 +116,8 @@ public struct TerminalHeaderAccessoryView: View {
                                     .foregroundColor(isActive ? color.opacity(0.85) : .secondary.opacity(0.75))
                             }
                             .buttonStyle(.plain)
-                            .help("Close Tab")
+                            .help("help.closeTab".localized)
+                            .accessibilityLabel("help.closeTab".localized)
                         }
                     }
                     .padding(.horizontal, 5)
@@ -142,7 +143,8 @@ public struct TerminalHeaderAccessoryView: View {
                         .cornerRadius(3.5)
                 }
                 .buttonStyle(.plain)
-                .help("New Terminal Tab (up to 5)")
+                .help("help.newTerminalTab".localized)
+                .accessibilityLabel("help.newTerminalTab".localized)
             }
         }
     }
@@ -180,7 +182,8 @@ public struct TerminalHeaderTrailingToolbarView: View {
                 .cornerRadius(3.5)
             }
             .buttonStyle(.plain)
-            .help("cd into the frontmost Finder window directory")
+            .help("help.cdToFinder".localized)
+            .accessibilityLabel("help.cdToFinder".localized)
 
             // Font size quick adjuster
             HStack(spacing: 2) {
@@ -227,7 +230,8 @@ public struct TerminalHeaderTrailingToolbarView: View {
                     .cornerRadius(3)
             }
             .buttonStyle(.plain)
-            .help("Send SIGINT (Ctrl+C)")
+            .help("help.sendSIGINT".localized)
+            .accessibilityLabel("help.sendSIGINT".localized)
 
             PurahClearButton(
                 title: nil,
@@ -251,7 +255,8 @@ public struct TerminalHeaderTrailingToolbarView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Restart Shell Session")
+            .help("help.restartShellSession".localized)
+            .accessibilityLabel("help.restartShellSession".localized)
         }
     }
 }

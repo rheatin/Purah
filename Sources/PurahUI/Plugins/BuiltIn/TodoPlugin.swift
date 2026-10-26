@@ -376,6 +376,7 @@ public struct TodoPluginSettingsView: View {
                             in: 2.0...10.0,
                             step: 1.0
                         )
+                        .accessibilityLabel("todo.maxVisibleTasks".localized)
 
                         Text("todo.maxVisibleTasks.desc".localized)
                             .font(.system(size: 9.5))

@@ -488,7 +488,8 @@ public struct LiveRailSculptorStripView: View {
                     }
                     .buttonStyle(.tactile)
                     .disabled(!canSplitNewPage && !isCreatePageHighlighted)
-                    .help("Move the bottom pod on this page to a new page")
+                    .help("help.moveBottomToNewPage".localized)
+                    .accessibilityLabel("help.moveBottomToNewPage".localized)
                 }
             }
 
@@ -672,7 +673,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                             .cornerRadius(4)
                     }
                     .buttonStyle(.tactile)
-                    .help("Unstack all pods in this Shared Major Pod")
+                    .help("help.unstackAllPods".localized)
+                    .accessibilityLabel("help.unstackAllPods".localized)
                 }
                 .padding(.horizontal, 7)
                 .frame(height: headerH)
@@ -700,7 +702,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                             lastStackMoveHapticStep = 0
                         }
                 )
-                .help("Drag vertically to move this entire Shared Stack along the rail")
+                .help("help.dragMoveStack".localized)
+                .accessibilityLabel("help.dragMoveStack".localized)
 
                 if store.isOnboardingGuideActive && store.onboardingStep == .stackDemo && store.isCurrentOnboardingMissionCompleted {
                     HStack(spacing: 3) {
@@ -766,7 +769,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                                                 .foregroundColor(.red.opacity(0.9))
                                         }
                                         .buttonStyle(.tactile)
-                                        .help("Unmount \(pod.name) from rail")
+                                        .help(String(format: "help.unmountFromRail".localized, pod.name))
+                                        .accessibilityLabel(String(format: "help.unmountFromRail".localized, pod.name))
                                     }
 
                                     // Row 2: Action Toolbar Row — shown when sliceH >= 46
@@ -788,7 +792,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                                             }
                                             .buttonStyle(.tactile)
                                             .disabled(!store.canMovePod(id: pod.id, direction: .up))
-                                            .help("Move up in stack")
+                                            .help("help.moveUpInStack".localized)
+                                            .accessibilityLabel("help.moveUpInStack".localized)
 
                                             // Move Down [↓]
                                             Button {
@@ -806,7 +811,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                                             }
                                             .buttonStyle(.tactile)
                                             .disabled(!store.canMovePod(id: pod.id, direction: .down))
-                                            .help("Move down in stack")
+                                            .help("help.moveDownInStack".localized)
+                                            .accessibilityLabel("help.moveDownInStack".localized)
 
                                             // Pop Out / Split from Stack [✂️ Split]
                                             Button {
@@ -828,7 +834,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                                                 .cornerRadius(4)
                                             }
                                             .buttonStyle(.tactile)
-                                            .help("Pop \(pod.name) out of this Shared Stack")
+                                            .help(String(format: "help.popOutOfStack".localized, pod.name))
+                                            .accessibilityLabel(String(format: "help.popOutOfStack".localized, pod.name))
 
                                             Spacer(minLength: 0)
 
@@ -849,6 +856,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                                             }
                                             .buttonStyle(.tactile)
                                             .help(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
+                                            .accessibilityLabel(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
                                         }
                                     }
 
@@ -1006,7 +1014,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                                             lastSubResizeHapticStep = 0
                                         }
                                 )
-                                .help("Drag vertically to resize \(pod.name) inside this Shared Stack")
+                                .help(String(format: "help.dragResizeInStack".localized, pod.name))
+                                .accessibilityLabel(String(format: "help.dragResizeInStack".localized, pod.name))
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .frame(height: sliceH, alignment: .topLeading)
@@ -1085,7 +1094,8 @@ public struct LiveSculptMajorClusterBoxView: View {
                             lastResizeHapticStep = 0
                         }
                 )
-                .help("Drag vertically to resize the entire Shared Major Pod")
+                .help("help.dragResizeMajor".localized)
+                .accessibilityLabel("help.dragResizeMajor".localized)
             }
             .frame(width: 202, height: boxH, alignment: .topLeading)
             .background(
@@ -1236,7 +1246,8 @@ public struct LiveSculptPodCapsuleView: View {
                                 .foregroundColor(.red.opacity(0.9))
                         }
                         .buttonStyle(.tactile)
-                        .help("Unmount \(pod.name) from rail")
+                        .help(String(format: "help.unmountFromRail".localized, pod.name))
+                        .accessibilityLabel(String(format: "help.unmountFromRail".localized, pod.name))
                     }
                     .padding(.horizontal, 8)
                     .padding(.top, spanH >= 42 ? 6 : 3)
@@ -1261,7 +1272,8 @@ public struct LiveSculptPodCapsuleView: View {
                             }
                             .buttonStyle(.tactile)
                             .disabled(!store.canMovePod(id: pod.id, direction: .up))
-                            .help("Move up")
+                            .help("help.moveUp".localized)
+                            .accessibilityLabel("help.moveUp".localized)
 
                             // Move Down
                             Button {
@@ -1279,7 +1291,8 @@ public struct LiveSculptPodCapsuleView: View {
                             }
                             .buttonStyle(.tactile)
                             .disabled(!store.canMovePod(id: pod.id, direction: .down))
-                            .help("Move down")
+                            .help("help.moveDown".localized)
+                            .accessibilityLabel("help.moveDown".localized)
 
                             // Snap to Predecessor if gap exists
                             if store.hasGapAbove(id: pod.id) {
@@ -1296,7 +1309,8 @@ public struct LiveSculptPodCapsuleView: View {
                                         .cornerRadius(4)
                                 }
                                 .buttonStyle(.tactile)
-                                .help("Snap to pod above")
+                                .help("help.snapToPodAbove".localized)
+                                .accessibilityLabel("help.snapToPodAbove".localized)
                             }
 
                             // Fill Rail
@@ -1314,7 +1328,8 @@ public struct LiveSculptPodCapsuleView: View {
                                     .cornerRadius(4)
                             }
                             .buttonStyle(.tactile)
-                            .help("Expand to fill available rail space")
+                            .help("help.expandRailSpace".localized)
+                            .accessibilityLabel("help.expandRailSpace".localized)
 
                             // Page Assignment Menu
                             let maxPage = max(pageCount, pod.pageIndex + 1)
@@ -1345,7 +1360,8 @@ public struct LiveSculptPodCapsuleView: View {
                             }
                             .menuStyle(.borderlessButton)
                             .fixedSize()
-                            .help("Move pod to another page")
+                            .help("help.moveToPage".localized)
+                            .accessibilityLabel("help.moveToPage".localized)
 
                             Spacer(minLength: 0)
 
@@ -1365,6 +1381,7 @@ public struct LiveSculptPodCapsuleView: View {
                             }
                             .buttonStyle(.tactile)
                             .help(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
+                            .accessibilityLabel(edge == .left ? "Throw to Right Rail" : "Throw to Left Rail")
                         }
                         .padding(.horizontal, 8)
                         .padding(.top, 2)
@@ -1391,7 +1408,8 @@ public struct LiveSculptPodCapsuleView: View {
                                 }
                                 .buttonStyle(.tactile)
                                 .fixedSize()
-                                .help("Split from Shared Major Pod")
+                                .help("help.splitFromMajorPod".localized)
+                                .accessibilityLabel("help.splitFromMajorPod".localized)
                             }
 
                             if store.canMergePodWithNext(id: pod.id) {
@@ -1411,7 +1429,8 @@ public struct LiveSculptPodCapsuleView: View {
                                 }
                                 .buttonStyle(.tactile)
                                 .fixedSize()
-                                .help("Stack with pod below into a Shared Major Pod")
+                                .help("help.stackWithBelow".localized)
+                                .accessibilityLabel("help.stackWithBelow".localized)
                             }
 
                             // Decompose toggle button
@@ -1437,7 +1456,8 @@ public struct LiveSculptPodCapsuleView: View {
                                 }
                                 .buttonStyle(.tactile)
                                 .fixedSize()
-                                .help("Toggle between composite bar and decomposed chips")
+                                .help("help.toggleDecomposition".localized)
+                                .accessibilityLabel("help.toggleDecomposition".localized)
                             }
 
                             Spacer(minLength: 0)
@@ -1664,7 +1684,8 @@ public struct LiveSculptPodCapsuleView: View {
                             lastResizeHapticStep = 0
                         }
                 )
-                .help("Drag vertically to resize height at 1:1 scale")
+                .help("help.dragResizeScale".localized)
+                .accessibilityLabel("help.dragResizeScale".localized)
             }
             .frame(width: 198, height: spanH, alignment: .topLeading)
             .background(

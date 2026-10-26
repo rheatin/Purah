@@ -194,6 +194,7 @@ public struct TerminalPluginSettingsView: View {
                                 store.savePersistentState()
                             }
                         ), in: 9.0...20.0, step: 0.5)
+                        .accessibilityLabel("terminal.fontSize".localized)
                     }
                 }
             }
