@@ -149,11 +149,21 @@ struct AdaptiveTierAndGaugeTests {
             checked += 1
 
             #expect(prefH >= minH, "\(id): preferred (\(prefH)) < minimum (\(minH))")
-            // AGENTS.md §5.1: 120pt is the composite floor, with 110pt allowed
-            // for the compact Music vinyl mini-player only.
-            let floor: CGFloat = id == "music" ? 110 : 120
-            #expect(minH >= floor,
-                    "\(id): composite minimum \(minH) is below the \(floor)pt ergonomic floor")
+
+            // Decomposed plugins floor on the chip policy instead of the
+            // composite minimum, and other suites can leave a shared plugin in
+            // either mode — assert against the floor that actually applies.
+            if plugin.isDecomposed(store: store) {
+                let chipFloor = plugin.decomposedPolicy(store: store).minChipHeight
+                #expect(minH >= chipFloor,
+                        "\(id): decomposed minimum \(minH) is below its chip floor \(chipFloor)")
+            } else {
+                // AGENTS.md §5.1: 120pt is the composite floor, with 110pt
+                // allowed for the compact Music vinyl mini-player only.
+                let floor: CGFloat = id == "music" ? 110 : 120
+                #expect(minH >= floor,
+                        "\(id): composite minimum \(minH) is below the \(floor)pt ergonomic floor")
+            }
         }
 
         #expect(checked >= 10, "expected every built-in plugin to be checked, saw \(checked)")

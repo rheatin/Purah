@@ -467,21 +467,27 @@ public struct ClipboardItemDrawerView: View {
 }
 
 // MARK: - Clipboard Full Drawer View (Polished Apple Design with Fuzzy Search)
+
+/// Reorders only on drop, never while dragging.
+///
+/// `dropEntered` used to move the item as the cursor swept across neighbours,
+/// so the order changed mid-flight and settling on "no drop" left the list
+/// rearranged. The dragged card now simply previews its target slot, and the
+/// move commits in `performDrop` — i.e. only when the release happens inside
+/// the clipboard card.
 struct ClipboardItemDropDelegate: DropDelegate {
     let targetItem: ClipboardItem
     let state: ClipboardPluginState
     @Binding var draggedItem: ClipboardItem?
+    @Binding var dropTargetId: String?
 
     func dropEntered(info: DropInfo) {
         guard let dragged = draggedItem, dragged.id != targetItem.id else { return }
-        guard let from = state.items.firstIndex(where: { $0.id == dragged.id }),
-              let to = state.items.firstIndex(where: { $0.id == targetItem.id }) else { return }
+        dropTargetId = targetItem.id
+    }
 
-        if from != to {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                state.moveItem(from: from, to: to)
-            }
-        }
+    func dropExited(info: DropInfo) {
+        if dropTargetId == targetItem.id { dropTargetId = nil }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -489,8 +495,43 @@ struct ClipboardItemDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        draggedItem = nil
+        defer {
+            draggedItem = nil
+            dropTargetId = nil
+        }
+        guard let dragged = draggedItem, dragged.id != targetItem.id,
+              // An aborted drag leaves `draggedItem` set (SwiftUI's `.onDrag`
+              // has no end callback), so a later drop of unrelated text would
+              // otherwise look like an internal reorder. Confirm the drag
+              // pasteboard still carries this item before committing.
+              dragged.isPayloadOnDragPasteboard,
+              let from = state.items.firstIndex(where: { $0.id == dragged.id }),
+              let to = state.items.firstIndex(where: { $0.id == targetItem.id }),
+              from != to else { return false }
+
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            state.moveItem(from: from, to: to)
+        }
         return true
+    }
+}
+
+private extension ClipboardItem {
+    /// True when the in-flight drag pasteboard carries this item's payload.
+    var isPayloadOnDragPasteboard: Bool {
+        let pasteboard = NSPasteboard(name: .drag)
+        switch type {
+        case .text(let text):
+            return pasteboard.string(forType: .string) == text
+        case .color(let hex, _, _, _, _):
+            return pasteboard.string(forType: .string) == hex
+        case .image(let path, _, _, _, _):
+            let urls = pasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL] ?? []
+            return urls.contains { $0.standardizedFileURL.path == (path as NSString).standardizingPath }
+        }
     }
 }
 
@@ -520,6 +561,7 @@ public struct ClipboardFullDrawerView: View {
     @State private var selectedFilter: ClipboardCategoryFilter = .all
     @State private var hoveredItemId: String? = nil
     @State private var draggedItem: ClipboardItem? = nil
+    @State private var dropTargetId: String? = nil
 
     private var palette: ThemePalette {
         context.palette
@@ -781,6 +823,7 @@ public struct ClipboardFullDrawerView: View {
     @ViewBuilder
     private func clipboardCard(item: ClipboardItem) -> some View {
         let isHovered = (hoveredItemId == item.id)
+        let isDropTarget = (dropTargetId == item.id)
 
         VStack(alignment: .leading, spacing: isCompact ? 4 : 8) {
             switch item.type {
@@ -996,10 +1039,20 @@ public struct ClipboardFullDrawerView: View {
         .overlay(
             RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
                 .stroke(
-                    item.isFavorite ? Color(hex: "#FF9F0A").opacity(0.65) : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
+                    item.isFavorite
+                        ? Color(hex: "#FF9F0A").opacity(0.65)
+                        : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
                     lineWidth: item.isFavorite ? 1.5 : 1
                 )
         )
+        // Drop target only while a card is actually in flight, so the static
+        // list never shows a stray highlight.
+        .overlay(
+            RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
+                .stroke(palette.primaryAccent, lineWidth: 1.6)
+                .opacity(isDropTarget ? 1 : 0)
+        )
+        .scaleEffect(isDropTarget ? 0.985 : 1.0)
         .contentShape(Rectangle())
         .onHover { isHovering in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -1023,7 +1076,15 @@ public struct ClipboardFullDrawerView: View {
             }
             return makeDragProvider(for: item)
         }
-        .onDrop(of: [.text, .fileURL], delegate: ClipboardItemDropDelegate(targetItem: item, state: state, draggedItem: $draggedItem))
+        .onDrop(
+            of: [.text, .fileURL],
+            delegate: ClipboardItemDropDelegate(
+                targetItem: item,
+                state: state,
+                draggedItem: $draggedItem,
+                dropTargetId: $dropTargetId
+            )
+        )
         .onTapGesture {
             state.copyItem(item)
             context.performHaptic(.levelChange)

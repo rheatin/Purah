@@ -1083,13 +1083,33 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     }
 
     public func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        let succeeded = !operation.isEmpty && operation != .delete
+        // A drop that lands back inside Purah's own UI (this shelf, the
+        // clipboard, any rail) is not a hand-off: the content never left.
+        // Treating it as one made the shelf delete the very file it had just
+        // re-accepted, so re-dragging an item onto the shelf destroyed it.
+        let landedInsidePurah = Self.isInsidePurahWindow(screenPoint)
+        let succeeded = !operation.isEmpty && operation != .delete && !landedInsidePurah
         let draggedIds = activeDraggedIds.isEmpty ? [file.id] : activeDraggedIds
         activeDraggedIds = []
         if let onBatchDragCompleted {
             onBatchDragCompleted(draggedIds, succeeded)
         } else {
             onDragCompleted?(succeeded)
+        }
+    }
+
+    /// True when the screen point lands on a Purah surface that can receive the
+    /// drop. Used to tell an internal drop apart from a hand-off to another app.
+    ///
+    /// `ignoresMouseEvents` is the authority here, not the window frame: an
+    /// expanded rail canvas is up to 580pt wide but stays click-through over its
+    /// transparent area, so a frame test would wrongly claim a drop onto Finder
+    /// underneath it.
+    static func isInsidePurahWindow(_ screenPoint: NSPoint) -> Bool {
+        NSApp.windows.contains { window in
+            window.isVisible
+                && !window.ignoresMouseEvents
+                && window.frame.contains(screenPoint)
         }
     }
 }
