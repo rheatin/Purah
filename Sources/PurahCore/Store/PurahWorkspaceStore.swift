@@ -2059,8 +2059,8 @@ public final class PurahWorkspaceStore {
                 if expandedCount == 1 {
                     let aboveCount = anchorIdx
                     let belowCount = clusters.count - 1 - anchorIdx
-                    let minAboveSpace = (0..<aboveCount).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) + clusterGap }
-                    let minBelowSpace = ((anchorIdx + 1)..<clusters.count).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) + clusterGap }
+                    let minAboveSpace = (0..<aboveCount).reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + max(18.0, Double(clusters[idx].count) * 18.0) + clusterGap }
+                    let minBelowSpace = ((anchorIdx + 1)..<clusters.count).reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + max(18.0, Double(clusters[idx].count) * 18.0) + clusterGap }
                     let maxSingleSpan = max(availableH - minAboveSpace - minBelowSpace, 160.0)
                     let anchorSpan = min(max(fullClusterSpans[anchorIdx], idleClusterSpans[anchorIdx]), maxSingleSpan)
 
@@ -2101,16 +2101,16 @@ public final class PurahWorkspaceStore {
 
                     if aboveCount > 0 {
                         let aboveGaps = Double(max(aboveCount - 1, 0)) * clusterGap
-                        let minAboveSum = (0..<aboveCount).reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
+                        let minAboveSum = (0..<aboveCount).reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + max(18.0, Double(clusters[idx].count) * 18.0) }
                         let aboveNetSpace = max(anchorStartY - clusterGap - safeTop - aboveGaps, minAboveSum)
-                        let idleAboveSum = (0..<aboveCount).reduce(0.0) { $0 + idleClusterSpans[$1] }
+                        let idleAboveSum = (0..<aboveCount).reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + idleClusterSpans[idx] }
 
                         if idleAboveSum <= aboveNetSpace {
                             let aboveSpans = (0..<aboveCount).map { idleClusterSpans[$0] }
                             var curY = safeTop
                             for i in 0..<aboveCount {
                                 clusterSpans[i] = aboveSpans[i]
-                                let remainingNeeded = ((i + 1)..<aboveCount).reduce(0.0) { $0 + aboveSpans[$1] + clusterGap } + aboveSpans[i]
+                                let remainingNeeded: Double = ((i + 1)..<aboveCount).reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + aboveSpans[idx] + clusterGap } + aboveSpans[i]
                                 let targetY = min(max(idleClusterStartYs[i], curY), anchorStartY - clusterGap - remainingNeeded)
                                 clusterStartYs[i] = targetY
                                 curY = targetY + aboveSpans[i] + clusterGap
@@ -2139,9 +2139,9 @@ public final class PurahWorkspaceStore {
                         let belowStart = anchorStartY + anchorSpan + clusterGap
                         let belowIndices = Array((anchorIdx + 1)..<clusters.count)
                         let belowGaps = Double(max(belowCount - 1, 0)) * clusterGap
-                        let minBelowSum = belowIndices.reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
+                        let minBelowSum = belowIndices.reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + max(18.0, Double(clusters[idx].count) * 18.0) }
                         let belowNetSpace = max(safeBottom - belowStart - belowGaps, minBelowSum)
-                        let idleBelowSum = belowIndices.reduce(0.0) { $0 + idleClusterSpans[$1] }
+                        let idleBelowSum = belowIndices.reduce(0.0) { (sum: Double, idx: Int) -> Double in sum + idleClusterSpans[idx] }
 
                         if idleBelowSum <= belowNetSpace {
                             let belowSpans = belowIndices.map { idleClusterSpans[$0] }
