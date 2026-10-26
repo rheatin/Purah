@@ -150,8 +150,8 @@ public struct SteppedRailContainerView: View {
                 .frame(height: displaySpanH, alignment: .top)
             }
         }
-        .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: totalHeight)
-        .animation(.spring(response: 0.30, dampingFraction: 0.80, blendDuration: 0.08), value: store.activeDrawerItemId)
+        .animation(PurahMotionPolicy.railReflow, value: totalHeight)
+        .animation(PurahMotionPolicy.railReflow, value: store.activeDrawerItemId)
         .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
             plugin.onDrop(providers: providers, context: context)
         })
@@ -175,14 +175,14 @@ public struct SteppedRailContainerView: View {
                 store.activateDrawer(podId: pod.id, itemId: subItem.id)
             },
             requestDismiss: {
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                withAnimation(PurahMotionPolicy.drawerExit) {
                     if store.activeDrawerItemId == subItem.id {
                         store.activeDrawerItemId = nil
                     }
                 }
             },
             togglePin: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: subItem.id)
                 }
             },
@@ -246,13 +246,7 @@ public struct SteppedRailContainerView: View {
                 .padding(.vertical, 10)
                 .frame(width: drawerW, height: height, alignment: .top)
                 .liquidDrawerBackground(
-                    shape: UnevenRoundedRectangle(
-                        topLeadingRadius: edge == .right ? 10 : 0,
-                        bottomLeadingRadius: edge == .right ? 10 : 0,
-                        bottomTrailingRadius: edge == .left ? 10 : 0,
-                        topTrailingRadius: edge == .left ? 10 : 0,
-                        style: .continuous
-                    ),
+                    shape: PurahDrawerShape.composite(edge: edge),
                     accentColor: subContext.accentColor
                 )
         }
@@ -285,24 +279,26 @@ public struct SteppedRailContainerView: View {
             }
         }
         .frame(height: cardH)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     @ViewBuilder
     private func subItemIndicatorBar(subItem: PurahPluginSubItem, itemH: CGFloat, tintColor: Color) -> some View {
         let barW = CGFloat(store.railBarWidth)
-        let radius = min(barW / 2, 4)
+        let fill = subItem.gaugeStyle == .solid ? subItem.gaugeRatio : nil
 
         ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: radius)
-                .fill(baseFillColor(for: subItem.state, tintColor: tintColor))
-                .frame(width: barW, height: itemH)
-
-            if subItem.gaugeStyle == .solid, let ratio = subItem.gaugeRatio {
-                RoundedRectangle(cornerRadius: radius)
-                    .fill(tintColor)
-                    .frame(width: barW, height: max(itemH * CGFloat(min(max(ratio, 0.0), 1.0)), 4.0))
-            }
+            PurahSegmentGaugeBarView(
+                segments: fill.map {
+                    [PurahGaugeSegment(id: subItem.id, ratio: $0, color: tintColor)]
+                } ?? [],
+                barWidth: barW,
+                height: itemH,
+                trackColor: baseFillColor(for: subItem.state, tintColor: tintColor)
+            )
+            // The chip's glow follows its activity state, not the metric level,
+            // so it stays on the bar rather than on the filled channel.
+            .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
 
             if subItem.state == .running {
                 Circle()
@@ -312,7 +308,6 @@ public struct SteppedRailContainerView: View {
             }
         }
         .frame(width: barW, height: itemH)
-        .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
     }
 
     private func baseFillColor(for state: RailItemActivityState, tintColor: Color) -> Color {
@@ -372,7 +367,7 @@ public struct SteppedRailContainerView: View {
             Spacer(minLength: 4)
 
             PurahPinButton(isPinned: isPinned, tintColor: tintColor) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: subItem.id)
                 }
             }
@@ -404,7 +399,7 @@ public struct SteppedRailContainerView: View {
                 Label("Configure \(plugin.manifest.displayName)...", systemImage: "gearshape")
             }
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: subItem.id)
                 }
             } label: {
@@ -414,22 +409,6 @@ public struct SteppedRailContainerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.stepped(edge: edge)
     }
 }

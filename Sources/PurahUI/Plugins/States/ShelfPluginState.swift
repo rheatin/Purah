@@ -350,10 +350,14 @@ public final class ShelfPluginState: Sendable {
 
     /// Removes the item from the shelf after it is dragged out if `autoRemoveOnDrag` is enabled
     /// and the item is not starred (`isFavorite == false`). Never deletes the user's original file on disk!
-    public func handleDragOutCompleted(id: String) {
-        guard autoRemoveOnDrag else { return }
-        guard let item = files.first(where: { $0.id == id }), !item.isFavorite else { return }
+    ///
+    /// Returns `true` when the item was actually removed.
+    @discardableResult
+    public func handleDragOutCompleted(id: String) -> Bool {
+        guard autoRemoveOnDrag else { return false }
+        guard let item = files.first(where: { $0.id == id }), !item.isFavorite else { return false }
         removeFile(id: id)
+        return true
     }
 
     /// Removes a batch of items from the shelf after they are dragged out or exported if `autoRemoveOnDrag` is enabled,

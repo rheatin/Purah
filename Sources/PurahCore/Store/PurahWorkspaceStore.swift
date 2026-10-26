@@ -1380,7 +1380,10 @@ public final class PurahWorkspaceStore {
 
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
-    public var drawerWidthMode: DrawerWidthMode = .fixed
+    /// Adaptive by default: a new user has never expressed a width preference,
+    /// and each plugin already declares the width its content wants. Starting
+    /// on `.fixed` would silently override every one of those with 290pt.
+    public var drawerWidthMode: DrawerWidthMode = .adaptive
     public var fixedDrawerWidth: Double = 290.0 // Bounds: 220px ~ 330px
     public var customPodColors: [String: String] = [:]
 
@@ -2136,6 +2139,12 @@ public final class PurahWorkspaceStore {
                         }
                     }
                 } else {
+                    // Several drawers are open at once, so the expanded spans
+                    // have to share the rail. Each one holds its own declared
+                    // floor rather than a single hardcoded 110pt: a plugin that
+                    // asked for 150pt must not be clipped down to a number the
+                    // solver picked for someone else. Idle neighbours stay
+                    // squashable — they render no drawer at all.
                     let idleReserved = clusters.indices.filter { !expandedFlags[$0] }
                         .reduce(0.0) { $0 + max(18.0, Double(clusters[$1].count) * 18.0) }
                     let expandedBudget = max(netAvailable - idleReserved, 160.0)
@@ -2144,8 +2153,9 @@ public final class PurahWorkspaceStore {
 
                     for idx in clusters.indices where expandedFlags[idx] {
                         if idx == anchorIdx {
-                            let granted = min(max(fullClusterSpans[idx], 120.0), expandedBudget * 0.55)
-                            clusterSpans[idx] = max(granted, 110.0)
+                            let floor = clusterMinFloors[idx]
+                            let granted = min(max(fullClusterSpans[idx], floor), expandedBudget * 0.55)
+                            clusterSpans[idx] = max(granted, floor)
                             remainingExpandedBudget = max(expandedBudget - clusterSpans[idx], 90.0)
                         } else {
                             otherExpandedIndices.append(idx)
@@ -2154,7 +2164,7 @@ public final class PurahWorkspaceStore {
                     if !otherExpandedIndices.isEmpty {
                         let share = remainingExpandedBudget / Double(otherExpandedIndices.count)
                         for idx in otherExpandedIndices {
-                            clusterSpans[idx] = max(share, 110.0)
+                            clusterSpans[idx] = max(share, clusterMinFloors[idx])
                         }
                     }
                     for idx in clusters.indices where !expandedFlags[idx] {
@@ -3183,6 +3193,63 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
+    }
+
+    /// Drops every pod whose id has no implementation behind it.
+    ///
+    /// A saved layout outlives the code that produced it: a dynamically loaded
+    /// plugin can be unloaded, uninstalled or simply deleted from the project,
+    /// and its pod then renders a bare rail bar with no drawer to open. The
+    /// caller supplies `hasImplementation` because the store cannot see plugin
+    /// code — `PurahUI` owns the registry, and `PurahCore` must not depend on it.
+    ///
+    /// Built-in pods are never candidates: their ids are the product's own
+    /// vocabulary, and a transient registration gap must not delete a user's
+    /// carefully sculpted layout. Only unknown ids are pruned, which is exactly
+    /// the set that could never open a drawer.
+    ///
+    /// - Parameter hasImplementation: Whether a live plugin exists for an id.
+    /// - Returns: The ids that were removed.
+    @discardableResult
+    public func pruneOrphanedPods(hasImplementation: (String) -> Bool) -> [String] {
+        let builtInIds = Set(Self.defaultPods().map(\.id))
+        let orphanIds = pods
+            .map(\.id)
+            .filter { !builtInIds.contains($0) && !hasImplementation($0) }
+        guard !orphanIds.isEmpty else { return [] }
+
+        let removed = Set(orphanIds)
+        if let activeId = activeDrawerPodId, removed.contains(activeId) {
+            dismissActiveDrawer()
+        }
+        pinnedDrawerItemIds = pinnedDrawerItemIds.filter { itemId in
+            !removed.contains { itemId == $0 || itemId.hasPrefix("\($0)-") }
+        }
+        let affectedEdges = Set(pods.filter { removed.contains($0.id) }.map(\.edge))
+        pods.removeAll { removed.contains($0.id) }
+        for id in orphanIds {
+            unregisterCapabilityProvider(for: id)
+        }
+        if let market = _marketManager {
+            var installed = market.installedPluginIds
+            var enabled = market.enabledPluginIds
+            installed.subtract(removed)
+            enabled.subtract(removed)
+            market.installedPluginIds = installed
+            market.enabledPluginIds = enabled
+        }
+
+        // Reflow only the rails that lost a pod. `autoLayoutAll()` would also
+        // discard the user's hand-sculpted heights and zone ordering, which has
+        // nothing to do with a plugin disappearing.
+        for edge in affectedEdges {
+            normalizePageRanges(for: edge)
+        }
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+        DiagnosticLogger.shared.info("Store", "Pruned orphaned pods: \(orphanIds.joined(separator: ", "))")
+        return orphanIds
     }
 
     public func fillRail(podId: String) {

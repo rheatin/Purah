@@ -463,9 +463,19 @@ struct VitalsAndScriptTests {
         store._scriptsEnabledActionIds = []
     }
 
+    /// Isolated defaults: these two hit-test cases read the saved layout, and a
+    /// sibling test that leaves `scripts` near the bottom of the rail makes the
+    /// "outside the card" probe land back inside it after the `max(_, 10)`
+    /// clamp. The product is fine; the fixture has to own its state.
+    private func isolatedStore() -> PurahWorkspaceStore {
+        PurahWorkspaceStore(
+            userDefaults: UserDefaults(suiteName: "test_scripts_hit_\(UUID().uuidString)")!
+        )
+    }
+
     @Test("PassThroughHostingView 2D hit-testing accurately captures decomposed script drawer")
     func testDecomposedScriptsHitTesting() {
-        let store = PurahWorkspaceStore()
+        let store = isolatedStore()
         store.mountPod(id: "scripts", to: .left)
         store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions
@@ -517,7 +527,7 @@ struct VitalsAndScriptTests {
 
     @Test("Decomposed script drawer enables click-through on transparent areas of inactive sibling actions")
     func testDecomposedScriptTransparentClickThrough() {
-        let store = PurahWorkspaceStore()
+        let store = isolatedStore()
         store.mountPod(id: "scripts", to: .left)
         store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions

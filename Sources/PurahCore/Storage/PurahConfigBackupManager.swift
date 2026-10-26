@@ -224,7 +224,7 @@ public enum PurahConfigBackupManager {
         store.pods = PurahWorkspaceStore.defaultPods()
         store.railBarWidth = 8.0
         store.fixedDrawerWidth = 290.0
-        store.drawerWidthMode = .fixed
+        store.drawerWidthMode = .adaptive
         store.isDynamicBreathingEnabled = true
         store.isAlwaysCompactBreathing = false
         store.hotKeyShortcut = .defaultShortcut

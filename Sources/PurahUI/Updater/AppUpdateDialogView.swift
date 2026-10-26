@@ -141,7 +141,7 @@ public struct AppUpdateDialogView: View {
                     ))
                 }
             }
-            .animation(.spring(response: 0.24, dampingFraction: 0.82), value: updater.state)
+            .animation(PurahMotionPolicy.micro, value: updater.state)
 
             Divider()
 

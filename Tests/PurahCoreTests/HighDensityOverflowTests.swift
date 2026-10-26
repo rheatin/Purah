@@ -1104,8 +1104,11 @@ struct HighDensityOverflowTests {
         store._isScriptsDecomposed = true
         store._isAIDecomposed = true
 
+        // Composite floors. Vitals sits at 140 (not its old 300) so the drawer
+        // has a real min→preferred range to adapt through; AGENTS.md §5.1 asks
+        // for >= 120.
         let testPods: [(id: String, partnerId: String, edge: MountEdge, expectedMinHeight: CGFloat)] = [
-            ("vitals", "shelf", .left, 300.0),
+            ("vitals", "shelf", .left, 140.0),
             ("scripts", "shelf", .left, 160.0),
             ("clipboard", "shelf", .left, 150.0),
             ("calendar", "music", .right, 140.0),

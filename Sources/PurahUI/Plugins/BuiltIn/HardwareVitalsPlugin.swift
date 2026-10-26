@@ -84,13 +84,16 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if !isDecomposed(store: store) {
-            return 300.0
+            // Composite floor sits below the preferred height on purpose: with
+            // min == preferred the drawer never expanded on hover and the
+            // compact tier was unreachable (AGENTS.md §5.1 wants >= 120pt).
+            return 140.0
         }
         return decomposedPolicy.calculateMinimumHeight(activeCount: state.enabledMetrics.count)
     }
 
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        max(minimumDrawerHeight(store: store), 260.0)
+        max(minimumDrawerHeight(store: store), 300.0)
     }
 
     public var usesAdaptiveTelemetryColor: Bool { true }
@@ -204,7 +207,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
                 height: context.slotHeight,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }
@@ -225,19 +228,16 @@ public struct VitalsRailBarPluginView: View {
     public var body: some View {
         let cpu = state.metrics.cpuUsage
         let isPulsing = cpu > 0.85
-        let radius = min(context.railWidth / 2, 4)
 
-        ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: radius)
-                .fill(context.accentColor.opacity(0.25))
-                .frame(width: context.railWidth, height: context.slotHeight)
-
-            RoundedRectangle(cornerRadius: radius)
-                .fill(context.accentColor)
-                .frame(width: context.railWidth, height: max(context.slotHeight * CGFloat(cpu), 4.0))
-                .modifier(OptionalGlow(color: context.accentColor, enabled: isPulsing))
-        }
-        .frame(width: context.railWidth, height: context.slotHeight)
+        PurahSegmentGaugeBarView(
+            segments: [PurahGaugeSegment(id: "cpu", ratio: cpu, color: context.accentColor, isAlerting: isPulsing)],
+            barWidth: context.railWidth,
+            height: context.slotHeight,
+            trackColor: context.accentColor.opacity(0.25),
+            // The old bar always kept a 4pt sliver so the pod never looked
+            // switched off at idle CPU.
+            minimumVisibleFill: 4.0
+        )
     }
 }
 
@@ -381,7 +381,7 @@ public struct VitalsPluginSettingsView: View {
                                 ForEach(VitalsMetricType.allCases) { metric in
                                     let isIncluded = state.enabledMetrics.contains(metric)
                                     Button {
-                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                        withAnimation(PurahMotionPolicy.confirm) {
                                             if isIncluded {
                                                 if state.enabledMetrics.count > 1 {
                                                     state.enabledMetrics.removeAll { $0 == metric }
@@ -438,7 +438,7 @@ public struct VitalsPluginSettingsView: View {
                 icon: "slider.horizontal.3",
                 iconColor: Color(hex: "#FF9F0A"),
                 trailing: Button {
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                    withAnimation(PurahMotionPolicy.confirm) {
                         state.resetThresholds()
                         store._vitalsThresholds = state.thresholds
                         store.savePersistentState()

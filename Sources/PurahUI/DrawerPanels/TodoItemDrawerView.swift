@@ -67,7 +67,7 @@ public struct TodoItemDrawerView: View {
             }
         }
         .frame(height: cardH)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     @ViewBuilder
@@ -171,25 +171,7 @@ public struct TodoItemDrawerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            // Right rail: 8px continuous radius on left, 0px flush against right bezel
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            // Left rail: 8px continuous radius on right, 0px flush against left bezel
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.stepped(edge: edge)
     }
 
     private var pinButton: some View {

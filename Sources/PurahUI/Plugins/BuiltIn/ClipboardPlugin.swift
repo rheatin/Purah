@@ -236,7 +236,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
                 pluginState: self.state,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }
@@ -276,11 +276,9 @@ public struct ClipboardItemDrawerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
-        } else {
-            return UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 10, topTrailingRadius: 10, style: .continuous)
-        }
+        // A clipboard sub-item card is drawer-sized rather than chip-sized, so
+        // it keeps the composite radius even though it is a stepped view.
+        PurahDrawerShape.composite(edge: edge)
     }
 
     public var body: some View {
@@ -307,7 +305,7 @@ public struct ClipboardItemDrawerView: View {
                 .allowsHitTesting(isExpanded)
         }
         .frame(height: isExpanded ? cardH : height)
-        .animation(state == .expandedDrawer ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: state)
+        .animation(state == .expandedDrawer ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: state)
     }
 
     @ViewBuilder
@@ -397,7 +395,7 @@ public struct ClipboardItemDrawerView: View {
                 Button {
                     pluginState.copyItem(item)
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                    withAnimation(PurahMotionPolicy.drawerExit) {
                         store.activeDrawerItemId = nil
                     }
                 } label: {
@@ -430,7 +428,7 @@ public struct ClipboardItemDrawerView: View {
             if let item = item {
                 pluginState.copyItem(item)
                 SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                withAnimation(PurahMotionPolicy.drawerExit) {
                     store.activeDrawerItemId = nil
                 }
             }
@@ -467,21 +465,27 @@ public struct ClipboardItemDrawerView: View {
 }
 
 // MARK: - Clipboard Full Drawer View (Polished Apple Design with Fuzzy Search)
+
+/// Reorders only on drop, never while dragging.
+///
+/// `dropEntered` used to move the item as the cursor swept across neighbours,
+/// so the order changed mid-flight and settling on "no drop" left the list
+/// rearranged. The dragged card now simply previews its target slot, and the
+/// move commits in `performDrop` — i.e. only when the release happens inside
+/// the clipboard card.
 struct ClipboardItemDropDelegate: DropDelegate {
     let targetItem: ClipboardItem
     let state: ClipboardPluginState
     @Binding var draggedItem: ClipboardItem?
+    @Binding var dropTargetId: String?
 
     func dropEntered(info: DropInfo) {
         guard let dragged = draggedItem, dragged.id != targetItem.id else { return }
-        guard let from = state.items.firstIndex(where: { $0.id == dragged.id }),
-              let to = state.items.firstIndex(where: { $0.id == targetItem.id }) else { return }
+        dropTargetId = targetItem.id
+    }
 
-        if from != to {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                state.moveItem(from: from, to: to)
-            }
-        }
+    func dropExited(info: DropInfo) {
+        if dropTargetId == targetItem.id { dropTargetId = nil }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -489,8 +493,43 @@ struct ClipboardItemDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        draggedItem = nil
+        defer {
+            draggedItem = nil
+            dropTargetId = nil
+        }
+        guard let dragged = draggedItem, dragged.id != targetItem.id,
+              // An aborted drag leaves `draggedItem` set (SwiftUI's `.onDrag`
+              // has no end callback), so a later drop of unrelated text would
+              // otherwise look like an internal reorder. Confirm the drag
+              // pasteboard still carries this item before committing.
+              dragged.isPayloadOnDragPasteboard,
+              let from = state.items.firstIndex(where: { $0.id == dragged.id }),
+              let to = state.items.firstIndex(where: { $0.id == targetItem.id }),
+              from != to else { return false }
+
+        withAnimation(PurahMotionPolicy.surfaceSoft) {
+            state.moveItem(from: from, to: to)
+        }
         return true
+    }
+}
+
+private extension ClipboardItem {
+    /// True when the in-flight drag pasteboard carries this item's payload.
+    var isPayloadOnDragPasteboard: Bool {
+        let pasteboard = NSPasteboard(name: .drag)
+        switch type {
+        case .text(let text):
+            return pasteboard.string(forType: .string) == text
+        case .color(let hex, _, _, _, _):
+            return pasteboard.string(forType: .string) == hex
+        case .image(let path, _, _, _, _):
+            let urls = pasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL] ?? []
+            return urls.contains { $0.standardizedFileURL.path == (path as NSString).standardizingPath }
+        }
     }
 }
 
@@ -520,6 +559,7 @@ public struct ClipboardFullDrawerView: View {
     @State private var selectedFilter: ClipboardCategoryFilter = .all
     @State private var hoveredItemId: String? = nil
     @State private var draggedItem: ClipboardItem? = nil
+    @State private var dropTargetId: String? = nil
 
     private var palette: ThemePalette {
         context.palette
@@ -589,7 +629,9 @@ public struct ClipboardFullDrawerView: View {
                 if itemsToDisplay.isEmpty {
                     emptySearchView
                 } else {
-                    ScrollView(.vertical, showsIndicators: true) {
+                    // A clipping list is long-form by nature — an overlay
+                    // scroller is the only cue that more entries exist.
+                    PurahScrollableBody(indicators: .automatic) {
                         LazyVStack(spacing: isCompact ? 4 : 8) {
                             ForEach(itemsToDisplay) { item in
                                 clipboardCard(item: item)
@@ -726,7 +768,7 @@ public struct ClipboardFullDrawerView: View {
                 HStack(spacing: 4) {
                     ForEach(ClipboardCategoryFilter.allCases) { filter in
                         Button {
-                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                            withAnimation(PurahMotionPolicy.microLight) {
                                 selectedFilter = filter
                             }
                         } label: {
@@ -781,6 +823,7 @@ public struct ClipboardFullDrawerView: View {
     @ViewBuilder
     private func clipboardCard(item: ClipboardItem) -> some View {
         let isHovered = (hoveredItemId == item.id)
+        let isDropTarget = (dropTargetId == item.id)
 
         VStack(alignment: .leading, spacing: isCompact ? 4 : 8) {
             switch item.type {
@@ -986,7 +1029,7 @@ public struct ClipboardFullDrawerView: View {
                         .font(.system(size: isCompact ? 9 : 10.5))
                         .foregroundColor(item.isFavorite ? Color(hex: "#FF9F0A") : (isHovered ? palette.primaryAccent : .clear))
                         .scaleEffect(item.isFavorite ? 1.05 : 1.0)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: item.isFavorite)
+                        .animation(PurahMotionPolicy.hover, value: item.isFavorite)
                 }
                 .buttonStyle(.plain)
                 .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
@@ -996,13 +1039,23 @@ public struct ClipboardFullDrawerView: View {
         .overlay(
             RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
                 .stroke(
-                    item.isFavorite ? Color(hex: "#FF9F0A").opacity(0.65) : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
+                    item.isFavorite
+                        ? Color(hex: "#FF9F0A").opacity(0.65)
+                        : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
                     lineWidth: item.isFavorite ? 1.5 : 1
                 )
         )
+        // Drop target only while a card is actually in flight, so the static
+        // list never shows a stray highlight.
+        .overlay(
+            RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
+                .stroke(palette.primaryAccent, lineWidth: 1.6)
+                .opacity(isDropTarget ? 1 : 0)
+        )
+        .scaleEffect(isDropTarget ? 0.985 : 1.0)
         .contentShape(Rectangle())
         .onHover { isHovering in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            withAnimation(PurahMotionPolicy.surface) {
                 if isHovering {
                     hoveredItemId = item.id
                     ClipboardHoverPreviewController.shared.show(
@@ -1023,7 +1076,15 @@ public struct ClipboardFullDrawerView: View {
             }
             return makeDragProvider(for: item)
         }
-        .onDrop(of: [.text, .fileURL], delegate: ClipboardItemDropDelegate(targetItem: item, state: state, draggedItem: $draggedItem))
+        .onDrop(
+            of: [.text, .fileURL],
+            delegate: ClipboardItemDropDelegate(
+                targetItem: item,
+                state: state,
+                draggedItem: $draggedItem,
+                dropTargetId: $dropTargetId
+            )
+        )
         .onTapGesture {
             state.copyItem(item)
             context.performHaptic(.levelChange)

@@ -316,7 +316,7 @@ public struct DropShelfDrawerView: View {
 
                 // File List with Automatic Direct Left-Click Drag Marquee Selection
                 let shelfEdge = store.pods.first(where: { $0.id == "shelf" })?.edge ?? .left
-                ScrollView(.vertical, showsIndicators: false) {
+                PurahScrollableBody {
                     VStack(spacing: 6) {
                         ForEach(state.files) { file in
                             ShelfFileRowView(
@@ -664,6 +664,12 @@ public struct ShelfStashDropDelegate: DropDelegate {
         // 1. Check for file URLs first
         if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !fileURLs.isEmpty {
+            // Putting a shelf item back where it came from is a round trip, not
+            // an export — tell the drag session so the source does not delete
+            // the file it just re-accepted.
+            if ShelfDragSession.shared.carriesAny(of: fileURLs) {
+                ShelfDragSession.shared.claimSelfDrop()
+            }
             for url in fileURLs {
                 state.addFile(url: url)
             }
@@ -1051,6 +1057,9 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
             let rawBatch = filesToDragProvider?() ?? [file]
             let batchFiles = rawBatch.isEmpty ? [file] : rawBatch
             activeDraggedIds = batchFiles.map(\.id)
+            ShelfDragSession.shared.begin(
+                paths: batchFiles.compactMap { $0.resolvedURL?.path ?? $0.filePath }
+            )
 
             let localPoint = convert(current, from: nil)
             var draggingItems: [NSDraggingItem] = []
@@ -1083,7 +1092,20 @@ public final class DraggableShelfItemNSView: NSView, NSDraggingSource {
     }
 
     public func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        let succeeded = !operation.isEmpty && operation != .delete
+        // A drop that lands back on this shelf is not a hand-off: the content
+        // never left. Treating it as one made the shelf delete the very file it
+        // had just re-accepted, so re-dragging an item onto the shelf destroyed
+        // it.
+        //
+        // Only the shelf's own drop targets claim the round trip. Geometry
+        // cannot answer this: every pod on an edge shares one rail panel, so a
+        // hit test would treat a drop on the clipboard drawer as a shelf drop.
+        //
+        // The claim is guaranteed to be in place by now — AppKit delivers the
+        // destination's `performDragOperation` before the source's session-end
+        // callback.
+        let returnedToShelf = ShelfDragSession.shared.consumeSelfDrop()
+        let succeeded = !operation.isEmpty && operation != .delete && !returnedToShelf
         let draggedIds = activeDraggedIds.isEmpty ? [file.id] : activeDraggedIds
         activeDraggedIds = []
         if let onBatchDragCompleted {
@@ -1231,8 +1253,8 @@ public struct BatchShelfDragPillView: View {
                 .stroke(shelfColor.opacity(isHovered || hasSelection ? 0.85 : 0.45), lineWidth: 1.2)
         )
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.01 : 1.0))
-        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isHovered)
-        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isDragging)
+        .animation(PurahMotionPolicy.micro, value: isHovered)
+        .animation(PurahMotionPolicy.micro, value: isDragging)
         .overlay(
             ShelfItemDragSourceView(
                 file: representativeFile,
@@ -1503,8 +1525,8 @@ public struct ShelfFileRowView: View {
                 .stroke(isSelected ? shelfColor : Color.clear, lineWidth: 1.5)
         )
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))
-        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isHovered)
-        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isDragging)
+        .animation(PurahMotionPolicy.shelfRow, value: isHovered)
+        .animation(PurahMotionPolicy.shelfRow, value: isDragging)
         .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .onHover { isHovered = $0 }

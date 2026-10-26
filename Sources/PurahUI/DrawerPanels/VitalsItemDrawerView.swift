@@ -65,7 +65,7 @@ public struct VitalsItemDrawerView: View {
             }
         }
         .frame(height: cardH)
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     private var telemetryRatio: Double {
@@ -131,23 +131,7 @@ public struct VitalsItemDrawerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.stepped(edge: edge)
     }
 
     private var pinButton: some View {

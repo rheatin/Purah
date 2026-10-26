@@ -199,7 +199,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
                 height: context.slotHeight,
                 store: context.store,
                 onTogglePin: {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                    withAnimation(PurahMotionPolicy.pin) {
                         context.togglePin(subItemId)
                     }
                 }
@@ -390,7 +390,7 @@ public struct ScriptsPluginSettingsView: View {
                                 ForEach(state.actions) { action in
                                     let isIncluded = currentEnabled.contains(action.id)
                                     Button {
-                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                        withAnimation(PurahMotionPolicy.confirm) {
                                             var updated = currentEnabled
                                             if isIncluded {
                                                 if updated.count > 1 {
@@ -483,7 +483,7 @@ public struct ScriptsPluginSettingsView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                        withAnimation(PurahMotionPolicy.microLight) {
                             isAddingAction.toggle()
                             if isAddingAction {
                                 editingActionId = nil
@@ -636,7 +636,7 @@ public struct ScriptsPluginSettingsView: View {
                                         .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
 
                                     Button {
-                                        withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                                        withAnimation(PurahMotionPolicy.microLight) {
                                             if editingActionId == action.id {
                                                 editingActionId = nil
                                             } else {
@@ -730,7 +730,7 @@ public struct ScriptsPluginSettingsView: View {
                                             Spacer()
 
                                             Button {
-                                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                                withAnimation(PurahMotionPolicy.confirm) {
                                                     editingActionId = nil
                                                 }
                                             } label: {
@@ -758,7 +758,7 @@ public struct ScriptsPluginSettingsView: View {
                                                     description: editDescription.trimmingCharacters(in: .whitespaces),
                                                     showNotification: editShowNotification
                                                 )
-                                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                                withAnimation(PurahMotionPolicy.confirm) {
                                                     state.updateAction(updated)
                                                     editingActionId = nil
                                                 }

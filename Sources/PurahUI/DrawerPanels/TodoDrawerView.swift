@@ -97,7 +97,7 @@ struct TodoOverviewRow: View {
                 .cornerRadius(3)
 
             Button {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                withAnimation(PurahMotionPolicy.microLight) {
                     state.remove(id: todo.id)
                     store._todos.removeAll { $0.id == todo.id }
                 }
@@ -195,7 +195,7 @@ public struct TodoDrawerView: View {
                 // Single item stepped drawer mode
                 todoCard(todo: activeItem)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
+                PurahScrollableBody {
                     VStack(spacing: 5) {
                         ForEach(state.todos.filter { !excludeIDs.contains($0.id) }) { todo in
                             todoCard(todo: todo)

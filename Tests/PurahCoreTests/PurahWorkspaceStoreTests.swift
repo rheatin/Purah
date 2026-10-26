@@ -24,6 +24,25 @@ struct PurahWorkspaceStoreTests {
         #expect(store.pods.contains(where: { $0.id == "ai" }))
     }
 
+    @Test("A fresh install starts on adaptive drawer widths")
+    func testFreshInstallDefaultsToAdaptiveWidth() {
+        let isolated = UserDefaults(suiteName: "test_fresh_adaptive_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+
+        // A new user has expressed no width preference, so the plugins' own
+        // declarations should decide — a fixed 290pt default would silently
+        // override all of them.
+        #expect(store.drawerWidthMode == .adaptive)
+
+        // And a stored preference still wins on the next launch.
+        store.drawerWidthMode = .fixed
+        store.fixedDrawerWidth = 310.0
+        store.savePersistentState()
+        let relaunched = PurahWorkspaceStore(userDefaults: isolated)
+        #expect(relaunched.drawerWidthMode == .fixed)
+        #expect(relaunched.fixedDrawerWidth == 310.0)
+    }
+
     @Test("Auto-layout distributes default pods within safe rail capacity without overload warnings")
     func testAutoLayoutWithinSafeCapacity() {
         let isolated = UserDefaults(suiteName: "test_autolayout_capacity")!

@@ -135,7 +135,7 @@ public struct CalendarDrawerView: View {
                         .padding(.horizontal, 5.5)
                         .padding(.vertical, 2)
                         .background(Capsule().fill(Color.orange))
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                     } else if isPast {
                         HStack(spacing: 2.5) {
@@ -380,7 +380,7 @@ public struct CalendarDrawerView: View {
                     ForEach(CalendarTimeScope.allCases) { scopeCase in
                         let isSelected = state.scope == scopeCase
                         Button {
-                            withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                            withAnimation(PurahMotionPolicy.micro) {
                                 state.scope = scopeCase
                                 state.save()
                                 store.calendarScope = scopeCase
@@ -461,7 +461,8 @@ public struct CalendarDrawerView: View {
             topSummaryBar()
 
             // Chrono Event Cards — the viewport lands on "now" every open
-            ScrollView(.vertical, showsIndicators: true) {
+            // A full agenda is a scrollable document; keep the indicators.
+            PurahScrollableBody(indicators: .automatic) {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(state.events) { event in
                         if event.id == nowLineEventID {
@@ -618,7 +619,7 @@ public struct CalendarDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                     .fixedSize()
                 } else if isPast {
@@ -793,7 +794,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
             },
             isPinned: isPinned,
             onPin: {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: "calendar_more_events")
                 }
             },
@@ -823,7 +824,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 Label("Configure Calendar...", systemImage: "gearshape")
             }
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                withAnimation(PurahMotionPolicy.pin) {
                     store.togglePinItem(id: "calendar_more_events")
                 }
             } label: {
@@ -914,7 +915,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1.5)
                         .background(Capsule().fill(Color.orange))
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                         .fixedSize()
                     } else if isPast {

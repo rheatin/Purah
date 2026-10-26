@@ -84,7 +84,7 @@ public struct ScriptItemDrawerView: View {
             }
             .frame(width: barW, height: cardH)
             .scaleEffect(isHovered ? 1.02 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+            .animation(PurahMotionPolicy.hover, value: isHovered)
             .transaction { t in
                 if !store.isBreathingActive(for: edge) {
                     t.animation = nil
@@ -100,7 +100,7 @@ public struct ScriptItemDrawerView: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .animation(isExpanded ? .spring(response: 0.30, dampingFraction: 0.80) : .spring(response: 0.20, dampingFraction: 0.92), value: isExpanded)
+        .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
     @ViewBuilder
@@ -235,23 +235,7 @@ public struct ScriptItemDrawerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.stepped(edge: edge)
     }
 
     private var pinButton: some View {

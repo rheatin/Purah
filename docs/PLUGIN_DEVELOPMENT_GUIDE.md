@@ -196,18 +196,46 @@ public struct PurahPluginContext: Sendable {
 Purah 提供了丰富的通用开箱即用套件，任何插件均可直接调用，杜绝侵入修改 Base：
 
 ### 1. 多梯队高度自适应抽屉 (`PurahAdaptiveTierDrawer`)
-支持卡片根据屏幕当前可用高度，在 Compact (<145pt)、Standard (145~265pt)、Immersive (>265pt) 三个梯队间无缝自适应切换排版，极小高度下 0 截断：
+抽屉高度不是固定的：pod 静止时占用自己的 span，hover 时展开到 `preferredDrawerHeight`，多个抽屉同时 pin 时还会被压缩。与其写一套会裁切、会挤扁的排版，不如声明「我有几种呈现」、把切换交给宿主。
+
+**阈值量的是内容区高度**（宿主 header 行与 8pt 内边距之后，drawer body 实际拿到的空间），不是 pod slot 高度 —— 与你手工调参时看到的高度是同一个坐标系。
+
 ```swift
 PurahAdaptiveTierDrawer(
-    compactThreshold: 145,
-    immersiveThreshold: 265,
-    compact: { h in CompactCapsuleView() },
-    standard: { h in StandardCardView() },
-    immersive: { h in ImmersiveStudioView() }
-)
+    tiers: [
+        PurahAdaptiveTier(id: "compact", minHeight: 0),
+        PurahAdaptiveTier(id: "standard", minHeight: 145),
+        PurahAdaptiveTier(id: "immersive", minHeight: 215)
+    ]
+) { tier, height in
+    AnyView(switch tier.id {
+    case "standard":  StandardCardView(height: height)
+    case "immersive": ImmersiveStudioView(height: height)
+    default:          CompactCapsuleView(height: height)
+    })
+}
 ```
 
-### 2. 60/120 FPS 高性能流体波形轨条 (`PurahFluidWaveformBarView`)
+- **档数不限**：`tiers` 是按 `minHeight` 升序的有序数组，给几档都行，不需要凑满三档。第一档用 `minHeight: 0` 保证永远可达。
+- **迟滞 8pt**：升档在声明的 `minHeight` 处精确发生（与「直接按高度挑档」结果一致），降档要多跌 8pt 才触发。这样弹簧动画穿越阈值、或指标微抖时不会逐帧翻档。需要精确到边界就传 `hysteresis: 0`。
+- **高度必须用起来**：每个 builder 会收到实测高度，请你据此调整内容。假定固定尺寸的那一档，本容器帮不了你。
+
+### 2. 可滚动内容容器 (`PurahScrollableBody`)
+内容有「不可压缩的自然高度」时用它承接溢出，而不是继续挤压：
+
+```swift
+VStack(alignment: .leading, spacing: 6) {
+    header
+    PurahScrollableBody { longList }
+}
+```
+
+- **必须插件显式包裹**。宿主不会自动给你的 body 套 ScrollView：依赖 `maxHeight: .infinity` 的排版（唱片圆盘、等高卡片网格）一旦进入 ScrollView，就会因为收到无限高度提议而失去填充能力，布局直接散掉。
+- 指示器默认 `.automatic`（系统 overlay，静止不可见、滚动才淡入）；要彻底隐藏传 `.hidden`。
+- 内容装得下时按尺寸禁用回弹（`.scrollBounceBehavior(.basedOnSize)`），不会在 120pt 的卡片里橡皮筋。
+- 不进入焦点链，悬停不会抢走底层 App 的键盘焦点。
+
+### 3. 60/120 FPS 高性能流体波形轨条 (`PurahFluidWaveformBarView`)
 通用音频流体波形轨条，支持霓虹 VU 表头 (`.neonVUTower`)、极光波浪 (`.auroraWave`)、平滑进度条 (`.smoothProgress`)：
 ```swift
 PurahFluidWaveformBarView(
@@ -218,11 +246,36 @@ PurahFluidWaveformBarView(
 )
 ```
 
-### 3. 多段指标轨条与遥测变色引擎
-- **`PurahSegmentGaugeBarView`**：渲染多段占比、离散任务指标与呼吸发光点。
-- **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**：通用红黄绿告警变色求解器，支持正向与反向阈值（如电量、RAM、温度）。
+### 4. 多段指标轨条 (`PurahSegmentGaugeBarView`)
+竖向 gauge：一条圆角轨道 + 一条或多条从底边生长的填充通道。
 
-### 4. 统一人机容量设置组件 (`PurahDecomposedCapacitySettingRow`)
+```swift
+// 单指标：等同于经典的单条 rail bar
+PurahSegmentGaugeBarView(
+    segments: [PurahGaugeSegment(id: "cpu", ratio: cpuUsage, color: tint, isAlerting: cpuUsage > 0.85)],
+    barWidth: context.railWidth,
+    height: context.slotHeight,
+    trackColor: tint.opacity(0.25)
+)
+
+// 多指标：轨道均分为多条等宽通道，一条 bar 同时显示多个数值
+PurahSegmentGaugeBarView(
+    segments: [
+        PurahGaugeSegment(id: "cpu", ratio: cpu, color: cpuColor),
+        PurahGaugeSegment(id: "gpu", ratio: gpu, color: gpuColor),
+        PurahGaugeSegment(id: "mem", ratio: mem, color: ramColor, isAlerting: mem > 0.9)
+    ],
+    barWidth: context.railWidth,
+    height: context.slotHeight
+)
+```
+
+- `ratio` 在构造时被 clamp 到 `0...1`，可直接传原始遥测值。
+- `segments` 为空只画轨道 —— 用于只保留底色、不带指标的 chip。
+- `minimumVisibleFill`（默认 4pt）保证接近 0 的指标仍可辨认；传 `0` 则完全不画。
+- **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**：通用红黄绿告警变色求解器，支持正向与反向阈值（如电量、RAM、温度），配合上面的 `color` / `isAlerting` 使用。
+
+### 5. 统一人机容量设置组件 (`PurahDecomposedCapacitySettingRow`)
 一行代码为设置页面嵌入标准的最大在轨条目滑块与溢出折叠选择器：
 ```swift
 PurahDecomposedCapacitySettingRow(
