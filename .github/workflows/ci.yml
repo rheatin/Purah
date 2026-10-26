@@ -14,22 +14,23 @@ concurrency:
 jobs:
   verify:
     name: Build & Test
-    runs-on: macos-14
+    # `macos-14` ships Swift 5.10, which cannot open a tools-version 6.0
+    # manifest — the job died at the first command with "installed version is
+    # 5.10.0". `macos-15` ships Swift 6, and the FoundationModels API is behind
+    # `#if canImport`, so the older SDK is not a problem.
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
+      # No `xcode-select` step: the runner's default Xcode is the one that
+      # matches its Swift, and switching to `/Applications/Xcode.app` by name
+      # was a no-op that only looked like configuration.
+      - name: Show toolchain
         run: |
-          # macOS 26 APIs (FoundationModels) are behind `#available`, but the
-          # build still needs a toolchain new enough to know the symbol.
-          ls /Applications | grep -i "^Xcode" || true
-          sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
-          xcodebuild -version || swift --version
-
-      - name: Show Swift version
-        run: swift --version
+          swift --version
+          xcodebuild -version || true
 
       - name: Cache SwiftPM build
         uses: actions/cache@v4
