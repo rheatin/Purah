@@ -199,6 +199,80 @@ if [ ! -d "$APP_PATH" ]; then
     exit 1
 fi
 
+# 3b. Sign and notarize
+#
+# An ad-hoc signature is not distributable: Gatekeeper blocks the download on
+# another Mac, and — more importantly for Purah — TCC records permission grants
+# against the code signature, so an unsigned rebuild silently loses the user's
+# calendar, reminders and accessibility access. Signing has to happen here,
+# before packaging, so the DMG contains the signed bundle.
+#
+# The identity is read from the environment so a release machine can be
+# configured once. Without it we still produce artifacts, but we say plainly
+# that they are not distributable instead of shipping something that fails on
+# the user's machine.
+SIGN_IDENTITY="${PURAH_SIGN_IDENTITY:-}"
+NOTARY_PROFILE="${PURAH_NOTARY_PROFILE:-}"
+
+if [ -n "$SIGN_IDENTITY" ]; then
+    echo -e "${CYAN}🔏 Step 2b/5: Signing with ${SIGN_IDENTITY}...${RESET}"
+
+    # Sign inner bundles first: re-signing a bundle that contains an already
+    # signed nested bundle invalidates the outer seal.
+    ENTITLEMENTS_FILE="Sources/PurahApp/Resources/Purah.entitlements"
+    ENTITLEMENTS_ARGS=()
+    if [ -f "$ENTITLEMENTS_FILE" ]; then
+        ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS_FILE")
+    fi
+
+    find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.bundle" \) -print0 2>/dev/null \
+        | while IFS= read -r -d '' nested; do
+            codesign --force --timestamp --options runtime \
+                --sign "$SIGN_IDENTITY" "$nested" 2>/dev/null || true
+        done
+
+    codesign --force --timestamp --options runtime \
+        "${ENTITLEMENTS_ARGS[@]}" \
+        --sign "$SIGN_IDENTITY" \
+        "$APP_PATH"
+    echo -e "${GREEN}✓ Signed ${APP_PATH}${RESET}"
+
+    # Verify before doing the expensive notarization round-trip.
+    if ! codesign --verify --deep --strict --verbose=2 "$APP_PATH" 2>&1 | tail -3; then
+        echo -e "${RED}Error: signature verification failed.${RESET}" >&2
+        exit 1
+    fi
+
+    if [ -n "$NOTARY_PROFILE" ]; then
+        echo -e "${CYAN}🍎 Step 2c/5: Notarizing (profile: ${NOTARY_PROFILE})...${RESET}"
+        # Notarization needs a zip, and the ticket must be stapled to the app
+        # *and* to the DMG built later, so staple here and again after hdiutil.
+        NOTARY_ZIP="build/purah-notarize.zip"
+        rm -f "$NOTARY_ZIP"
+        ditto -c -k --keepParent "$APP_PATH" "$NOTARY_ZIP"
+
+        if xcrun notarytool submit "$NOTARY_ZIP" \
+             --keychain-profile "$NOTARY_PROFILE" \
+             --wait 2>&1 | tee /tmp/purah-notary.log | tail -5; then
+            xcrun stapler staple "$APP_PATH"
+            echo -e "${GREEN}✓ Notarized and stapled.${RESET}"
+        else
+            echo -e "${RED}Error: notarization failed. See /tmp/purah-notary.log${RESET}" >&2
+            exit 1
+        fi
+        rm -f "$NOTARY_ZIP"
+    else
+        echo -e "${YELLOW}⚠️  Signed but not notarized (set PURAH_NOTARY_PROFILE).${RESET}"
+        echo -e "${YELLOW}   Gatekeeper will still warn on other Macs.${RESET}"
+    fi
+else
+    echo -e "${YELLOW}⚠️  No PURAH_SIGN_IDENTITY set — building UNSIGNED.${RESET}"
+    echo -e "${YELLOW}   This artifact is for local use only: it will be blocked by${RESET}"
+    echo -e "${YELLOW}   Gatekeeper elsewhere, and each rebuild resets TCC grants.${RESET}"
+    echo -e "${YELLOW}   Available identities:${RESET}"
+    security find-identity -v -p codesigning 2>/dev/null | sed 's/^/     /' || true
+fi
+
 # 4. Generate release notes
 echo -e "${CYAN}📝 Step 3/5: Generating release notes...${RESET}"
 NOTES_PATH="${DIST_DIR}/release-notes.txt"
@@ -258,6 +332,19 @@ hdiutil create -volname "Purah" \
     "$DMG_PATH" > /dev/null
 
 rm -rf "$DMG_STAGING"
+
+# 5b2. Sign and staple the DMG itself.
+#
+# Stapling only the app is not enough: a user who downloads the DMG and opens it
+# before dragging the app out sees the disk image's own Gatekeeper verdict.
+if [ -n "$SIGN_IDENTITY" ] && [ -n "$NOTARY_PROFILE" ]; then
+    echo -e "   └── Signing and stapling DMG..."
+    codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG_PATH"
+    xcrun stapler staple "$DMG_PATH" || {
+        echo -e "${RED}Error: could not staple the DMG.${RESET}" >&2
+        exit 1
+    }
+fi
 
 # 5c. Calculate SHA-256 Checksums
 echo -e "   └── Computing SHA-256 checksums..."

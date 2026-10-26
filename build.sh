@@ -160,14 +160,40 @@ done
 shopt -u nullglob
 
 # 4. Code signing
+#
+# Hardened runtime is required for notarization. Ad-hoc (`-`) builds keep it off
+# because it has no security meaning without a real identity and would only make
+# local debugging (attaching a debugger, `dtruss`) harder.
 SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
+ENTITLEMENTS="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/Sources/PurahApp/Resources/Purah.entitlements"
+
+HARDENED_ARGS=()
+ENTITLEMENTS_ARGS=()
+if [ "$SIGNING_IDENTITY" != "-" ]; then
+    HARDENED_ARGS=(--options runtime --timestamp)
+    if [ -f "$ENTITLEMENTS" ]; then
+        ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS")
+        echo -e "   └── Entitlements: $(basename "$ENTITLEMENTS")"
+    else
+        echo -e "${YELLOW}⚠️  Entitlements file missing: $ENTITLEMENTS${RESET}"
+        echo -e "${YELLOW}   Signing without entitlements may break AppleScript and Terminal.${RESET}"
+    fi
+fi
+
 echo -e "${CYAN}🔏 Signing application bundle (Identity: ${SIGNING_IDENTITY})...${RESET}"
 
-# Sign nested resource bundles first if any
-find "${RESOURCES_DIR}" -name "*.bundle" -type d -exec codesign --force --sign "$SIGNING_IDENTITY" {} +
+# Sign nested resource bundles first: re-signing a bundle that contains an
+# already-signed nested bundle invalidates the outer seal.
+# `${arr[@]+"${arr[@]}"}` is the Bash 3.2-safe way to expand a possibly-empty
+# array under `set -u`; plain `"${arr[@]}"` is an unbound-variable error there.
+find "${RESOURCES_DIR}" -name "*.bundle" -type d -exec \
+    codesign --force ${HARDENED_ARGS[@]+"${HARDENED_ARGS[@]}"} --sign "$SIGNING_IDENTITY" {} +
 
-# Sign the overall .app bundle
-codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+# Sign the overall .app bundle. `--deep` is avoided here on purpose: it re-signs
+# nested code with the outer options and is explicitly discouraged by Apple for
+# signing (it is a verification convenience, not a signing strategy).
+codesign --force ${HARDENED_ARGS[@]+"${HARDENED_ARGS[@]}"} ${ENTITLEMENTS_ARGS[@]+"${ENTITLEMENTS_ARGS[@]}"} \
+    --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 
 # 5. Verify codesign
 echo -e "${CYAN}🔍 Verifying codesign signature...${RESET}"

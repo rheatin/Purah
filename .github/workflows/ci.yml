@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build & Test
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          # macOS 26 APIs (FoundationModels) are behind `#available`, but the
+          # build still needs a toolchain new enough to know the symbol.
+          ls /Applications | grep -i "^Xcode" || true
+          sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
+          xcodebuild -version || swift --version
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      # `-warnings-as-errors` is the whole point of running this in CI: the
+      # release script has always enforced it, but only once per release, so a
+      # warning introduced mid-cycle survived until the next tag. Strict
+      # concurrency is pinned for the same reason — a data race is cheap to fix
+      # on the commit that introduces it and expensive a month later.
+      - name: Build (strict concurrency, warnings as errors)
+        run: |
+          swift build --disable-sandbox \
+            -Xswiftc -strict-concurrency=complete \
+            -Xswiftc -warnings-as-errors
+
+      # Tests are NOT run with `-warnings-as-errors`: test code legitimately
+      # uses constructs (force-unwrapping fixtures, unused bindings) that the
+      # product code must not.
+      - name: Test
+        run: swift test --disable-sandbox --no-parallel
+
+      - name: Release build
+        run: swift build -c release --disable-sandbox
+
+      # A test run must not write into the user's real plugin sandbox. This
+      # caught a regression once already: `PurahPluginFileStorage` defaulted to
+      # Application Support even under test, leaving ~190 stray directories.
+      - name: Verify tests did not touch real app data
+        run: |
+          REAL_DIR="$HOME/Library/Application Support/Purah/Plugins"
+          if [ -d "$REAL_DIR" ]; then
+            echo "Unexpected: tests wrote to $REAL_DIR"
+            ls -la "$REAL_DIR" | head -20
+            exit 1
+          fi
+          echo "OK: no real plugin sandbox created"

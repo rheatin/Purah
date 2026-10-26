@@ -25,9 +25,40 @@ public struct PurahPluginFileStorage: Sendable {
         return appSupport.appendingPathComponent("Purah/Plugins", isDirectory: true)
     }()
 
+    /// Where a test build writes instead of the user's real sandbox.
+    ///
+    /// Tests construct plugin state with the default argument all over the
+    /// suite (`ScopedPluginStorage`, `NotesPluginState()`, …), and each one
+    /// creates a directory. Pointing the default at a throwaway tree keeps a
+    /// test run from littering `~/Library/Application Support/Purah/Plugins`
+    /// with hundreds of `*_test_<uuid>` folders — which it demonstrably did.
+    ///
+    /// A test may still pass an explicit `customBaseDirectory` to get its own
+    /// isolated location; only the default is redirected.
+    public static var testBaseDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-tests", isDirectory: true)
+            .appendingPathComponent("Plugins", isDirectory: true)
+    }
+
+    /// Whether the current process is a test run.
+    ///
+    /// Duplicated from `PurahWorkspaceStore.isTestingEnvironment` on purpose:
+    /// that property is `@MainActor`-isolated and this type is constructed from
+    /// nonisolated contexts. Keeping storage independent of the UI-facing store
+    /// also means a storage unit test does not drag the whole store with it.
+    public static var isRunningTests: Bool {
+        NSClassFromString("XCTest") != nil ||
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.arguments.contains(where: {
+            $0.contains("swiftpm-testing-helper") || $0.contains("xctest")
+        })
+    }
+
     public init(pluginId: String, customBaseDirectory: URL? = nil) {
         self.pluginId = pluginId
-        let base = customBaseDirectory ?? Self.baseApplicationSupportDirectory
+        let base = customBaseDirectory
+            ?? (Self.isRunningTests ? Self.testBaseDirectory : Self.baseApplicationSupportDirectory)
         let root = base.appendingPathComponent(pluginId, isDirectory: true)
         self.rootDirectory = root
         self.dataDirectory = root.appendingPathComponent("data", isDirectory: true)

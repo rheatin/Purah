@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Entitlements for Purah's Developer ID build.
+
+	  Hardened runtime must be on for notarization, but it also blocks things a
+	  menu-bar app legitimately needs. Each key below is here because a specific
+	  feature stops working without it — an entitlement added "just in case"
+	  widens the attack surface and has to be justified all the same.
+
+	  NOT enabled on purpose:
+	    * com.apple.security.app-sandbox — Purah drives the whole screen edge,
+	      spawns shells and scripts, and reads other apps' windows. The App
+	      Sandbox forbids all three; enabling it would mean rewriting the app.
+	    * com.apple.security.cs.disable-library-validation — no dynamically
+	      loaded code outside the bundle needs to run, so it is not needed.
+	-->
+
+	<!-- Script Runway runs user-authored shell scripts from the right pane. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+
+	<!-- The Terminal pod spawns /bin/zsh and runs it under a PTY. -->
+	<key>com.apple.security.cs.allow-executable-file-mappings</key>
+	<true/>
+
+	<!-- AppleScript drives Music.app for the now-playing pod and its transport
+	     controls. The matching NSAppleEventsUsageDescription lives in Info.plist. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

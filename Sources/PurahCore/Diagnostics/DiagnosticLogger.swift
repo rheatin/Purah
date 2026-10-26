@@ -179,6 +179,20 @@ public final class DiagnosticLogger: Sendable {
         for entry in recentEntries(limit: 200) {
             report += "\(entry.formattedLine)\n"
         }
+
+        // 6. Previous Crashes
+        //
+        // A report generated *after* a crash should say the app crashed, not
+        // start from a clean slate — otherwise pressing "copy report" right
+        // after the rails reappear looks like nothing ever went wrong.
+        report += "\n-- [RECORDED CRASHES] --\n"
+        if let crashes = CrashReporter.readLog() {
+            report += crashes
+            report += "(Saved at \(CrashReporter.logPath))\n"
+        } else {
+            report += "None recorded.\n"
+        }
+
         report += "=== END OF REPORT ===\n"
 
         return report
