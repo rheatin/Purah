@@ -276,11 +276,9 @@ public struct ClipboardItemDrawerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
-        } else {
-            return UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 10, topTrailingRadius: 10, style: .continuous)
-        }
+        // A clipboard sub-item card is drawer-sized rather than chip-sized, so
+        // it keeps the composite radius even though it is a stepped view.
+        PurahDrawerShape.composite(edge: edge)
     }
 
     public var body: some View {

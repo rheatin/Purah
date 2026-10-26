@@ -195,25 +195,7 @@ public struct AmbientRailStripView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            // Right rail: 10px continuous radius on the left, 0px flush against right bezel
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 10,
-                bottomLeadingRadius: 10,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            // Left rail: 10px continuous radius on the right, 0px flush against left bezel
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 10,
-                topTrailingRadius: 10,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.composite(edge: edge)
     }
 
     private var drawerTransition: AnyTransition {

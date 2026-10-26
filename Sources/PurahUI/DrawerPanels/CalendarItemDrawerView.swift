@@ -201,7 +201,7 @@ public struct CalendarItemDrawerView: View {
                             .padding(.horizontal, 5.5)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(Color.orange))
-                            .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                            .foregroundColor(Color.slateInk)
                             .shadow(color: Color.orange.opacity(0.45), radius: 3)
                         } else if isPast {
                             HStack(spacing: 2.5) {
@@ -273,7 +273,7 @@ public struct CalendarItemDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                 } else if isPast {
                     HStack(spacing: 2.5) {
@@ -374,7 +374,7 @@ public struct CalendarItemDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                 } else if isPast {
                     HStack(spacing: 2.5) {
@@ -713,23 +713,7 @@ public struct CalendarItemDrawerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.stepped(edge: edge)
     }
 
     private func openInSystemCalendar(event: CalendarEventItem) {

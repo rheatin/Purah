@@ -3392,7 +3392,7 @@ public struct QuickNoteDrawerView: View {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(isCopied ? Color.green : noteColor)
                 )
-                .foregroundColor(isCopied ? Color(red: 0.059, green: 0.067, blue: 0.102) : noteColor.highContrastInk)
+                .foregroundColor(isCopied ? Color.slateInk : noteColor.highContrastInk)
             }
             .buttonStyle(.tactile)
             .help("Copy note text to clipboard")

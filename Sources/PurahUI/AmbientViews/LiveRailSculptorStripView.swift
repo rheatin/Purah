@@ -288,23 +288,11 @@ public struct LiveRailSculptorStripView: View {
 
         ZStack(alignment: .top) {
             // Frosted glass sculpting strip background
-            UnevenRoundedRectangle(
-                topLeadingRadius: edge == .right ? 12 : 0,
-                bottomLeadingRadius: edge == .right ? 12 : 0,
-                bottomTrailingRadius: edge == .left ? 12 : 0,
-                topTrailingRadius: edge == .left ? 12 : 0,
-                style: .continuous
-            )
+            PurahDrawerShape.edgeFlush(edge: edge, radius: 12)
             .fill(Color.black.opacity(0.42))
             .background(.ultraThinMaterial)
             .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: edge == .right ? 12 : 0,
-                    bottomLeadingRadius: edge == .right ? 12 : 0,
-                    bottomTrailingRadius: edge == .left ? 12 : 0,
-                    topTrailingRadius: edge == .left ? 12 : 0,
-                    style: .continuous
-                )
+                PurahDrawerShape.edgeFlush(edge: edge, radius: 12)
                 .stroke(
                     isExternalDropEdge ? Color.orange : palette.primaryAccent.opacity(0.45),
                     lineWidth: isExternalDropEdge ? 2.2 : 1.2
@@ -1471,7 +1459,7 @@ public struct LiveSculptPodCapsuleView: View {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .font(.system(size: 9.5, weight: .bold))
                             }
-                            .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                            .foregroundColor(Color.slateInk)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3.5)
                             .background(
@@ -1500,7 +1488,7 @@ public struct LiveSculptPodCapsuleView: View {
                                         .font(.system(size: 10, weight: .heavy, design: .rounded))
                                         .lineLimit(1)
                                 }
-                                .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                                .foregroundColor(Color.slateInk)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 6)
                                 .background(

@@ -135,7 +135,7 @@ public struct CalendarDrawerView: View {
                         .padding(.horizontal, 5.5)
                         .padding(.vertical, 2)
                         .background(Capsule().fill(Color.orange))
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                     } else if isPast {
                         HStack(spacing: 2.5) {
@@ -618,7 +618,7 @@ public struct CalendarDrawerView: View {
                     .padding(.horizontal, 5.5)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.orange))
-                    .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                    .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
                     .fixedSize()
                 } else if isPast {
@@ -914,7 +914,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1.5)
                         .background(Capsule().fill(Color.orange))
-                        .foregroundColor(Color(red: 0.059, green: 0.067, blue: 0.102))
+                        .foregroundColor(Color.slateInk)
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                         .fixedSize()
                     } else if isPast {

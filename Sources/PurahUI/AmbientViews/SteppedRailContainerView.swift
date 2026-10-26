@@ -246,13 +246,7 @@ public struct SteppedRailContainerView: View {
                 .padding(.vertical, 10)
                 .frame(width: drawerW, height: height, alignment: .top)
                 .liquidDrawerBackground(
-                    shape: UnevenRoundedRectangle(
-                        topLeadingRadius: edge == .right ? 10 : 0,
-                        bottomLeadingRadius: edge == .right ? 10 : 0,
-                        bottomTrailingRadius: edge == .left ? 10 : 0,
-                        topTrailingRadius: edge == .left ? 10 : 0,
-                        style: .continuous
-                    ),
+                    shape: PurahDrawerShape.composite(edge: edge),
                     accentColor: subContext.accentColor
                 )
         }
@@ -415,22 +409,6 @@ public struct SteppedRailContainerView: View {
     }
 
     private var drawerShape: UnevenRoundedRectangle {
-        if edge == .right {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 8,
-                bottomLeadingRadius: 8,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        } else {
-            return UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 8,
-                topTrailingRadius: 8,
-                style: .continuous
-            )
-        }
+        PurahDrawerShape.stepped(edge: edge)
     }
 }
