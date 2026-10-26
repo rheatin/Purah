@@ -1,0 +1,16 @@
+name: Probe SwiftTerm flags
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build with verbose, capture SwiftTerm command
+        run: |
+          swift build --disable-sandbox -Xswiftc -warnings-as-errors --verbose 2>&1 > /tmp/build.log || true
+          echo "=== MacTerminalView compile command ==="
+          grep -o 'swift-frontend[^\n]*MacTerminalView[^\n]*' /tmp/build.log | head -1 | tr ' ' '\n' | grep -E 'swift-version|strict-concurrency' || echo "not found"
+          echo "=== error count ==="
+          grep -c 'error:' /tmp/build.log || true
