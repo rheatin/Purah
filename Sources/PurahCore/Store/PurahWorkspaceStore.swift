@@ -1380,7 +1380,10 @@ public final class PurahWorkspaceStore {
 
     // User-configurable rail width (4px ~ 16px) and drawer extrusion settings
     public var railBarWidth: Double = 8.0
-    public var drawerWidthMode: DrawerWidthMode = .fixed
+    /// Adaptive by default: a new user has never expressed a width preference,
+    /// and each plugin already declares the width its content wants. Starting
+    /// on `.fixed` would silently override every one of those with 290pt.
+    public var drawerWidthMode: DrawerWidthMode = .adaptive
     public var fixedDrawerWidth: Double = 290.0 // Bounds: 220px ~ 330px
     public var customPodColors: [String: String] = [:]
 

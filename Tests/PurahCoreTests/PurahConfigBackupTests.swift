@@ -98,7 +98,9 @@ struct PurahConfigBackupTests {
 
         #expect(store.fixedDrawerWidth == 290.0)
         #expect(store.railBarWidth == 8.0)
-        #expect(store.drawerWidthMode == .fixed)
+        // A factory reset returns the user to a fresh install, and a fresh
+        // install starts on Adaptive so each plugin's declared width wins.
+        #expect(store.drawerWidthMode == .adaptive)
         #expect(store.leftRailPage == 0)
         #expect(defaults.string(forKey: "purah.customKey") == nil)
         #expect(defaults.bool(forKey: "purah.didAutoInstallAIPlugin") == true)
