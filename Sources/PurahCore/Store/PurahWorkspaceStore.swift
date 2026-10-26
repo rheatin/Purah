@@ -158,6 +158,18 @@ public final class PurahWorkspaceStore {
     @ObservationIgnored
     private var lastKnownTotalHeight: [MountEdge: Double] = [:]
 
+    /// Overrides the screen height the layout maths assume.
+    ///
+    /// `availableScreenHeight` reads `NSScreen`, so every capacity and
+    /// minimum-length calculation depends on the machine the code runs on. A
+    /// CI runner's virtual display is around 681pt tall where a laptop is
+    /// 900+, which moves default pods from comfortably fitting to overflowing
+    /// — the same assertions passed locally and failed in CI for no reason in
+    /// the product. Tests that care about layout set this so the arithmetic is
+    /// the same everywhere; the app leaves it nil and reads the real screen.
+    @ObservationIgnored
+    public var overriddenScreenHeight: CGFloat?
+
     public func setLiveRailEditingMode(_ enabled: Bool) {
         guard isLiveRailEditingMode != enabled else { return }
         if enabled {
@@ -1464,6 +1476,9 @@ public final class PurahWorkspaceStore {
     }
 
     public func availableScreenHeight(for edge: MountEdge) -> CGFloat {
+        if let overriddenScreenHeight {
+            return max(overriddenScreenHeight, 400.0)
+        }
         let screens = NSScreen.screens
         let targetScreen: NSScreen? = {
             switch displayTargetMode {

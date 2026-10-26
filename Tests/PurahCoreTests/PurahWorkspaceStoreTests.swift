@@ -47,6 +47,12 @@ struct PurahWorkspaceStoreTests {
     func testAutoLayoutWithinSafeCapacity() {
         let isolated = UserDefaults(suiteName: "test_autolayout_capacity")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        // "Fits without overloading" is a statement about the solver, so the
+        // screen it solves for has to be stated. Left unpinned, this test read
+        // the host display: 923pt locally (0.83 used) and ~681pt on a CI
+        // runner (1.14 used), where the default four-pod rails genuinely do
+        // not fit and auto-layout correctly spills to a second page.
+        store.overriddenScreenHeight = 923.0
         store.autoLayoutAll()
 
         #expect(store.capacityRatio(for: .left) <= 1.0, "Auto-layout overloaded left rail")
@@ -56,6 +62,28 @@ struct PurahWorkspaceStoreTests {
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
         #expect(!leftPods.isEmpty)
         #expect(!rightPods.isEmpty)
+    }
+
+    @Test("On a rail too short for the defaults, auto-layout paginates instead of overloading one page")
+    func testAutoLayoutPaginatesOnShortScreen() {
+        let isolated = UserDefaults(suiteName: "test_autolayout_short_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        // The flip side of the assertion above: when the rail cannot hold
+        // every pod, the correct behaviour is a second page, not clipped
+        // drawers. This is the CI runner's reality.
+        //
+        // Breathing must be off for this. With it on, §5.3 says the rail
+        // *squeezes* — every pod compresses in place and the ratio is allowed
+        // to exceed 1.0 — so paging never enters the picture. Paging is what
+        // happens once compression would fall below the ergonomic floor.
+        store.isDynamicBreathingEnabled = false
+        store.overriddenScreenHeight = 681.0
+        store.autoLayoutAll()
+
+        #expect(store.capacityRatio(for: .right) > 1.0, "Fixture must actually overflow to exercise paging")
+
+        let rightPages = Set(store.pods.filter { $0.edge == .right && $0.isEnabled }.map(\.pageIndex))
+        #expect(rightPages.count > 1, "Overflowing rail must be split across pages, got pages \(rightPages.sorted())")
     }
 
     @Test("Auto-layout establishes non-overlapping ranges on both rails")
