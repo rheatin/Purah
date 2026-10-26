@@ -1,5 +1,7 @@
 name: Probe SwiftTerm flags
-on: workflow_dispatch
+on:
+  push:
+    branches: [feat/foundation-hardening]
 jobs:
   probe:
     runs-on: macos-15
