@@ -4,7 +4,7 @@ import Foundation
 @testable import PurahCore
 @testable import PurahUI
 
-/// Pins the contract the two `Examples/` plugins are built against.
+/// Pins the contract `Examples/PurahExamplePlugin` is built against.
 ///
 /// The ABI is discovered purely through `dlsym` at runtime, so a host-side
 /// rename (`purahCreateDrawerViewWithContext` → something else) would not fail
@@ -13,24 +13,24 @@ import Foundation
 @Suite("External Plugin ABI Contract")
 struct ExternalPluginABITests {
 
-    private static let sdkFile = URL(fileURLWithPath: #filePath)
+    private static let exampleRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-        .appendingPathComponent("Examples/PurahNetPulsePlugin/Sources/PurahNetPulsePlugin/PurahExternalPluginSDK.swift")
+        .appendingPathComponent("Examples/PurahExamplePlugin/Sources/PurahExamplePlugin")
 
-    private static let pluginFile = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .appendingPathComponent("Examples/PurahNetPulsePlugin/Sources/PurahNetPulsePlugin/PurahNetPulsePlugin.swift")
+    private static let sdkFile = exampleRoot.appendingPathComponent("PurahExternalPluginSDK.swift")
+    private static let pluginFile = exampleRoot.appendingPathComponent("PurahExamplePlugin.swift")
 
-    /// Every symbol the host looks up in `PluginDynamicLoader.loadPlugin`.
+    /// Every symbol the host looks up in `PluginDynamicLoader.loadPlugin`, or
+    /// calls when the plugin exports it.
     private static let requiredSymbols = [
-        "purahPluginABIVersion",
         "purahPluginManifestJSON",
+        "purahCreateRailView",
         "purahCreateRailViewWithContext",
+        "purahCreateDrawerView",
         "purahCreateDrawerViewWithContext",
+        "purahCreateSettingsView",
         "purahCreateSettingsViewWithContext",
         "purahCreateHeaderAccessoryView",
         "purahCreateHeaderTrailingView",
@@ -53,7 +53,7 @@ struct ExternalPluginABITests {
         }
     }
 
-    @Test("ABI version on both sides is compatible")
+    @Test("ABI version on the host side accepts legacy unversioned plugins")
     func testABIVersionCompatibility() {
         #expect(PurahPluginABI.current == "1")
         #expect(PurahPluginABI.isCompatible("1"))
@@ -67,16 +67,16 @@ struct ExternalPluginABITests {
     @Test("Context payload round-trips through the JSON the plugin decodes")
     func testContextPayloadShape() throws {
         let payload = PurahABIContextPayload(
-            pluginId: "com.example.netpulse",
+            pluginId: "com.example.focus",
             edge: "right",
             railWidth: 8,
             slotHeight: 140,
-            drawerWidth: 300,
+            drawerWidth: 290,
             isExpanded: true,
             isPinned: false,
             isDark: true,
-            accentColorHex: "#00C7F0",
-            storageDirectoryPath: "/tmp/purah-netpulse"
+            accentColorHex: "#FF6B6B",
+            storageDirectoryPath: "/tmp/purah-focus"
         )
 
         let data = try JSONEncoder().encode(payload)
@@ -88,7 +88,7 @@ struct ExternalPluginABITests {
         ] {
             #expect(object[field] != nil, "payload lost the '\(field)' field")
         }
-        #expect(object["pluginId"] as? String == "com.example.netpulse")
+        #expect(object["pluginId"] as? String == "com.example.focus")
         #expect(object["edge"] as? String == "right")
     }
 
@@ -130,8 +130,8 @@ struct ExternalPluginABITests {
 
     private static var builtExampleDylib: URL? {
         let candidates = [
-            "Examples/PurahNetPulsePlugin/.build/release/libPurahNetPulsePlugin.dylib",
-            "Examples/PurahNetPulsePlugin/.build/debug/libPurahNetPulsePlugin.dylib"
+            "Examples/PurahExamplePlugin/.build/release/libPurahExamplePlugin.dylib",
+            "Examples/PurahExamplePlugin/.build/debug/libPurahExamplePlugin.dylib"
         ]
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -144,18 +144,18 @@ struct ExternalPluginABITests {
 
     /// End-to-end: run the exact path `Dev: Load Package...` runs, minus the
     /// `swift build` step. Skips when the example has not been compiled yet
-    /// (`cd Examples/PurahNetPulsePlugin && swift build -c release`).
+    /// (`cd Examples/PurahExamplePlugin && swift build -c release`).
     @Test("The compiled example plugin dlopens and builds both views",
           .enabled(if: ExternalPluginABITests.builtExampleDylib != nil,
-                   "Build Examples/PurahNetPulsePlugin first"))
+                   "Build Examples/PurahExamplePlugin first"))
     @MainActor
     func testExamplePluginLoadsThroughHostLoader() async throws {
         let dylib = try #require(Self.builtExampleDylib)
         let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
         defer { PluginDynamicLoader.shared.unloadPlugin(id: plugin.manifest.id) }
 
-        #expect(plugin.manifest.id == "com.example.netpulse")
-        #expect(plugin.manifest.displayName == "Net Pulse")
+        #expect(plugin.manifest.id == "com.example.focus")
+        #expect(plugin.manifest.displayName == "Zen Counter")
         #expect(plugin.manifest.defaultEdge == .right)
 
         let store = PurahWorkspaceStore()
@@ -169,7 +169,7 @@ struct ExternalPluginABITests {
             edge: .right,
             railWidth: 8,
             slotHeight: 140,
-            drawerWidth: 300,
+            drawerWidth: 290,
             isExpanded: true,
             isPinned: false,
             accentColor: .blue,
@@ -182,10 +182,8 @@ struct ExternalPluginABITests {
 
         // Both factories cross the C boundary and must return real NSViews —
         // a NULL return is exactly what a broken ABI looks like at runtime.
-        let railView = plugin.makeRailBarView(context: context)
-        let drawerView = plugin.makeDrawerView(context: context)
-        _ = railView
-        _ = drawerView
+        _ = plugin.makeRailBarView(context: context)
+        _ = plugin.makeDrawerView(context: context)
 
         #expect(store.minimumDrawerHeight(for: plugin.manifest.id) > 0)
     }

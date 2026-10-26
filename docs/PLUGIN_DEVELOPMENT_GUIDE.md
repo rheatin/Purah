@@ -33,7 +33,7 @@ Purah 提供两种层级的插件开发路径，分别针对外部独立生态�
 | **调试与热载** | 打开 Purah 设置面板点击 **`Dev: Load Package...`**，自动 JIT 极速编译、挂载与保存自动单键热重载 | 重新构建运行整个 Purah 宿主应用 (`./run.sh` 或 Xcode) |
 | **分发形式** | 编译为单个 `.dylib` 动态库或直接分发源码 Package 文件夹 | 合并入主分支并跟随宿主版本打包分发 |
 
-- **模式 A 详见**：[9.2 动态 SPM 插件架构与 ABI C 桥接引擎](#92-动态-spm-插件架构与-abi-c-桥接引擎-纯-swift-零依赖) 及内置完整示例 `Examples/PurahNetPulsePlugin/`（另附极简范例 `Examples/PurahExamplePlugin/`）。
+- **模式 A 详见**：[9.2 动态 SPM 插件架构与 ABI C 桥接引擎](#92-动态-spm-插件架构与-abi-c-桥接引擎-纯-swift-零依赖) 及内置完整示例 `Examples/PurahExamplePlugin/`。
 - **模式 B 详见**：[3. 插件核心协议 (`PurahPodPlugin`)](#3-插件核心协议-purahpodplugin) 及内置示例 [8. 倒数日插件范例](#8-完整插件开发范例倒数日纪念插件-countdownplugin)。
 
 ---
@@ -772,15 +772,10 @@ public func purahOnUnmount() {
 
 ### 9.3 本地开发验证与热重载工作流 (Local Development & Hot Reload)
 
-Purah 内置了直通开发者的即时编译工具链，仓库内置两个可直接加载的完整范例：
-
-| 范例 | 说明 | 适合看什么 |
-| :--- | :--- | :--- |
-| **`Examples/PurahNetPulsePlugin`** | **Net Pulse**：真实探测网关/公共 DNS 的 `ping` 往返，记录延迟、抖动、丢包，带轨迹图与遥测配色 | **推荐先读这个**：完整的真实数据采集、磁盘历史、状态机、三段式卡片与设置面板 |
-| `Examples/PurahExamplePlugin` | Zen Counter：纯本地计数的极简范例 | 最小可运行骨架 |
+Purah 内置了直通开发者的即时编译工具链，参考仓库内置的完整范例：**`Examples/PurahExamplePlugin`**（Zen Counter——轨条、抽屉、顶栏插槽、独立设置面板与宿主动作桥接的完整骨架）：
 
 1. **新建或克隆插件源码**：
-   在任意本地目录准备一个声明了 `.dynamic` library 的 Swift Package（例如拷贝 `Examples/PurahNetPulsePlugin`）。
+   在任意本地目录准备一个声明了 `.dynamic` library 的 Swift Package（例如拷贝 `Examples/PurahExamplePlugin`）。
 2. **在 Purah 中直接加载源码包**：
    打开 Purah 设置面板 (`Cmd + ,`)，进入 **Plugins** 标签页，点击右上角的 **`Dev: Load Package...`** 按钮，选中插件所在的文件夹（包含 `Package.swift`）。
 3. **即时编译与挂载 (JIT Build & Mount)**：

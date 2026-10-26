@@ -404,9 +404,9 @@ The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
 `accentColorHex` and `storageDirectoryPath` — the last one is the plugin's own
 sandbox, so history and config files belong there.
 
-**Working reference:** `Examples/PurahNetPulsePlugin` (a real latency probe with
-rolling history, sparkline, telemetry colouring and a settings panel). Load it
-with **Settings → Plugins → Dev: Load Package...**.
+**Working reference:** `Examples/PurahExamplePlugin` (Zen Counter — rail bar,
+drawer, header slots, settings panel and host-action bridge). Load it with
+**Settings → Plugins → Dev: Load Package...**.
 
 > The loader accepts a folder containing `Package.swift` or a built `.dylib`.
 > A bare `manifest.json` is rejected: metadata declares a plugin, but only
