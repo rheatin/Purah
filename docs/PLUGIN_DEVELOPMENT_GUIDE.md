@@ -563,6 +563,40 @@ let package = Package(
 | `purahOnRailBarTap` | `() -> Void` | 可选 | 轨条被点击时的即时动作触发回调 |
 | `purahOnMount` | `() -> Void` | 可选 | 插件被挂载至边轨时的生命周期通知 |
 | `purahOnUnmount` | `() -> Void` | 可选 | 插件从边轨卸载时的生命周期通知 |
+| `purahSteppedItemsJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 接收上下文 JSON，返回子项数组 JSON；导出即获得分档 (Stepped) 模式 |
+| `purahCreateSteppedDrawerViewWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | 可选 | `(上下文 JSON, 子项 id)` → 该子项的抽屉视图指针；未知 id 返回 `NULL` |
+| `purahCreateOverviewDrawerContentWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | 可选 | `+N more` 合并概览抽屉的内容视图（外壳由宿主提供） |
+| `purahDecomposedPolicyJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 返回分档芯片策略 JSON，加载时读取一次 |
+| `purahDynamicBarColorHex` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 返回 `"#RRGGBB"` 实时轨条颜色；空串或 `NULL` 回退到清单颜色 |
+| `purahDynamicAccentColorHex` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | 可选 | 返回 `"#RRGGBB"` 实时强调色；空串或 `NULL` 回退到清单颜色 |
+| `purahOnRailBarTapWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32` | 可选 | `(上下文 JSON, 子项 id)` 点击回调；返回非零表示插件已自行处理，宿主不再追加触觉反馈与展开 |
+| `purahUpdateContext` | `(UnsafeMutableRawPointer, UnsafePointer<CChar>) -> Void` | 可选 | 向已创建的视图推送新上下文；首个参数即工厂返回的指针 |
+| `purahOnPollingTick` | `(UnsafePointer<CChar>) -> Void` | 可选 | 宿主定时器回调，需配合清单 `pollingInterval` 使用 |
+
+**分档 (Stepped) 模式**：导出 `purahSteppedItemsJSON` 后，该插件便与 Calendar / Todo 一样在轨条上获得逐子项芯片。数组元素形如
+`{ id, title, subtitle?, systemIcon?, badge?, state?, gaugeRatio?, gaugeStyle?, tintColorHex?, isPinned? }`；
+仅 `id` 与 `title` 必填，未知枚举拼写会回退到中性值，因此旧宿主渲染新插件时不会整体失败。`state` 取值 `normal` / `ongoing` / `alerting` / `inactive` / `running`，`gaugeStyle` 取值 `solid` / `segmented` / `wave` / `none`。
+
+芯片策略为 `{ maxRailItems, minChipHeight, maxChipHeight, spacing, overflowStrategy }`，`overflowStrategy` 取值 `smartFold` / `truncate` / `compactScale`。`minChipHeight` 必须不低于对应内容类型的人机工学下限（可点击指标 56pt、事件芯片 40pt、任务芯片 32pt），宿主不会替你二次修正。
+
+**清单声明尺寸**：复合抽屉的高度区间由清单声明，三项均可选：
+
+```json
+{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320,
+  "defaultDecomposed": true, "pollingInterval": 5 }
+```
+
+宿主会将声明的最小高度向上钳制到 120pt 人机工学下限，并保证至少 24pt 的展开区间，插件无法抹平自己的分档梯度。分档 (stepped) 插件的高度由芯片策略决定，这两个字段只作用于复合抽屉。
+
+**复合 / 分档切换**：具备分档能力不等于希望默认分档。在清单中声明 `"defaultDecomposed": true` 才会以芯片模式启动；未声明时即使导出了 `purahSteppedItemsJSON` 也默认复合。用户通过 Live Rail Sculptor (`⌃⌥E`) 的开关选择，状态由宿主持久化，插件无需自己保存，且用户选择始终覆盖清单声明。若希望在自己的设置页提供同一开关，调用 `PurahHostBridge.shared.setDecomposed(pluginId:_:)`。
+
+**子项 Pin**：宿主从插件上报的芯片列表推导 pinned-child 状态，因此 pin 住第三方插件的芯片后，画布宽度会自动撑开以容纳其展开抽屉，无需额外符号。
+
+**实时上下文刷新**：导出 `purahUpdateContext` 后，宿主在抽屉展开、Pod 被 pin、宽高变化时都会调用它。未导出则该工厂只运行一次，视图此后无法感知宿主状态。
+
+**宿主代管轮询**：在清单声明 `pollingInterval`（秒）并导出 `purahOnPollingTick`，定时器由宿主持有。**切勿自行启动周期性定时器**——宿主在 Pod 被禁用、卸载或轨条冻结时会停止 tick，私有定时器会绕过这三重保证。tick 内必须快速返回，耗时工作放到自己的队列。
+
+**上下文载荷**：`purahCreate*WithContext` 传递 `pluginId`、`edge`、`railWidth`、`slotHeight`、`drawerWidth`、`isExpanded`、`isPinned`、`isDark`、`accentColorHex`、`storageDirectoryPath`、`visibleSubItemIds`、`isDecomposed`、`paletteStyle`、`primaryAccentHex`、`borderColorHex`。其中 `visibleSubItemIds` 是当前已在轨条上显示的芯片 id，`+N more` 概览必须排除它们；`paletteStyle` / `primaryAccentHex` / `borderColorHex` 让抽屉跟随当前主题，而不只是深浅色。
 
 #### 4. 完整独立外部插件实战范例 (Focus Zen Counter)
 

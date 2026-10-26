@@ -187,7 +187,9 @@ public struct PurahPluginContext: Sendable {
             storeRef?.isAlertAcknowledged(id: alertId) ?? false
         }
 
-        self.isHoverDismissEnabled = isHoverDismissEnabled ?? (storeRef?.dismissAlertOnHover ?? true)
+        // Hover is the only alert-acknowledgment path; the flag stays for
+        // plugin compatibility and is always true.
+        self.isHoverDismissEnabled = isHoverDismissEnabled ?? true
         self.alertStyle = alertStyle ?? (storeRef?.alertStyle ?? .breathingBeacon)
 
         self.requestLayoutRecalculation = requestLayoutRecalculation ?? { [weak storeRef] in

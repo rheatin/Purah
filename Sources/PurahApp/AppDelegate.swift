@@ -28,6 +28,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         NSApp.setActivationPolicy(.accessory) // Persistent menu bar accessory app without dock icon
         setupMainMenu()
 
+        // External plugins must be re-registered BEFORE `bindStore`: bindStore
+        // ends with the orphan prune, and a plugin that has not been restored
+        // yet looks exactly like one that was uninstalled.
+        PluginDynamicLoader.shared.restoreInstalledPlugins(into: store)
         PluginRegistry.shared.bindStore(store)
         TransientHUDController.shared.store = store
 

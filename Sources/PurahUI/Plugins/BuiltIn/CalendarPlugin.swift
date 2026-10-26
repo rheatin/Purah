@@ -578,40 +578,6 @@ public struct CalendarPluginSettingsView: View {
                         }
                     }
 
-                    // Hover dismiss switch row
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Dismiss dynamic animation on mouse hover")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("Immediately quiet alert animations when touching the rail")
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { state.dismissAlertOnHover },
-                            set: {
-                                state.dismissAlertOnHover = $0
-                                state.save()
-                                store.dismissAlertOnHover = $0
-                                store.savePersistentState()
-                            }
-                        ))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                    }
-                    .padding(9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.03))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-                    )
-
                     // Event toast switch row
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {

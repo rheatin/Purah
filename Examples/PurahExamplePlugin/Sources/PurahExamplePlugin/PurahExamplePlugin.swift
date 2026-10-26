@@ -18,6 +18,25 @@ final class ZenCounterState: ObservableObject {
             UserDefaults.standard.set(stepSize, forKey: "purah.plugin.com.example.focus.stepSize")
         }
     }
+    /// Evidence that the host-driven polling path is alive; shown in settings.
+    @Published var pollTickCount: Int = 0
+    @Published var activeSessionTitle: String?
+
+    func notePollTick() {
+        pollTickCount += 1
+    }
+
+    func noteContext(_ context: PurahExternalContext, for view: NSView) {
+        // A real plugin would re-render from these values. The example only
+        // proves the payload arrives with the fields it expects.
+        _ = context.isExpanded
+        _ = context.visibleSubItemIds
+        _ = view
+    }
+
+    func startSession(_ session: ZenSession) {
+        activeSessionTitle = session.title
+    }
 
     init() {
         self.count = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.currentCount")
@@ -312,7 +331,11 @@ private let manifestJSON = """
     "category": "Lightweight",
     "permissions": [],
     "tags": ["Focus", "Counter", "Ambient"],
-    "isCommunity": true
+    "isCommunity": true,
+    "minimumDrawerHeight": 140.0,
+    "preferredDrawerHeight": 320.0,
+    "defaultDecomposed": true,
+    "pollingInterval": 5.0
 }
 """
 
@@ -388,4 +411,181 @@ public func purahOnMount() {
 @_cdecl("purahOnUnmount")
 public func purahOnUnmount() {
     // Optional unmount lifecycle hook
+}
+
+// MARK: - Host-driven polling & context updates
+//
+// The host owns the timer. It stops ticking when the pod is disabled,
+// unmounted, or the rails are frozen — a plugin must never start its own
+// recurring timer, or those guarantees are lost.
+
+/// Called on the host's schedule (manifest `pollingInterval`). Must return
+/// quickly; heavy work belongs on a background queue.
+@MainActor
+@_cdecl("purahOnPollingTick")
+public func purahOnPollingTick(contextJSON: UnsafePointer<CChar>) {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    ZenCounterState.shared.notePollTick()
+}
+
+/// Push a fresh context into a view the plugin already created. Without this
+/// the factory runs once and the view never learns that the drawer opened or
+/// the pod got pinned.
+@MainActor
+@_cdecl("purahUpdateContext")
+public func purahUpdateContext(viewPtr: UnsafeMutableRawPointer, contextJSON: UnsafePointer<CChar>) {
+    guard let context = PurahExternalContext.decode(from: contextJSON) else { return }
+    let view = Unmanaged<NSView>.fromOpaque(viewPtr).takeUnretainedValue()
+    ZenCounterState.shared.noteContext(context, for: view)
+}
+
+/// Stepped-mode rail tap with the clicked chip's identity.
+///
+/// Returning non-zero means "handled": the host will not add its default
+/// haptic + drawer expansion. Returning zero falls back to that default.
+@MainActor
+@_cdecl("purahOnRailBarTapWithContext")
+public func purahOnRailBarTapWithContext(
+    contextJSON: UnsafePointer<CChar>,
+    subItemId: UnsafePointer<CChar>
+) -> Int32 {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let id = String(cString: subItemId)
+
+    if let session = ZenSessions.session(for: id) {
+        ZenCounterState.shared.startSession(session)
+        PurahHostBridge.shared.showToast(
+            pluginId: "com.example.focus",
+            message: "Started \(session.title) (\(session.minutes) min)"
+        )
+        // Handled: a chip tap starts a session instead of opening a drawer.
+        return 1
+    }
+    return 0
+}
+
+// MARK: - Stepped Mode (per-session chips)
+//
+// Demonstrates the optional stepped ABI: three focus sessions rendered as
+// individual rail chips, each with its own drawer. A plugin that exports none
+// of these symbols simply has no stepped mode.
+
+struct ZenSession: Identifiable {
+    let id: String
+    let title: String
+    let minutes: Int
+}
+
+@MainActor
+enum ZenSessions {
+    static let all: [ZenSession] = [
+        ZenSession(id: "deep", title: "Deep Work", minutes: 50),
+        ZenSession(id: "short", title: "Short Break", minutes: 5),
+        ZenSession(id: "review", title: "Review", minutes: 15)
+    ]
+
+    static func session(for subItemId: String) -> ZenSession? {
+        all.first { "com.example.focus-\($0.id)" == subItemId }
+    }
+}
+
+@MainActor
+@_cdecl("purahSteppedItemsJSON")
+public func purahSteppedItemsJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+
+    let payload: [[String: Any]] = ZenSessions.all.map { session in
+        [
+            "id": "com.example.focus-\(session.id)",
+            "title": session.title,
+            "subtitle": "\(session.minutes) min",
+            "systemIcon": "timer",
+            "badge": "\(session.minutes)m",
+            "state": "normal",
+            "gaugeRatio": Double(session.minutes) / 50.0,
+            "gaugeStyle": "solid"
+        ]
+    }
+
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let json = String(data: data, encoding: .utf8) else { return nil }
+    return (json as NSString).utf8String
+}
+
+@MainActor
+@_cdecl("purahDecomposedPolicyJSON")
+public func purahDecomposedPolicyJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+
+    let policy: [String: Any] = [
+        "maxRailItems": 3,
+        "minChipHeight": 56.0,
+        "maxChipHeight": 185.0,
+        "spacing": 2.5,
+        "overflowStrategy": "smartFold"
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: policy),
+          let json = String(data: data, encoding: .utf8) else { return nil }
+    return (json as NSString).utf8String
+}
+
+@MainActor
+@_cdecl("purahCreateSteppedDrawerViewWithContext")
+public func purahCreateSteppedDrawerViewWithContext(
+    contextJSON: UnsafePointer<CChar>,
+    subItemId: UnsafePointer<CChar>
+) -> UnsafeMutableRawPointer? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let id = String(cString: subItemId)
+    guard let session = ZenSessions.session(for: id) else { return nil }
+    return PurahViewHost.retain(ZenSessionDrawerView(session: session))
+}
+
+/// Dynamic telemetry: the bar turns amber once the session goal is reached.
+@MainActor
+@_cdecl("purahDynamicBarColorHex")
+public func purahDynamicBarColorHex(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let reachedGoal = ZenCounterState.shared.count >= ZenCounterState.shared.targetGoal
+    return (reachedGoal ? "#FFD166" : "#FF6B6B" as NSString).utf8String
+}
+
+/// Accent colour follows the same signal, so the drawer tint agrees with the
+/// rail bar instead of the two disagreeing at the goal boundary.
+@MainActor
+@_cdecl("purahDynamicAccentColorHex")
+public func purahDynamicAccentColorHex(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let reachedGoal = ZenCounterState.shared.count >= ZenCounterState.shared.targetGoal
+    return (reachedGoal ? "#FFD166" : "#FF6B6B" as NSString).utf8String
+}
+
+struct ZenSessionDrawerView: View {
+    let session: ZenSession
+    private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "timer")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(accentColor)
+                Text(session.title)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(session.minutes)m")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            Text("Focus for \(session.minutes) minutes. Chips like this one are contributed per sub-item through the stepped ABI.")
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
 }

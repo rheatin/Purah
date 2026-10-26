@@ -452,14 +452,87 @@ Copy `PurahExternalPluginSDK.swift` next to your sources and export these
 | `purahCreateSettingsViewWithContext` | optional | Plugin settings page |
 | `purahCreateHeaderAccessoryView` / `purahCreateHeaderTrailingView` | optional | Header slot views |
 | `purahOnRailBarTap` / `purahOnMount` / `purahOnUnmount` | optional | Interaction and lifecycle callbacks |
+| `purahSteppedItemsJSON` | optional | Context JSON → JSON array of sub-items. Exporting it is what gives the plugin a stepped mode |
+| `purahCreateSteppedDrawerViewWithContext` | optional | `(contextJSON, subItemId)` → retained `NSView`; return `NULL` for an unknown id |
+| `purahCreateOverviewDrawerContentWithContext` | optional | Content for the `+N more` overview drawer (the host supplies the shell) |
+| `purahDecomposedPolicyJSON` | optional | Context JSON → chip policy JSON, read once at load |
+| `purahDynamicBarColorHex` / `purahDynamicAccentColorHex` | optional | Context JSON → `"#RRGGBB"`; empty or `NULL` falls back to the manifest colour |
+| `purahOnRailBarTapWithContext` | optional | `(contextJSON, subItemId) -> Int32`. Non-zero means the plugin handled the tap and the host must not add its default haptic + expansion |
+| `purahUpdateContext` | optional | `(viewPtr, contextJSON)` — pushes a new payload into a view you already created |
+| `purahOnPollingTick` | optional | `(contextJSON)` — called on the host's timer. Pair it with a manifest `pollingInterval` |
+
+**Stepped mode.** Export `purahSteppedItemsJSON` and the pod gains per-sub-item
+chips on the rail, exactly like Calendar or Todo. Each entry is
+`{ id, title, subtitle?, systemIcon?, badge?, state?, gaugeRatio?, gaugeStyle?,
+tintColorHex?, isPinned? }`; only `id` and `title` are required, and unknown
+enum spellings fall back to their neutral value so an older host never fails to
+render a newer plugin. `state` is one of `normal`, `ongoing`, `alerting`,
+`inactive`, `running`; `gaugeStyle` is one of `solid`, `segmented`, `wave`,
+`none`.
+
+The chip policy is
+`{ maxRailItems, minChipHeight, maxChipHeight, spacing, overflowStrategy }` with
+`overflowStrategy` one of `smartFold`, `truncate`, `compactScale`. Keep
+`minChipHeight` at or above the ergonomic floor for your content type (56pt for
+tappable metrics, 40pt for event chips, 32pt for task chips) — the host does not
+second-guess it.
+
+**Manifest-declared dimensions.** The composite drawer's height range comes
+from the manifest:
+
+```json
+{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320,
+  "defaultDecomposed": true, "pollingInterval": 5 }
+```
+
+All three are optional. The host clamps a declared minimum up to the 120pt
+ergonomic floor and keeps at least a 24pt expansion range above it, so a plugin
+cannot flatten its own tier ladder. Stepped pods take their height from the
+chip policy instead; these fields only govern the composite drawer.
+
+**Composite vs stepped.** Declaring a stepped mode is not the same as wanting
+it as the starting state. Add `"defaultDecomposed": true` to the manifest to
+start in chips; without it the pod starts composite, even when
+`purahSteppedItemsJSON` is exported. The user chooses with the Sculptor dock
+toggle (`⌃⌥E`), and the host persists that choice — you do not store it, and it
+always overrides your declaration. To offer the same switch on your own
+settings page, call `PurahHostBridge.shared.setDecomposed(pluginId:_:)`.
+
+**Pinned chips.** The host derives pinned-child state from your chip list, so
+pinning one of your chips keeps the rail canvas wide enough for its open drawer
+without any extra symbol.
 
 The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
 `slotHeight`, `drawerWidth`, `isExpanded`, `isPinned`, `isDark`,
-`accentColorHex` and `storageDirectoryPath` — the last one is the plugin's own
-sandbox, so history and config files belong there.
+`accentColorHex`, `storageDirectoryPath`, `visibleSubItemIds`, `isDecomposed`,
+`paletteStyle`, `primaryAccentHex` and `borderColorHex`.
+
+- `storageDirectoryPath` is the plugin's own sandbox, so history and config
+  files belong there.
+- `visibleSubItemIds` is the set of chips currently on the rail. A `+N more`
+  overview must exclude these, or it repeats what the user already sees.
+- `paletteStyle` / `primaryAccentHex` / `borderColorHex` let a drawer follow the
+  active theme (macOS Native or Purah Pad Sheikah Slate), not just light/dark.
+
+**Live context updates.** Export `purahUpdateContext` and the host calls it
+whenever the context changes — drawer opened, pod pinned, width or height
+changed. Without it your factory runs once and the view never learns anything
+new. The first argument is the exact pointer your factory returned.
+
+**Host-owned polling.** Declare `pollingInterval` in the manifest (seconds) and
+export `purahOnPollingTick`; the host runs the timer. Never start your own
+recurring timer: the host stops ticks when the pod is disabled, unmounted, or
+the rails are frozen, and a private timer would keep running through all three.
+Keep the tick short — do heavy work on your own queue.
+
+**Rail taps.** `purahOnRailBarTapWithContext` tells you which chip was clicked.
+Return non-zero to say you handled it; the host then skips its default haptic
+and drawer expansion (that is how Music's play/pause chip works). Return zero
+for the default open-the-drawer behaviour.
 
 **Working reference:** `Examples/PurahExamplePlugin` (Zen Counter — rail bar,
-drawer, header slots, settings panel and host-action bridge). Load it with
+drawer, header slots, settings panel, host-action bridge, stepped chips and
+dynamic telemetry colour). Load it with
 **Settings → Plugins → Dev: Load Package...**.
 
 > The loader accepts a folder containing `Package.swift` or a built `.dylib`.

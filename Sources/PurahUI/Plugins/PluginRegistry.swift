@@ -115,6 +115,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
 
     public func unregister(id: String, store: PurahWorkspaceStore? = nil) {
         stopPolling(for: id)
+        PluginDynamicLoader.shared.forgetInstalled(pluginId: id)
         if let _ = registeredPlugins.removeValue(forKey: id) {
             let targetStore = store ?? boundStore
             if let targetStore {

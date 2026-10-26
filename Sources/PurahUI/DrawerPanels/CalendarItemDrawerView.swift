@@ -79,9 +79,7 @@ public struct CalendarItemDrawerView: View {
                     color: (isImminent && !isOngoing) ? Color.orange : calColor,
                     alertStyle: store.alertStyle,
                     onHoverDismiss: {
-                        if store.dismissAlertOnHover {
-                            store.acknowledgeAlert(id: event.id)
-                        }
+                        store.acknowledgeAlert(id: event.id)
                     }
                 )
                 .transaction { t in

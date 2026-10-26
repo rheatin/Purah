@@ -15,6 +15,15 @@ public struct PurahExternalContext: Codable, Sendable {
     public let isDark: Bool
     public let accentColorHex: String
     public let storageDirectoryPath: String
+    /// Sub-item ids the rail is currently showing — a "+N more" overview must
+    /// exclude these or it repeats entries the user already sees.
+    public let visibleSubItemIds: [String]
+    /// Whether the pod is in stepped (chips) mode right now.
+    public let isDecomposed: Bool
+    /// Active theme, so a drawer can follow the palette, not just light/dark.
+    public let paletteStyle: String
+    public let primaryAccentHex: String
+    public let borderColorHex: String
 
     public init(
         pluginId: String,
@@ -26,7 +35,12 @@ public struct PurahExternalContext: Codable, Sendable {
         isPinned: Bool,
         isDark: Bool,
         accentColorHex: String,
-        storageDirectoryPath: String
+        storageDirectoryPath: String,
+        visibleSubItemIds: [String] = [],
+        isDecomposed: Bool = false,
+        paletteStyle: String = "native",
+        primaryAccentHex: String = "#00D1FF",
+        borderColorHex: String = "#888888"
     ) {
         self.pluginId = pluginId
         self.edge = edge
@@ -38,6 +52,11 @@ public struct PurahExternalContext: Codable, Sendable {
         self.isDark = isDark
         self.accentColorHex = accentColorHex
         self.storageDirectoryPath = storageDirectoryPath
+        self.visibleSubItemIds = visibleSubItemIds
+        self.isDecomposed = isDecomposed
+        self.paletteStyle = paletteStyle
+        self.primaryAccentHex = primaryAccentHex
+        self.borderColorHex = borderColorHex
     }
 
     public static func decode(from cString: UnsafePointer<CChar>) -> PurahExternalContext? {
@@ -105,6 +124,13 @@ public final class PurahHostBridge {
 
     public func requestLayoutRecalculation(pluginId: String) {
         invoke(pluginId: pluginId, action: "requestLayoutRecalculation", payload: nil)
+    }
+
+    /// Switch between the composite bar and stepped chips. The host persists
+    /// the choice and re-runs layout; this is the same state the Sculptor dock
+    /// toggles.
+    public func setDecomposed(pluginId: String, _ isDecomposed: Bool) {
+        invoke(pluginId: pluginId, action: "setDecomposed", payload: isDecomposed ? "true" : "false")
     }
 
     private func invoke(pluginId: String, action: String, payload: String?) {

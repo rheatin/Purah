@@ -314,9 +314,7 @@ public struct AmbientRailStripView: View {
                     color: color,
                     alertStyle: store.alertStyle
                 ) {
-                    if store.dismissAlertOnHover {
-                        acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
-                    }
+                    acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
                 }
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
@@ -332,9 +330,6 @@ public struct AmbientRailStripView: View {
                     plugin.onRailBarTap(subItemId: nil, context: barContext)
                 }
                 .onTapGesture {
-                    if store.dismissAlertOnHover && isPodAlerting {
-                        acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
-                    }
                     plugin.onRailBarTap(subItemId: nil, context: barContext)
                 }
                 .modifier(PurahDropIngestionModifier(types: plugin.supportedDropTypes) { providers in
@@ -346,9 +341,7 @@ public struct AmbientRailStripView: View {
                     .offset(y: drawerOffsetY)
                     .transition(drawerTransition)
                     .onAppear {
-                        if store.dismissAlertOnHover && isPodAlerting {
-                            acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
-                        }
+                        acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
                     }
             }
         }
