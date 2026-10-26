@@ -305,6 +305,8 @@ public struct AIRailBarPluginView: View {
     public let state: AIAssistantPluginState
     public let context: PurahPluginContext
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     public init(state: AIAssistantPluginState, context: PurahPluginContext) {
         self.state = state
         self.context = context
@@ -322,7 +324,7 @@ public struct AIRailBarPluginView: View {
                 .frame(width: barW, height: barH)
 
             if state.isStreaming {
-                TimelineView(.animation) { timeline in
+                TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                     let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
                     let spotH = max(barH * 0.28, 14.0)
@@ -812,6 +814,8 @@ public struct AIAssistantPluginSettingsView: View {
                 }
             }
 
+            secretSourcesHint(forKey: "ai.openAIAPIKey")
+
             modelSelectorRow(
                 title: "Model ID",
                 text: $state.openAIModel,
@@ -836,12 +840,35 @@ public struct AIAssistantPluginSettingsView: View {
                 }
             }
 
+            secretSourcesHint(forKey: "ai.anthropicAPIKey")
+
             modelSelectorRow(
                 title: "Model ID",
                 text: $state.anthropicModel,
                 provider: .httpAnthropic
             )
         }
+    }
+
+    /// Tells the user where a key can live besides this field. Keys saved here
+    /// go to `~/Library/Application Support/Purah/secrets.json` (owner-only,
+    /// never exported with a config backup); the environment wins if set, so a
+    /// shell profile or a secrets manager can supply the value with no copy on
+    /// disk at all.
+    @ViewBuilder
+    private func secretSourcesHint(forKey key: String) -> some View {
+        let environmentName = FileSecretStore.environmentName(forKey: key)
+        let path = FileSecretStore.defaultFileURL().path
+            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Stored owner-only in \(path)")
+            Text("Overridden by $\(environmentName)")
+                .textSelection(.enabled)
+        }
+        .font(.system(size: 9.5))
+        .foregroundColor(.secondary)
+        .padding(.leading, 98)
     }
 
     @ViewBuilder

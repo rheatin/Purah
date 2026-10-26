@@ -15,8 +15,6 @@ public final class MusicPluginState: Sendable {
     public var isWaveformAnimationEnabled: Bool
     public let storage: any PurahPluginStorage
 
-    @ObservationIgnored private var appleMusicObserver: (any NSObjectProtocol)?
-    @ObservationIgnored private var spotifyObserver: (any NSObjectProtocol)?
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var musicTrack: MusicTrackInfo {
@@ -148,7 +146,10 @@ public final class MusicPluginState: Sendable {
         }
         self.isWaveformAnimationEnabled = store.isMusicWaveformAnimationEnabled
 
-        startListening()
+        // A single observer set: `SystemMusicSyncService` already watches Apple
+        // Music, Spotify and MediaRemote. This state used to add its own
+        // duplicate distributed observers, so every player notification was
+        // handled twice (including two artwork/lyrics fetches per track).
         SystemMusicSyncService.shared.onTrackChanged = { [weak self] newTrack in
             guard let self = self else { return }
             var merged = newTrack
@@ -194,7 +195,6 @@ public final class MusicPluginState: Sendable {
     }
 
     public func unmount(store: PurahWorkspaceStore) {
-        stopListening()
         SystemMusicSyncService.shared.stopListening()
         SystemMusicSyncService.shared.onTrackChanged = nil
         SystemMusicSyncService.shared.clearArtworkCache()
@@ -204,242 +204,6 @@ public final class MusicPluginState: Sendable {
         save()
         if boundStore === store {
             boundStore = nil
-        }
-    }
-
-    private func startListening() {
-        stopListening()
-        let center = DistributedNotificationCenter.default()
-
-        appleMusicObserver = center.addObserver(
-            forName: NSNotification.Name("com.apple.Music.playerInfo"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notif in
-            nonisolated(unsafe) let notification = notif
-            MainActor.assumeIsolated {
-                self?.handleAppleMusicNotification(notification)
-            }
-        }
-
-        spotifyObserver = center.addObserver(
-            forName: NSNotification.Name("com.spotify.client.PlaybackStateChanged"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notif in
-            nonisolated(unsafe) let notification = notif
-            MainActor.assumeIsolated {
-                self?.handleSpotifyNotification(notification)
-            }
-        }
-    }
-
-    private func stopListening() {
-        let center = DistributedNotificationCenter.default()
-        if let obs = appleMusicObserver {
-            center.removeObserver(obs)
-            appleMusicObserver = nil
-        }
-        if let obs = spotifyObserver {
-            center.removeObserver(obs)
-            spotifyObserver = nil
-        }
-    }
-
-    private func handleAppleMusicNotification(_ notification: Notification) {
-        guard let userInfo = notification.userInfo else { return }
-        let playerState = userInfo["Player State"] as? String ?? ""
-        let isPlaying = (playerState == "Playing")
-        let title = userInfo["Name"] as? String ?? "Unknown Track"
-        let artist = userInfo["Artist"] as? String ?? "Apple Music"
-        let album = userInfo["Album"] as? String ?? ""
-
-        let totalTimeMs = SystemMusicSyncService.extractNumericValue(from: userInfo["Total Time"]) ?? 180000.0
-        let totalSec = max(totalTimeMs / 1000.0, 1.0)
-
-        let isSameTrack = (self.track.title == title && self.track.artist == artist)
-        let existingPos = self.track.calculatedCurrentTime
-
-        let parsedPosSec = SystemMusicSyncService.extractNumericValue(from: userInfo["Player Position"])
-        let currentPosSec: Double = {
-            if let pos = parsedPosSec {
-                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
-                    return existingPos
-                }
-                return min(max(pos, 0.0), totalSec)
-            } else if isSameTrack {
-                return existingPos
-            }
-            return 0.0
-        }()
-
-        let progress = min(max(currentPosSec / totalSec, 0.0), 1.0)
-        let samples: [Double] = (0..<14).map { _ in
-            isPlaying ? Double.random(in: 0.25...0.95) : 0.15
-        }
-
-        // Retain existing artwork if same track, or check cache
-        let existingArtwork: Data? = {
-            if isSameTrack && self.track.artworkData != nil {
-                return self.track.artworkData
-            }
-            return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
-        }()
-
-        let cachedLyr = SystemMusicSyncService.shared.cachedLyrics(for: title, artist: artist)
-        let existingLyrics: String? = (isSameTrack ? self.track.lyrics : nil) ?? cachedLyr?.plainLyrics
-        let existingSyncedLyrics: String? = (isSameTrack ? self.track.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
-
-        self.track = MusicTrackInfo(
-            title: title,
-            artist: artist,
-            album: album,
-            isPlaying: isPlaying,
-            playbackProgress: progress,
-            currentPositionSeconds: currentPosSec,
-            durationSeconds: totalSec,
-            lastUpdated: Date(),
-            playbackRate: isPlaying ? 1.0 : 0.0,
-            waveformSamples: samples,
-            artworkData: existingArtwork,
-            lyrics: existingLyrics,
-            syncedLyrics: existingSyncedLyrics,
-            sourceApp: "Apple Music",
-            sourceBundleId: "com.apple.Music"
-        )
-        if let store = boundStore {
-            store._musicTrack = self.track
-        }
-
-        // Fetch artwork if not cached
-        if existingArtwork == nil {
-            Task { [weak self] in
-                if let art = await SystemMusicSyncService.shared.fetchArtwork(title: title, artist: artist, album: album) {
-                    await MainActor.run {
-                        if self?.track.title == title && self?.track.artist == artist {
-                            self?.track.artworkData = art
-                            if let store = self?.boundStore {
-                                store._musicTrack.artworkData = art
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fetch online lyrics
-        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
-            Task { [weak self] in
-                if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
-                    await MainActor.run {
-                        if self?.track.title == title && self?.track.artist == artist {
-                            self?.track.lyrics = lyrResult.plainLyrics
-                            self?.track.syncedLyrics = lyrResult.syncedLyrics
-                            if let store = self?.boundStore {
-                                store._musicTrack.lyrics = lyrResult.plainLyrics
-                                store._musicTrack.syncedLyrics = lyrResult.syncedLyrics
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func handleSpotifyNotification(_ notification: Notification) {
-        guard let userInfo = notification.userInfo else { return }
-        let spotifyState = userInfo["Player State"] as? String ?? ""
-        let isPlaying = (spotifyState == "Playing" || spotifyState == "kPSP")
-        let title = userInfo["Name"] as? String ?? "Unknown Track"
-        let artist = userInfo["Artist"] as? String ?? "Spotify"
-        let album = userInfo["Album"] as? String ?? ""
-
-        let durationMs = SystemMusicSyncService.extractNumericValue(from: userInfo["Duration"]) ?? 180000.0
-        let durationSec = max(durationMs / 1000.0, 1.0)
-
-        let isSameTrack = (self.track.title == title && self.track.artist == artist)
-        let existingPos = self.track.calculatedCurrentTime
-
-        let parsedPosSec = SystemMusicSyncService.extractNumericValue(from: userInfo["Playback Position"])
-        let currentPosSec: Double = {
-            if let pos = parsedPosSec {
-                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
-                    return existingPos
-                }
-                return min(max(pos, 0.0), durationSec)
-            } else if isSameTrack {
-                return existingPos
-            }
-            return 0.0
-        }()
-
-        let progress = min(max(currentPosSec / durationSec, 0.0), 1.0)
-        let samples: [Double] = (0..<14).map { _ in
-            isPlaying ? Double.random(in: 0.25...0.95) : 0.15
-        }
-
-        let existingArtwork: Data? = {
-            if isSameTrack && self.track.artworkData != nil {
-                return self.track.artworkData
-            }
-            return SystemMusicSyncService.shared.cachedArtwork(for: title, artist: artist)
-        }()
-
-        let cachedLyr = SystemMusicSyncService.shared.cachedLyrics(for: title, artist: artist)
-        let existingLyrics: String? = (isSameTrack ? self.track.lyrics : nil) ?? cachedLyr?.plainLyrics
-        let existingSyncedLyrics: String? = (isSameTrack ? self.track.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
-
-        self.track = MusicTrackInfo(
-            title: title,
-            artist: artist,
-            album: album,
-            isPlaying: isPlaying,
-            playbackProgress: progress,
-            currentPositionSeconds: currentPosSec,
-            durationSeconds: durationSec,
-            lastUpdated: Date(),
-            playbackRate: isPlaying ? 1.0 : 0.0,
-            waveformSamples: samples,
-            artworkData: existingArtwork,
-            lyrics: existingLyrics,
-            syncedLyrics: existingSyncedLyrics,
-            sourceApp: "Spotify",
-            sourceBundleId: "com.spotify.client"
-        )
-        if let store = boundStore {
-            store._musicTrack = self.track
-        }
-
-        if existingArtwork == nil {
-            Task { [weak self] in
-                if let art = await SystemMusicSyncService.shared.fetchArtwork(title: title, artist: artist, album: album) {
-                    await MainActor.run {
-                        if self?.track.title == title && self?.track.artist == artist {
-                            self?.track.artworkData = art
-                            if let store = self?.boundStore {
-                                store._musicTrack.artworkData = art
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
-            Task { [weak self] in
-                if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: title, artist: artist) {
-                    await MainActor.run {
-                        if self?.track.title == title && self?.track.artist == artist {
-                            self?.track.lyrics = lyrResult.plainLyrics
-                            self?.track.syncedLyrics = lyrResult.syncedLyrics
-                            if let store = self?.boundStore {
-                                store._musicTrack.lyrics = lyrResult.plainLyrics
-                                store._musicTrack.syncedLyrics = lyrResult.syncedLyrics
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

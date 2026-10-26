@@ -23,9 +23,20 @@ public struct PurahPluginContext: Sendable {
 
     /// Legacy host store reference for built-in panels during transition.
     /// Third-party plugins should prefer context layout properties, storage, and action closures.
+    ///
+    /// A context built without a store falls back to one shared instance.
+    /// Returning a fresh `PurahWorkspaceStore()` here used to allocate a new
+    /// store — and re-run `loadPersistentState` plus plugin capability
+    /// registration — on *every* property access, so a single render pass could
+    /// spawn a dozen throwaway stores whose mutations were silently discarded.
     public var store: PurahWorkspaceStore {
-        _store ?? PurahWorkspaceStore()
+        _store ?? Self.detachedFallbackStore
     }
+
+    /// Only reached by contexts that were never given a host store (tests and
+    /// previews). Shared so its identity — and therefore any state written to
+    /// it — is stable across accesses.
+    private static let detachedFallbackStore = PurahWorkspaceStore()
 
     public let requestExpand: @MainActor () -> Void
     public let requestDismiss: @MainActor () -> Void

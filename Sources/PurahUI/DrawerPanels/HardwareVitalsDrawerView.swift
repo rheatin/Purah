@@ -38,6 +38,7 @@ public struct HardwareVitalsDrawerView: View {
     @State private var selectedTab: VitalsDashboardTab = .overview
     @State private var sortProcessesByCPU: Bool = true
     @State private var isPulsing: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var vitals: HardwareVitalsService {
         HardwareVitalsService.shared
@@ -160,8 +161,10 @@ public struct HardwareVitalsDrawerView: View {
         }
         .onAppear {
             vitals.isDrawerVisible = true
-            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                isPulsing = true
+            if PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) {
+                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                    isPulsing = true
+                }
             }
             state.mount(store: store)
             vitals.startMonitoring()

@@ -57,6 +57,7 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isCopiedFeedback: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
     @State private var currentStreamTask: Task<Void, Never>? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
         self.role = role
@@ -90,7 +91,7 @@ public struct AIAssistantSteppedDrawerView: View {
                     .frame(width: barW, height: slotH)
 
                 if isRoleRunning {
-                    TimelineView(.animation) { timeline in
+                    TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                         let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
                         let spotH = max(slotH * 0.28, 14.0)

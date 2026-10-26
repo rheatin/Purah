@@ -10,6 +10,14 @@ public enum PluginDynamicLoadError: LocalizedError, Sendable {
     case missingEntrySymbol(String)
     case invalidPluginType
     case compilationFailed(String)
+    /// The dylib declares an ABI the host cannot speak.
+    case incompatibleABI(found: String, expected: String)
+    /// The dylib or its container is not signed, or the signature is invalid.
+    case unsignedPlugin(String)
+    /// A plugin with this id is already registered.
+    case duplicatePluginId(String)
+    /// A C entry point returned NULL.
+    case nullEntryPoint(String)
 
     public var errorDescription: String? {
         switch self {
@@ -23,7 +31,33 @@ public enum PluginDynamicLoadError: LocalizedError, Sendable {
             return "Exported plugin instance or manifest JSON is invalid."
         case .compilationFailed(let log):
             return "Swift Package compilation failed:\n\(log)"
+        case .incompatibleABI(let found, let expected):
+            return "Plugin targets ABI \(found) but this version of Purah speaks \(expected)."
+        case .unsignedPlugin(let detail):
+            return "Plugin is not signed: \(detail)"
+        case .duplicatePluginId(let id):
+            return "A plugin with id '\(id)' is already loaded."
+        case .nullEntryPoint(let symbol):
+            return "Plugin entry point '\(symbol)' returned null."
         }
+    }
+}
+
+/// Version of the zero-dependency C ABI an external plugin must target.
+///
+/// Plugins export `purahPluginABIVersion` returning a C string. A missing
+/// symbol is treated as legacy ABI 1 so already-built developer plugins keep
+/// loading; anything newer than the host is rejected instead of being called
+/// through an incompatible function table.
+public enum PurahPluginABI {
+    public static let current = "1"
+    public static let versionSymbol = "purahPluginABIVersion"
+    public static let manifestSymbol = "purahPluginManifestJSON"
+
+    public static func isCompatible(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let major = Int(trimmed.split(separator: ".").first ?? "") else { return trimmed == current }
+        return major <= Int(current) ?? 1
     }
 }
 
@@ -203,7 +237,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeRailViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -226,7 +260,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeDrawerViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -245,7 +279,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        PluginDynamicLoader.shared.registerStore(store)
+        PluginDynamicLoader.shared.registerStore(store, for: manifest.id)
         let payload = PurahABIContextPayload.from(store: store, pluginId: manifest.id)
         if let fnWithContext = makeSettingsViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -264,7 +298,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeAccessoryViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -283,7 +317,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         let payload = PurahABIContextPayload.from(context: context)
         if let fnWithContext = makeTrailingViewWithContextFn {
             if let nsView = payload.withJSONCString({ cStr -> NSView in
@@ -302,7 +336,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
-        PluginDynamicLoader.shared.registerStore(context.store)
+        PluginDynamicLoader.shared.registerStore(context.store, for: manifest.id)
         if let fn = onRailTapFn {
             fn()
         }
@@ -311,7 +345,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     }
 
     public func onMount(store: PurahWorkspaceStore) {
-        PluginDynamicLoader.shared.registerStore(store)
+        PluginDynamicLoader.shared.registerStore(store, for: manifest.id)
         onMountFn?()
     }
 
@@ -329,7 +363,20 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
 public final class PluginDynamicLoader {
     public static let shared = PluginDynamicLoader()
 
+    /// Fallback store for callers that never registered a per-plugin binding
+    /// (settings windows, tests, single-store builds).
     public weak var currentStore: PurahWorkspaceStore?
+
+    /// Store each external plugin was last rendered against. Binding is
+    /// per-plugin so a second screen (or a second store) cannot silently
+    /// re-route every external plugin's host actions to the newest store —
+    /// with a single `currentStore` the last writer won, and an external pod
+    /// on screen A could end up expanding a pod on screen B.
+    private var pluginStores: [String: WeakStore] = [:]
+
+    private struct WeakStore {
+        weak var value: PurahWorkspaceStore?
+    }
 
     private var loadedHandles: [String: UnsafeMutableRawPointer] = [:]
     private var loadedDylibPaths: [String: String] = [:]
@@ -340,8 +387,17 @@ public final class PluginDynamicLoader {
         self.currentStore = store
     }
 
+    public func registerStore(_ store: PurahWorkspaceStore, for pluginId: String) {
+        self.currentStore = store
+        self.pluginStores[pluginId] = WeakStore(value: store)
+    }
+
+    public func store(for pluginId: String) -> PurahWorkspaceStore? {
+        pluginStores[pluginId]?.value ?? currentStore
+    }
+
     public func handleExternalPluginAction(pluginId: String, action: String, payload: String?) {
-        guard let store = currentStore else { return }
+        guard let store = store(for: pluginId) else { return }
         switch action {
         case "expand":
             store.activePodId = pluginId
@@ -391,19 +447,29 @@ public final class PluginDynamicLoader {
             throw PluginDynamicLoadError.fileNotFound(path)
         }
 
+        // Trust gate before executing any code from the image: a plugin runs
+        // in-process with full user privileges, so an unsigned or tampered
+        // dylib must never reach dlopen.
+        try verifySignature(of: dylibURL)
+
         guard let handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL) else {
             let errorMsg = dlerror().map { String(cString: $0) } ?? "Unknown dlopen error"
             throw PluginDynamicLoadError.dlopenFailed(errorMsg)
         }
 
+        try verifyABIVersion(handle: handle, path: path)
+
         // Strategy A: Direct PurahPodPlugin protocol conformance via createPlugin
         if let sym = dlsym(handle, symbol) {
-            typealias InitFunc = @convention(c) () -> UnsafeMutableRawPointer
+            typealias InitFunc = @convention(c) () -> UnsafeMutableRawPointer?
             let createFn = unsafeBitCast(sym, to: InitFunc.self)
-            let rawInstance = createFn()
+            guard let rawInstance = createFn() else {
+                throw PluginDynamicLoadError.nullEntryPoint(symbol)
+            }
 
             let unmanaged = Unmanaged<AnyObject>.fromOpaque(rawInstance)
             if let plugin = unmanaged.takeRetainedValue() as? any PurahPodPlugin {
+                try rejectDuplicate(id: plugin.manifest.id)
                 if let bridgeSym = dlsym(handle, "purahSetHostActionBridge") {
                     typealias SetBridgeFunc = @convention(c) (PurahABIHostActionCallback) -> Void
                     let setBridgeFn = unsafeBitCast(bridgeSym, to: SetBridgeFunc.self)
@@ -416,15 +482,18 @@ public final class PluginDynamicLoader {
         }
 
         // Strategy B: Zero-dependency ABI C bridge (purahPluginManifestJSON + purahCreateRailView + purahCreateDrawerView)
-        if let manifestSym = dlsym(handle, "purahPluginManifestJSON") {
-            typealias ManifestFunc = @convention(c) () -> UnsafePointer<CChar>
+        if let manifestSym = dlsym(handle, PurahPluginABI.manifestSymbol) {
+            typealias ManifestFunc = @convention(c) () -> UnsafePointer<CChar>?
             let manifestFn = unsafeBitCast(manifestSym, to: ManifestFunc.self)
-            let cString = manifestFn()
+            guard let cString = manifestFn() else {
+                throw PluginDynamicLoadError.nullEntryPoint(PurahPluginABI.manifestSymbol)
+            }
             let jsonString = String(cString: cString)
             guard let jsonData = jsonString.data(using: .utf8),
                   let manifest = try? JSONDecoder().decode(PurahPluginManifest.self, from: jsonData) else {
                 throw PluginDynamicLoadError.invalidPluginType
             }
+            try rejectDuplicate(id: manifest.id)
 
             if let bridgeSym = dlsym(handle, "purahSetHostActionBridge") {
                 typealias SetBridgeFunc = @convention(c) (PurahABIHostActionCallback) -> Void
@@ -480,10 +549,59 @@ public final class PluginDynamicLoader {
         throw PluginDynamicLoadError.missingEntrySymbol(symbol)
     }
 
-    /// Unloads a dynamically loaded plugin handle and cleans up memory
+    /// Unloads a dynamically loaded plugin handle.
+    ///
+    /// The handle is deliberately *not* `dlclose`d. Swift runtime metadata,
+    /// dispatch blocks and KVO/notification observers registered by the plugin
+    /// can outlive this call, and unmapping the image would turn a stale
+    /// callback into a crash. The plugin's views are torn down by the registry;
+    /// the image stays resident until the next launch.
     public func unloadPlugin(id: String) {
-        loadedHandles.removeValue(forKey: id)
+        if let handle = loadedHandles.removeValue(forKey: id) {
+            _ = handle // Intentionally retained: see doc comment.
+        }
         loadedDylibPaths.removeValue(forKey: id)
+    }
+
+    // MARK: - Trust gates
+
+    /// Requires the dylib to carry a valid code signature.
+    ///
+    /// This authenticates *integrity*, not publisher identity — a developer
+    /// building locally produces an ad-hoc signature, which is accepted. It
+    /// stops a tampered or downloaded unsigned binary from being mapped.
+    private func verifySignature(of url: URL) throws {
+        var staticCode: SecStaticCode?
+        let status = SecStaticCodeCreateWithPath(url as CFURL, [], &staticCode)
+        guard status == errSecSuccess, let code = staticCode else {
+            throw PluginDynamicLoadError.unsignedPlugin("cannot read code signature (OSStatus \(status))")
+        }
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
+        let validity = SecStaticCodeCheckValidity(code, flags, nil)
+        guard validity == errSecSuccess else {
+            throw PluginDynamicLoadError.unsignedPlugin("signature invalid (OSStatus \(validity))")
+        }
+    }
+
+    /// Rejects plugins built against an ABI newer than this host.
+    private func verifyABIVersion(handle: UnsafeMutableRawPointer, path: String) throws {
+        guard let sym = dlsym(handle, PurahPluginABI.versionSymbol) else {
+            return // Legacy plugin predating the version symbol.
+        }
+        typealias VersionFunc = @convention(c) () -> UnsafePointer<CChar>?
+        let versionFn = unsafeBitCast(sym, to: VersionFunc.self)
+        guard let declared = versionFn().map({ String(cString: $0) }), !declared.isEmpty else {
+            return
+        }
+        guard PurahPluginABI.isCompatible(declared) else {
+            throw PluginDynamicLoadError.incompatibleABI(found: declared, expected: PurahPluginABI.current)
+        }
+    }
+
+    private func rejectDuplicate(id: String) throws {
+        guard loadedHandles[id] == nil else {
+            throw PluginDynamicLoadError.duplicatePluginId(id)
+        }
     }
 
     /// Returns the active dylib path for a loaded dynamic plugin

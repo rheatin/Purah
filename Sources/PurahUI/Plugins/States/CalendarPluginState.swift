@@ -59,6 +59,10 @@ public final class CalendarPluginState: Sendable {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var syncGeneration: UInt64 = 0
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+    /// Calendar permission probe. Tests inject a fixed status so a sync never
+    /// depends on the developer machine's TCC state (granted machines took the
+    /// async EventKit path and made the rebuild assertions timing-dependent).
+    @ObservationIgnored private let permissionStatus: @MainActor () -> AccessStatus
 
     public var calendarEvents: [CalendarEventItem] {
         get { events }
@@ -70,8 +74,14 @@ public final class CalendarPluginState: Sendable {
         set { scope = newValue }
     }
 
-    public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "calendar")) {
+    public init(
+        storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "calendar"),
+        permissionStatus: @escaping @MainActor () -> AccessStatus = {
+            PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event))
+        }
+    ) {
         self.storage = storage
+        self.permissionStatus = permissionStatus
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
         self.alertStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) ?? .subtleGlow
         self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
@@ -143,6 +153,13 @@ public final class CalendarPluginState: Sendable {
 
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
+        // Both sets are keyed by event id and unpersisted, so past events would
+        // otherwise accumulate acknowledgements for the whole session.
+        if acknowledgedAlertIds.count > 256 || notifiedToastEventIds.count > 256 {
+            let liveIDs = Set(events.map(\.id))
+            acknowledgedAlertIds = acknowledgedAlertIds.filter { liveIDs.contains($0) }
+            notifiedToastEventIds = notifiedToastEventIds.filter { liveIDs.contains($0) }
+        }
     }
 
     public func resetAcknowledgedAlerts() {
@@ -209,7 +226,7 @@ public final class CalendarPluginState: Sendable {
         let currentScope = self.scope
         let interval = currentScope.dateInterval(from: Date())
 
-        let status = PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event))
+        let status = permissionStatus()
         guard status.isGranted else {
             isUsingRealCalendar = false
             targetStore?.isUsingRealCalendar = false

@@ -392,12 +392,6 @@ public final class LocalizationManager {
             "pod.notes": "Quick Scratchpad",
 
             // Presets
-            "preset.balanced.title": "Balanced Ergonomics",
-            "preset.balanced.desc": "Evenly split between left & right rails. Timeline on right, shelf & notes on left, music on bottom.",
-            "preset.sprint.title": "Sprint Productivity",
-            "preset.sprint.desc": "Left rail dedicated to drop shelf & notes. Right rail focused on timeline & todo lists.",
-            "preset.media.title": "Immersive Multimedia",
-            "preset.media.desc": "Audio wave meter on left, minimal glance calendar on right.",
 
             // Calendar Overflow Strategy
             "calendar.overflow.smartFold": "Smart Fold (+N More)",
@@ -939,12 +933,6 @@ public final class LocalizationManager {
             "pod.notes": "即时便签",
 
             // Presets
-            "preset.balanced.title": "平衡人体工学",
-            "preset.balanced.desc": "左右双轨均匀分布。右轨承载日程与待办，左轨承载暂存架与便签，音乐居于底部。",
-            "preset.sprint.title": "冲刺生产力",
-            "preset.sprint.desc": "左轨聚焦暂存与代码草稿，右轨全力聚焦日程时间线与待办任务。",
-            "preset.media.title": "沉浸式影音",
-            "preset.media.desc": "左轨全尺寸律动波形表，右轨极简微光日历。",
 
             // Calendar Overflow Strategy
             "calendar.overflow.smartFold": "智能时空折叠 (+N 胶囊)",

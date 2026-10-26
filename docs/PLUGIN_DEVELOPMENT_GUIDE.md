@@ -772,16 +772,18 @@ public func purahOnUnmount() {
 
 ### 9.3 本地开发验证与热重载工作流 (Local Development & Hot Reload)
 
-Purah 内置了直通开发者的即时编译工具链，参考仓库内置的完整范例：**`Examples/PurahExamplePlugin`**：
+Purah 内置了直通开发者的即时编译工具链，参考仓库内置的完整范例：**`Examples/PurahExamplePlugin`**（Zen Counter——轨条、抽屉、顶栏插槽、独立设置面板与宿主动作桥接的完整骨架）：
 
 1. **新建或克隆插件源码**：
-   在任意本地目录准备一个声明了 `.dynamic` library 的 Swift Package（例如 `Examples/PurahExamplePlugin`）。
+   在任意本地目录准备一个声明了 `.dynamic` library 的 Swift Package（例如拷贝 `Examples/PurahExamplePlugin`）。
 2. **在 Purah 中直接加载源码包**：
    打开 Purah 设置面板 (`Cmd + ,`)，进入 **Plugins** 标签页，点击右上角的 **`Dev: Load Package...`** 按钮，选中插件所在的文件夹（包含 `Package.swift`）。
 3. **即时编译与挂载 (JIT Build & Mount)**：
    Purah 后台将自动调用系统原生 `swift build -c release --disable-sandbox` 进行秒级编译，并通过 Darwin 原生动态链接器注入当前进程，插件将在瞬间自动出现在屏幕边缘轨道上！
 4. **单键热重载 (One-Click Rebuild)**：
    在编辑器中修改 SwiftUI 代码后，直接在 Purah 设置面板点击右上角亮起的 **`Rebuild`** 按钮，Purah 将自动增量重编并重新热挂载，最新界面与逻辑在 1 秒内直接呈现于屏幕边缘，极大加速开发调试周期！
+
+> **只认代码，不认清单**：`Dev: Load Package...` 只接受含 `Package.swift` 的文件夹，或已编译的 `.dylib`。单独一个 `manifest.json` 会被明确拒绝——清单只是元数据，没有导出的视图函数，轨道上就画不出任何东西。同理，商店里也不再有任何"清单即插件"的占位条目：`PluginMarketManager.install(id:)` 会向注册表确认该 id 背后有真实实现，否则拒绝安装并返回 `false`。
 
 ---
 

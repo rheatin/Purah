@@ -31,8 +31,11 @@ public struct PurahDrawerHeaderTools: View {
                 Image(systemName: "gearshape")
                     .font(.system(size: 10.5))
                     .foregroundColor(.secondary)
+                    // Icon-only buttons have no text for VoiceOver to read.
+                    .accessibilityHidden(true)
             }
             .buttonStyle(.tactile)
+            .accessibilityLabel(settingsHelp)
             .help(settingsHelp)
 
             PurahPinButton(isPinned: isPinned, tintColor: tintColor, action: onTogglePin)

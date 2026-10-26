@@ -41,7 +41,13 @@ struct FullIntegrationTests {
         loc.currentLanguage = .english
         #expect(loc.localized("updater.title") == "Software Update")
 
-        let updater = AppUpdaterManager.shared
+        // Offline: the live GitHub query made this test depend on release state,
+        // rate limits and the network. Inject a manifest instead.
+        let provider = StubUpdateProvider(
+            statusCode: 200,
+            json: #"{"tag_name": "v\#(PurahCore.version)", "body": "no change"}"#
+        )
+        let updater = AppUpdaterManager(currentVersion: PurahCore.version, manifestProvider: provider)
         await updater.checkForUpdates()
         #expect(updater.state == .upToDate(currentVersion: PurahCore.version))
 
@@ -57,5 +63,15 @@ struct FullIntegrationTests {
         } else {
             #expect(Bool(false), "Expected updateAvailable state")
         }
+    }
+}
+
+/// Deterministic update manifest used by integration tests.
+struct StubUpdateProvider: UpdateManifestProviding {
+    let statusCode: Int
+    let json: String
+
+    func fetchLatestRelease() async throws -> (data: Data, statusCode: Int) {
+        (Data(json.utf8), statusCode)
     }
 }
