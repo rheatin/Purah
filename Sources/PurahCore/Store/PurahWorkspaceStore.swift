@@ -895,11 +895,11 @@ public final class PurahWorkspaceStore {
                 onboardingDidToggleDecompose = true
             }
         }
-        if dismissAlertOnHover {
-            acknowledgeAllAlerts(forPodId: podId)
-            if let itemId {
-                acknowledgeAlert(id: itemId)
-            }
+        // Hover is the only alert-acknowledgment path: touching the rail
+        // quiets the alert; a click always performs the tap action instead.
+        acknowledgeAllAlerts(forPodId: podId)
+        if let itemId {
+            acknowledgeAlert(id: itemId)
         }
 
         let isAlreadyExpanded = (activeDrawerPodId != nil || activeDrawerItemId != nil)
@@ -1022,7 +1022,6 @@ public final class PurahWorkspaceStore {
 
     // Dynamic Attention Alert Settings
     public var alertStyle: PluginAlertStyle = .breathingBeacon
-    public var dismissAlertOnHover: Bool = true
     public var isEventToastAlertEnabled: Bool = true
     public var activePluginAlertIds: Set<String> = []
     public var acknowledgedAlertIds: Set<String> = []
@@ -1563,6 +1562,36 @@ public final class PurahWorkspaceStore {
     public func isPodDecomposed(_ id: String) -> Bool {
         if isInSharedMajorPod(podId: id) { return false }
         return capabilityProvider(for: id)?.isDecomposed(store: self) ?? false
+    }
+
+    // MARK: - External Pod Decomposition State
+    //
+    // Plugins loaded through the C-ABI have no state object of their own, so
+    // the composite-bar ↔ stepped-chips choice lives here, persisted by the
+    // store. Built-in plugins keep their own state stores and are unaffected.
+    //
+    // Stored as a dictionary rather than a set of "decomposed" ids: `false`
+    // (the user explicitly chose the composite bar) has to be distinguishable
+    // from "never touched", or an explicit choice would be overwritten by the
+    // plugin's default on the next launch.
+    @ObservationIgnored private var externalDecomposedStates: [String: Bool] = [:]
+    private static let externalDecomposedKey = "purah.externalDecomposedStates"
+
+    /// `nil` when the user never touched the toggle for this pod — the plugin's
+    /// own default (stepped symbols exported → stepped) then applies.
+    public func externalPodDecomposed(_ id: String) -> Bool? {
+        externalDecomposedStates[id]
+    }
+
+    public func setExternalPodDecomposed(_ id: String, _ isDecomposed: Bool) {
+        externalDecomposedStates[id] = isDecomposed
+        userDefaults.set(externalDecomposedStates, forKey: Self.externalDecomposedKey)
+        invalidateLayoutCache()
+    }
+
+    private func loadExternalDecomposedState() {
+        externalDecomposedStates = (userDefaults.dictionary(forKey: Self.externalDecomposedKey)
+            as? [String: Bool]) ?? [:]
     }
 
     public func maxVisualHeight(for podId: String, totalHeight: Double) -> Double {
@@ -2734,6 +2763,7 @@ public final class PurahWorkspaceStore {
 
     public func loadPersistentState() {
         let defaults = userDefaults
+        loadExternalDecomposedState()
 
         if defaults.data(forKey: "purah.pods") != nil && defaults.object(forKey: "purah.hasCompletedOnboarding") == nil {
             defaults.set(true, forKey: "purah.hasCompletedOnboarding")
@@ -2890,9 +2920,6 @@ public final class PurahWorkspaceStore {
            let style = PluginAlertStyle(rawValue: alertStr) {
             self.alertStyle = style
         }
-        if defaults.object(forKey: "purah.dismissAlertOnHover") != nil {
-            self.dismissAlertOnHover = defaults.bool(forKey: "purah.dismissAlertOnHover")
-        }
         if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
             self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
         }
@@ -2961,7 +2988,6 @@ public final class PurahWorkspaceStore {
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
         defaults.set(edgeTriggerMode.rawValue, forKey: "purah.edgeTriggerMode")
         defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
-        defaults.set(dismissAlertOnHover, forKey: "purah.dismissAlertOnHover")
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
         defaults.set(toastNotificationSound.rawValue, forKey: "purah.toastNotificationSound")
@@ -3229,7 +3255,11 @@ public final class PurahWorkspaceStore {
         pods.removeAll { removed.contains($0.id) }
         for id in orphanIds {
             unregisterCapabilityProvider(for: id)
+            // The pod is gone; its persisted bar ↔ chips choice must not
+            // survive to silently apply if the plugin is reinstalled.
+            externalDecomposedStates.removeValue(forKey: id)
         }
+        userDefaults.set(externalDecomposedStates, forKey: Self.externalDecomposedKey)
         if let market = _marketManager {
             var installed = market.installedPluginIds
             var enabled = market.enabledPluginIds
@@ -3670,6 +3700,13 @@ public final class PurahWorkspaceStore {
         }
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
+    }
+
+    /// Sets decomposition only when it differs from the current state, so a
+    /// plugin's settings toggle is idempotent.
+    public func togglePodDecomposedIfNeeded(podId: String, decomposed: Bool) {
+        guard isPodDecomposed(podId) != decomposed else { return }
+        togglePodDecomposedInSculptor(podId: podId)
     }
 
     public func togglePodDecomposedInSculptor(podId: String) {

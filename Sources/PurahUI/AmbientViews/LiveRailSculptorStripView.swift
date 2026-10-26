@@ -1415,7 +1415,11 @@ public struct LiveSculptPodCapsuleView: View {
                             }
 
                             // Decompose toggle button
-                            if ["vitals", "scripts", "clipboard", "ai", "calendar"].contains(pod.id) && !isSharedStacked {
+                            // Capability-driven: any pod whose plugin supports a
+                            // stepped mode gets the toggle, built-in or not.
+                            let isDecomposablePod = PluginRegistry.shared.plugin(for: pod.id)?
+                                .supportedDrawerModes.contains(.stepped) ?? false
+                            if isDecomposablePod && !isSharedStacked {
                                 let isDecomp = store.isPodDecomposed(pod.id)
                                 Button {
                                     withAnimation(PurahMotionPolicy.surface) {
@@ -1443,7 +1447,8 @@ public struct LiveSculptPodCapsuleView: View {
                     }
 
                     // Onboarding Step 2 Hero Spotlight Callout + Sub-chips
-                    let isDecomposable = ["vitals", "scripts", "clipboard", "ai", "calendar"].contains(pod.id)
+                    let isDecomposable = PluginRegistry.shared.plugin(for: pod.id)?
+                        .supportedDrawerModes.contains(.stepped) ?? false
                     let isOnboardingStep2Decomp = (store.isOnboardingGuideActive && store.onboardingStep == .decomposeDemo && isDecomposable && !isSharedStacked)
 
                     if isOnboardingStep2Decomp {

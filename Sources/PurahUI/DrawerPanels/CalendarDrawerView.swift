@@ -230,7 +230,7 @@ public struct CalendarDrawerView: View {
         )
         .opacity(isPast ? 0.55 : 1.0)
         .onAppear {
-            if (event.isOngoing || event.isImminent) && (state.dismissAlertOnHover || store.dismissAlertOnHover) {
+            if event.isOngoing || event.isImminent {
                 state.acknowledgeAlert(id: event.id)
                 store.acknowledgeAlert(id: event.id)
             }

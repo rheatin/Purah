@@ -136,9 +136,6 @@ public struct SteppedRailContainerView: View {
                                 .frame(width: barW, height: slotH)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    if store.dismissAlertOnHover && subItem.state == .alerting {
-                                        store.acknowledgeAlert(id: subItem.id)
-                                    }
                                     let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: railChipIDs)
                                     plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
                                 }

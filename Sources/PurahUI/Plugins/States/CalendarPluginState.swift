@@ -23,7 +23,6 @@ public final class CalendarPluginState: Sendable {
     }
     public var alertStyle: PluginAlertStyle
     public var alertLeadTime: CalendarAlertLeadTime
-    public var dismissAlertOnHover: Bool
     public var isEventGlowAlertEnabled: Bool
     public var isEventToastAlertEnabled: Bool
     /// Unified mode authority (Base semantics): decomposed rail chips vs the
@@ -85,7 +84,6 @@ public final class CalendarPluginState: Sendable {
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
         self.alertStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) ?? .subtleGlow
         self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
-        self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         self.isEventGlowAlertEnabled = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
         self.isEventToastAlertEnabled = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) ?? true
         if storage.string(forKey: "isDecomposed") != nil {
@@ -115,7 +113,6 @@ public final class CalendarPluginState: Sendable {
         if let savedLead = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) {
             self.alertLeadTime = savedLead
         }
-        self.dismissAlertOnHover = storage.bool(forKey: "dismissAlertOnHover")
         if let glow = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) {
             self.isEventGlowAlertEnabled = glow
         }
@@ -138,7 +135,6 @@ public final class CalendarPluginState: Sendable {
         storage.setCodable(scope, forKey: "scope")
         storage.setCodable(alertStyle, forKey: "alertStyle")
         storage.setCodable(alertLeadTime, forKey: "alertLeadTime")
-        storage.set(dismissAlertOnHover, forKey: "dismissAlertOnHover")
         storage.setCodable(isEventGlowAlertEnabled, forKey: "isEventGlowAlertEnabled")
         storage.setCodable(isEventToastAlertEnabled, forKey: "isEventToastAlertEnabled")
         storage.set(isDecomposed, forKey: "isDecomposed")

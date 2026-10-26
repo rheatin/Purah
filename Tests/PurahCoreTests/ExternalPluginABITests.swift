@@ -48,7 +48,10 @@ struct ExternalPluginABITests {
         "purahCreateSteppedDrawerViewWithContext",
         "purahDecomposedPolicyJSON",
         "purahDynamicBarColorHex",
-        "purahDynamicAccentColorHex"
+        "purahDynamicAccentColorHex",
+        "purahUpdateContext",
+        "purahOnRailBarTapWithContext",
+        "purahOnPollingTick"
     ]
 
     @Test("The example plugin exports every symbol the host looks up")
@@ -110,7 +113,9 @@ struct ExternalPluginABITests {
         let sdk = try String(contentsOf: Self.sdkFile, encoding: .utf8)
         for field in [
             "pluginId", "edge", "railWidth", "slotHeight", "drawerWidth",
-            "isExpanded", "isPinned", "isDark", "accentColorHex", "storageDirectoryPath"
+            "isExpanded", "isPinned", "isDark", "accentColorHex", "storageDirectoryPath",
+            "visibleSubItemIds", "isDecomposed", "paletteStyle",
+            "primaryAccentHex", "borderColorHex"
         ] {
             #expect(sdk.contains("let \(field):"),
                     "PurahExternalPluginSDK.swift is missing '\(field)'")
@@ -130,7 +135,7 @@ struct ExternalPluginABITests {
         // Actions the SDK can dispatch: `action: "<name>"` in PurahHostBridge.
         let actions = ["expand", "dismiss", "togglePin", "showToast",
                        "showWarning", "openSettings", "performHaptic",
-                       "requestLayoutRecalculation"]
+                       "requestLayoutRecalculation", "setDecomposed"]
         for action in actions {
             #expect(sdk.contains("action: \"\(action)\""),
                     "SDK no longer dispatches '\(action)' — update this list")
@@ -263,6 +268,21 @@ struct ExternalPluginABITests {
         // The cache lets the layout engine answer before any render happens.
         #expect(plugin.subItemCount(store: store) == 3)
         #expect(plugin.subItemId(at: 0, store: store) == firstId)
+
+        // Capabilities the host answers itself, from the cached chips and the
+        // manifest — no extra ABI symbols required.
+        #expect(plugin.hasPinnedChild(store: store) == false)
+        store.togglePinItem(id: firstId)
+        #expect(plugin.hasPinnedChild(store: store) == true)
+        #expect(plugin.ownsSubItemId(firstId, store: store))
+
+        // Manifest-declared dimensions reach the plugin.
+        #expect(plugin.minimumDrawerHeight(store: store) > 0)
+
+        // The host owns polling: the example declares an interval and exports
+        // the tick, so the registry will schedule it.
+        #expect(plugin.preferredPollingInterval == 5.0)
+        await plugin.onPollingTick(store: store)
     }
 
     @Test("A plugin with no stepped symbols reports composite only")

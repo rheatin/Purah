@@ -122,6 +122,21 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     public var isCommunity: Bool
     public var downloadUrl: String?
 
+    /// Declared composite-drawer height bounds. `nil` means "let the host
+    /// decide" (120pt floor, 1.5x preferred). The host always clamps a declared
+    /// minimum up to the ergonomic floor for the pod's content type — a plugin
+    /// cannot opt out of the >= 120pt rule by declaring 80.
+    ///
+    /// Stepped pods take their height from `decomposedPolicy` instead; these
+    /// two fields only govern the composite drawer.
+    public var minimumDrawerHeight: Double?
+    public var preferredDrawerHeight: Double?
+
+    /// Interval at which the host runs `onPollingTick`. The host owns the
+    /// timer, so disabling the pod, unmounting it, or freezing the rails stops
+    /// the ticks — a plugin must never start its own recurring timer.
+    public var pollingInterval: Double?
+
     public init(
         id: String,
         displayName: String,
@@ -140,7 +155,10 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         website: String? = nil,
         tags: [String] = [],
         isCommunity: Bool = false,
-        downloadUrl: String? = nil
+        downloadUrl: String? = nil,
+        minimumDrawerHeight: Double? = nil,
+        preferredDrawerHeight: Double? = nil,
+        pollingInterval: Double? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -160,6 +178,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         self.tags = tags
         self.isCommunity = isCommunity
         self.downloadUrl = downloadUrl
+        self.minimumDrawerHeight = minimumDrawerHeight
+        self.preferredDrawerHeight = preferredDrawerHeight
+        self.pollingInterval = pollingInterval
     }
 
     enum CodingKeys: String, CodingKey {
@@ -167,6 +188,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         case defaultEdge, preferredZone, ergonomicWeight, minLengthRatio, defaultColorHex
         case defaultDrawerWidth
         case category, permissions, website, tags, isCommunity, downloadUrl
+        case minimumDrawerHeight, preferredDrawerHeight, pollingInterval
     }
 
     public init(from decoder: Decoder) throws {
@@ -196,6 +218,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         isCommunity = try container.decodeIfPresent(Bool.self, forKey: .isCommunity) ?? false
         downloadUrl = try container.decodeIfPresent(String.self, forKey: .downloadUrl)
+        minimumDrawerHeight = try container.decodeIfPresent(Double.self, forKey: .minimumDrawerHeight)
+        preferredDrawerHeight = try container.decodeIfPresent(Double.self, forKey: .preferredDrawerHeight)
+        pollingInterval = try container.decodeIfPresent(Double.self, forKey: .pollingInterval)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -218,6 +243,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         try container.encode(tags, forKey: .tags)
         try container.encode(isCommunity, forKey: .isCommunity)
         try container.encodeIfPresent(downloadUrl, forKey: .downloadUrl)
+        try container.encodeIfPresent(minimumDrawerHeight, forKey: .minimumDrawerHeight)
+        try container.encodeIfPresent(preferredDrawerHeight, forKey: .preferredDrawerHeight)
+        try container.encodeIfPresent(pollingInterval, forKey: .pollingInterval)
     }
 
     public func makeDefaultSlotPod(range: NormalizedRange? = nil, isEnabled: Bool = true) -> SlotPod {

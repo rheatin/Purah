@@ -260,7 +260,6 @@ public final class LocalizationManager {
 
             // Dynamic Alerts
             "interaction.alerts.dynamic.title": "Attention Alert Dynamic",
-            "interaction.alerts.dismissOnHover": "Dismiss dynamic alert animation on mouse hover",
             "alert.style.breathingBeacon": "Breathing Beacon",
             "alert.style.sonarWave": "Sonar Ripple",
             "alert.style.subtleGlow": "Subtle Glow",
@@ -801,7 +800,6 @@ public final class LocalizationManager {
 
             // 动态视觉提醒
             "interaction.alerts.dynamic.title": "动态视觉提醒动效",
-            "interaction.alerts.dismissOnHover": "鼠标悬停时自动静默并确认动态提醒",
             "alert.style.breathingBeacon": "呼吸信标",
             "alert.style.sonarWave": "声呐涟漪",
             "alert.style.subtleGlow": "微光光晕",

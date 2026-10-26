@@ -18,6 +18,25 @@ final class ZenCounterState: ObservableObject {
             UserDefaults.standard.set(stepSize, forKey: "purah.plugin.com.example.focus.stepSize")
         }
     }
+    /// Evidence that the host-driven polling path is alive; shown in settings.
+    @Published var pollTickCount: Int = 0
+    @Published var activeSessionTitle: String?
+
+    func notePollTick() {
+        pollTickCount += 1
+    }
+
+    func noteContext(_ context: PurahExternalContext, for view: NSView) {
+        // A real plugin would re-render from these values. The example only
+        // proves the payload arrives with the fields it expects.
+        _ = context.isExpanded
+        _ = context.visibleSubItemIds
+        _ = view
+    }
+
+    func startSession(_ session: ZenSession) {
+        activeSessionTitle = session.title
+    }
 
     init() {
         self.count = UserDefaults.standard.integer(forKey: "purah.plugin.com.example.focus.currentCount")
@@ -312,7 +331,10 @@ private let manifestJSON = """
     "category": "Lightweight",
     "permissions": [],
     "tags": ["Focus", "Counter", "Ambient"],
-    "isCommunity": true
+    "isCommunity": true,
+    "minimumDrawerHeight": 140.0,
+    "preferredDrawerHeight": 320.0,
+    "pollingInterval": 5.0
 }
 """
 
@@ -388,6 +410,57 @@ public func purahOnMount() {
 @_cdecl("purahOnUnmount")
 public func purahOnUnmount() {
     // Optional unmount lifecycle hook
+}
+
+// MARK: - Host-driven polling & context updates
+//
+// The host owns the timer. It stops ticking when the pod is disabled,
+// unmounted, or the rails are frozen — a plugin must never start its own
+// recurring timer, or those guarantees are lost.
+
+/// Called on the host's schedule (manifest `pollingInterval`). Must return
+/// quickly; heavy work belongs on a background queue.
+@MainActor
+@_cdecl("purahOnPollingTick")
+public func purahOnPollingTick(contextJSON: UnsafePointer<CChar>) {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    ZenCounterState.shared.notePollTick()
+}
+
+/// Push a fresh context into a view the plugin already created. Without this
+/// the factory runs once and the view never learns that the drawer opened or
+/// the pod got pinned.
+@MainActor
+@_cdecl("purahUpdateContext")
+public func purahUpdateContext(viewPtr: UnsafeMutableRawPointer, contextJSON: UnsafePointer<CChar>) {
+    guard let context = PurahExternalContext.decode(from: contextJSON) else { return }
+    let view = Unmanaged<NSView>.fromOpaque(viewPtr).takeUnretainedValue()
+    ZenCounterState.shared.noteContext(context, for: view)
+}
+
+/// Stepped-mode rail tap with the clicked chip's identity.
+///
+/// Returning non-zero means "handled": the host will not add its default
+/// haptic + drawer expansion. Returning zero falls back to that default.
+@MainActor
+@_cdecl("purahOnRailBarTapWithContext")
+public func purahOnRailBarTapWithContext(
+    contextJSON: UnsafePointer<CChar>,
+    subItemId: UnsafePointer<CChar>
+) -> Int32 {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let id = String(cString: subItemId)
+
+    if let session = ZenSessions.session(for: id) {
+        ZenCounterState.shared.startSession(session)
+        PurahHostBridge.shared.showToast(
+            pluginId: "com.example.focus",
+            message: "Started \(session.title) (\(session.minutes) min)"
+        )
+        // Handled: a chip tap starts a session instead of opening a drawer.
+        return 1
+    }
+    return 0
 }
 
 // MARK: - Stepped Mode (per-session chips)

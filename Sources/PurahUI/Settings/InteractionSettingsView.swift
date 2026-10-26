@@ -210,17 +210,6 @@ public struct InteractionSettingsView: View {
                             )
                             .frame(width: 220)
                         }
-
-                        if store.alertStyle != .off {
-                            Toggle("interaction.alerts.dismissOnHover".localized, isOn: Binding(
-                                get: { store.dismissAlertOnHover },
-                                set: {
-                                    store.dismissAlertOnHover = $0
-                                    store.savePersistentState()
-                                }
-                            ))
-                            .font(.caption)
-                        }
                     }
                 }
 

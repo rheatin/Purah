@@ -575,6 +575,10 @@ public struct PluginMarketplaceView: View {
                     activeDevPackageURL = selectedURL
                 } else {
                     plugin = try PluginDynamicLoader.shared.loadPlugin(from: selectedURL)
+                    PluginDynamicLoader.shared.rememberInstalled(
+                        path: selectedURL.path,
+                        for: plugin.manifest.id
+                    )
                     PluginRegistry.shared.register(plugin, store: store)
                     store.marketManager.install(id: plugin.manifest.id)
                     store.autoLayoutAll()
