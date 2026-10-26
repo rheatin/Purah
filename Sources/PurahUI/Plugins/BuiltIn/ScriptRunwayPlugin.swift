@@ -35,7 +35,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            Text("\(state.actions.count) ACTIONS")
+            Text(String(format: "runway.actionCount".localized, state.actions.count))
                 .font(.system(size: 7.5, weight: .bold, design: .monospaced))
                 .foregroundColor(context.accentColor)
                 .padding(.horizontal, 4)
@@ -297,10 +297,10 @@ public struct ScriptsPluginSettingsView: View {
                     // Switch sub-card for decomposition
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Decompose into Stepped Script Rail Chips")
+                            Text("runway.decompose.title".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(.primary)
-                            Text("Splits script runway into individual interactive rail chips for rapid one-click execution")
+                            Text("runway.decompose.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -332,10 +332,10 @@ public struct ScriptsPluginSettingsView: View {
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Rail Slot Limit")
+                                Text("vitals.railSlotLimit".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
-                                Text("\(min(state.maxRailActions, state.enabledActions.count)) of \(state.enabledActions.count) scripts")
+                                Text(String(format: "runway.railSlotLimit.usage".localized, min(state.maxRailActions, state.enabledActions.count), state.enabledActions.count))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(palette.primaryAccent)
                             }
@@ -350,7 +350,7 @@ public struct ScriptsPluginSettingsView: View {
                             )
                             Slider(value: scriptLimitBinding, in: 2.0...6.0, step: 1.0)
 
-                            Text("Scripts beyond this limit stay hidden on the rail — lower the limit to keep the rail compact, raise it to show more action chips.")
+                            Text("runway.railSlotLimit.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
 
@@ -375,11 +375,11 @@ public struct ScriptsPluginSettingsView: View {
 
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("Visible Stepped Action Chips")
+                                Text("runway.visibleSteppedChips".localized)
                                     .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundColor(.primary)
                                 Spacer()
-                                Text("\(effectiveEnabledActionIds.count) Active")
+                                Text(String(format: "runway.activeActions".localized, effectiveEnabledActionIds.count))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(palette.primaryAccent)
                             }
@@ -468,7 +468,7 @@ public struct ScriptsPluginSettingsView: View {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 9))
-                            Text("Reset")
+                            Text("runway.reset".localized)
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                         }
                         .padding(.horizontal, 7)
@@ -513,7 +513,7 @@ public struct ScriptsPluginSettingsView: View {
                     // Add Action Form Panel
                     if isAddingAction {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Add New Action or Shortcut")
+                            Text("runway.addAction".localized)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
 
                             HStack(spacing: 8) {
@@ -525,7 +525,7 @@ public struct ScriptsPluginSettingsView: View {
 
                                 Picker("Type", selection: $newCommandType) {
                                     Text("Shortcuts").tag(ScriptCommandType.shortcut)
-                                    Text("Shell (Zsh)").tag(ScriptCommandType.shell)
+                                    Text("runway.shellLabel".localized).tag(ScriptCommandType.shell)
                                     Text("AppleScript").tag(ScriptCommandType.appleScript)
                                 }
                                 .pickerStyle(.segmented)
@@ -581,7 +581,7 @@ public struct ScriptsPluginSettingsView: View {
                                         isAddingAction = false
                                     }
                                 } label: {
-                                    Text("Save")
+                                    Text("runway.save".localized)
                                         .font(.system(size: 10, weight: .bold, design: .rounded))
                                         .foregroundColor(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty ? .secondary : .white)
                                         .padding(.horizontal, 10)
@@ -682,7 +682,7 @@ public struct ScriptsPluginSettingsView: View {
                                         .padding(.horizontal, 8)
 
                                     VStack(alignment: .leading, spacing: 8) {
-                                        Text("Edit Action")
+                                        Text("runway.editAction".localized)
                                             .font(.system(size: 10.5, weight: .bold, design: .rounded))
 
                                         HStack(spacing: 8) {
@@ -694,7 +694,7 @@ public struct ScriptsPluginSettingsView: View {
 
                                             Picker("Type", selection: $editCommandType) {
                                                 Text("Shortcuts").tag(ScriptCommandType.shortcut)
-                                                Text("Shell (Zsh)").tag(ScriptCommandType.shell)
+                                                Text("runway.shellLabel".localized).tag(ScriptCommandType.shell)
                                                 Text("AppleScript").tag(ScriptCommandType.appleScript)
                                             }
                                             .pickerStyle(.segmented)
@@ -734,7 +734,7 @@ public struct ScriptsPluginSettingsView: View {
                                                     editingActionId = nil
                                                 }
                                             } label: {
-                                                Text("Cancel")
+                                                Text("runway.cancel".localized)
                                                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                                                     .foregroundColor(.secondary)
                                                     .padding(.horizontal, 8)
@@ -763,7 +763,7 @@ public struct ScriptsPluginSettingsView: View {
                                                     editingActionId = nil
                                                 }
                                             } label: {
-                                                Text("Save Changes")
+                                                Text("runway.saveChanges".localized)
                                                     .font(.system(size: 10, weight: .bold, design: .rounded))
                                                     .foregroundColor(.white)
                                                     .padding(.horizontal, 9)

@@ -135,7 +135,7 @@ public struct AIAssistantSteppedDrawerView: View {
                             .lineLimit(1)
 
                         if role.id == "translate" {
-                            Text("Auto / EN↔ZH")
+                            Text("ai.drawer.autoLanguage".localized)
                                 .font(.system(size: 8, weight: .semibold, design: .monospaced))
                                 .foregroundColor(Color.white.opacity(0.60))
                                 .padding(.horizontal, 4)
@@ -1332,7 +1332,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         HStack(spacing: 3) {
                             Image(systemName: "xmark")
                                 .font(.system(size: 8, weight: .bold))
-                            Text("Done")
+                            Text("ai.history.done".localized)
                                 .font(.system(size: 9, weight: .semibold, design: .rounded))
                         }
                         .padding(.horizontal, 6)
@@ -1894,7 +1894,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
 
                     VStack(spacing: 3) {
-                        Text("Waiting for model response...")
+                        Text("ai.drawer.waitingForModel".localized)
                             .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                             .foregroundColor(Color.white.opacity(0.90))
 
@@ -1913,7 +1913,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         HStack(spacing: 5) {
                             Image(systemName: "stop.fill")
                                 .font(.system(size: 8.5, weight: .bold))
-                            Text("Stop Generation")
+                            Text("ai.drawer.stopGeneration".localized)
                                 .font(.system(size: 10, weight: .bold, design: .rounded))
                         }
                         .foregroundColor(Color(hex: "#FCA5A5"))
@@ -2414,11 +2414,11 @@ public struct AISlashSuggestionsPopupView: View {
                 Image(systemName: "slash.circle.fill")
                     .font(.system(size: 9.5))
                     .foregroundColor(palette.primaryAccent)
-                Text("COMMANDS & SKILLS")
+                Text("ai.drawer.commandsAndSkills".localized)
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
                     .foregroundColor(Color.white.opacity(0.45))
                 Spacer()
-                Text("↑↓ navigate · ↵ select · esc dismiss")
+                Text("ai.drawer.navHint".localized)
                     .font(.system(size: 7.5, weight: .medium))
                     .foregroundColor(Color.white.opacity(0.35))
             }

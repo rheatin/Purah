@@ -165,7 +165,7 @@ public struct PluginMarketplaceView: View {
                             } else {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                             }
-                            Text("Rebuild")
+                            Text("marketplace.rebuild".localized)
                                 .lineLimit(1)
                         }
                         .font(.system(size: 11, weight: .semibold))
@@ -198,7 +198,7 @@ public struct PluginMarketplaceView: View {
                             } else {
                                 Image(systemName: "arrow.clockwise")
                             }
-                            Text("Refresh")
+                            Text("vitals.refresh".localized)
                                 .lineLimit(1)
                         }
                         .font(.system(size: 11, weight: .medium))
@@ -224,7 +224,7 @@ public struct PluginMarketplaceView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "hammer.fill")
-                        Text("Dev: Load Package...")
+                        Text("marketplace.devLoad".localized)
                             .lineLimit(1)
                     }
                     .font(.system(size: 11, weight: .medium))
@@ -286,7 +286,7 @@ public struct PluginMarketplaceView: View {
         }
         .alert(isPresented: $showSideloadAlert) {
             Alert(
-                title: Text("Plugin Load Notice"),
+                title: Text("marketplace.loadNotice".localized),
                 message: Text(sideloadError ?? "An unexpected event occurred during plugin loading."),
                 dismissButton: .default(Text("OK"))
             )
@@ -360,7 +360,7 @@ public struct PluginMarketplaceView: View {
                         Image(systemName: "puzzlepiece.extension")
                             .font(.system(size: 32))
                             .foregroundColor(.secondary)
-                        Text("No plugins match the current search")
+                        Text("marketplace.noMatches".localized)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Spacer(minLength: 40)
@@ -486,7 +486,7 @@ public struct PluginMarketplaceView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.shield")
                         .font(.system(size: 8))
-                    Text("Sandboxed UI")
+                    Text("marketplace.sandboxedUI".localized)
                         .font(.system(size: 8.5))
                     Spacer()
                 }
@@ -503,7 +503,7 @@ public struct PluginMarketplaceView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11))
                             .foregroundColor(.green)
-                        Text("Installed")
+                        Text("marketplace.tab.installed".localized)
                             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
                     }
@@ -525,7 +525,7 @@ public struct PluginMarketplaceView: View {
                         } label: {
                             HStack(spacing: 3) {
                                 Image(systemName: "trash.fill")
-                                Text("Confirm")
+                                Text("marketplace.confirm".localized)
                             }
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.white)
@@ -549,7 +549,7 @@ public struct PluginMarketplaceView: View {
                         } label: {
                             HStack(spacing: 3) {
                                 Image(systemName: "trash")
-                                Text("Uninstall")
+                                Text("marketplace.uninstall".localized)
                             }
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.red.opacity(0.85))
@@ -589,7 +589,7 @@ public struct PluginMarketplaceView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.down.circle.fill")
-                            Text("Install")
+                            Text("marketplace.install".localized)
                         }
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundColor(palette.style == .native ? .white : .black)
@@ -701,10 +701,10 @@ public struct SecurityConfirmationSheet: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Security & Permission Review")
+                    Text("marketplace.review.title".localized)
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text("Third-party plugin installation gate")
+                    Text("marketplace.review.gate".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -739,7 +739,7 @@ public struct SecurityConfirmationSheet: View {
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
-                    Text("Author: \(manifest.author)")
+                    Text(String(format: "marketplace.review.author".localized, manifest.author))
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -765,7 +765,7 @@ public struct SecurityConfirmationSheet: View {
 
             // Permissions section
             VStack(alignment: .leading, spacing: 8) {
-                Text("Requested Capabilities")
+                Text("marketplace.review.capabilities".localized)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
 
@@ -774,7 +774,7 @@ public struct SecurityConfirmationSheet: View {
                         Image(systemName: "checkmark.seal.fill")
                             .foregroundColor(.green)
                             .font(.system(size: 12))
-                        Text("No elevated system permissions requested (Sandboxed UI only).")
+                        Text("marketplace.review.noElevated".localized)
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -813,7 +813,7 @@ public struct SecurityConfirmationSheet: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
                     .font(.system(size: 10))
-                Text("Third-party plugins execute locally with user privileges. Only install if you trust this author.")
+                Text("marketplace.review.warning".localized)
                     .font(.system(size: 9.5))
                     .foregroundColor(.secondary)
             }
@@ -838,7 +838,7 @@ public struct SecurityConfirmationSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "shield.checkered")
-                        Text("Trust & Install")
+                        Text("marketplace.review.trustAndInstall".localized)
                     }
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(palette.style == .native ? .white : .black)

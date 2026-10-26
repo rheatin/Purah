@@ -604,7 +604,7 @@ public struct HardwareVitalsDrawerView: View {
             if showsDeepTelemetry {
                 // CPU/RAM Breakdown Strip
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Deep Compute & Memory Telemetry")
+                    Text("vitals.deepCompute".localized)
                         .font(.system(size: 8.5, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
 
@@ -623,7 +623,7 @@ public struct HardwareVitalsDrawerView: View {
                 // Top 3 Processes Strip
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("Top Processes")
+                        Text("vitals.topProcesses".localized)
                             .font(.system(size: 8.5, weight: .bold, design: .rounded))
                             .foregroundColor(.secondary)
                         Spacer()
@@ -633,7 +633,7 @@ public struct HardwareVitalsDrawerView: View {
                                 await vitals.refreshMetricsAsync(includeProcesses: true)
                             }
                         } label: {
-                            Text("View All")
+                            Text("vitals.viewAll".localized)
                                 .font(.system(size: 8, weight: .medium))
                                 .foregroundColor(palette.primaryAccent)
                         }
@@ -687,7 +687,7 @@ public struct HardwareVitalsDrawerView: View {
                     Text(metrics.chipModelName)
                         .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     Spacer()
-                    Text("\(metrics.performanceCoreCount)P + \(metrics.efficiencyCoreCount)E Cores")
+                    Text(String(format: "vitals.cores".localized, metrics.performanceCoreCount, metrics.efficiencyCoreCount))
                         .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 4)
@@ -740,10 +740,10 @@ public struct HardwareVitalsDrawerView: View {
                 HStack {
                     Image(systemName: "memorychip")
                         .foregroundColor(ramColor)
-                    Text("Memory Architecture")
+                    Text("vitals.memoryArchitecture".localized)
                         .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     Spacer()
-                    Text("Pressure: \(metrics.memoryPressureLevel)")
+                    Text(String(format: "vitals.pressure".localized, metrics.memoryPressureLevel))
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .foregroundColor(metrics.memoryPressureLevel == "Normal" ? palette.primaryAccent : palette.dangerAccent)
                         .padding(.horizontal, 4)
@@ -799,7 +799,7 @@ public struct HardwareVitalsDrawerView: View {
                 HStack {
                     Image(systemName: "network")
                         .foregroundColor(netColor)
-                    Text("Network Interface (\(metrics.networkInterfaceName))")
+                    Text(String(format: "vitals.networkInterface".localized, metrics.networkInterfaceName))
                         .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     Spacer()
                     Text(metrics.localIPAddress)
@@ -843,10 +843,10 @@ public struct HardwareVitalsDrawerView: View {
                 HStack {
                     Image(systemName: "internaldrive")
                         .foregroundColor(diskColor)
-                    Text("Disk & Power Dynamics")
+                    Text("vitals.diskPower".localized)
                         .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     Spacer()
-                    Text("\(Int(metrics.diskFreeGB)) GB Free")
+                    Text(String(format: "vitals.diskFreeGB".localized, Int(metrics.diskFreeGB)))
                         .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                         .foregroundColor(diskColor)
                 }
@@ -884,7 +884,7 @@ public struct HardwareVitalsDrawerView: View {
 
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("Process Inspector (\(sorted.count))")
+                Text(String(format: "vitals.processInspector".localized, sorted.count))
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                 Spacer()
                 HStack(spacing: 2) {
@@ -952,7 +952,7 @@ public struct HardwareVitalsDrawerView: View {
                     Button {
                         vitals.killProcess(pid: proc.id)
                     } label: {
-                        Text("Kill")
+                        Text("vitals.kill".localized)
                             .font(.system(size: 7.5, weight: .semibold))
                             .padding(.horizontal, 4.5)
                             .padding(.vertical, 1.5)
@@ -1155,7 +1155,7 @@ public struct VitalsFocusedDrawerView: View {
                     }
                     .frame(height: 3.5)
 
-                    Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))%")
+                    Text(String(format: "vitals.cpuUsrSys".localized, Int(metrics.cpuUserUsage * 100), Int(metrics.cpuSystemUsage * 100)))
                         .font(.system(size: 7, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -1440,7 +1440,7 @@ public struct VitalsFocusedDrawerView: View {
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                    Text("Swap \(Int(metrics.memorySwapUsedMB))M")
+                    Text(String(format: "vitals.swap".localized, Int(metrics.memorySwapUsedMB)))
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 3)
@@ -1578,7 +1578,7 @@ public struct VitalsFocusedDrawerView: View {
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                    Text("Hlt \(metrics.batteryHealthPercent)%")
+                    Text(String(format: "vitals.batteryHealth".localized, metrics.batteryHealthPercent))
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 3)
@@ -1871,7 +1871,7 @@ public struct VitalsFocusedDrawerView: View {
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
-                    Text("\(Int(metrics.diskFreeGB))G Free")
+                    Text(String(format: "vitals.diskFreeG".localized, Int(metrics.diskFreeGB)))
                         .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
@@ -1907,7 +1907,7 @@ public struct VitalsFocusedDrawerView: View {
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
-                    Text("\(Int(metrics.diskFreeGB))G Free")
+                    Text(String(format: "vitals.diskFreeG".localized, Int(metrics.diskFreeGB)))
                         .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
@@ -1929,7 +1929,7 @@ public struct VitalsFocusedDrawerView: View {
 
                 // Row 3: Footer + scopePicker
                 HStack {
-                    Text("Used \(Int(metrics.diskTotalGB - metrics.diskFreeGB))G · Total \(Int(metrics.diskTotalGB))G · R \(formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec)) · W \(formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec))")
+                    Text(String(format: "vitals.diskUsedTotal".localized, Int(metrics.diskTotalGB - metrics.diskFreeGB), Int(metrics.diskTotalGB), formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec), formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec)))
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -1947,7 +1947,7 @@ public struct VitalsFocusedDrawerView: View {
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
-                    Text("\(Int(metrics.diskFreeGB))G Free")
+                    Text(String(format: "vitals.diskFreeG".localized, Int(metrics.diskFreeGB)))
                         .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
@@ -1978,7 +1978,7 @@ public struct VitalsFocusedDrawerView: View {
 
                 // Row 4: Footer + scopePicker
                 HStack {
-                    Text("Used \(Int(metrics.diskTotalGB - metrics.diskFreeGB))G · Total \(Int(metrics.diskTotalGB))G · R \(formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec)) · W \(formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec))")
+                    Text(String(format: "vitals.diskUsedTotal".localized, Int(metrics.diskTotalGB - metrics.diskFreeGB), Int(metrics.diskTotalGB), formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec), formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec)))
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)

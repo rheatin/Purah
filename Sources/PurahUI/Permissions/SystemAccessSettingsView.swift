@@ -45,10 +45,10 @@ public struct SystemAccessSettingsView: View {
                     .modifier(OptionalGlow(color: palette.primaryAccent, enabled: palette.useGlow))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Plugin Permissions & Privacy Matrix")
+                    Text("permissions.matrix.title".localized)
                         .font(palette.fontTitle)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text("Audit system capabilities required by installed plugins and functional impacts when denied")
+                    Text("permissions.matrix.subtitle".localized)
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -76,7 +76,7 @@ public struct SystemAccessSettingsView: View {
 
                     if !privacyPermissions.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("System Privacy Permissions (macOS TCC)")
+                            Text("permissions.tcc.title".localized)
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(palette.primaryAccent)
                                 .textCase(.uppercase)
@@ -89,7 +89,7 @@ public struct SystemAccessSettingsView: View {
 
                     if !standardCapabilities.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Standard Ambient Capabilities (Automatic)")
+                            Text("permissions.ambient.title".localized)
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .textCase(.uppercase)
@@ -110,7 +110,7 @@ public struct SystemAccessSettingsView: View {
             // Bottom action: Guarantee Access to All
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Privacy Authorization Status")
+                    Text("permissions.status.title".localized)
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
@@ -134,7 +134,7 @@ public struct SystemAccessSettingsView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.seal.fill")
-                        Text("Grant All Permissions")
+                        Text("permissions.grantAll".localized)
                             .fontWeight(.semibold)
                     }
                     .foregroundColor(palette.style == .native ? Color.white : Color.black)
@@ -205,7 +205,7 @@ public struct SystemAccessSettingsView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.shield")
                             .font(.system(size: 10))
-                        Text("Ready")
+                        Text("permissions.status.ready".localized)
                             .font(.system(size: 9.5, weight: .medium, design: .monospaced))
                     }
                     .foregroundColor(.secondary)
@@ -225,7 +225,7 @@ public struct SystemAccessSettingsView: View {
                         .buttonStyle(.bordered)
                         .font(.caption)
                     } else {
-                        Text("Denied")
+                        Text("permissions.status.denied".localized)
                             .font(.caption2)
                             .foregroundColor(.red)
                     }
@@ -249,7 +249,7 @@ public struct SystemAccessSettingsView: View {
 
             // Row 2: Requesting Plugins Badges
             HStack(spacing: 6) {
-                Text("Requested by:")
+                Text("permissions.requestedBy".localized)
                     .font(.system(size: 9.5, weight: .medium))
                     .foregroundColor(.secondary)
 

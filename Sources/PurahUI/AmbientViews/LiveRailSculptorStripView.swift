@@ -413,7 +413,7 @@ public struct LiveRailSculptorStripView: View {
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text("📑 Paged Spaces · \(pages.count) Page(s)")
+                Text(String(format: "sculptor.pagedSpaces".localized, pages.count))
                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     .foregroundColor(palette.primaryAccent)
                     .lineLimit(1)
@@ -472,7 +472,7 @@ public struct LiveRailSculptorStripView: View {
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
-                        Text("+ Page")
+                        Text("sculptor.addPage".localized)
                             .font(.system(size: 8.5, weight: .bold, design: .rounded))
                             .foregroundColor((canSplitNewPage || isCreatePageHighlighted) ? (isCreatePageHighlighted ? .black : palette.primaryAccent) : .secondary)
                             .padding(.horizontal, 6)
@@ -650,7 +650,7 @@ public struct LiveSculptMajorClusterBoxView: View {
             VStack(alignment: .leading, spacing: 2) {
                 // Top Header Bar: Shared Stack summary (draggable vertically) + [Unstack All]
                 HStack(spacing: 4) {
-                    Text("📦 Stack (\(cluster.pods.count)) · \(Int(cluster.drawerSpanH))pt")
+                    Text(String(format: "sculptor.stackSummary".localized, cluster.pods.count, Int(cluster.drawerSpanH)))
                         .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundColor(.orange)
                         .lineLimit(1)
@@ -663,7 +663,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
-                        Text("Unstack All")
+                        Text("sculptor.unstackAll".localized)
                             .font(.system(size: 8, weight: .bold, design: .rounded))
                             .foregroundColor(.orange)
                             .padding(.horizontal, 5)
@@ -746,7 +746,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
                                         Spacer(minLength: 2)
 
-                                        Text("\(Int(subItem.spanH))pt")
+                                        Text(String(format: "sculptor.spanHeight".localized, Int(subItem.spanH)))
                                             .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
                                             .foregroundColor(podColor)
                                             .padding(.horizontal, 4)
@@ -818,7 +818,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                                                 HStack(spacing: 2) {
                                                     Image(systemName: "scissors")
                                                         .font(.system(size: 8, weight: .bold))
-                                                    Text("Split")
+                                                    Text("sculptor.split".localized)
                                                         .font(.system(size: 8, weight: .bold, design: .rounded))
                                                 }
                                                 .foregroundColor(.orange)
@@ -1023,7 +1023,7 @@ public struct LiveSculptMajorClusterBoxView: View {
                             )
 
                             if isDraggingSub && isSubPodPulledOutside {
-                                Text("💧 Hold or Release to Detach")
+                                Text("sculptor.detachHint".localized)
                                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
                                     .foregroundColor(.black)
                                     .padding(.horizontal, 7)
@@ -1107,7 +1107,7 @@ public struct LiveSculptMajorClusterBoxView: View {
             )
 
             if isStackTargetHighlighted {
-                Text("📦 Release or Hold to Stack")
+                Text("sculptor.stackHint".localized)
                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     .foregroundColor(.black)
                     .padding(.horizontal, 9)
@@ -1215,7 +1215,7 @@ public struct LiveSculptPodCapsuleView: View {
 
                         Spacer(minLength: 2)
 
-                        Text("\(Int(item.spanH))pt")
+                        Text(String(format: "sculptor.spanHeight".localized, Int(item.spanH)))
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
                             .foregroundColor(podColor)
                             .padding(.horizontal, 4)
@@ -1381,7 +1381,7 @@ public struct LiveSculptPodCapsuleView: View {
                                         store.triggerControlHaptic(.alignment)
                                     }
                                 } label: {
-                                    Text("✂️ Split")
+                                    Text("sculptor.splitEmoji".localized)
                                         .font(.system(size: 8, weight: .bold, design: .rounded))
                                         .foregroundColor(.orange)
                                         .padding(.horizontal, 4)
@@ -1401,7 +1401,7 @@ public struct LiveSculptPodCapsuleView: View {
                                         store.triggerControlHaptic(.alignment)
                                     }
                                 } label: {
-                                    Text("🔗 Stack")
+                                    Text("sculptor.stackEmoji".localized)
                                         .font(.system(size: 8, weight: .bold, design: .rounded))
                                         .foregroundColor(palette.primaryAccent)
                                         .padding(.horizontal, 4)
@@ -1689,7 +1689,7 @@ public struct LiveSculptPodCapsuleView: View {
             .clipped()
 
             if isStackTargetHighlighted {
-                Text("📦 Release or Hold to Stack")
+                Text("sculptor.stackHint".localized)
                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     .foregroundColor(.black)
                     .padding(.horizontal, 8)

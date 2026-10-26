@@ -44,7 +44,7 @@ public struct PersistentTerminalDrawerView: View {
 
             // Subtle interaction hint & status
             HStack(spacing: 4) {
-                Text("Click inside to type · ⌘C / ⌘V supported · ⇥ autocomplete")
+                Text("terminal.typeHint".localized)
                     .font(.system(size: 7.5, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
                 Spacer()

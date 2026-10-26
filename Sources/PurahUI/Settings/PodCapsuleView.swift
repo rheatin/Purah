@@ -266,7 +266,7 @@ public struct PodCapsuleView: View {
                         lineWidth: (isStackTargetHighlighted || isCrossingThreshold) ? 2.2 : 1.5
                     )
                 if isStackTargetHighlighted {
-                    Text("📦 Release to Stack")
+                    Text("sculptor.releaseToStack".localized)
                         .font(.system(size: 8.5, weight: .bold, design: .rounded))
                         .foregroundColor(.black)
                         .padding(.horizontal, 7)

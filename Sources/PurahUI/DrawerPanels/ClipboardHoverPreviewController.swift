@@ -63,7 +63,7 @@ public struct ClipboardHoverApertureView: View {
     private var pinnedHeaderBadge: some View {
         if isPinned {
             HStack(spacing: 4) {
-                Text("PINNED")
+                Text("clipboard.pinned".localized)
                     .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
@@ -91,7 +91,7 @@ public struct ClipboardHoverApertureView: View {
                 Image(systemName: "paintpalette.fill")
                     .foregroundColor(Color(hex: hex))
                     .font(.caption)
-                Text("Color Inspection")
+                Text("clipboard.colorInspection".localized)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? .primary : .white)
                 Spacer()
@@ -150,7 +150,7 @@ public struct ClipboardHoverApertureView: View {
             if isPinned {
                 HStack {
                     Spacer()
-                    Text("Scroll or select text • Click 👁 or × to unpin")
+                    Text("clipboard.preview.hint".localized)
                         .font(.system(size: 9))
                         .foregroundColor(palette.primaryAccent)
                         .lineLimit(1)
@@ -171,7 +171,7 @@ public struct ClipboardHoverApertureView: View {
                     .foregroundColor(palette.style == .native ? .primary : .white)
                     .lineLimit(1)
                 Spacer()
-                Text("\(w) × \(h) px")
+                Text(String(format: "clipboard.preview.dimensions".localized, w, h))
                     .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -197,7 +197,7 @@ public struct ClipboardHoverApertureView: View {
 
             HStack {
                 let formatText = shelfFile != nil ? "\((shelfFile?.fileExtension.isEmpty == false ? shelfFile!.fileExtension.uppercased() : "IMAGE")) File" : "PNG Disk Cache"
-                Text("\(max(bytes / 1024, 1)) KB • \(formatText)")
+                Text(String(format: "clipboard.preview.sizeAndType".localized, max(bytes / 1024, 1), formatText))
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -222,7 +222,7 @@ public struct ClipboardHoverApertureView: View {
                     .foregroundColor(palette.style == .native ? .primary : .white)
                     .lineLimit(1)
                 Spacer()
-                Text("\(text.count) chars")
+                Text(String(format: "clipboard.preview.charCount".localized, text.count))
                     .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
@@ -254,7 +254,7 @@ public struct ClipboardHoverApertureView: View {
 
             HStack {
                 let lines = text.split(separator: "\n").count
-                Text("\(lines) lines")
+                Text(String(format: "clipboard.preview.lineCount".localized, lines))
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()

@@ -122,6 +122,30 @@ struct LocalizationTests {
         #expect(loc.localized("ai.settings.mcpServers") == "MCP 服务器")
     }
 
+    @Test("Every UI-facing key used in source exists in the tables")
+    func testNoMissingKeys() {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let english = Set(LocalizationManager.keys(for: .english))
+        var unregistered: [String] = []
+        for plugin in ["PurahUI", "PurahApp"] {
+            let root = dir.appendingPathComponent(plugin)
+            guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
+            for case let file as URL in walker where file.pathExtension == "swift" {
+                guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
+                // `"some.key".localized` and `String(format: "some.key".localized, ...)`
+                for match in source.matches(of: /"([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)"\.localized/) {
+                    let key = String(match.output.1)
+                    if !english.contains(key) { unregistered.append("\(key) in \((file.path as NSString).lastPathComponent)") }
+                }
+            }
+        }
+        #expect(unregistered.isEmpty, "Keys used in the UI but absent from the tables: \(unregistered.sorted())")
+    }
+
     @Test("LocalizationManager persists currentLanguage to UserDefaults")
     @MainActor
     func testLanguagePersistence() {

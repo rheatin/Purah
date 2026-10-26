@@ -65,7 +65,7 @@ public struct ScriptRunwayDrawerView: View {
                                     HStack(spacing: 3) {
                                         ProgressView()
                                             .controlSize(.mini)
-                                        Text("Running")
+                                        Text("runway.running".localized)
                                             .font(.system(size: 8.5, weight: .bold))
                                     }
                                     .padding(.horizontal, 6)
@@ -81,7 +81,7 @@ public struct ScriptRunwayDrawerView: View {
                                         HStack(spacing: 2.5) {
                                             Image(systemName: "stop.fill")
                                                 .font(.system(size: 6.5, weight: .bold))
-                                            Text("Stop")
+                                            Text("ai.action.stop".localized)
                                                 .font(.system(size: 8.5, weight: .bold))
                                         }
                                         .padding(.horizontal, 6)
@@ -108,7 +108,7 @@ public struct ScriptRunwayDrawerView: View {
                                     HStack(spacing: 3.5) {
                                         Image(systemName: "play.fill")
                                             .font(.system(size: 7, weight: .bold))
-                                        Text("Run")
+                                        Text("runway.run".localized)
                                             .font(.system(size: 8.5, weight: .bold, design: .rounded))
                                     }
                                     .padding(.horizontal, 8)

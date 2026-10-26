@@ -119,7 +119,7 @@ public struct VisualLayoutSimulatorView: View {
                                     Text("layout.geometry.drawerWidth.title".localized)
                                         .font(.system(size: 11.5, weight: .medium, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                    Text("Fixed width or content-driven adaptive sizing")
+                                    Text("simulator.widthMode".localized)
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
                                 }
@@ -403,7 +403,7 @@ public struct VisualLayoutSimulatorView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text("\(mountedCount) of \(store.pods.count) mounted")
+                    Text(String(format: "simulator.mountedCount".localized, mountedCount, store.pods.count))
                         .font(.system(.caption, design: .monospaced).weight(.semibold))
                         .foregroundColor(palette.primaryAccent)
                 }
@@ -428,7 +428,7 @@ public struct VisualLayoutSimulatorView: View {
                         .background(palette.borderColor.opacity(0.35))
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Available to Mount (\(unmountedPods.count))")
+                        Text(String(format: "simulator.availableToMount".localized, unmountedPods.count))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)
 
@@ -509,7 +509,7 @@ public struct VisualLayoutSimulatorView: View {
                             Image(systemName: "shippingbox.fill")
                                 .font(.system(size: 9.5, weight: .bold))
                                 .foregroundColor(.orange)
-                            Text("Shared Major Slot · \(cluster.count) Stacked")
+                            Text(String(format: "simulator.sharedMajorSlot".localized, cluster.count))
                                 .font(.system(size: 10, weight: .bold, design: .rounded))
                                 .foregroundColor(.orange)
                             Spacer()
@@ -645,7 +645,7 @@ public struct VisualLayoutSimulatorView: View {
                     HStack(spacing: 3) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 8.5))
-                        Text("Page \(pod.pageIndex + 1)")
+                        Text(String(format: "simulator.page".localized, pod.pageIndex + 1))
                             .font(.system(size: 9, weight: .bold, design: .rounded))
                         Image(systemName: "chevron.down")
                             .font(.system(size: 7, weight: .bold))
@@ -698,7 +698,7 @@ public struct VisualLayoutSimulatorView: View {
                         HStack(spacing: 3) {
                             Image(systemName: "square.stack.3d.up.fill")
                                 .font(.system(size: 8.5, weight: .bold))
-                            Text("Stack With")
+                            Text("simulator.stackWith".localized)
                                 .font(.system(size: 9, weight: .bold, design: .rounded))
                                 .lineLimit(1)
                             Image(systemName: "chevron.down")

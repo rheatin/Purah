@@ -125,7 +125,7 @@ public struct LiveRailSculptorDockView: View {
                            let draggedPod = store.pods.first(where: { $0.id == draggedId }) {
                             if let targetPodId = store.externalDragTargetPodId,
                                let targetPod = store.pods.first(where: { $0.id == targetPodId }) {
-                                Text("📦 Release to Stack \(draggedPod.name) with \(targetPod.name)")
+                                Text(String(format: "sculptor.releaseToStackWith".localized, draggedPod.name, targetPod.name))
                                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                                     .foregroundColor(.orange)
                             } else if let targetEdge = store.externalDragTargetEdge {
@@ -133,12 +133,12 @@ public struct LiveRailSculptorDockView: View {
                                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                                     .foregroundColor(palette.primaryAccent)
                             } else {
-                                Text("Drag \(draggedPod.name) to Left/Right Rail or onto any Pod to Stack")
+                                Text(String(format: "sculptor.dragToRail".localized, draggedPod.name))
                                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                                     .foregroundColor(.white.opacity(0.85))
                             }
                         } else {
-                            Text("Tip: Drag any pill onto a Rail or Stack, or click +L / +R")
+                            Text("sculptor.dragTip".localized)
                                 .font(.system(size: 9, weight: .medium, design: .rounded))
                                 .foregroundColor(.secondary.opacity(0.8))
                         }
@@ -282,7 +282,7 @@ public struct LiveRailSculptorDockView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 10, weight: .bold))
-                    Text("STEP \(store.onboardingStep.rawValue + 1) / 6")
+                    Text(String(format: "onboarding.stepCounter".localized, store.onboardingStep.rawValue + 1))
                         .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                 }
                 .foregroundColor(.black)

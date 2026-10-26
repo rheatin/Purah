@@ -72,7 +72,7 @@ public struct ScreenSimulationCanvas: View {
                         .frame(height: workableHeight * 0.20)
                         .overlay(
                             HStack {
-                                Text("GLANCE ZONE (0% ~ 20%)")
+                                Text("zone.glance".localized)
                                     .font(.system(size: 8, design: .monospaced))
                                     .foregroundColor(.blue.opacity(0.8))
                             },
@@ -85,7 +85,7 @@ public struct ScreenSimulationCanvas: View {
                         .frame(height: workableHeight * 0.55)
                         .overlay(
                             HStack {
-                                Text("GOLDEN ACTION ZONE (20% ~ 75%)")
+                                Text("zone.goldenAction".localized)
                                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                                     .foregroundColor(.green.opacity(0.8))
                             },
@@ -98,7 +98,7 @@ public struct ScreenSimulationCanvas: View {
                         .frame(height: workableHeight * 0.25)
                         .overlay(
                             HStack {
-                                Text("QUICK FLICK ZONE (75% ~ 100%)")
+                                Text("zone.quickFlick".localized)
                                     .font(.system(size: 8, design: .monospaced))
                                     .foregroundColor(.orange.opacity(0.8))
                             },
@@ -328,7 +328,7 @@ public struct ScreenSimulationCanvas: View {
                     .font(.system(size: 8, weight: .bold))
                 Text("Purah")
                     .font(.system(size: 8, weight: .bold, design: .rounded))
-                Text("File  Edit  View  Window")
+                Text("simulator.menuBarMenu".localized)
                     .font(.system(size: 7))
                     .foregroundColor(.secondary)
             }
@@ -344,7 +344,7 @@ public struct ScreenSimulationCanvas: View {
                     .font(.system(size: 7))
                 Image(systemName: "switch.2")
                     .font(.system(size: 7))
-                Text("Tue 9:41 AM")
+                Text("simulator.sampleClock".localized)
                     .font(.system(size: 7, design: .monospaced))
             }
             .foregroundColor(.secondary)

@@ -3040,7 +3040,7 @@ public struct QuickNoteDrawerView: View {
                 PurahScrollableBody {
                     VStack(alignment: .leading, spacing: 3) {
                         if matches.isEmpty {
-                            Text("No matching notes found")
+                            Text("notes.noMatches".localized)
                                 .font(.system(size: 9, design: .rounded))
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal, 6)

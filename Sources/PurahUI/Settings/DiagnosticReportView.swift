@@ -23,10 +23,10 @@ public struct DiagnosticReportView: View {
                 // Header & Export Actions
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("System Diagnostics & Health")
+                        Text("diagnostics.title".localized)
                             .font(.headline.weight(.semibold))
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        Text("Real-time main thread watchdog, telemetry sampling, and diagnostic export")
+                        Text("diagnostics.subtitle".localized)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -119,7 +119,7 @@ public struct DiagnosticReportView: View {
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(alignment: .leading, spacing: 3) {
                             if logEntries.isEmpty {
-                                Text("No recent diagnostic entries recorded.")
+                                Text("diagnostics.empty".localized)
                                     .font(.caption.monospaced())
                                     .foregroundColor(.secondary)
                                     .padding(8)
