@@ -84,6 +84,11 @@ public final class TodoPluginState: Sendable {
     }
 
     public func toggleCompletion(id: String, store: PurahWorkspaceStore? = nil) async {
+        // Capture the item before mutating: a repeating todo needs its rule and
+        // its due date to derive the next occurrence, and both are still the
+        // *pre-completion* values here.
+        let before = todos.first { $0.id == id }
+
         if let idx = todos.firstIndex(where: { $0.id == id }) {
             todos[idx].isCompleted.toggle()
             save()
@@ -97,6 +102,74 @@ public final class TodoPluginState: Sendable {
             }
             targetStore.invalidateLayoutCache()
             targetStore.onWindowsRebuildNeeded?()
+        }
+
+        // Completing a repeating todo schedules its successor. Done after the
+        // Reminders round trip so the new item is appended to the authoritative
+        // list rather than being overwritten by the sync that just ran.
+        if let before, before.recurrence != nil, !before.isCompleted {
+            scheduleNextOccurrence(of: before, store: store)
+        }
+    }
+
+    /// Appends the next occurrence of a repeating todo.
+    ///
+    /// The successor is a *new* item rather than a reset of the completed one:
+    /// the completed occurrence stays in the list (and in Reminders) as a
+    /// record, which is what makes "did I do this yesterday" answerable.
+    ///
+    /// Its id is derived from the original plus the occurrence count so that
+    /// repeated cycles cannot collide, and so a sync that re-derives ids does
+    /// not fold two occurrences together.
+    @discardableResult
+    public func scheduleNextOccurrence(of item: TodoItem, store: PurahWorkspaceStore? = nil) -> TodoItem? {
+        guard let recurrence = item.recurrence else { return nil }
+
+        // Advance from the due date when there was one, otherwise from now —
+        // a repeating todo without a due date still needs a clock.
+        let anchor = item.dueDate ?? Date()
+        guard let nextDue = recurrence.nextDueDate(after: anchor) else { return nil }
+
+        let nextCount = item.recurrenceCount + 1
+        let successor = TodoItem(
+            id: "\(item.id)-r\(nextCount)",
+            title: item.title,
+            listTitle: item.listTitle,
+            listColorHex: item.listColorHex,
+            dueDate: nextDue,
+            isCompleted: false,
+            recurrence: recurrence,
+            recurrenceCount: nextCount
+        )
+
+        // Guard against a double-completion producing a duplicate successor.
+        guard !todos.contains(where: { $0.id == successor.id }) else { return nil }
+
+        todos.append(successor)
+        save()
+
+        if let targetStore = store ?? boundStore {
+            targetStore._todos.append(successor)
+            targetStore.invalidateLayoutCache()
+            targetStore.onWindowsRebuildNeeded?()
+        }
+        return successor
+    }
+
+    /// Attaches or removes the repeating schedule on an item.
+    ///
+    /// Writes through to the store's mirror explicitly rather than relying on
+    /// `boundStore`: the drawer renders from `store._todos`, so a rule that only
+    /// landed in the plugin's own array would look applied and then do nothing
+    /// when the task was completed.
+    public func setRecurrence(id: String, recurrence: TodoRecurrence?, store: PurahWorkspaceStore? = nil) {
+        if let idx = todos.firstIndex(where: { $0.id == id }) {
+            todos[idx].recurrence = recurrence
+            save()
+        }
+        let target = store ?? boundStore
+        if let target, let idx = target._todos.firstIndex(where: { $0.id == id }) {
+            target._todos[idx].recurrence = recurrence
         }
     }
 
