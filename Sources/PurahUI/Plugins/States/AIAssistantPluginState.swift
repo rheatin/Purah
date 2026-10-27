@@ -1585,6 +1585,21 @@ public final class AIAssistantPluginState: Sendable {
                             self.save()
                         }
                     },
+                    onServedModel: { [weak self] served in
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            // Attribution only. The auto-heal above owns the
+                            // setting; a server that reports a different model
+                            // than requested is telling us what answered, not
+                            // asking us to change what we send next time.
+                            self.recordServedModel(
+                                served,
+                                provider: provider,
+                                forSession: targetSessionId,
+                                assistantMsgId: assistantMsgId
+                            )
+                        }
+                    },
                     onChunk: { [weak self] chunk in
                         Task { @MainActor [weak self] in
                             self?.handleChunk(chunk, forSession: targetSessionId, assistantMsgId: assistantMsgId)
@@ -1613,6 +1628,26 @@ public final class AIAssistantPluginState: Sendable {
             sessions[sIdx].messages[aIdx].reasoningContent = parsed.reasoning
             sessions[sIdx].messages[aIdx].choices = parsed.choices
         }
+    }
+
+    /// Stamps the answer with what actually produced it.
+    ///
+    /// Recorded on the assistant message and nowhere else. The session's own
+    /// `providerKind` is a single mutable field that every send overwrites, so
+    /// it can only ever describe the newest turn; a transcript whose older
+    /// answers were relabelled by a later model switch would be worse than one
+    /// with no labels at all.
+    private func recordServedModel(
+        _ served: String,
+        provider: AIProviderKind,
+        forSession sessionId: String,
+        assistantMsgId: UUID
+    ) {
+        guard let sIdx = sessions.firstIndex(where: { $0.id == sessionId }) else { return }
+        guard let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == assistantMsgId }) else { return }
+        let trimmed = served.trimmingCharacters(in: .whitespacesAndNewlines)
+        sessions[sIdx].messages[aIdx].resolvedModel = trimmed.isEmpty ? nil : trimmed
+        sessions[sIdx].messages[aIdx].providerKind = provider
     }
 
     private func handleStreamingError(_ error: Error, forSession sessionId: String, assistantMsgId: UUID) {
@@ -1834,8 +1869,15 @@ public final class AIAssistantPluginState: Sendable {
         var md = "# \(session.title)\n\n"
         md += "- **Created**: \(dateFormatter.string(from: session.createdAt))\n"
         md += "- **Updated**: \(dateFormatter.string(from: session.updatedAt))\n"
-        md += "- **Provider**: \(session.providerKind.displayName)\n\n"
-        md += "---\n\n"
+        md += "- **Provider**: \(session.providerKind.displayName)\n"
+        // The session's own provider field is the one last used. Real
+        // attribution lives per answer, so an archive of a session that changed
+        // models keeps that history in the doc rather than flattening it.
+        let models = session.answeredModels
+        if !models.isEmpty {
+            md += "- **Models**: \(models.joined(separator: ", "))\n"
+        }
+        md += "\n---\n\n"
 
         for message in session.messages {
             let roleHeader: String
@@ -1850,7 +1892,16 @@ public final class AIAssistantPluginState: Sendable {
                 roleHeader = "### ⚙️ System"
             }
 
-            md += "\(roleHeader) (\(dateFormatter.string(from: message.timestamp)))\n\n"
+            var attribution = ""
+            if message.role == .assistant {
+                let model = message.resolvedModel?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let provider = message.providerKind?.displayName ?? ""
+                let parts = [model, provider].filter { !$0.isEmpty }
+                if !parts.isEmpty { attribution = " · \(parts.joined(separator: " · "))" }
+            }
+
+            md += "\(roleHeader) (\(dateFormatter.string(from: message.timestamp))\(attribution))\n\n"
 
             if let reasoning = message.reasoningContent, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 md += "<details>\n<summary>Thinking Process</summary>\n\n\(reasoning)\n\n</details>\n\n"

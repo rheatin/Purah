@@ -58,9 +58,28 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     // MARK: - Header Accessory & Trailing
+    /// The header pill answers "which model wrote this?", and the menu behind it
+    /// still answers "which provider should run next?".
+    ///
+    /// Those are deliberately different questions. The pill reports the model
+    /// recorded on the answer currently on screen, which can differ from the
+    /// configured one for three ordinary reasons: the provider routed the
+    /// request elsewhere, the auto-heal swapped models after a 400/404, or the
+    /// user switched provider after reading an older answer. Showing the
+    /// configured model here would paper over all three.
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
+        let attribution = headerAttribution()
+        return AnyView(
             Menu {
+                // Naming the subject of the pill, since the menu below changes
+                // something else entirely.
+                Button {} label: {
+                    Text(attribution.fullName)
+                }
+                .disabled(true)
+
+                Divider()
+
                 ForEach(AIProviderKind.allCases) { provider in
                     Button {
                         state.selectedProvider = provider
@@ -75,10 +94,13 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Image(systemName: state.selectedProvider.systemIcon)
+                    Image(systemName: attribution.icon)
                         .font(.system(size: 8))
-                    Text(providerShortLabel(state.selectedProvider))
+                    Text(attribution.label)
                         .font(.system(size: 8, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 112, alignment: .leading)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 6))
                 }
@@ -92,7 +114,53 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize(horizontal: true, vertical: false)
+            .help(attribution.fullName)
+            // A `Menu` lays out its label as three separate accessibility
+            // elements — the icon, the text and the chevron — so VoiceOver
+            // announced this pill three times (as "Network Nodes Connected By
+            // Lines", "OpenAI", "Go Down"). Collapsing to one element with the
+            // real name gives a single, meaningful stop.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(attribution.fullName)
+            .accessibilityAddTraits(.isButton)
         )
+    }
+
+    /// What the header pill says, and the full text behind it.
+    private func headerAttribution() -> (icon: String, label: String, fullName: String) {
+        let viewed = state.currentViewedAssistantMessage
+        let recordedModel = viewed?.resolvedModel?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        // 1. The answer on screen recorded the model that produced it.
+        if !recordedModel.isEmpty {
+            let provider = viewed?.providerKind ?? state.selectedProvider
+            return (provider.systemIcon, recordedModel, "\(provider.displayName) · \(recordedModel)")
+        }
+
+        // 2. An answer exists but predates model recording. Its provider is
+        //    still known, and inventing a model for it would be a lie.
+        if let provider = viewed?.providerKind {
+            return (provider.systemIcon, provider.shortTitle, provider.displayName)
+        }
+
+        // 3. Nothing has answered yet: show what the next turn will request.
+        let configured = state.selectedProvider
+        if let model = configuredModelName(for: configured)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+            return (configured.systemIcon, model, "\(configured.displayName) · \(model)")
+        }
+        return (configured.systemIcon, providerShortLabel(configured), configured.displayName)
+    }
+
+    private func configuredModelName(for kind: AIProviderKind) -> String? {
+        switch kind {
+        case .httpOpenAI: return state.openAIModel
+        case .httpAnthropic: return state.anthropicModel
+        case .httpOllama: return state.ollamaModel
+        // Apple's on-device and the CLI agents have no host-visible model id.
+        default: return nil
+        }
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {

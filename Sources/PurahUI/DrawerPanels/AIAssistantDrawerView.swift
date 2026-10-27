@@ -56,6 +56,9 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isRoleRunning: Bool = false
     @State private var isCopiedFeedback: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
+    /// What answered the last chip turn. A chip's header is 16pt and already
+    /// full, so this rides in the copy badge's tooltip instead of costing a row.
+    @State private var servedModel: String? = nil
     @State private var currentStreamTask: Task<Void, Never>? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -133,6 +136,7 @@ public struct AIAssistantSteppedDrawerView: View {
                             .font(.system(size: 10.5, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                            .help(steppedAttributionTooltip)
 
                         if role.id == "translate" {
                             Text("ai.drawer.autoLanguage".localized)
@@ -311,6 +315,18 @@ public struct AIAssistantSteppedDrawerView: View {
         rawSteppedStream = ""
         isSteppedThinking = false
         isCopiedFeedback = false
+        servedModel = nil
+    }
+
+    /// `<model> · <provider>`, or just the provider when the run predates model
+    /// attribution. Empty before anything has run.
+    private var steppedAttributionTooltip: String {
+        guard !roleOutput.isEmpty || isRoleRunning || servedModel != nil else { return "" }
+        let provider = state.selectedProvider.displayName
+        if let servedModel, !servedModel.isEmpty {
+            return "\(servedModel) · \(provider)"
+        }
+        return provider
     }
 
     private func stopSteppedRun() {
@@ -414,6 +430,12 @@ public struct AIAssistantSteppedDrawerView: View {
                     endpoint: endpoint,
                     model: model,
                     systemPromptOverride: systemPrompt,
+                    onServedModel: { served in
+                        Task { @MainActor in
+                            let trimmed = served.trimmingCharacters(in: .whitespacesAndNewlines)
+                            self.servedModel = trimmed.isEmpty ? nil : trimmed
+                        }
+                    },
                     onChunk: { chunk in
                         Task { @MainActor in
                             self.rawSteppedStream += chunk
@@ -904,9 +926,11 @@ public struct AISessionHistoryManagerView: View {
                             .lineLimit(1)
                     }
 
-                    Text("\(relativeTimeString(from: session.updatedAt)) · \(session.messages.count) \("ai.history.messagesSuffix".localized)")
+                    Text(sessionSubtitle(session))
                         .font(.system(size: 8.5, design: .monospaced))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -1024,6 +1048,26 @@ public struct AISessionHistoryManagerView: View {
             store.onCapacityWarningToast?("📤 Exported to \(url.lastPathComponent)")
             SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
         }
+    }
+
+    /// `<time> · <n> messages · <models>` — the models are the distinct ones
+    /// that actually answered in this session, newest first.
+    ///
+    /// Distinct rather than "the latest": a session is often a conversation
+    /// across more than one model, and naming only the most recent one would
+    /// misdescribe the rest of it. Long lists are elided so a session that
+    /// wandered through many models still fits on one line.
+    private func sessionSubtitle(_ session: AIChatSession) -> String {
+        var parts = [
+            relativeTimeString(from: session.updatedAt),
+            "\(session.messages.count) \("ai.history.messagesSuffix".localized)"
+        ]
+        let models = session.answeredModels
+        if !models.isEmpty {
+            let shown = models.prefix(2).joined(separator: " · ")
+            parts.append(models.count > 2 ? "\(shown) +\(models.count - 2)" : shown)
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func relativeTimeString(from date: Date) -> String {

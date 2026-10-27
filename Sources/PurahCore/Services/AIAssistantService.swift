@@ -360,6 +360,28 @@ public final class AIAssistantService {
     }
 
     // MARK: - Endpoint URL Resolution
+    /// The model name a streaming event reports, if it reports one.
+    ///
+    /// Two shapes, because the providers disagree: OpenAI-compatible servers put
+    /// a top-level `model` on every chunk, while Anthropic names it once, nested
+    /// inside `message_start.message.model`.
+    ///
+    /// What the server says wins over what was requested. A proxy, a router, or
+    /// this code's own auto-heal can all pick a different model than the one
+    /// asked for, and the answer's attribution is the only place that shows it.
+    public nonisolated static func servedModelName(in event: [String: Any]) -> String? {
+        if let message = event["message"] as? [String: Any],
+           let nested = message["model"] as? String,
+           !nested.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return nested
+        }
+        if let reported = event["model"] as? String,
+           !reported.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return reported
+        }
+        return nil
+    }
+
     public nonisolated static func resolveOpenAIChatCompletionsURL(baseURL: String?, provider: AIProviderKind) -> URL? {
         var trimmed = (baseURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -397,6 +419,16 @@ public final class AIAssistantService {
     }
 
     // MARK: - Multi-Provider Streaming
+
+    /// Attribution for answers that never left the machine's own model.
+    ///
+    /// Used for the on-device path *and* for the two silent fallbacks into it
+    /// (no API key, no CLI installed). Without it those replies would be
+    /// labelled with the provider that was requested, which is exactly the
+    /// wrong information — the whole point of showing a model is noticing when
+    /// it is not the one you picked.
+    public static let appleOnDeviceModelName = "Apple Intelligence (on-device)"
+
     @discardableResult
     public func streamChat(
         messages: [AIChatMessage],
@@ -412,6 +444,7 @@ public final class AIAssistantService {
         skillDirectories: [String] = [],
         mcpConfigPath: String? = nil,
         onResolvedModel: (@Sendable (String) -> Void)? = nil,
+        onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
         isStreaming = true
@@ -448,6 +481,9 @@ public final class AIAssistantService {
                     onChunk: onChunk
                 )
                 #endif
+                // The on-device model has no request-time identifier; the
+                // platform names it once.
+                onServedModel?(Self.appleOnDeviceModelName)
 
             case .httpOpenAI, .httpOllama:
                 let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -459,6 +495,7 @@ public final class AIAssistantService {
                         systemPromptOverride: systemPromptOverride,
                         onChunk: onChunk
                     )
+                    onServedModel?(Self.appleOnDeviceModelName)
                 } else {
                     result = try await streamOpenAICompatible(
                         messages: messages,
@@ -469,6 +506,7 @@ public final class AIAssistantService {
                         targetLanguage: targetLanguage,
                         systemPromptOverride: systemPromptOverride,
                         onResolvedModel: onResolvedModel,
+                        onServedModel: onServedModel,
                         onChunk: onChunk
                     )
                 }
@@ -483,6 +521,7 @@ public final class AIAssistantService {
                         systemPromptOverride: systemPromptOverride,
                         onChunk: onChunk
                     )
+                    onServedModel?(Self.appleOnDeviceModelName)
                 } else {
                     result = try await streamAnthropic(
                         messages: messages,
@@ -491,6 +530,7 @@ public final class AIAssistantService {
                         model: model,
                         targetLanguage: targetLanguage,
                         systemPromptOverride: systemPromptOverride,
+                        onServedModel: onServedModel,
                         onChunk: onChunk
                     )
                 }
@@ -504,6 +544,7 @@ public final class AIAssistantService {
                         systemPromptOverride: systemPromptOverride,
                         onChunk: onChunk
                     )
+                    onServedModel?(Self.appleOnDeviceModelName)
                     break
                 }
                 result = try await streamLocalCLI(
@@ -518,6 +559,9 @@ public final class AIAssistantService {
                     mcpConfigPath: mcpConfigPath,
                     onChunk: onChunk
                 )
+                // A CLI agent spawns whatever model its own configuration
+                // names; the host never learns which, so it does not invent one.
+                onServedModel?(cliExecutable.displayName)
             }
             DiagnosticLogger.shared.info("AI", "Request completed: provider=\(provider.displayName), chars=\(result.count)")
             return result
@@ -537,6 +581,7 @@ public final class AIAssistantService {
         targetLanguage: String,
         systemPromptOverride: String? = nil,
         onResolvedModel: (@Sendable (String) -> Void)? = nil,
+        onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         guard let url = Self.resolveOpenAIChatCompletionsURL(baseURL: endpoint, provider: provider) else {
@@ -600,6 +645,11 @@ public final class AIAssistantService {
 
         var fullAccumulated = ""
         var rawJSONFallbackBuffer = ""
+        // What the server says it is running, which is not always what we asked
+        // for: a proxy or router is free to answer with a different model. Read
+        // from the first frame that carries it rather than assumed from the
+        // request.
+        var servedModel: String?
 
         for try await line in bytes.lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -613,8 +663,14 @@ public final class AIAssistantService {
             if payload == "[DONE]" { break }
 
             guard let data = payload.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = json["choices"] as? [[String: Any]],
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            if servedModel == nil,
+               let reported = Self.servedModelName(in: json) {
+                servedModel = reported
+            }
+            guard let choices = json["choices"] as? [[String: Any]],
                   let firstChoice = choices.first else {
                 continue
             }
@@ -639,28 +695,37 @@ public final class AIAssistantService {
         // Fallback for non-SSE JSON responses (e.g. servers returning standard choices array instead of event stream)
         if fullAccumulated.isEmpty, !rawJSONFallbackBuffer.isEmpty {
             if let data = rawJSONFallbackBuffer.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let choices = json["choices"] as? [[String: Any]],
-               let firstChoice = choices.first {
-                var fallbackText = ""
-                if let message = firstChoice["message"] as? [String: Any] {
-                    let reasoning = (message["reasoning_content"] as? String) ?? (message["reasoning"] as? String)
-                    if let reasoning = reasoning, !reasoning.isEmpty {
-                        fallbackText.append("<think>\(reasoning)</think>")
-                    }
-                    if let content = message["content"] as? String, !content.isEmpty {
-                        fallbackText.append(content)
-                    }
-                } else if let text = firstChoice["text"] as? String, !text.isEmpty {
-                    fallbackText.append(text)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if servedModel == nil,
+                   let reported = Self.servedModelName(in: json) {
+                    servedModel = reported
                 }
+                if let choices = json["choices"] as? [[String: Any]],
+                   let firstChoice = choices.first {
+                    var fallbackText = ""
+                    if let message = firstChoice["message"] as? [String: Any] {
+                        let reasoning = (message["reasoning_content"] as? String) ?? (message["reasoning"] as? String)
+                        if let reasoning = reasoning, !reasoning.isEmpty {
+                            fallbackText.append("<think>\(reasoning)</think>")
+                        }
+                        if let content = message["content"] as? String, !content.isEmpty {
+                            fallbackText.append(content)
+                        }
+                    } else if let text = firstChoice["text"] as? String, !text.isEmpty {
+                        fallbackText.append(text)
+                    }
 
-                if !fallbackText.isEmpty {
-                    fullAccumulated = fallbackText
-                    onChunk?(fallbackText)
+                    if !fallbackText.isEmpty {
+                        fullAccumulated = fallbackText
+                        onChunk?(fallbackText)
+                    }
                 }
             }
         }
+
+        // A server that reports nothing gets the string that was requested —
+        // the best available answer, and the one the user chose.
+        onServedModel?(servedModel ?? selectedModel)
 
         return fullAccumulated
     }
@@ -673,6 +738,7 @@ public final class AIAssistantService {
         model: String?,
         targetLanguage: String,
         systemPromptOverride: String? = nil,
+        onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         guard let url = Self.resolveAnthropicMessagesURL(baseURL: endpoint) else {
@@ -722,6 +788,7 @@ public final class AIAssistantService {
         }
 
         var fullAccumulated = ""
+        var servedModel: String?
         for try await line in bytes.lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.hasPrefix("data:") else { continue }
@@ -732,6 +799,12 @@ public final class AIAssistantService {
                 continue
             }
 
+            // Anthropic reports the model once, in `message_start`.
+            if servedModel == nil,
+               let reported = Self.servedModelName(in: json) {
+                servedModel = reported
+            }
+
             if let type = json["type"] as? String, type == "content_block_delta",
                let delta = json["delta"] as? [String: Any],
                let text = delta["text"] as? String {
@@ -739,6 +812,8 @@ public final class AIAssistantService {
                 onChunk?(text)
             }
         }
+
+        onServedModel?(servedModel ?? selectedModel)
 
         return fullAccumulated
     }

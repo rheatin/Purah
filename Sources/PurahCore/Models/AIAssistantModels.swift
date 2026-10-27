@@ -502,6 +502,20 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     /// message is an empty bubble whose meaning is unrecoverable.
     public var skillInvocation: String?
 
+    /// The model that actually produced this message, as the provider named it
+    /// in the response — not the string that was requested.
+    ///
+    /// Recorded per message rather than per session: a session outlives any
+    /// single model choice. `AIChatSession.providerKind` is overwritten on
+    /// every send, so a session-level field would relabel every older answer
+    /// with whatever ran most recently.
+    public var resolvedModel: String?
+
+    /// The provider that answered, for the same reason. Kept alongside the
+    /// model because "Claude CLI" and `claude-3-7-sonnet-latest` are different
+    /// answers to the same question.
+    public var providerKind: AIProviderKind?
+
     public init(
         id: UUID = UUID(),
         role: Role,
@@ -515,7 +529,9 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         systemPromptOverride: String? = nil,
         roleTitle: String? = nil,
         roleId: String? = nil,
-        skillInvocation: String? = nil
+        skillInvocation: String? = nil,
+        resolvedModel: String? = nil,
+        providerKind: AIProviderKind? = nil
     ) {
         self.id = id
         self.role = role
@@ -530,12 +546,14 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         self.roleTitle = roleTitle
         self.roleId = roleId
         self.skillInvocation = skillInvocation
+        self.resolvedModel = resolvedModel
+        self.providerKind = providerKind
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, role, content, reasoningContent, choices, attachments
         case timestamp, quickAction, originalSelection, systemPromptOverride
-        case roleTitle, roleId, skillInvocation
+        case roleTitle, roleId, skillInvocation, resolvedModel, providerKind
     }
 
     /// Tolerant decode so sessions written before skills existed still load.
@@ -554,6 +572,11 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         self.roleTitle = try container.decodeIfPresent(String.self, forKey: .roleTitle)
         self.roleId = try container.decodeIfPresent(String.self, forKey: .roleId)
         self.skillInvocation = try container.decodeIfPresent(String.self, forKey: .skillInvocation)
+        // Absent on every message written before models were recorded. A
+        // tolerant decode keeps old sessions loading; the message simply has no
+        // attribution, which is the truth about it.
+        self.resolvedModel = try container.decodeIfPresent(String.self, forKey: .resolvedModel)
+        self.providerKind = try container.decodeIfPresent(AIProviderKind.self, forKey: .providerKind)
     }
 }
 
@@ -568,6 +591,22 @@ public struct AIChatSession: PurahPersistableItem, PurahStorableItem, Equatable,
     public var estimatedByteSize: Int64
 
     public var timestamp: Date { createdAt }
+
+    /// Every model that answered in this session, newest turn first.
+    ///
+    /// Reads the per-message attribution, so it survives a session outliving a
+    /// model switch. Messages written before models were recorded contribute
+    /// nothing rather than a guess.
+    public var answeredModels: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for message in messages.reversed() where message.role == .assistant {
+            guard let model = message.resolvedModel?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty else { continue }
+            if seen.insert(model).inserted { ordered.append(model) }
+        }
+        return ordered
+    }
 
     public init(
         id: String = UUID().uuidString,
