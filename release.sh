@@ -442,6 +442,21 @@ if [ "$PUBLISH" = true ]; then
     fi
 
     if [ "$SKIP_TAG" = false ]; then
+        # The version-bump commit is made locally at the start of this script.
+        # Nothing ever pushed it, so the release commit lived only on whichever
+        # machine cut the release — that is exactly how v0.6.0's "Bump version
+        # to v0.6.0" commit ended up on a feature branch while the tag (and the
+        # GitHub release) pointed at a different history.
+        #
+        # A tag must name a commit that exists on the remote, or `git checkout
+        # vX.Y.Z` after a fresh clone fails. Push `main` before tagging.
+        echo -e "   └── Pushing main to origin..."
+        if ! git push origin main; then
+            echo -e "${RED}Error: could not push main to origin.${RESET}" >&2
+            echo -e "   Nothing was tagged or published; the version bump is still local.${RESET}" >&2
+            exit 1
+        fi
+
         # A tag that already exists and points somewhere else is a release that
         # was tagged from the wrong commit. Refuse to publish over it: the fix
         # is to delete the bad tag deliberately, not to have this script guess.
