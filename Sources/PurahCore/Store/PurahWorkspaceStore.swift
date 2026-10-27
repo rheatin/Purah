@@ -1082,6 +1082,128 @@ public final class PurahWorkspaceStore {
         return isPodAlerting(podId: podId)
     }
 
+    // MARK: - Context profiles
+
+    package var _contextProfiles: ContextProfileStore = ContextProfileStore()
+
+    public var contextProfiles: ContextProfileStore {
+        get { _contextProfiles }
+        set {
+            guard newValue != _contextProfiles else { return }
+            _contextProfiles = newValue
+            savePersistentState()
+        }
+    }
+
+    /// Captures the current arrangement as a profile.
+    ///
+    /// Reads the live layout rather than the persisted blob, so an unsaved
+    /// hand-sculpt is included. `savePersistentState` is called first so the
+    /// profile and the on-disk state agree.
+    public func captureProfile(named name: String) -> ContextProfile {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmed.isEmpty
+            ? _contextProfiles.uniqueName(basedOn: "profile.defaultName".localized)
+            : trimmed
+        return ContextProfile(
+            name: finalName,
+            pods: pods,
+            customPodColors: customPodColors,
+            pinnedDrawerItemIds: pinnedDrawerItemIds,
+            externalDecomposedStates: externalDecomposedSnapshot,
+            drawerWidthMode: drawerWidthMode,
+            fixedDrawerWidth: fixedDrawerWidth
+        )
+    }
+
+    /// Saves the current arrangement as a new profile and selects it.
+    @discardableResult
+    public func saveProfile(named name: String) -> ContextProfile {
+        var store = _contextProfiles
+        let profile = captureProfile(named: store.uniqueName(basedOn: name.trimmingCharacters(in: .whitespacesAndNewlines)))
+        store.profiles.append(profile)
+        store.activeProfileId = profile.id
+        contextProfiles = store
+        return profile
+    }
+
+    /// Overwrites an existing profile with the current arrangement.
+    public func updateProfile(id: UUID) {
+        guard let index = _contextProfiles.profiles.firstIndex(where: { $0.id == id }) else { return }
+        var store = _contextProfiles
+        let captured = captureProfile(named: store.profiles[index].name)
+        // Keep the identity and creation date; only the arrangement moves.
+        var updated = captured
+        updated.id = store.profiles[index].id
+        updated.createdAt = store.profiles[index].createdAt
+        updated.updatedAt = Date()
+        store.profiles[index] = updated
+        store.activeProfileId = id
+        contextProfiles = store
+    }
+
+    /// Applies a profile to the live layout.
+    ///
+    /// Pods are restored wholesale, including their heights. A pod that exists
+    /// in the profile but whose plugin has since been uninstalled is still
+    /// restored: `pruneOrphanedPods` owns that decision and runs at the moment
+    /// it can actually tell (after registration), so dropping it here would
+    /// race a plugin that is merely slow to load.
+    public func applyProfile(id: UUID) {
+        guard let profile = _contextProfiles.profiles.first(where: { $0.id == id }) else { return }
+
+        pods = profile.pods
+        customPodColors = profile.customPodColors
+        pinnedDrawerItemIds = profile.pinnedDrawerItemIds
+        restoreExternalDecomposed(profile.externalDecomposedStates)
+        drawerWidthMode = profile.drawerWidthMode
+        fixedDrawerWidth = profile.fixedDrawerWidth
+
+        var store = _contextProfiles
+        store.activeProfileId = id
+        _contextProfiles = store
+
+        // A focus rule's snapshot describes pages from before the profile was
+        // applied; keeping it would let a later app switch restore pages that
+        // belong to a layout the user just left.
+        focusRuleSnapshot = nil
+
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    public func deleteProfile(id: UUID) {
+        var store = _contextProfiles
+        store.remove(profileId: id)
+        contextProfiles = store
+    }
+
+    public func renameProfile(id: UUID, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = _contextProfiles.profiles.firstIndex(where: { $0.id == id }) else { return }
+        // Reject a name another profile already uses; the association list and
+        // the picker both key on it visually.
+        guard !_contextProfiles.profiles.contains(where: { $0.id != id && $0.nameMatches(trimmed) }) else { return }
+        var store = _contextProfiles
+        store.profiles[index].name = trimmed
+        store.profiles[index].updatedAt = Date()
+        contextProfiles = store
+    }
+
+    public func assignTrigger(_ trigger: ProfileTrigger, to profileId: UUID) {
+        var store = _contextProfiles
+        store.triggers[trigger] = profileId
+        contextProfiles = store
+    }
+
+    public func removeTrigger(_ trigger: ProfileTrigger) {
+        var store = _contextProfiles
+        store.triggers.removeValue(forKey: trigger)
+        contextProfiles = store
+    }
+
     // MARK: - Focus-driven layout
 
     /// Rules that rearrange the rail page in response to the frontmost app.
@@ -1735,6 +1857,21 @@ public final class PurahWorkspaceStore {
     // plugin's default on the next launch.
     @ObservationIgnored private var externalDecomposedStates: [String: Bool] = [:]
     private static let externalDecomposedKey = "purah.externalDecomposedStates"
+
+    /// The raw map, for capturing and restoring a context profile.
+    ///
+    /// Exposed as a whole rather than per-id because a profile has to be able to
+    /// tell "never touched" apart from "explicitly chose composite": copying
+    /// only the ids it happens to know about would turn an untouched plugin into
+    /// an explicitly-composite one on restore.
+    package var externalDecomposedSnapshot: [String: Bool] {
+        externalDecomposedStates
+    }
+
+    package func restoreExternalDecomposed(_ states: [String: Bool]) {
+        externalDecomposedStates = states
+        userDefaults.set(states, forKey: Self.externalDecomposedKey)
+    }
 
     /// `nil` when the user never touched the toggle for this pod — the plugin's
     /// own default (stepped symbols exported → stepped) then applies.

@@ -183,6 +183,10 @@ extension PurahWorkspaceStore {
            let decoded = try? JSONDecoder().decode(AppFocusSettings.self, from: focusData) {
             _appFocusSettings = decoded
         }
+        if let profileData = defaults.data(forKey: "purah.contextProfiles"),
+           let decoded = try? JSONDecoder().decode(ContextProfileStore.self, from: profileData) {
+            _contextProfiles = decoded
+        }
         if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
             self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
         }
@@ -256,6 +260,9 @@ extension PurahWorkspaceStore {
         }
         if let focusData = try? JSONEncoder().encode(appFocusSettings) {
             defaults.set(focusData, forKey: "purah.appFocusSettings")
+        }
+        if let profileData = try? JSONEncoder().encode(contextProfiles) {
+            defaults.set(profileData, forKey: "purah.contextProfiles")
         }
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")

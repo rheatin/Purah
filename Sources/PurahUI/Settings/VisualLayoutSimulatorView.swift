@@ -5,6 +5,12 @@ import PurahCore
 public struct VisualLayoutSimulatorView: View {
     public let store: PurahWorkspaceStore
 
+    /// The name being typed for a new profile. Held here rather than in the
+    /// store because an abandoned draft is not configuration.
+    @State private var newProfileName: String = ""
+    /// The profile whose name is being edited, if any.
+    @State private var renamingProfileId: UUID?
+
     private var theme: ThemeManager {
         ThemeManager.shared
     }
@@ -80,7 +86,10 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
-                // 1. Mini Screen Simulation (Top Primary Focus)
+                // 1. Context Profiles (whole-layout presets)
+                contextProfilesCard
+
+                // 2. Mini Screen Simulation (Top Primary Focus)
                 ScreenSimulationCanvas(store: store)
 
                 // 2. High-Density Rail Overflow Mode Card
@@ -819,6 +828,171 @@ public struct VisualLayoutSimulatorView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Context Profiles
+
+    /// Named whole-layout snapshots.
+    ///
+    /// Placed at the top of the Layout tab because it acts on the entire
+    /// arrangement rather than on one control, and a person reaching for it is
+    /// usually about to rearrange everything.
+    @ViewBuilder
+    private var contextProfilesCard: some View {
+        let palette = theme.palette
+        let profiles = store.contextProfiles
+
+        settingsCard(title: "profile.card.title".localized, icon: "square.stack.3d.up.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("profile.card.subtitle".localized)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if profiles.profiles.isEmpty {
+                    Text("profile.empty".localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(profiles.profiles) { profile in
+                            profileRow(profile: profile, isActive: profiles.activeProfileId == profile.id, palette: palette)
+                        }
+                    }
+                }
+
+                Divider()
+                    .background(palette.borderColor.opacity(0.2))
+
+                HStack(spacing: 8) {
+                    TextField("profile.newPlaceholder".localized, text: $newProfileName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .frame(maxWidth: 200)
+
+                    Button {
+                        let name = newProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        store.saveProfile(named: name.isEmpty
+                                          ? "profile.defaultName".localized
+                                          : name)
+                        newProfileName = ""
+                        store.triggerControlHaptic(.alignment)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 10.5))
+                            Text("profile.saveCurrent".localized)
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+                    .accessibilityLabel("profile.saveCurrent".localized)
+
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func profileRow(profile: ContextProfile, isActive: Bool, palette: ThemePalette) -> some View {
+        let isRenaming = renamingProfileId == profile.id
+        HStack(spacing: 8) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 11))
+                .foregroundColor(isActive ? palette.primaryAccent : palette.borderColor.opacity(0.5))
+
+            VStack(alignment: .leading, spacing: 1) {
+                if isRenaming {
+                    // Commit on Return; the store rejects empty and duplicate
+                    // names, so a bad entry leaves the old name in place rather
+                    // than producing an unnamed profile.
+                    TextField("profile.namePlaceholder".localized, text: Binding(
+                        get: { profile.name },
+                        set: { store.renameProfile(id: profile.id, to: $0) }
+                    ), onCommit: { renamingProfileId = nil })
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: 180)
+                } else {
+                    Text(profile.name)
+                        .font(.system(size: 11.5, weight: isActive ? .semibold : .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+                }
+                Text(profile.summary)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            if isRenaming {
+                Button("profile.done".localized) { renamingProfileId = nil }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(palette.primaryAccent)
+            } else {
+                Button("profile.apply".localized) {
+                    store.applyProfile(id: profile.id)
+                    store.triggerControlHaptic(.alignment)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(palette.primaryAccent)
+                .disabled(isActive)
+
+                Button("profile.update".localized) {
+                    store.updateProfile(id: profile.id)
+                    store.triggerControlHaptic(.alignment)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+
+                Button {
+                    renamingProfileId = profile.id
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("profile.rename".localized)
+
+                Button {
+                    store.deleteProfile(id: profile.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("profile.delete".localized)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(isActive ? 0.05 : 0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(
+                    isActive ? palette.primaryAccent.opacity(0.4) : palette.borderColor.opacity(0.2),
+                    lineWidth: isActive ? 1.2 : 0.8
+                )
         )
     }
 }
