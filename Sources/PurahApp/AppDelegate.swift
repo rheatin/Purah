@@ -106,6 +106,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             self?.toggleLiveRailSculptor()
         }
 
+        // Adapts which rail page a pod sits on when the frontmost app changes.
+        // Bound after the store's callbacks are wired, because applying a rule
+        // asks for a window rebuild.
+        AppFocusAwarenessService.shared.bindStore(store)
+
         setupStatusItem()
 
         // Post-launch memory optimization:

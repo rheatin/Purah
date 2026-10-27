@@ -1048,8 +1048,9 @@ public final class PurahWorkspaceStore {
     /// themselves at the user. Silencing the collection instead would leave the
     /// rail showing stale information for the first minutes after the window
     /// ends.
-    /// Backing storage for `quietHours`, so the persistence loader can restore
-    /// it without tripping the property's observer and writing straight back.
+    ///
+    /// Backing storage is separate so the persistence loader can restore it
+    /// without tripping an observer and writing straight back to disk.
     package var _quietHours: QuietHours = QuietHours()
 
     public var quietHours: QuietHours {
@@ -1061,6 +1062,7 @@ public final class PurahWorkspaceStore {
             savePersistentState()
         }
     }
+
     /// True when attention-demanding behaviour should be held back right now.
     ///
     /// Read through a function rather than the property so every call site
@@ -1078,6 +1080,98 @@ public final class PurahWorkspaceStore {
     public func isPodAlertingNow(podId: String, at date: Date = Date()) -> Bool {
         guard !isQuietNow(at: date) else { return false }
         return isPodAlerting(podId: podId)
+    }
+
+    // MARK: - Focus-driven layout
+
+    /// Rules that rearrange the rail page in response to the frontmost app.
+    ///
+    /// Opt-in, and deliberately narrow: a rule may only choose which page a pod
+    /// sits on. It cannot resize a pod, reorder within a page, or mount and
+    /// unmount plugins — those are the parts of the layout people sculpt by
+    /// hand, and having them move when they switch apps is what makes this kind
+    /// of feature tiring rather than helpful.
+    package var _appFocusSettings: AppFocusSettings = AppFocusSettings()
+
+    public var appFocusSettings: AppFocusSettings {
+        get { _appFocusSettings }
+        set {
+            guard newValue != _appFocusSettings else { return }
+            _appFocusSettings = newValue
+            savePersistentState()
+            if !newValue.isEnabled {
+                clearFocusRule()
+            }
+        }
+    }
+
+    /// Page assignments captured before a focus rule moved them, so the rule can
+    /// be undone exactly. `nil` when no rule is currently applied.
+    @ObservationIgnored
+    package var focusRuleSnapshot: [String: Int]?
+
+    /// Applies a rule by moving pods between page 0 and page 1.
+    ///
+    /// Re-entrant by design: switching from Xcode to Terminal applies the
+    /// second rule on top of the first, which is what a person expects. The
+    /// snapshot is taken only on the first application, so the original layout
+    /// survives a chain of app switches rather than only the last one.
+    public func applyFocusRule(_ rule: AppFocusRule) {
+        // Work out what would change *before* arming a snapshot: an inert rule,
+        // or one naming only absent pods, must leave no state behind.
+        var moves: [(index: Int, page: Int, edge: MountEdge)] = []
+        for podId in rule.surfacedPodIds {
+            guard let idx = pods.firstIndex(where: { $0.id == podId }), pods[idx].pageIndex != 0 else { continue }
+            moves.append((idx, 0, pods[idx].edge))
+        }
+        for podId in rule.hiddenPodIds {
+            guard let idx = pods.firstIndex(where: { $0.id == podId }), pods[idx].pageIndex != 1 else { continue }
+            moves.append((idx, 1, pods[idx].edge))
+        }
+        guard !moves.isEmpty else { return }
+
+        if focusRuleSnapshot == nil {
+            focusRuleSnapshot = Dictionary(uniqueKeysWithValues: pods.map { ($0.id, $0.pageIndex) })
+        }
+
+        for move in moves {
+            pods[move.index].pageIndex = move.page
+        }
+
+        let edges = Set(moves.map(\.edge))
+        for edge in edges {
+            normalizePageRanges(for: edge)
+        }
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
+    /// Restores the page assignments the active rule moved.
+    ///
+    /// Restoring the snapshot wholesale would be simpler but wrong: the user may
+    /// have dragged a pod while the rule was active, and that gesture should not
+    /// be thrown away when they switch to another app.
+    ///
+    /// Deliberately does not re-run `normalizePageRanges`: that helper re-packs
+    /// pods into pages by height, which can shuffle an unrelated pod to a
+    /// different page than the one the user had it on. Putting the recorded
+    /// index back is the whole job.
+    public func clearFocusRule() {
+        guard let snapshot = focusRuleSnapshot else { return }
+        focusRuleSnapshot = nil
+
+        var changed = false
+        for idx in pods.indices {
+            guard let original = snapshot[pods[idx].id] else { continue }
+            if pods[idx].pageIndex != original {
+                pods[idx].pageIndex = original
+                changed = true
+            }
+        }
+        guard changed else { return }
+
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
     }
 
     // Sensory Feedback Settings

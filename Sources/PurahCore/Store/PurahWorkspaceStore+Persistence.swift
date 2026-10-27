@@ -179,6 +179,10 @@ extension PurahWorkspaceStore {
             // straight back to disk during a load.
             _quietHours = decoded
         }
+        if let focusData = defaults.data(forKey: "purah.appFocusSettings"),
+           let decoded = try? JSONDecoder().decode(AppFocusSettings.self, from: focusData) {
+            _appFocusSettings = decoded
+        }
         if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
             self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
         }
@@ -249,6 +253,9 @@ extension PurahWorkspaceStore {
         defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
         if let quietData = try? JSONEncoder().encode(quietHours) {
             defaults.set(quietData, forKey: "purah.quietHours")
+        }
+        if let focusData = try? JSONEncoder().encode(appFocusSettings) {
+            defaults.set(focusData, forKey: "purah.appFocusSettings")
         }
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
