@@ -1524,4 +1524,34 @@ struct PluginArchitectureTests {
         )
         #expect(store.activeDrawerPodId == "com.test.sdk")
     }
+
+    @Test("Vitals rail capacity is bounded to 2…4, not 2…6")
+    func testVitalsRailMetricRange() {
+        // The slider used to run to 6. Beyond four chips the values stop being
+        // readable at a glance and each chip approaches the §5 56pt floor, so
+        // the ceiling is four. The floor stays at two: a lone telemetry chip is
+        // a button, not a sensor strip.
+        #expect(VitalsPluginState.railMetricRange == 2...4)
+
+        let storage = ScopedPluginStorage(pluginId: "test_vitals_range_\(UUID().uuidString)")
+        let state = VitalsPluginState(storage: storage)
+
+        // A fresh state lands on the ceiling.
+        #expect(state.maxRailMetrics == 4)
+
+        // Out-of-range writes are clamped in both directions.
+        state.setMaxRailMetrics(9)
+        #expect(state.maxRailMetrics == 4)
+        state.setMaxRailMetrics(1)
+        #expect(state.maxRailMetrics == 2)
+        state.setMaxRailMetrics(3)
+        #expect(state.maxRailMetrics == 3)
+
+        // A value persisted by the old 2…6 slider is clamped on load, not
+        // carried forward.
+        let legacyStorage = ScopedPluginStorage(pluginId: "test_vitals_legacy_\(UUID().uuidString)")
+        legacyStorage.set(6, forKey: "maxRailMetrics")
+        #expect(VitalsPluginState(storage: legacyStorage).maxRailMetrics == 4)
+    }
+
 }

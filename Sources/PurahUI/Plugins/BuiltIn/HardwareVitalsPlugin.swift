@@ -327,14 +327,14 @@ public struct VitalsPluginSettingsView: View {
 
                             Slider(
                                 value: Binding(
-                                    get: { Double(min(max(state.maxRailMetrics, 2), 6)) },
+                                    get: { Double(min(max(state.maxRailMetrics, 2), 4)) },
                                     set: {
                                         state.setMaxRailMetrics(Int($0))
                                         store.invalidateLayoutCache()
                                         store.onWindowsRebuildNeeded?()
                                     }
                                 ),
-                                in: 2.0...6.0,
+                                in: 2.0...4.0,
                                 step: 1.0
                             )
                             .accessibilityLabel("vitals.railSlotLimit".localized)
