@@ -138,6 +138,24 @@ mkdir -p "$RESOURCES_DIR"
 # Copy main binary
 cp -p "$EXECUTABLE_PATH" "${MACOS_DIR}/Purah"
 
+# Strip symbols from the copied binary only — never from the SwiftPM build
+# product, which is shared with the debugger and the test run.
+#
+# SwiftPM's release build leaves the full symbol table in place: 217k symbols
+# for 30MB, of which the overwhelming majority is debug metadata that ships to
+# every user. `strip -x` removes the local ones and keeps the exported set,
+# taking the binary to 11MB. Stripping has to happen before codesign, because
+# editing a signed Mach-O invalidates its signature.
+if [ "$CONFIGURATION" = "release" ]; then
+    BEFORE=$(du -h "${MACOS_DIR}/Purah" | cut -f1)
+    if strip -x "${MACOS_DIR}/Purah" 2>/dev/null; then
+        AFTER=$(du -h "${MACOS_DIR}/Purah" | cut -f1)
+        echo -e "   └── Stripped symbols: ${BEFORE} → ${AFTER}"
+    else
+        echo -e "${YELLOW}⚠️  strip failed; shipping an unstripped binary${RESET}"
+    fi
+fi
+
 # Copy Info.plist
 INFO_PLIST="Sources/PurahApp/Resources/Info.plist"
 if [ -f "$INFO_PLIST" ]; then
