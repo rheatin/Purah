@@ -1173,6 +1173,21 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    /// Whether the live layout currently matches a profile exactly.
+    ///
+    /// This — not `activeProfileId` — is what decides if "Apply" has anything
+    /// left to do. `activeProfileId` only records which profile was last saved
+    /// or applied; the user can rearrange the rail right after, at which point
+    /// applying that same profile is exactly what they want and must be
+    /// possible.
+    public func layoutMatches(profile: ContextProfile) -> Bool {
+        pods == profile.pods
+            && customPodColors == profile.customPodColors
+            && pinnedDrawerItemIds == profile.pinnedDrawerItemIds
+            && drawerWidthMode == profile.drawerWidthMode
+            && fixedDrawerWidth == profile.fixedDrawerWidth
+    }
+
     public func deleteProfile(id: UUID) {
         var store = _contextProfiles
         store.remove(profileId: id)

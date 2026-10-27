@@ -907,10 +907,16 @@ public struct VisualLayoutSimulatorView: View {
     @ViewBuilder
     private func profileRow(profile: ContextProfile, isActive: Bool, palette: ThemePalette) -> some View {
         let isRenaming = renamingProfileId == profile.id
+        // Two different questions, deliberately answered separately:
+        // `isActive` is "this is the profile you last saved or applied", and
+        // `matchesLayout` is "the rail right now looks exactly like this".
+        // Only the second one makes Apply a no-op, and it is the only one that
+        // should ever look like a completed state.
+        let matchesLayout = store.layoutMatches(profile: profile)
         HStack(spacing: 8) {
-            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+            Image(systemName: matchesLayout ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 11))
-                .foregroundColor(isActive ? palette.primaryAccent : palette.borderColor.opacity(0.5))
+                .foregroundColor(matchesLayout ? palette.primaryAccent : palette.borderColor.opacity(0.5))
 
             VStack(alignment: .leading, spacing: 1) {
                 if isRenaming {
@@ -925,10 +931,24 @@ public struct VisualLayoutSimulatorView: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: 180)
                 } else {
-                    Text(profile.name)
-                        .font(.system(size: 11.5, weight: isActive ? .semibold : .medium, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(profile.name)
+                            .font(.system(size: 11.5, weight: matchesLayout ? .semibold : .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+                        if matchesLayout {
+                            Text("profile.current".localized)
+                                .font(.system(size: 8.5, weight: .semibold))
+                                .foregroundColor(palette.primaryAccent)
+                        } else if isActive {
+                            // Applied earlier, edited since. Worth saying,
+                            // because the row would otherwise look identical
+                            // to one that still matches.
+                            Text("profile.modified".localized)
+                                .font(.system(size: 8.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
                 Text(profile.summary)
                     .font(.system(size: 9, design: .monospaced))
@@ -943,6 +963,11 @@ public struct VisualLayoutSimulatorView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(palette.primaryAccent)
             } else {
+                // Apply stays enabled even on the active profile. The active
+                // mark only says which profile was last saved or applied — the
+                // user may have rearranged the rail since, and that is exactly
+                // when they reach for Apply. Greying it out here made a saved
+                // profile impossible to restore.
                 Button("profile.apply".localized) {
                     store.applyProfile(id: profile.id)
                     store.triggerControlHaptic(.alignment)
@@ -950,7 +975,6 @@ public struct VisualLayoutSimulatorView: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(palette.primaryAccent)
-                .disabled(isActive)
 
                 Button("profile.update".localized) {
                     store.updateProfile(id: profile.id)
@@ -985,13 +1009,13 @@ public struct VisualLayoutSimulatorView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(isActive ? 0.05 : 0.03))
+                .fill(Color.primary.opacity(matchesLayout ? 0.05 : 0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(
-                    isActive ? palette.primaryAccent.opacity(0.4) : palette.borderColor.opacity(0.2),
-                    lineWidth: isActive ? 1.2 : 0.8
+                    matchesLayout ? palette.primaryAccent.opacity(0.4) : palette.borderColor.opacity(0.2),
+                    lineWidth: matchesLayout ? 1.2 : 0.8
                 )
         )
     }

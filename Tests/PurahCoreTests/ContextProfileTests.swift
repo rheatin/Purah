@@ -85,6 +85,84 @@ struct ContextProfileTests {
         #expect(store.contextProfiles.activeProfile?.id == profile.id)
     }
 
+    // MARK: - Apply must stay reachable
+
+    /// The bug this covers: `saveProfile` marks the new profile active, the row
+    /// disabled "Apply" while active, and so a freshly saved profile could never
+    /// be re-applied after the layout was changed. `layoutMatches` is the only
+    /// predicate that may drive a completed-looking state.
+    @Test("A freshly saved profile matches the live layout")
+    func testFreshProfileMatchesLayout() {
+        let store = makeStore()
+        let profile = store.saveProfile(named: "Desk")
+        #expect(store.layoutMatches(profile: profile))
+    }
+
+    @Test("Changing the layout makes the profile no longer match")
+    func testLayoutDriftBreaksMatch() {
+        let store = makeStore()
+        let profile = store.saveProfile(named: "Desk")
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected an enabled pod")
+            return
+        }
+
+        store.setPodPage(id: pod.id, pageIndex: 1)
+
+        #expect(
+            !store.layoutMatches(profile: profile),
+            "the layout moved, so Apply has work to do and must not look complete"
+        )
+    }
+
+    /// The exact user-facing sequence: save, rearrange, apply, and the original
+    /// arrangement must come back.
+    @Test("Applying after drift restores the saved arrangement")
+    func testApplyAfterDriftRestores() {
+        let store = makeStore()
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected an enabled pod")
+            return
+        }
+        store.setPodPage(id: pod.id, pageIndex: 0)
+        let saved = store.pods.first { $0.id == pod.id }!
+        let profile = store.saveProfile(named: "Desk")
+
+        // Rearrange, which is what makes the user reach for Apply.
+        store.setPodPage(id: pod.id, pageIndex: 1)
+        #expect(!store.layoutMatches(profile: profile))
+
+        store.applyProfile(id: profile.id)
+
+        #expect(store.layoutMatches(profile: profile))
+        let restored = store.pods.first { $0.id == pod.id }!
+        #expect(restored.pageIndex == saved.pageIndex)
+        #expect(restored.range.start == saved.range.start)
+        #expect(restored.range.length == saved.range.length)
+    }
+
+    @Test("Applying a profile twice is idempotent")
+    func testApplyTwiceIsStable() {
+        let store = makeStore()
+        let profile = store.saveProfile(named: "Desk")
+        store.applyProfile(id: profile.id)
+        let afterFirst = store.pods
+        store.applyProfile(id: profile.id)
+        #expect(store.pods == afterFirst)
+    }
+
+    @Test("A colour change alone counts as drift")
+    func testColourDriftBreaksMatch() {
+        let store = makeStore()
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected an enabled pod")
+            return
+        }
+        let profile = store.saveProfile(named: "Desk")
+        store.customPodColors[pod.id] = "#123456"
+        #expect(!store.layoutMatches(profile: profile))
+    }
+
     @Test("Applying an unknown profile id changes nothing")
     func testUnknownProfileIsANoOp() {
         let store = makeStore()
