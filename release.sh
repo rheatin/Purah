@@ -213,6 +213,18 @@ if [ "$VERSION" != "$CURRENT_VERSION" ]; then
     sed -i '' "s/public static let version = \"[^\"]*\"/public static let version = \"${VERSION}\"/" "$PURAH_CORE_FILE"
     if command -v plutil >/dev/null 2>&1; then
         plutil -replace CFBundleShortVersionString -string "${VERSION}" "$INFO_PLIST_FILE"
+
+        # CFBundleVersion is the monotonically increasing build number. It sat
+        # at "2" across every release so far, so a crash report could not say
+        # which build it came from. Increment it whenever a release is cut.
+        if [ "$PUBLISH" = true ] && [ "$SKIP_TAG" = false ]; then
+            CURRENT_BUILD=$(plutil -extract CFBundleVersion raw "$INFO_PLIST_FILE" 2>/dev/null || echo "0")
+            case "$CURRENT_BUILD" in
+                ''|*[!0-9]*) CURRENT_BUILD=0 ;;
+            esac
+            plutil -replace CFBundleVersion -string "$((CURRENT_BUILD + 1))" "$INFO_PLIST_FILE"
+            echo -e "   └── Build number: ${CURRENT_BUILD} → $((CURRENT_BUILD + 1))"
+        fi
     fi
     echo -e "${GREEN}✓ Updated ${PURAH_CORE_FILE} and ${INFO_PLIST_FILE}${RESET}"
 
