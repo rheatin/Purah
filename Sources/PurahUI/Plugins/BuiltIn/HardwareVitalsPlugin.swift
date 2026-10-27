@@ -70,7 +70,17 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
-            maxRailItems: min(state.maxRailMetrics, state.enabledMetrics.count),
+            // Just the user's ceiling — not `min(ceiling, enabledCount)`.
+            //
+            // Folding the enabled count in here made the rail's admission check
+            // unsatisfiable: `canEnableSubItem` asks whether
+            // `subItemCount < maxRailItems`, and both sides became the same
+            // number once every slot was full. With two metrics enabled the
+            // limit read 2, so enabling a third was refused — the rail was
+            // permanently stuck at two chips however high the slider went.
+            // How many chips the rail actually renders is a layout question the
+            // decomposition already answers by clipping to the enabled list.
+            maxRailItems: state.maxRailMetrics,
             minChipHeight: 56.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
