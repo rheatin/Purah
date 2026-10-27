@@ -65,7 +65,10 @@ struct FullIntegrationTests {
             version: "2.1.0",
             releaseDate: Date(),
             releaseNotes: "Purah v2.1.0",
-            downloadURL: URL(string: "https://github.com/purah/releases/tag/v2.1.0")!
+            downloadURL: URL(string: "https://github.com/purah/releases/tag/v2.1.0")!,
+            // A digest is what makes a release installable in place. Without
+            // one the updater correctly offers the release page instead.
+            sha256: String(repeating: "cd", count: 32)
         )
         await updater.checkForUpdates(simulatedRelease: newRelease)
         if case .updateAvailable(let release) = updater.state {

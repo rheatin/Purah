@@ -35,6 +35,11 @@ struct UpdateInstallScriptTests {
         process.arguments = arguments
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        // A successful swap ends by relaunching the app. Point that at `true`
+        // so running the suite never launches a fixture bundle.
+        var environment = ProcessInfo.processInfo.environment
+        environment["OPEN_CMD_OVERRIDE"] = "/usr/bin/true"
+        process.environment = environment
         try? process.run()
         process.waitUntilExit()
         return process.terminationStatus
@@ -235,25 +240,64 @@ struct UpdateInstallScriptTests {
         )
     }
 
-    @Test("An empty expected team is refused rather than treated as a wildcard")
-    func testEmptyExpectedTeamRejected() throws {
+    @Test("An ad-hoc build installs an ad-hoc signed replacement")
+    func testAdHocBuildInstallsAdHocReplacement() throws {
+        // The shipped build has no Team ID. Refusing here made in-place updates
+        // unreachable for every real user; the archive's SHA-256 now gates the
+        // download before this script runs, and step 4 still proves the bundle
+        // matches its own signature.
+        let root = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let (bundle, signedAdHoc) = try makeAdHocSignedBundle(in: root)
+        guard signedAdHoc else {
+            // Without working ad-hoc signing on this machine the integrity
+            // branch correctly rejects it; that path is covered elsewhere.
+            return
+        }
+        let archive = try makeZip(named: "adhoc.zip", containing: bundle, in: root)
+
+        let target = try makeFakeBundle(named: "Purah.app", in: root, payload: "original")
+        let marker = root.appendingPathComponent("marker.txt")
+        let script = try writeScript(marker: marker.path, workRoot: root.path, into: root)
+
+        let status = run([
+            script.path, "999999", archive.path, target.path, "",
+        ])
+
+        #expect(status == 0, "an ad-hoc build must be able to replace itself")
+        let installed = try String(
+            contentsOf: target.appendingPathComponent("Contents/MacOS/Purah"),
+            encoding: .utf8
+        )
+        #expect(installed == "replacement")
+        // No reason recorded: nothing went wrong.
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        // The download is consumed, and no backup is left behind.
+        #expect(!FileManager.default.fileExists(atPath: archive.path))
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            .filter { $0.contains(".backup.") }
+        #expect(leftovers.isEmpty)
+    }
+
+    @Test("A signed build still refuses a replacement with the wrong team")
+    func testSignedBuildRejectsWrongTeam() throws {
+        // Passing a real expected team must keep the strict check: this is the
+        // branch a Developer ID build relies on.
         let root = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: root) }
 
         let (bundle, signedAdHoc) = try makeAdHocSignedBundle(in: root)
         let archive = try makeZip(named: "anon.zip", containing: bundle, in: root)
 
-        // The old code passed `""` here on every release and compared it to a
-        // real team. An empty expectation must never match anything — that is
-        // the exact bug that turned every update into an uninstall.
         try assertFailure(
             FailureScenario(
                 archive: archive,
                 expectedReasonFragment: signedAdHoc
-                    ? "no signing team to verify an update against"
+                    ? "was signed by"
                     : "could not be verified"
             ),
-            teamID: "", in: root
+            teamID: "TEAM123456", in: root
         )
     }
 

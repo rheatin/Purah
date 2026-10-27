@@ -53,18 +53,24 @@ struct AppUpdaterTests {
     // that was a hardcoded empty string, then terminated the app before the
     // installer ran. Whatever the script did next, the user's app was gone.
 
-    @Test("An ad-hoc build cannot install in place")
-    func testAdHocBuildCannotSelfInstall() {
+    @Test("An ad-hoc build can still install in place")
+    func testAdHocBuildCanSelfInstall() {
+        // Every shipped release is ad-hoc signed. Refusing to install for that
+        // reason made in-place updates unreachable for the build users actually
+        // run — the whole feature degraded to "open a browser". The digest
+        // check is what protects the download now.
         let updater = AppUpdaterManager(
             currentVersion: "2.0.0",
             bundleURL: URL(fileURLWithPath: "/tmp/PurahTest.app"),
             expectedTeamIdentifier: nil,
             openURL: { _ in }
         )
-        #expect(!updater.canInstallInPlace)
+        #expect(updater.canInstallInPlace)
+        // It installs, but it does not claim a publisher it cannot prove.
+        #expect(!updater.hasVerifiedPublisher)
     }
 
-    @Test("A signed build can install in place")
+    @Test("A signed build can install in place and has a verified publisher")
     func testSignedBuildCanSelfInstall() {
         let updater = AppUpdaterManager(
             currentVersion: "2.0.0",
@@ -73,10 +79,36 @@ struct AppUpdaterTests {
             openURL: { _ in }
         )
         #expect(updater.canInstallInPlace)
+        #expect(updater.hasVerifiedPublisher)
     }
 
-    @Test("An unsigned build is offered a manual download, not an install")
-    func testUnsignedBuildReportsManualUpdate() async throws {
+    @Test("An ad-hoc build is offered the update, not a manual download")
+    func testUnsignedBuildStillOffersInstall() async throws {
+        let release = AppReleaseInfo(
+            version: "9.9.9",
+            releaseNotes: "Newer",
+            downloadURL: try #require(URL(string: "https://example.com/Purah.zip")),
+            sha256: String(repeating: "ab", count: 32)
+        )
+        let updater = AppUpdaterManager(
+            currentVersion: "2.0.0",
+            bundleURL: URL(fileURLWithPath: "/tmp/PurahTest.app"),
+            expectedTeamIdentifier: nil,
+            openURL: { _ in }
+        )
+        await updater.checkForUpdates(simulatedRelease: release)
+
+        guard case .updateAvailable(let reported) = updater.state else {
+            Issue.record("Expected updateAvailable, got \(updater.state)")
+            return
+        }
+        #expect(reported.version == "9.9.9")
+    }
+
+    @Test("A release with no digest is still offered as a manual download")
+    func testReleaseWithoutDigestIsManual() async throws {
+        // This is now the one thing that makes an update uninstallable: with
+        // nothing to check the archive against, there is no safe swap to make.
         let release = AppReleaseInfo(
             version: "9.9.9",
             releaseNotes: "Newer",
@@ -90,15 +122,14 @@ struct AppUpdaterTests {
         )
         await updater.checkForUpdates(simulatedRelease: release)
 
-        guard case .manualUpdateRequired(let reported) = updater.state else {
+        guard case .manualUpdateRequired = updater.state else {
             Issue.record("Expected manualUpdateRequired, got \(updater.state)")
             return
         }
-        #expect(reported.version == "9.9.9")
     }
 
-    @Test("An unsigned build never spawns an installer that would reject the download")
-    func testUnsignedInstallOpensReleasePageInstead() async throws {
+    @Test("A release with no digest opens the release page instead of installing")
+    func testMissingDigestOpensReleasePageInstead() async throws {
         let url = try #require(URL(string: "https://example.com/Purah.zip"))
         var opened: [URL] = []
         let updater = AppUpdaterManager(
@@ -107,12 +138,12 @@ struct AppUpdaterTests {
             expectedTeamIdentifier: nil,
             openURL: { opened.append($0) }
         )
+        // No `sha256`: there is nothing to check the archive against, so it is
+        // never handed to a script that replaces the app.
         let release = AppReleaseInfo(version: "9.9.9", releaseNotes: "", downloadURL: url)
 
         await updater.downloadAndInstall(release: release)
 
-        // No download attempt: the archive URL is the release page, opened
-        // directly, and the failure is reported rather than swallowed.
         #expect(opened == [url])
         guard case .failed = updater.state else {
             Issue.record("Expected a failed state, got \(updater.state)")

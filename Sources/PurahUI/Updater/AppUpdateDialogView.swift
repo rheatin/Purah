@@ -82,7 +82,18 @@ public struct AppUpdateDialogView: View {
                         }
 
                         if case .manualUpdateRequired = updater.state {
-                            Text("updater.manualOnly".localized)
+                            Text(release.normalizedSHA256 == nil
+                                 ? "updater.manualOnly".localized
+                                 : "updater.manualOnlyUnsigned".localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if !updater.hasVerifiedPublisher {
+                            // Installing, but honestly: the download is
+                            // matched against its published checksum, and the
+                            // signature is verified for integrity rather than
+                            // for a publisher that does not exist.
+                            Text("updater.unsignedBuildNote".localized)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

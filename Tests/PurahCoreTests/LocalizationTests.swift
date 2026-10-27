@@ -98,7 +98,7 @@ struct LocalizationTests {
         // for the missing strings. Raise a number when you add translations;
         // never lower one to make this pass.
         let pinnedCoverage: [AppLanguage: Int] = [
-            .traditionalChinese: 554,
+            .traditionalChinese: 556,
             .japanese: 74,
             .korean: 74,
             .french: 74,

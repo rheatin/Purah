@@ -23,7 +23,6 @@ public enum UpdateCheckState: Sendable, Equatable {
 /// script through `UpdateInstallMarker`, not here — by then this process has
 /// already quit and cannot run Swift.
 public enum UpdateInstallError: LocalizedError, Equatable {
-    case unsignedBuild
     /// The release published no digest for its archive, so there is nothing to
     /// check the download against.
     case unverifiedDownload
@@ -32,8 +31,6 @@ public enum UpdateInstallError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unsignedBuild:
-            return "This build is not signed with a Developer ID, so it cannot verify an update."
         case .unverifiedDownload:
             return "This release does not publish a checksum, so the update was not installed automatically."
         case .checksumMismatch:
@@ -188,7 +185,24 @@ public final class AppUpdaterManager {
     private let openURL: @MainActor (URL) -> Void
 
     /// Whether this build can install an update by itself.
-    public var canInstallInPlace: Bool { expectedTeamIdentifier != nil }
+    ///
+    /// True even without a Team ID. Every Purah release is ad-hoc signed, so
+    /// requiring a team made in-place installation unreachable for the shipped
+    /// build — the guard below could never pass, and every update degraded to
+    /// "open the release page in a browser". An ad-hoc build is still replaced
+    /// safely by a different check: the download is matched against the
+    /// SHA-256 the release publishes before any of this runs, and the install
+    /// script verifies the bundle's own signature is intact. What it cannot
+    /// prove is *who* signed it, so that is stated in the UI rather than
+    /// silently assumed.
+    public var canInstallInPlace: Bool { true }
+
+    /// Whether the replacement can be proven to come from a known publisher.
+    ///
+    /// `false` for an ad-hoc build: its signature is only a checksum over the
+    /// bundle, and anyone can produce one. The update still installs, but the
+    /// dialog says so instead of implying a stronger guarantee than exists.
+    public var hasVerifiedPublisher: Bool { expectedTeamIdentifier != nil }
 
     public init(
         currentVersion: String = PurahCore.version,
@@ -289,13 +303,19 @@ public final class AppUpdaterManager {
         }
     }
 
-    /// A newer release that this build cannot install in place is still worth
-    /// telling the user about — it becomes a manual download, not silence.
+    /// A newer release this build can safely install is offered as an install;
+    /// one it cannot is offered as a manual download, not as silence.
+    ///
+    /// The remaining reason an update cannot install by itself is a release
+    /// that publishes no digest. That is knowable here, from the manifest, so
+    /// it is reported before anything is downloaded rather than after the
+    /// archive has already been fetched and refused.
     private func availability(of release: AppReleaseInfo) -> UpdateCheckState {
         guard isNewer(release: release) else {
             return .upToDate(currentVersion: currentVersion)
         }
-        return canInstallInPlace ? .updateAvailable(release) : .manualUpdateRequired(release)
+        let installable = canInstallInPlace && release.normalizedSHA256 != nil
+        return installable ? .updateAvailable(release) : .manualUpdateRequired(release)
     }
 
     public func downloadAndInstall(release: AppReleaseInfo) async {
@@ -310,12 +330,19 @@ public final class AppUpdaterManager {
             return
         }
 
-        // An ad-hoc build has no Team ID, so the install script would reject
-        // every download — after this process had already quit. Send the user
-        // to the release page instead of terminating into a dead end.
-        guard expectedTeamIdentifier != nil else {
+        // An ad-hoc build has no Team ID. It no longer refuses to install for
+        // that reason: the download is matched against the release's published
+        // SHA-256 below before anything is handed to the installer, which is
+        // the check that actually protects the user. The missing publisher
+        // proof is reported by `hasVerifiedPublisher`, not used as a veto.
+
+        // A release that publishes no digest cannot be verified, and that is
+        // knowable before spending a download on it. Checked here rather than
+        // after the transfer so the user gets the release page immediately
+        // instead of watching 6 MB arrive and then be deleted.
+        guard release.normalizedSHA256 != nil else {
             openURL(release.downloadURL)
-            state = .failed(error: UpdateInstallError.unsignedBuild.localizedDescription)
+            state = .failed(error: UpdateInstallError.unverifiedDownload.localizedDescription)
             return
         }
 
@@ -338,9 +365,7 @@ public final class AppUpdaterManager {
 
             // Check the archive against the digest the release published for
             // it, before it is handed to a script that will replace the app.
-            // A release with no published digest cannot be verified, so it is
-            // not installed in place — same reasoning as the Team ID guard
-            // above: never trade the user's working app for an unverified one.
+            // Presence was already checked above; this is the value comparison.
             guard let expected = release.normalizedSHA256 else {
                 try? FileManager.default.removeItem(at: tempURL)
                 openURL(release.downloadURL)
@@ -370,8 +395,9 @@ public final class AppUpdaterManager {
     }
 
     private func performInPlaceReplacementAndRelaunch(archiveURL: URL) {
-        // Guarded by the caller; the script below trusts this string.
-        guard let teamID = expectedTeamIdentifier else { return }
+        // Empty for an ad-hoc build, which the script reads as "no publisher to
+        // compare against" rather than "no verification".
+        let teamID = expectedTeamIdentifier ?? ""
         let currentBundleURL = bundleURL
         let currentPID = ProcessInfo.processInfo.processIdentifier
 

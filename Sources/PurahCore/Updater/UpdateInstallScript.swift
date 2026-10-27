@@ -40,6 +40,9 @@ public enum UpdateInstallScript {
         SCRIPT_SELF="$0"
         MARKER=\(marker)
         WORK_ROOT=\(root)
+        # Where to relaunch the app from. Tests point this at /usr/bin/true so a
+        # successful swap does not actually launch a fixture bundle.
+        OPEN_CMD="${OPEN_CMD_OVERRIDE:-/usr/bin/open}"
 
         # 1. Wait for the current instance to exit. The app calls `terminate`
         # right after spawning this script, so the sleep is normally short.
@@ -55,7 +58,7 @@ public enum UpdateInstallScript {
             [[ -n "$TEMP_DIR" ]] && /bin/rm -rf "$TEMP_DIR"
             [[ -n "$MOUNT_DIR" ]] && /bin/rm -rf "$MOUNT_DIR"
             /bin/rm -f "$ARCHIVE"
-            /usr/bin/open "$TARGET" 2>/dev/null || true
+            "$OPEN_CMD" "$TARGET" 2>/dev/null || true
             /bin/rm -f "$SCRIPT_SELF"
             exit 1
         }
@@ -91,29 +94,43 @@ public enum UpdateInstallScript {
             abandon "The downloaded app could not be verified."
         fi
 
-        # 5. Publisher: the signature belongs to Purah's Developer ID team.
-        # `codesign --verify` accepts any signer, so without this check a
-        # replaced download would be trusted.
-        TEAM_ID=$(/usr/bin/codesign -dv --verbose=4 "$NEW_APP" 2>&1 \\
-            | /usr/bin/awk -F= '/^TeamIdentifier/ {print $2; exit}')
-        if [[ -z "$EXPECTED_TEAM_ID" ]]; then
-            abandon "This build has no signing team to verify an update against."
-        fi
-        if [[ "$TEAM_ID" != "$EXPECTED_TEAM_ID" ]]; then
-            # No apostrophes inside `${VAR:-default}`: bash applies quoting
-            # rules within the expansion, and one would open a quote that never
-            # closes. That is how this line broke the first time it was run.
-            /bin/echo "The downloaded app was signed by ${TEAM_ID:-an unknown team}, not ${EXPECTED_TEAM_ID:-the expected team}." > "$MARKER"
-            [[ -n "$TEMP_DIR" ]] && /bin/rm -rf "$TEMP_DIR"
-            /bin/rm -f "$ARCHIVE"
-            /usr/bin/open "$TARGET" 2>/dev/null || true
-            /bin/rm -f "$SCRIPT_SELF"
-            exit 1
-        fi
+        # 5. Publisher, when this build knows one.
+        #
+        # An empty EXPECTED_TEAM_ID means the running build is ad-hoc signed:
+        # every Purah release is, so there is no team to compare against. That
+        # is not "skip verification" — step 4 already proved the bundle matches
+        # its own signature, and the caller matched the archive against the
+        # SHA-256 the release publishes before spawning this script. What is
+        # genuinely unavailable is proof of *who* signed it, and no amount of
+        # shell can supply that.
+        #
+        # This used to abandon here, which made in-place updates unreachable
+        # for the shipped build. That was the right call while the digest went
+        # unchecked; it is not once a published hash gates the download.
+        TEAM_ID=""
+        if [[ -n "$EXPECTED_TEAM_ID" ]]; then
+            TEAM_ID=$(/usr/bin/codesign -dv --verbose=4 "$NEW_APP" 2>&1 \\
+                | /usr/bin/awk -F= '/^TeamIdentifier/ {print $2; exit}')
+            if [[ "$TEAM_ID" != "$EXPECTED_TEAM_ID" ]]; then
+                # No apostrophes inside `${VAR:-default}`: bash applies quoting
+                # rules within the expansion, and one would open a quote that never
+                # closes. That is how this line broke the first time it was run.
+                /bin/echo "The downloaded app was signed by ${TEAM_ID:-an unknown team}, not ${EXPECTED_TEAM_ID:-the expected team}." > "$MARKER"
+                [[ -n "$TEMP_DIR" ]] && /bin/rm -rf "$TEMP_DIR"
+                /bin/rm -f "$ARCHIVE"
+                "$OPEN_CMD" "$TARGET" 2>/dev/null || true
+                /bin/rm -f "$SCRIPT_SELF"
+                exit 1
+            fi
 
-        # 6. Notarization / Gatekeeper assessment.
-        if ! /usr/sbin/spctl --assess --type execute --verbose=2 "$NEW_APP" > /dev/null 2>&1; then
-            abandon "The downloaded app did not pass Gatekeeper assessment."
+            # 6. Notarization / Gatekeeper assessment.
+            #
+            # Only meaningful for a Developer ID build. `spctl --assess` always
+            # rejects an ad-hoc signature, so running it there would fail every
+            # update for the reason the check exists to catch on signed ones.
+            if ! /usr/sbin/spctl --assess --type execute --verbose=2 "$NEW_APP" > /dev/null 2>&1; then
+                abandon "The downloaded app did not pass Gatekeeper assessment."
+            fi
         fi
 
         # 7. Swap. The old bundle is moved aside first and restored if the new
@@ -131,7 +148,7 @@ public enum UpdateInstallScript {
         /bin/rm -rf "$TEMP_DIR"
         /bin/rm -f "$ARCHIVE"
         /usr/bin/xattr -cr "$TARGET" 2>/dev/null || true
-        /usr/bin/open "$TARGET"
+        "$OPEN_CMD" "$TARGET"
         /bin/rm -f "$SCRIPT_SELF"
         exit 0
         """

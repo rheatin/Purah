@@ -200,8 +200,8 @@ struct UpdateChecksumTests {
         )
         await updater.checkForUpdates()
 
-        guard case .manualUpdateRequired(let release) = updater.state else {
-            Issue.record("expected a release to be reported, got \(updater.state)")
+        guard case .updateAvailable(let release) = updater.state else {
+            Issue.record("expected a release to be offered, got \(updater.state)")
             return
         }
         #expect(release.normalizedSHA256 == hex)
