@@ -116,6 +116,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
+        // A previous launch may have quit to install an update and failed. The
+        // install script recorded why; say it once instead of leaving the user
+        // to wonder why the app vanished and came back as the same version.
+        if let installFailure = UpdateInstallMarker.readAndClear() {
+            DiagnosticLogger.shared.warn("Updater", "Previous in-place update failed: \(installFailure)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                TransientHUDController.shared.showWarning(
+                    message: String(format: "updater.installFailed".localized, installFailure)
+                )
+            }
+        }
+
         DiagnosticLogger.shared.info("Lifecycle", "Application launch completed successfully")
 
         if !store.hasCompletedOnboarding && !PurahWorkspaceStore.isTestingEnvironment {

@@ -108,6 +108,28 @@ swift build -c release --disable-sandbox
 .build/release/PurahApp
 ```
 
+#### Releasing
+
+```bash
+./build.sh --configuration release      # build/Purah.app
+PURAH_SIGN_IDENTITY="Developer ID Application: …" \
+PURAH_NOTARY_PROFILE="purah-notary" \
+  ./release.sh --publish                # bump, build, sign, notarize, publish
+```
+
+`release.sh --publish` refuses to run unless the tree is clean, the branch is
+`main`, and local `main` contains `origin/main` — a release tagged from an
+unmerged branch ships assets that do not match the commit its tag points at.
+
+Signing is optional but decides what the in-app updater can do:
+
+| Build | Self-update | Why |
+|---|---|---|
+| Developer ID + notarized | Installs in place and relaunches | The download's Team ID and Gatekeeper verdict can both be checked |
+| Developer ID only | Rejected after download | Gatekeeper assessment fails |
+| Ad-hoc / unsigned | Offers a download link instead | There is no Team ID to verify against, so it never quits into a doomed install |
+
+
 ---
 
 ### 🙏 Acknowledgments

@@ -43,11 +43,21 @@ struct FullIntegrationTests {
 
         // Offline: the live GitHub query made this test depend on release state,
         // rate limits and the network. Inject a manifest instead.
+        //
+        // The Team ID is stated rather than discovered: the test runner is
+        // ad-hoc signed, so a real lookup returns `nil` and the manager would
+        // correctly offer a manual download instead of an in-place update.
         let provider = StubUpdateProvider(
             statusCode: 200,
             json: #"{"tag_name": "v\#(PurahCore.version)", "body": "no change"}"#
         )
-        let updater = AppUpdaterManager(currentVersion: PurahCore.version, manifestProvider: provider)
+        let updater = AppUpdaterManager(
+            currentVersion: PurahCore.version,
+            manifestProvider: provider,
+            bundleURL: URL(fileURLWithPath: "/tmp/PurahTest.app"),
+            expectedTeamIdentifier: "TESTTEAM1",
+            openURL: { _ in }
+        )
         await updater.checkForUpdates()
         #expect(updater.state == .upToDate(currentVersion: PurahCore.version))
 

@@ -126,6 +126,57 @@ bump_semver() {
     echo "${major}.${minor}.${patch}"
 }
 
+# ------------------------------------------------------------------------------
+# Publish preconditions
+#
+# The v0.6.0 tag was created on a feature branch: the release pointed at `main`
+# while the tag ref pointed at a commit that had never been merged, so the
+# published DMG contained none of that branch's work. Nothing in this script
+# was checking, because `git tag` and `git push` were allowed to run from
+# wherever the script happened to be invoked.
+#
+# A published release is immutable in practice — users have downloaded it — so
+# these checks run before anything is built, bumped, or tagged.
+# ------------------------------------------------------------------------------
+require_publish_prerequisites() {
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo -e "${RED}Error: --publish requires a git repository.${RESET}" >&2
+        exit 1
+    fi
+
+    local branch
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$branch" != "main" ]; then
+        echo -e "${RED}Error: releases are published from 'main', not '${branch}'.${RESET}" >&2
+        echo -e "${YELLOW}   A tag on an unmerged branch produces a release whose assets${RESET}" >&2
+        echo -e "${YELLOW}   do not match the merge commit it points at.${RESET}" >&2
+        echo -e "   Merge first:  ${BOLD}git checkout main && git merge --ff-only ${branch}${RESET}" >&2
+        exit 1
+    fi
+
+    if [ -n "$(git status --porcelain)" ]; then
+        echo -e "${RED}Error: the working tree has uncommitted changes.${RESET}" >&2
+        git status --short | sed 's/^/   /' >&2
+        echo -e "   Commit or stash them: a release must be reproducible from a commit.${RESET}" >&2
+        exit 1
+    fi
+
+    if git rev-parse --verify origin/main >/dev/null 2>&1; then
+        if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo -e "${RED}Error: local main is behind or has diverged from origin/main.${RESET}" >&2
+            echo -e "   ${BOLD}git pull --ff-only${RESET} first.${RESET}" >&2
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}⚠️  origin/main not found locally — skipping the up-to-date check.${RESET}" >&2
+        echo -e "${YELLOW}   Run 'git fetch origin' to enable it.${RESET}" >&2
+    fi
+}
+
+if [ "$PUBLISH" = true ]; then
+    require_publish_prerequisites
+fi
+
 # 1. Resolve version
 PURAH_CORE_FILE="Sources/PurahCore/PurahCore.swift"
 INFO_PLIST_FILE="Sources/PurahApp/Resources/Info.plist"
@@ -264,6 +315,7 @@ if [ -n "$SIGN_IDENTITY" ]; then
     else
         echo -e "${YELLOW}⚠️  Signed but not notarized (set PURAH_NOTARY_PROFILE).${RESET}"
         echo -e "${YELLOW}   Gatekeeper will still warn on other Macs.${RESET}"
+        echo -e "${YELLOW}   The in-app updater will offer a manual download instead of installing.${RESET}"
     fi
 else
     echo -e "${YELLOW}⚠️  No PURAH_SIGN_IDENTITY set — building UNSIGNED.${RESET}"
@@ -390,15 +442,32 @@ if [ "$PUBLISH" = true ]; then
     fi
 
     if [ "$SKIP_TAG" = false ]; then
-        # Check if tag exists locally
-        if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+        # A tag that already exists and points somewhere else is a release that
+        # was tagged from the wrong commit. Refuse to publish over it: the fix
+        # is to delete the bad tag deliberately, not to have this script guess.
+        if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            EXISTING_SHA=$(git rev-parse "${TAG_NAME}^{commit}")
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$EXISTING_SHA" != "$HEAD_SHA" ]; then
+                echo -e "${RED}Error: ${TAG_NAME} already exists and points at ${EXISTING_SHA:0:7}, not HEAD (${HEAD_SHA:0:7}).${RESET}" >&2
+                echo -e "   Delete it first if it is wrong:  ${BOLD}git tag -d ${TAG_NAME} && git push origin :refs/tags/${TAG_NAME}${RESET}" >&2
+                exit 1
+            fi
+            echo -e "   └── Tag ${TAG_NAME} already points at HEAD."
+        else
             echo -e "   └── Tagging git commit with ${TAG_NAME}..."
             git tag -a "$TAG_NAME" -m "Release ${TAG_NAME}"
         fi
 
-        # Push tag to origin
+        # A failed push used to be swallowed (`|| true`). A tag that never
+        # reached origin while the release did leaves the release pointing at a
+        # commit nobody can check out.
         echo -e "   └── Pushing tag ${TAG_NAME} to remote..."
-        git push origin "$TAG_NAME" || true
+        if ! git push origin "$TAG_NAME"; then
+            echo -e "${RED}Error: could not push ${TAG_NAME} to origin.${RESET}" >&2
+            echo -e "   The local tag was left in place; push it and re-run with --skip-tag.${RESET}" >&2
+            exit 1
+        fi
     else
         echo -e "   └── ${YELLOW}Skipping git tagging and tag push (--skip-tag specified)${RESET}"
     fi

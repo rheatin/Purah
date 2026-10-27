@@ -8,9 +8,58 @@ public enum UpdateCheckState: Sendable, Equatable {
     case checking
     case upToDate(currentVersion: String)
     case updateAvailable(AppReleaseInfo)
+    /// A newer release exists but this build cannot replace itself — it was
+    /// ad-hoc signed, so no Team ID can vouch for the download. The dialog
+    /// offers the download instead of quitting into a failed install.
+    case manualUpdateRequired(AppReleaseInfo)
     case downloading(progress: Double)
     case installing
     case failed(error: String)
+}
+
+/// Why the app declined to install an update in place.
+///
+/// The failure modes *after* the installer starts are reported by the shell
+/// script through `UpdateInstallMarker`, not here — by then this process has
+/// already quit and cannot run Swift.
+public enum UpdateInstallError: LocalizedError, Equatable {
+    case unsignedBuild
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsignedBuild:
+            return "This build is not signed with a Developer ID, so it cannot verify an update."
+        }
+    }
+}
+
+/// Marker written by the install script when it could not swap the bundle, so
+/// the next launch can say what happened instead of silently looking normal.
+public enum UpdateInstallMarker {
+    public static var url: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return base
+            .appendingPathComponent("Purah", isDirectory: true)
+            .appendingPathComponent("update-failed.txt")
+    }
+
+    /// Returns the recorded reason, and clears it — a warning that survives
+    /// every launch forever is noise, not information.
+    public static func readAndClear(at location: URL? = nil) -> String? {
+        let source = location ?? url
+        guard let data = try? Data(contentsOf: source),
+              let text = String(data: data, encoding: .utf8),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        clear(at: location)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public static func clear(at location: URL? = nil) {
+        try? FileManager.default.removeItem(at: location ?? url)
+    }
 }
 
 /// Source of the latest release manifest. Injected so update checks can be
@@ -42,27 +91,108 @@ public struct GitHubReleaseProvider: UpdateManifestProviding {
     }
 }
 
+/// Reads the signing identity of a bundle.
+///
+/// The install script had its expected Team ID passed in as an empty string
+/// (a placeholder that nothing ever filled), so *every* update compared a real
+/// team against `""`, failed, and exited — after the app had already quit. The
+/// user was left with no app and no explanation.
+///
+/// Asking the running bundle for its own Team ID removes the placeholder: a
+/// Developer ID build automatically knows who signs its updates, and an ad-hoc
+/// build (no team) learns that it cannot vouch for anything.
+///
+/// Goes through `/usr/bin/codesign` rather than `SecCodeCopySigningInformation`:
+/// `PurahCore` must not link Security.framework (see `SecretStore`), and using
+/// the same tool the install script uses keeps the two answers identical.
+public enum CodeSigning {
+    public static func teamIdentifier(ofBundleAt url: URL) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        process.arguments = ["-dv", "--verbose=4", url.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let output = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        // Ad-hoc signatures print `TeamIdentifier=not set`, which is a string,
+        // not a missing key — treating it as a team name would make an ad-hoc
+        // build look signed.
+        for line in output.components(separatedBy: .newlines) {
+            guard let range = line.range(of: "TeamIdentifier=") else { continue }
+            let value = String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            return value.isEmpty || value == "not set" ? nil : value
+        }
+        return nil
+    }
+}
+
 @Observable
 @MainActor
 public final class AppUpdaterManager {
     public static let shared = AppUpdaterManager()
-
-    /// Developer ID team that is allowed to sign a Purah update. Empty means the
-    /// build is unsigned/ad-hoc (local development), in which case replacement
-    /// fails closed rather than trusting an unknown signature.
-    public static let expectedTeamIdentifier = ""
 
     public let currentVersion: String
     public var state: UpdateCheckState = .idle
     public var lastCheckDate: Date?
     private let manifestProvider: (any UpdateManifestProviding)?
 
+    /// The bundle being replaced, and the team allowed to replace it.
+    ///
+    /// `expectedTeamIdentifier` is `nil` for an ad-hoc/unsigned build. That is
+    /// not a failure at construction time — it means in-place replacement is
+    /// impossible, and `downloadAndInstall` must not quit into a doomed script.
+    public let bundleURL: URL
+
+    private let explicitTeamIdentifier: String?
+    private var teamResolution: TeamResolution = .pending
+
+    private enum TeamResolution {
+        case pending
+        case resolved(String?)
+    }
+
+    /// The Team ID this build was signed with, or `nil` when ad-hoc.
+    ///
+    /// Resolved on first use rather than in `init`: this spawns `codesign`, and
+    /// the manager is constructed long before anyone asks about updates.
+    public var expectedTeamIdentifier: String? {
+        if let explicitTeamIdentifier { return explicitTeamIdentifier }
+        if case .resolved(let cached) = teamResolution { return cached }
+        let resolved = CodeSigning.teamIdentifier(ofBundleAt: bundleURL)
+        teamResolution = .resolved(resolved)
+        return resolved
+    }
+
+    /// Opened instead of downloading when this build cannot self-install.
+    /// Injected so tests do not launch a browser.
+    private let openURL: @MainActor (URL) -> Void
+
+    /// Whether this build can install an update by itself.
+    public var canInstallInPlace: Bool { expectedTeamIdentifier != nil }
+
     public init(
         currentVersion: String = PurahCore.version,
-        manifestProvider: (any UpdateManifestProviding)? = nil
+        manifestProvider: (any UpdateManifestProviding)? = nil,
+        bundleURL: URL = Bundle.main.bundleURL,
+        expectedTeamIdentifier: String? = nil,
+        openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
     ) {
         self.currentVersion = currentVersion
         self.manifestProvider = manifestProvider
+        self.bundleURL = bundleURL
+        self.explicitTeamIdentifier = expectedTeamIdentifier
+        self.openURL = openURL
     }
 
     public func isNewer(release: AppReleaseInfo) -> Bool {
@@ -78,11 +208,7 @@ public final class AppUpdaterManager {
         lastCheckDate = Date()
 
         if let release = simulatedRelease {
-            if isNewer(release: release) {
-                state = .updateAvailable(release)
-            } else {
-                state = .upToDate(currentVersion: currentVersion)
-            }
+            state = availability(of: release)
             return
         }
 
@@ -137,15 +263,20 @@ public final class AppUpdaterManager {
                 downloadURL: downloadURL
             )
 
-            if isNewer(release: release) {
-                state = .updateAvailable(release)
-            } else {
-                state = .upToDate(currentVersion: currentVersion)
-            }
+            state = availability(of: release)
         } catch {
             // When running offline or inside a restricted network sandbox, gracefully fallback to up-to-date
             state = .upToDate(currentVersion: currentVersion)
         }
+    }
+
+    /// A newer release that this build cannot install in place is still worth
+    /// telling the user about — it becomes a manual download, not silence.
+    private func availability(of release: AppReleaseInfo) -> UpdateCheckState {
+        guard isNewer(release: release) else {
+            return .upToDate(currentVersion: currentVersion)
+        }
+        return canInstallInPlace ? .updateAvailable(release) : .manualUpdateRequired(release)
     }
 
     public func downloadAndInstall(release: AppReleaseInfo) async {
@@ -155,8 +286,17 @@ public final class AppUpdaterManager {
         // open the release page in the browser
         let urlStr = release.downloadURL.absoluteString
         if !urlStr.hasSuffix(".zip") && !urlStr.hasSuffix(".dmg") {
-            NSWorkspace.shared.open(release.downloadURL)
+            openURL(release.downloadURL)
             state = .idle
+            return
+        }
+
+        // An ad-hoc build has no Team ID, so the install script would reject
+        // every download — after this process had already quit. Send the user
+        // to the release page instead of terminating into a dead end.
+        guard expectedTeamIdentifier != nil else {
+            openURL(release.downloadURL)
+            state = .failed(error: UpdateInstallError.unsignedBuild.localizedDescription)
             return
         }
 
@@ -188,81 +328,41 @@ public final class AppUpdaterManager {
     }
 
     private func performInPlaceReplacementAndRelaunch(archiveURL: URL) {
-        let currentBundleURL = Bundle.main.bundleURL
+        // Guarded by the caller; the script below trusts this string.
+        guard let teamID = expectedTeamIdentifier else { return }
+        let currentBundleURL = bundleURL
         let currentPID = ProcessInfo.processInfo.processIdentifier
 
-        let script = """
-        #!/bin/bash
-        PID="$1"
-        ARCHIVE="$2"
-        TARGET="$3"
-        EXPECTED_TEAM_ID="$4"
-        SCRIPT_SELF="$0"
+        // A stale marker from an older attempt must not be shown as this one's
+        // outcome.
+        UpdateInstallMarker.clear()
 
-        # 1. Wait for current instance to exit
-        while kill -0 "$PID" 2>/dev/null; do
-            sleep 0.1
-        done
+        let script = UpdateInstallScript.source(markerPath: UpdateInstallMarker.url.path)
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_relaunch_\(UUID().uuidString).sh")
 
-        # 2. Extract into clean temp workspace
-        TEMP_DIR=$(mktemp -d /tmp/purah_update_extracted.XXXXXX)
-        if [[ "$ARCHIVE" == *.zip ]]; then
-            /usr/bin/ditto -xk "$ARCHIVE" "$TEMP_DIR"
-        elif [[ "$ARCHIVE" == *.dmg ]]; then
-            MOUNT_DIR=$(mktemp -d /tmp/purah_dmg.XXXXXX)
-            /usr/bin/hdiutil attach "$ARCHIVE" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
-            /bin/cp -R "$MOUNT_DIR"/*.app "$TEMP_DIR/" 2>/dev/null || true
-            /usr/bin/hdiutil detach "$MOUNT_DIR" -quiet
-            /bin/rm -rf "$MOUNT_DIR"
-        fi
-
-        # 3. Locate new Purah.app
-        NEW_APP=$(/usr/bin/find "$TEMP_DIR" -maxdepth 2 -name "Purah.app" | head -n 1)
-
-        if [[ -n "$NEW_APP" && -d "$NEW_APP" ]]; then
-            # Integrity: bundle matches its own signature.
-            /usr/bin/codesign --verify --deep --strict "$NEW_APP" || { /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"; exit 1; }
-            # Publisher: signature belongs to Purah's Developer ID team and is not
-            # ad-hoc. codesign --verify alone accepts any signer, so without this
-            # check a replaced download would be trusted.
-            TEAM_ID=$(/usr/bin/codesign -dv --verbose=4 "$NEW_APP" 2>&1 | /usr/bin/awk -F= '/^TeamIdentifier/ {print $2; exit}')
-            if [[ "$TEAM_ID" != "$EXPECTED_TEAM_ID" ]]; then
-                /bin/echo "Purah update rejected: unexpected signing team '$TEAM_ID'" >&2
-                /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"
-                exit 1
-            fi
-            # Notarization / Gatekeeper assessment.
-            /usr/sbin/spctl --assess --type execute --verbose=2 "$NEW_APP" || {
-                /bin/echo "Purah update rejected: failed Gatekeeper assessment" >&2
-                /bin/rm -rf "$TEMP_DIR" "$ARCHIVE" "$SCRIPT_SELF"
-                exit 1
-            }
-            BACKUP="${TARGET}.backup.$$"
-            if /bin/mv "$TARGET" "$BACKUP"; then
-                if /bin/mv "$NEW_APP" "$TARGET"; then
-                    /bin/rm -rf "$BACKUP"
-                    /usr/bin/xattr -cr "$TARGET" 2>/dev/null || true
-                    /usr/bin/open "$TARGET"
-                else
-                    /bin/mv "$BACKUP" "$TARGET"
-                fi
-            fi
-        fi
-
-        # 4. Cleanup
-        /bin/rm -rf "$TEMP_DIR"
-        /bin/rm -f "$ARCHIVE" "$SCRIPT_SELF"
-        exit 0
-        """
-
-        let scriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("purah_relaunch_\(UUID().uuidString).sh")
-        try? script.write(to: scriptURL, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        do {
+            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        } catch {
+            state = .failed(error: "Could not prepare the update: \(error.localizedDescription)")
+            return
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path, Self.expectedTeamIdentifier]
-        try? process.run()
+        process.arguments = [scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path, teamID]
+
+        // Quitting when the installer never started would leave the user with
+        // no app and no explanation — the same dead end as the Team ID bug,
+        // reached by a different path.
+        do {
+            try process.run()
+        } catch {
+            try? FileManager.default.removeItem(at: scriptURL)
+            state = .failed(error: "Could not start the update: \(error.localizedDescription)")
+            return
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             NSApp.terminate(nil)

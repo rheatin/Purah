@@ -1,5 +1,6 @@
 // Sources/PurahUI/Updater/AppUpdateDialogView.swift
 import SwiftUI
+import AppKit
 import PurahCore
 
 public struct AppUpdateDialogView: View {
@@ -64,7 +65,7 @@ public struct AppUpdateDialogView: View {
                         removal: .opacity
                     ))
 
-                case .updateAvailable(let release):
+                case .updateAvailable(let release), .manualUpdateRequired(let release):
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text("updater.newVersion".localized)
@@ -78,6 +79,13 @@ public struct AppUpdateDialogView: View {
                                 .background(Color.orange.opacity(0.18))
                                 .foregroundColor(.orange)
                                 .cornerRadius(4)
+                        }
+
+                        if case .manualUpdateRequired = updater.state {
+                            Text("updater.manualOnly".localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         ScrollView {
@@ -163,6 +171,12 @@ public struct AppUpdateDialogView: View {
                         Task {
                             await updater.downloadAndInstall(release: release)
                         }
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                case .manualUpdateRequired(let release):
+                    Button("updater.button.download".localized) {
+                        NSWorkspace.shared.open(release.downloadURL)
                     }
                     .buttonStyle(.borderedProminent)
 
