@@ -540,4 +540,45 @@ struct ClipboardPluginTests {
 
         controller.forceHide()
     }
+
+    @Test("Rendering every clipboard item shape produces a real string, not a crash")
+    func testItemSummaryFormatsForEveryContentType() {
+        // The app died on the Clipboard drawer's image card: the localized
+        // format string had a `%@` where the caller passed an Int, and `%@`
+        // dereferences its argument as an object. Asserting that each content
+        // type formats successfully puts a harness over the whole switch, so
+        // the next specifier/argument mismatch fails a test instead of the
+        // process.
+        let items: [ClipboardContentType] = [
+            .text("hello world"),
+            .text(""),
+            .text("line one\nline two\nline three"),
+            .color(hex: "#FF8800", red: 1.0, green: 0.53, blue: 0.0, alpha: 1.0),
+            .color(hex: "#112233", red: 0.066, green: 0.13, blue: 0.2, alpha: 0.5),
+            .image(filePath: "/tmp/a.png", thumbnailPath: "/tmp/a-thumb.png",
+                   pixelWidth: 1920, pixelHeight: 1080, byteSize: 480_000),
+            .image(filePath: "/tmp/b.png", thumbnailPath: "/tmp/b-thumb.png",
+                   pixelWidth: 1, pixelHeight: 1, byteSize: 10)
+        ]
+
+        for type in items {
+            let item = ClipboardItem(type: type)
+            #expect(!item.type.summary.isEmpty)
+        }
+    }
+
+    @Test("The image metadata format string takes a number for the KB field")
+    func testImageMetaSpecifiersMatchArgumentTypes() {
+        // Guards the exact key that crashed, across every language table, so a
+        // translation cannot reintroduce `%@` for the byte count.
+        let manager = LocalizationManager.shared
+        for language in AppLanguage.allCases {
+            manager.currentLanguage = language
+            let format = manager.localized("clipboard.imageMeta")
+            #expect(format.contains("%@") == false,
+                    "\(language) still uses %@ for the KB count: \(format)")
+            #expect(format.contains("%d"), "\(language) lost its numeric placeholders: \(format)")
+        }
+        manager.currentLanguage = .english
+    }
 }

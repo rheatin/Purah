@@ -110,7 +110,7 @@ public struct PluginCenterSettingsView: View {
 
                 // Bottom total plugin count
                 HStack {
-                    Text("\(PluginRegistry.shared.allPlugins.count) plugins registered")
+                    Text(String(format: "plugins.registeredCount".localized, PluginRegistry.shared.allPlugins.count))
                         .font(.system(size: 9))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -169,6 +169,7 @@ public struct PluginCenterSettingsView: View {
                                     Toggle("", isOn: isEnabledBinding)
                                         .toggleStyle(.switch)
                                         .scaleEffect(0.75)
+                                        .accessibilityLabel(activePlugin.manifest.displayName)
                                 }
 
                                 Text(activePlugin.manifest.description)
@@ -202,7 +203,7 @@ public struct PluginCenterSettingsView: View {
                                             Circle().fill(Color(red: 1.0, green: 0.72, blue: 0.15)).frame(width: 5, height: 5)
                                             Circle().fill(Color(red: 1.0, green: 0.28, blue: 0.38)).frame(width: 5, height: 5)
                                         }
-                                        Text("Adaptive Telemetry Mode (Auto color based on load thresholds)")
+                                        Text("plugins.adaptiveTelemetry".localized)
                                             .font(.system(size: 9, weight: .medium, design: .rounded))
                                             .foregroundColor(.secondary)
                                     }
@@ -288,7 +289,7 @@ public struct PluginCenterSettingsView: View {
                                 .background(palette.borderColor.opacity(0.3))
 
                             HStack {
-                                Text("Uninstall plugin and completely release its memory and background processes.")
+                                Text("plugins.uninstall.desc".localized)
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
 
@@ -340,7 +341,7 @@ public struct PluginCenterSettingsView: View {
                     Image(systemName: "puzzlepiece.extension")
                         .font(.system(size: 32))
                         .foregroundColor(.secondary)
-                    Text("Select a plugin on the left to configure")
+                    Text("plugins.selectToConfigure".localized)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     Spacer()

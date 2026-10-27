@@ -196,6 +196,9 @@ public struct PurahThemedSliderRow: View {
                 step: step
             )
             .tint(palette.primaryAccent)
+            // The heading is drawn as a sibling `Text`, so without this the
+            // slider announces only its percentage, with no subject or unit.
+            .purahRowAccessibility(title, detail: subtitle)
         }
     }
 }

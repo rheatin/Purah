@@ -45,7 +45,7 @@ public struct PurahDecomposedCapacitySettingRow: View {
             )
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Overflow Strategy")
+                Text("overflow.strategy".localized)
                     .font(.caption)
                     .foregroundColor(.secondary)
 

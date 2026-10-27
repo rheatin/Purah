@@ -502,6 +502,32 @@ store.marketManager.install(id: "countdown")
 
 ### 9.2 动态 SPM 插件架构与 ABI C 桥接引擎 (纯 Swift 零依赖)
 
+> ⚠️ **分发版限制（实测结论，2026-10-27）**
+>
+> 动态插件通过 `dlopen` 载入进程内代码。当宿主以 **hardened runtime** 签名（任何具备公证资格的 Developer ID 构建都会）时，加载 bundle 外的 `.dylib` 会失败：
+>
+> ```
+> dlopen(...): code signature in 'plugin.dylib' not valid for use in process:
+> mapping process and mapped file (non-platform) have different Team IDs
+> ```
+>
+> 实测三种情形：
+>
+> | 宿主签名 | 插件签名 | 结果 |
+> | :--- | :--- | :--- |
+> | hardened runtime，无额外 entitlement | 无签名 | ❌ Team ID 不匹配 |
+> | hardened runtime，无额外 entitlement | 同样 adhoc 签名 | ❌ adhoc UUID 不同，仍算不同 Team |
+> | hardened runtime + `com.apple.security.cs.disable-library-validation` | 无签名 | ✅ 正常加载 |
+>
+> 因此 `Dev: Load Package...` 目前**只在 adhoc 本地构建中可用**（`build.sh` 在无签名凭证时会关闭 hardened runtime）。若要让动态插件在发行版中工作，必须选择其一：
+>
+> 1. 在 `Purah.entitlements` 中加入 `com.apple.security.cs.disable-library-validation` —— 代价是放弃库验证这道防线，任何能写入插件目录的进程都可注入代码；
+> 2. 插件随宿主使用**同一 Developer ID 证书**签名 —— 代价是第三方插件无法独立发布，必须经宿主方签名；
+> 3. 插件移出进程（XPC 或子进程 + IPC）—— 无签名限制，且崩溃隔离，但需要重做 `PurahExternalContext` 与 `PurahHostBridge` 的通信层。
+>
+> 在做出选择前，不要假设动态插件在发行版中可用。
+
+
 为了让第三方开发者以最轻量的方式开发插件，Purah 提供了 **纯 Swift 6 / SwiftUI 零依赖动态载入方案**。插件**完全不需要引入庞大的宿主工程依赖**，仅需系统原生的 `SwiftUI` 与 `AppKit`，即可在 1 秒内完成编译并动态挂载！
 
 #### 1. 标准插件工程结构 (`Package.swift`)：

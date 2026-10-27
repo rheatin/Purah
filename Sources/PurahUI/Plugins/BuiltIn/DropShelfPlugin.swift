@@ -191,6 +191,7 @@ public struct ShelfPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .purahRowAccessibility("shelf.settings.autoRemoveOnDrag".localized, detail: "shelf.settings.autoRemoveSubtitle".localized)
                     }
                     .padding(9)
                     .background(

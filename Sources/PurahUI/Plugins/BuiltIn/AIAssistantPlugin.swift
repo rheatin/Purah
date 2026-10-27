@@ -110,7 +110,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
-                .help("Chat History")
+                .help("help.chatHistory".localized)
+                .accessibilityLabel("help.chatHistory".localized)
 
                 // Favorite Toggle
                 Button {
@@ -122,7 +123,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
-                .help("Favorite Session")
+                .help("help.favoriteSession".localized)
+                .accessibilityLabel("help.favoriteSession".localized)
 
                 // New Chat
                 Button {
@@ -134,7 +136,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.tactile)
-                .help("New Chat")
+                .help("help.newChat".localized)
+                .accessibilityLabel("help.newChat".localized)
             }
         )
     }
@@ -553,7 +556,7 @@ public struct AIAssistantPluginSettingsView: View {
                     .foregroundColor(status.isAvailable ? .purple : .orange)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text("Apple Intelligence (On-Device)")
+                        Text("ai.settings.appleOnDevice".localized)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
 
                         if status.isAvailable {
@@ -561,7 +564,7 @@ public struct AIAssistantPluginSettingsView: View {
                                 Circle()
                                     .fill(Color.green)
                                     .frame(width: 5, height: 5)
-                                Text("Available")
+                                Text("ai.settings.available".localized)
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundColor(.green)
                             }
@@ -575,7 +578,7 @@ public struct AIAssistantPluginSettingsView: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: 8))
                                     .foregroundColor(.orange)
-                                Text("Unavailable on this Mac")
+                                Text("ai.settings.unavailableOnThisMac".localized)
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundColor(.orange)
                             }
@@ -586,7 +589,7 @@ public struct AIAssistantPluginSettingsView: View {
                             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.orange.opacity(0.3), lineWidth: 0.6))
                         }
                     }
-                    Text("Native Apple Foundation Models with zero latency, offline execution, and complete privacy.")
+                    Text("ai.settings.appleBlurb".localized)
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                 }
@@ -614,7 +617,7 @@ public struct AIAssistantPluginSettingsView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "gearshape")
                                     .font(.system(size: 9))
-                                Text("Open System Settings")
+                                Text("ai.settings.openSystemSettings".localized)
                                     .font(.system(size: 9.5, weight: .medium))
                             }
                             .padding(.horizontal, 8)
@@ -637,7 +640,7 @@ public struct AIAssistantPluginSettingsView: View {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 9))
                     .foregroundColor(.purple)
-                Text("Custom role System Prompts are 100% supported via LanguageModelSession(instructions:).")
+                Text("ai.settings.customPromptNote".localized)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
@@ -704,7 +707,7 @@ public struct AIAssistantPluginSettingsView: View {
                 .cornerRadius(6)
             }
             HStack(spacing: 8) {
-                Text("Executable Path")
+                Text("ai.settings.executablePath".localized)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 110, alignment: .leading)
@@ -721,7 +724,7 @@ public struct AIAssistantPluginSettingsView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "folder.fill")
                             .font(.system(size: 9))
-                        Text("Browse...")
+                        Text("ai.settings.browse".localized)
                             .font(.system(size: 10, weight: .medium))
                     }
                     .padding(.horizontal, 8)
@@ -734,13 +737,14 @@ public struct AIAssistantPluginSettingsView: View {
                     )
                 }
                 .buttonStyle(.tactile)
-                .help("Browse local filesystem for binary executable")
+                .help("help.browseExecutable".localized)
+                .accessibilityLabel("help.browseExecutable".localized)
             }
 
             // Arguments Template Row
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text("Arguments Template")
+                    Text("ai.settings.argumentsTemplate".localized)
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.secondary)
                         .frame(width: 110, alignment: .leading)
@@ -807,7 +811,7 @@ public struct AIAssistantPluginSettingsView: View {
     private var openAIPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Base URL")
+                Text("ai.settings.baseURL".localized)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 90, alignment: .leading)
@@ -820,7 +824,7 @@ public struct AIAssistantPluginSettingsView: View {
             }
 
             HStack(spacing: 8) {
-                Text("API Key")
+                Text("ai.settings.apiKey".localized)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 90, alignment: .leading)
@@ -846,7 +850,7 @@ public struct AIAssistantPluginSettingsView: View {
     private var anthropicPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("API Key")
+                Text("ai.settings.apiKey".localized)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 90, alignment: .leading)
@@ -880,8 +884,8 @@ public struct AIAssistantPluginSettingsView: View {
             .replacingOccurrences(of: NSHomeDirectory(), with: "~")
 
         VStack(alignment: .leading, spacing: 2) {
-            Text("Stored owner-only in \(path)")
-            Text("Overridden by $\(environmentName)")
+            Text(String(format: "ai.settings.secretStoredIn".localized, path))
+            Text(String(format: "ai.settings.secretOverridden".localized, environmentName))
                 .textSelection(.enabled)
         }
         .font(.system(size: 9.5))
@@ -893,7 +897,7 @@ public struct AIAssistantPluginSettingsView: View {
     private var ollamaPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Base URL")
+                Text("ai.settings.baseURL".localized)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 90, alignment: .leading)
@@ -946,7 +950,8 @@ public struct AIAssistantPluginSettingsView: View {
             .foregroundColor(isSelected ? palette.primaryAccent : .primary)
         }
         .buttonStyle(.plain)
-        .help("Quick-fill template: \(template)")
+        .help(String(format: "help.quickFillTemplate".localized, template))
+        .accessibilityLabel(String(format: "help.quickFillTemplate".localized, template))
     }
 
     // MARK: - Model Selector Row
@@ -973,7 +978,7 @@ public struct AIAssistantPluginSettingsView: View {
                     }
                 } label: {
                     HStack(spacing: 3) {
-                        Text("Models")
+                        Text("ai.settings.models".localized)
                             .font(.system(size: 10, weight: .medium))
                         Image(systemName: "chevron.down")
                             .font(.system(size: 7))
@@ -992,7 +997,8 @@ public struct AIAssistantPluginSettingsView: View {
                 .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize(horizontal: true, vertical: false)
-                .help("Select Model from detected list")
+                .help("help.selectModel".localized)
+                .accessibilityLabel("help.selectModel".localized)
 
                 Button {
                     Task {
@@ -1007,7 +1013,7 @@ public struct AIAssistantPluginSettingsView: View {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.system(size: 9))
                         }
-                        Text("Fetch")
+                        Text("ai.settings.fetch".localized)
                             .font(.system(size: 10, weight: .medium))
                     }
                     .padding(.horizontal, 7)
@@ -1021,7 +1027,8 @@ public struct AIAssistantPluginSettingsView: View {
                     .foregroundColor(palette.primaryAccent)
                 }
                 .buttonStyle(.tactile)
-                .help("Fetch models from API endpoint")
+                .help("help.fetchModels".localized)
+                .accessibilityLabel("help.fetchModels".localized)
                 .disabled(state.isFetchingModels)
             }
 
@@ -1056,9 +1063,9 @@ public struct AIAssistantPluginSettingsView: View {
                 // Decomposed Toggle Sub-Card
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Decompose into Quick-Action Rail Chips")
+                        Text("ai.settings.decomposition".localized)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        Text("Independent interactive chips along the rail bar for active roles")
+                        Text("ai.settings.decomposeHint".localized)
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
@@ -1079,6 +1086,7 @@ public struct AIAssistantPluginSettingsView: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .disabled(isStacked)
+                    .purahRowAccessibility("ai.settings.decomposition".localized, detail: "ai.settings.decomposeHint".localized)
                 }
                 .padding(10)
                 .background(Color.primary.opacity(0.025))
@@ -1092,10 +1100,10 @@ public struct AIAssistantPluginSettingsView: View {
                     // Max Visible Roles Slider
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
-                            Text("Max Visible Roles on Rail")
+                            Text("ai.settings.maxVisibleRoles".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
-                            Text("\(state.maxRailRoles) roles")
+                            Text(String(format: "ai.settings.rolesCount".localized, state.maxRailRoles))
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(palette.primaryAccent)
                         }
@@ -1115,8 +1123,9 @@ public struct AIAssistantPluginSettingsView: View {
                             in: 2.0...6.0,
                             step: 1.0
                         )
+                        .accessibilityLabel("ai.settings.maxVisibleRoles".localized)
 
-                        Text("Controls the maximum number of role chips on the rail.")
+                        Text("ai.settings.maxVisibleRolesHint".localized)
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
 
@@ -1125,7 +1134,7 @@ public struct AIAssistantPluginSettingsView: View {
                             HStack(spacing: 5) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: 9))
-                                Text("\(hiddenRoles) enabled role\(hiddenRoles == 1 ? "" : "s") hidden — raise the limit or disable roles to show them.")
+                                Text(String(format: "ai.settings.hiddenRoles".localized, hiddenRoles))
                                     .font(.system(size: 9.5, weight: .medium))
                             }
                             .foregroundColor(.orange)
@@ -1143,10 +1152,10 @@ public struct AIAssistantPluginSettingsView: View {
                 // Header for AI Roles & System Prompts
                 HStack {
                     HStack(spacing: 6) {
-                        Text("AI Roles & System Prompts")
+                        Text("ai.settings.aiRoles".localized)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
 
-                        Text("\(state.enabledRoles.count) active")
+                        Text(String(format: "ai.settings.activeCount".localized, state.enabledRoles.count))
                             .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)
@@ -1213,6 +1222,9 @@ public struct AIAssistantPluginSettingsView: View {
                 ))
                 .labelsHidden()
                 .toggleStyle(.checkbox)
+                // The row's heading is a plain Text, not the Toggle's own label,
+                // so the checkbox needs the name of the role it enables.
+                .accessibilityLabel(role.title)
 
                 Image(systemName: role.systemIcon)
                     .font(.system(size: 11, weight: .semibold))
@@ -1231,7 +1243,7 @@ public struct AIAssistantPluginSettingsView: View {
                     .cornerRadius(3)
 
                 if role.isTransform {
-                    Text("TRANSFORM")
+                    Text("ai.settings.transform".localized)
                         .font(.system(size: 7.5, weight: .bold, design: .monospaced))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -1276,7 +1288,8 @@ public struct AIAssistantPluginSettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.tactile)
-                    .help("Reset prompt to default")
+                    .help("help.resetPrompt".localized)
+                    .accessibilityLabel("help.resetPrompt".localized)
                 } else {
                     Button {
                         state.deleteRole(id: role.id)
@@ -1286,7 +1299,8 @@ public struct AIAssistantPluginSettingsView: View {
                             .foregroundColor(.red)
                     }
                     .buttonStyle(.tactile)
-                    .help("Delete custom role")
+                    .help("help.deleteCustomRole".localized)
+                    .accessibilityLabel("help.deleteCustomRole".localized)
                 }
             }
 
@@ -1295,7 +1309,7 @@ public struct AIAssistantPluginSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         HStack(spacing: 4) {
-                            Text("Title:")
+                            Text("ai.settings.titleField".localized)
                                 .font(.system(size: 9.5, weight: .medium))
                                 .foregroundColor(.secondary)
                             customInputCapsule {
@@ -1309,7 +1323,7 @@ public struct AIAssistantPluginSettingsView: View {
                         }
 
                         HStack(spacing: 4) {
-                            Text("Icon:")
+                            Text("ai.settings.iconField".localized)
                                 .font(.system(size: 9.5, weight: .medium))
                                 .foregroundColor(.secondary)
                             customInputCapsule {
@@ -1330,7 +1344,7 @@ public struct AIAssistantPluginSettingsView: View {
                         .font(.system(size: 9.5))
                     }
 
-                    Text("System Prompt:")
+                    Text("ai.settings.systemPromptLabel".localized)
                         .font(.system(size: 9.5, weight: .semibold))
                         .foregroundColor(.secondary)
 
@@ -1366,7 +1380,7 @@ public struct AIAssistantPluginSettingsView: View {
     @ViewBuilder
     private var newRoleCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Create Custom Role Preset")
+            Text("ai.settings.createCustomRole".localized)
                 .font(.system(size: 10.5, weight: .bold, design: .rounded))
 
             HStack(spacing: 8) {
@@ -1387,7 +1401,7 @@ public struct AIAssistantPluginSettingsView: View {
                     .font(.system(size: 9.5))
             }
 
-            Text("System Prompt:")
+            Text("ai.settings.systemPromptLabel".localized)
                 .font(.system(size: 9.5, weight: .medium))
                 .foregroundColor(.secondary)
 
@@ -1470,6 +1484,7 @@ public struct AIAssistantPluginSettingsView: View {
                             Toggle("", isOn: $state.skillConfig.enableFileReadSkill)
                                 .toggleStyle(.switch)
                                 .labelsHidden()
+                                .purahRowAccessibility("ai.skills.builtin.fileRead.title".localized, detail: "ai.skills.builtin.fileRead.desc".localized)
                         }
                         .frame(maxWidth: .infinity)
 
@@ -1487,6 +1502,7 @@ public struct AIAssistantPluginSettingsView: View {
                             Toggle("", isOn: $state.skillConfig.enableDirectoryListSkill)
                                 .toggleStyle(.switch)
                                 .labelsHidden()
+                                .purahRowAccessibility("ai.skills.builtin.dirList.title".localized, detail: "ai.skills.builtin.dirList.desc".localized)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -1506,10 +1522,10 @@ public struct AIAssistantPluginSettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 1.5) {
-                            Text("MCP Servers")
+                            Text("ai.settings.mcpServers".localized)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundColor(.primary)
-                            Text("Model Context Protocol stdio servers")
+                            Text("ai.settings.mcpBlurb".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -1527,7 +1543,7 @@ public struct AIAssistantPluginSettingsView: View {
                             HStack(spacing: 3) {
                                 Image(systemName: "square.and.arrow.down")
                                     .font(.system(size: 8.5))
-                                Text("Import Local Config")
+                                Text("ai.settings.importLocalConfig".localized)
                                     .font(.system(size: 9.5, weight: .medium))
                             }
                             .padding(.horizontal, 7)
@@ -1566,7 +1582,7 @@ public struct AIAssistantPluginSettingsView: View {
                             Image(systemName: "tray")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                            Text("No MCP servers configured yet. Click 'Add Server' or 'Import Local Config'.")
+                            Text("ai.settings.noMCPServers".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -1598,6 +1614,7 @@ public struct AIAssistantPluginSettingsView: View {
                 }
             ))
             .toggleStyle(.checkbox)
+            .accessibilityLabel(server.name)
             .labelsHidden()
 
             VStack(alignment: .leading, spacing: 2) {
@@ -1636,7 +1653,8 @@ public struct AIAssistantPluginSettingsView: View {
                     .cornerRadius(4)
             }
             .buttonStyle(.plain)
-            .help("Delete MCP Server")
+            .help("help.deleteMCPServer".localized)
+            .accessibilityLabel("help.deleteMCPServer".localized)
         }
         .padding(8)
         .background(Color.primary.opacity(0.035))
@@ -1650,12 +1668,12 @@ public struct AIAssistantPluginSettingsView: View {
     @ViewBuilder
     private var addMCPServerForm: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Add New MCP Server")
+            Text("ai.settings.addNewMCPServer".localized)
                 .font(.system(size: 10.5, weight: .bold, design: .rounded))
                 .foregroundColor(palette.primaryAccent)
 
             HStack(spacing: 8) {
-                Text("Name")
+                Text("ai.settings.name".localized)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 60, alignment: .leading)
@@ -1668,7 +1686,7 @@ public struct AIAssistantPluginSettingsView: View {
             }
 
             HStack(spacing: 8) {
-                Text("Command")
+                Text("ai.settings.command".localized)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 60, alignment: .leading)
@@ -1681,7 +1699,7 @@ public struct AIAssistantPluginSettingsView: View {
             }
 
             HStack(spacing: 8) {
-                Text("Arguments")
+                Text("ai.settings.arguments".localized)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
                     .frame(width: 60, alignment: .leading)
@@ -1769,6 +1787,7 @@ public struct AIAssistantPluginSettingsView: View {
                 Toggle("", isOn: $state.skillConfig.enableLocalSkills)
                     .toggleStyle(.switch)
                     .labelsHidden()
+                    .purahRowAccessibility("ai.skills.local.title".localized, detail: "ai.skills.local.subtitle".localized)
             }
 
             if state.skillConfig.enableLocalSkills {
@@ -1874,6 +1893,7 @@ public struct AIAssistantPluginSettingsView: View {
             .toggleStyle(.checkbox)
             .labelsHidden()
             .padding(.top, 2)
+            .accessibilityLabel(skill.name)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
@@ -1918,6 +1938,7 @@ public struct AIAssistantPluginSettingsView: View {
                 .stroke(Color.primary.opacity(0.06), lineWidth: 0.8)
         )
         .help(skill.directoryPath)
+        .accessibilityLabel(skill.directoryPath)
     }
 
     @ViewBuilder
@@ -1966,7 +1987,8 @@ public struct AIAssistantPluginSettingsView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Remove Directory")
+            .help("help.removeDirectory".localized)
+            .accessibilityLabel("help.removeDirectory".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -1998,7 +2020,7 @@ public struct AIAssistantPluginSettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 // Retention Period Row
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Retention Period")
+                    Text("ai.settings.retentionPeriod".localized)
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundColor(.secondary)
 
@@ -2044,7 +2066,7 @@ public struct AIAssistantPluginSettingsView: View {
                         Image(systemName: "bubble.left.and.bubble.right.fill")
                             .font(.system(size: 9))
                             .foregroundColor(palette.primaryAccent)
-                        Text("\(state.sessions.count) sessions · \(starredCount) starred")
+                        Text(String(format: "ai.settings.sessionsSummary".localized, state.sessions.count, starredCount))
                             .font(.system(size: 10, weight: .medium, design: .rounded))
                     }
                     .padding(.horizontal, 8)
@@ -2069,7 +2091,7 @@ public struct AIAssistantPluginSettingsView: View {
                     Image(systemName: "star.fill")
                         .foregroundColor(.yellow)
                         .font(.system(size: 10))
-                    Text("Starred chat sessions are strictly immune to automatic expiration or quota pruning.")
+                    Text("ai.settings.starredImmune".localized)
                         .font(.system(size: 9.5))
                         .foregroundColor(.secondary)
                 }

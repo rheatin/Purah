@@ -592,6 +592,11 @@ struct HighDensityOverflowTests {
             let isolated = UserDefaults(suiteName: suiteName)!
             let store = PurahWorkspaceStore(userDefaults: isolated)
             store.isDynamicBreathingEnabled = breathing
+            // The expected span below ("~72pt") is `0.08 × 900`, and the
+            // resolved layout is asked for a 900pt rail — but the floor each
+            // pod is clamped against is derived from the host screen. Pin it
+            // so the two halves of the test describe the same screen.
+            store.overriddenScreenHeight = totalHeight
 
             // Shorten "todo" on right rail to length 0.08 (~72pt on 900pt screen)
             store.updatePodRange(id: "todo", newRange: NormalizedRange(start: 0.05, length: 0.08))

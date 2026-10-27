@@ -237,7 +237,7 @@ public struct MusicPluginSettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("Dynamic Effect Scheme")
+                                Text("music.effectScheme".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
                                 Text(state.dynamicSubStyle.displayName)
@@ -279,7 +279,7 @@ public struct MusicPluginSettingsView: View {
 
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Beat Timing Alignment")
+                                Text("music.beatAlignment".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
                                 Text(state.rhythmOffsetMs <= 0 ? "0 ms (Direct)" : String(format: "+%.0f ms", state.rhythmOffsetMs))
@@ -295,13 +295,14 @@ public struct MusicPluginSettingsView: View {
                                     SystemAudioLiveMonitor.shared.latencyOffsetMs = $0
                                 }
                             ), in: 0...200, step: 10)
+                            .accessibilityLabel("music.beatAlignment".localized)
 
                             HStack {
-                                Text("Mac Speakers (0ms)")
+                                Text("music.outputSpeakers".localized)
                                     .font(.system(size: 9))
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                Text("AirPods / Bluetooth (+150ms)")
+                                Text("music.outputAirPods".localized)
                                     .font(.system(size: 9))
                                     .foregroundColor(.secondary)
                             }
@@ -316,10 +317,10 @@ public struct MusicPluginSettingsView: View {
 
                         HStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Dynamic Rhythm Animation")
+                                Text("music.rhythmAnimation".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                     .foregroundColor(.primary)
-                                Text("Real-time GPU undulating motion driven by sound energy")
+                                Text("music.rhythmAnimation.desc".localized)
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
@@ -335,6 +336,7 @@ public struct MusicPluginSettingsView: View {
                             .toggleStyle(.switch)
                             .controlSize(.small)
                             .labelsHidden()
+                            .purahRowAccessibility("music.rhythmAnimation".localized, detail: "music.rhythmAnimation.desc".localized)
                         }
                         .padding(9)
                         .background(

@@ -110,7 +110,8 @@ public struct CalendarDrawerView: View {
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
-                    .help("Open in Apple Calendar")
+                    .help("help.openInAppleCalendar".localized)
+                    .accessibilityLabel("help.openInAppleCalendar".localized)
 
                     if isOngoing {
                         HStack(spacing: 3) {
@@ -172,7 +173,8 @@ public struct CalendarDrawerView: View {
                             .modifier(OptionalGlow(color: podColor, enabled: isOngoing || isAlerting))
                         }
                         .buttonStyle(.tactile)
-                        .help("Open link: \(url.absoluteString)")
+                        .help(String(format: "help.openLink".localized, url.absoluteString))
+                        .accessibilityLabel(String(format: "help.openLink".localized, url.absoluteString))
                     }
                 }
 
@@ -250,12 +252,12 @@ public struct CalendarDrawerView: View {
                 HStack {
                     HStack(spacing: 3.5) {
                         Circle().fill(calColor).frame(width: 3.5, height: 3.5)
-                        Text("In Progress")
+                        Text("calendar.inProgress".localized)
                             .purahCaption(size: 8.5)
                             .foregroundColor(calColor)
                     }
                     Spacer()
-                    Text("\(remainingMins)m remaining")
+                    Text(String(format: "calendar.remainingMinutes".localized, remainingMins))
                         .font(palette.fontMono)
                         .font(.system(size: 8.5, weight: .medium))
                         .foregroundColor(.secondary)
@@ -313,7 +315,7 @@ public struct CalendarDrawerView: View {
                     HStack(spacing: 3) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 7.5, weight: .semibold))
-                        Text("Connect")
+                        Text("calendar.connect".localized)
                             .font(.system(size: 8.5, weight: .bold, design: .rounded))
                     }
                     .foregroundColor(.orange)
@@ -326,7 +328,8 @@ public struct CalendarDrawerView: View {
                     )
                 }
                 .buttonStyle(.tactile)
-                .help("Using sample events. Click to connect system Apple Calendar")
+                .help("help.sampleCalendar".localized)
+                .accessibilityLabel("help.sampleCalendar".localized)
             }
 
             Button {
@@ -348,7 +351,8 @@ public struct CalendarDrawerView: View {
                 )
             }
             .buttonStyle(.tactile)
-            .help("Open Apple Calendar")
+            .help("help.openAppleCalendar".localized)
+            .accessibilityLabel("help.openAppleCalendar".localized)
         }
     }
 
@@ -370,7 +374,7 @@ public struct CalendarDrawerView: View {
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("Scope: \(state.scope.title)")
+                    Text(String(format: "calendar.scopeValue".localized, state.scope.title))
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundColor(podColor.opacity(0.85))
                 }
@@ -413,7 +417,7 @@ public struct CalendarDrawerView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "calendar")
                                 .font(.system(size: 9))
-                            Text("Open Calendar")
+                            Text("calendar.openCalendar".localized)
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         }
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
@@ -433,7 +437,7 @@ public struct CalendarDrawerView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "calendar.badge.plus")
                                 .font(.system(size: 9))
-                            Text("Load Sample Events")
+                            Text("calendar.loadSampleEvents".localized)
                                 .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         }
                         .foregroundColor(podColor)
@@ -525,7 +529,7 @@ public struct CalendarDrawerView: View {
             // Left Time Column (width: 44)
             VStack(alignment: .trailing, spacing: 1.5) {
                 if event.isAllDay {
-                    Text("ALL DAY")
+                    Text("calendar.allDay".localized)
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundColor(isPast ? .secondary.opacity(0.45) : (palette.style == .native ? Color.primary : .white))
                 } else {
@@ -775,7 +779,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         HStack(spacing: 3.5) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 8, weight: .semibold))
-                            Text("Sample · Connect")
+                            Text("calendar.sampleConnect".localized)
                                 .font(.system(size: 8, weight: .semibold, design: .rounded))
                         }
                         .foregroundColor(.orange)
@@ -789,7 +793,8 @@ public struct CalendarAgendaOverviewDrawerView: View {
                         .cornerRadius(4)
                     }
                     .buttonStyle(.tactile)
-                    .help("Using sample events. Click to connect system Apple Calendar")
+                    .help("help.sampleCalendar".localized)
+                    .accessibilityLabel("help.sampleCalendar".localized)
                 )
             },
             isPinned: isPinned,

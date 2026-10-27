@@ -138,7 +138,7 @@ public struct TerminalPluginSettingsView: View {
             ) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Font Family")
+                        Text("terminal.fontFamily".localized)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                         Spacer()
                         Menu {
@@ -171,13 +171,13 @@ public struct TerminalPluginSettingsView: View {
                         .menuIndicator(.hidden)
                     }
 
-                    Text("Starship icons automatically cascade to Symbols Nerd Font / Maple Mono NF.")
+                    Text("terminal.nerdFontNote".localized)
                         .font(.system(size: 9.5))
                         .foregroundColor(.secondary)
 
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("Font Size")
+                            Text("terminal.fontSize".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
                             Text("\(String(format: "%.1f", state.fontSize)) pt")
@@ -194,6 +194,7 @@ public struct TerminalPluginSettingsView: View {
                                 store.savePersistentState()
                             }
                         ), in: 9.0...20.0, step: 0.5)
+                        .accessibilityLabel("terminal.fontSize".localized)
                     }
                 }
             }
@@ -240,7 +241,7 @@ public struct TerminalPluginSettingsView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 10))
-                                Text("Restart Shell")
+                                Text("terminal.restartShell".localized)
                                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                             }
                             .padding(.horizontal, 10)

@@ -101,11 +101,14 @@ if [ -d ".build/out" ]; then
     fi
 fi
 
-# 1. Compile Swift package with strict concurrency
+# 1. Compile Swift package
+#
+# Strict concurrency is declared per target in Package.swift rather than passed
+# here: `-Xswiftc` reaches every target in the graph including the vendored
+# SwiftTerm, which is Swift 5 code and cannot satisfy it.
 BUILD_FLAGS=(
     -c "$CONFIGURATION"
     --disable-sandbox
-    -Xswiftc -strict-concurrency=complete
     -Xswiftc -warnings-as-errors
 )
 
@@ -135,6 +138,24 @@ mkdir -p "$RESOURCES_DIR"
 # Copy main binary
 cp -p "$EXECUTABLE_PATH" "${MACOS_DIR}/Purah"
 
+# Strip symbols from the copied binary only — never from the SwiftPM build
+# product, which is shared with the debugger and the test run.
+#
+# SwiftPM's release build leaves the full symbol table in place: 217k symbols
+# for 30MB, of which the overwhelming majority is debug metadata that ships to
+# every user. `strip -x` removes the local ones and keeps the exported set,
+# taking the binary to 11MB. Stripping has to happen before codesign, because
+# editing a signed Mach-O invalidates its signature.
+if [ "$CONFIGURATION" = "release" ]; then
+    BEFORE=$(du -h "${MACOS_DIR}/Purah" | cut -f1)
+    if strip -x "${MACOS_DIR}/Purah" 2>/dev/null; then
+        AFTER=$(du -h "${MACOS_DIR}/Purah" | cut -f1)
+        echo -e "   └── Stripped symbols: ${BEFORE} → ${AFTER}"
+    else
+        echo -e "${YELLOW}⚠️  strip failed; shipping an unstripped binary${RESET}"
+    fi
+fi
+
 # Copy Info.plist
 INFO_PLIST="Sources/PurahApp/Resources/Info.plist"
 if [ -f "$INFO_PLIST" ]; then
@@ -160,14 +181,40 @@ done
 shopt -u nullglob
 
 # 4. Code signing
+#
+# Hardened runtime is required for notarization. Ad-hoc (`-`) builds keep it off
+# because it has no security meaning without a real identity and would only make
+# local debugging (attaching a debugger, `dtruss`) harder.
 SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
+ENTITLEMENTS="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/Sources/PurahApp/Resources/Purah.entitlements"
+
+HARDENED_ARGS=()
+ENTITLEMENTS_ARGS=()
+if [ "$SIGNING_IDENTITY" != "-" ]; then
+    HARDENED_ARGS=(--options runtime --timestamp)
+    if [ -f "$ENTITLEMENTS" ]; then
+        ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS")
+        echo -e "   └── Entitlements: $(basename "$ENTITLEMENTS")"
+    else
+        echo -e "${YELLOW}⚠️  Entitlements file missing: $ENTITLEMENTS${RESET}"
+        echo -e "${YELLOW}   Signing without entitlements may break AppleScript and Terminal.${RESET}"
+    fi
+fi
+
 echo -e "${CYAN}🔏 Signing application bundle (Identity: ${SIGNING_IDENTITY})...${RESET}"
 
-# Sign nested resource bundles first if any
-find "${RESOURCES_DIR}" -name "*.bundle" -type d -exec codesign --force --sign "$SIGNING_IDENTITY" {} +
+# Sign nested resource bundles first: re-signing a bundle that contains an
+# already-signed nested bundle invalidates the outer seal.
+# `${arr[@]+"${arr[@]}"}` is the Bash 3.2-safe way to expand a possibly-empty
+# array under `set -u`; plain `"${arr[@]}"` is an unbound-variable error there.
+find "${RESOURCES_DIR}" -name "*.bundle" -type d -exec \
+    codesign --force ${HARDENED_ARGS[@]+"${HARDENED_ARGS[@]}"} --sign "$SIGNING_IDENTITY" {} +
 
-# Sign the overall .app bundle
-codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+# Sign the overall .app bundle. `--deep` is avoided here on purpose: it re-signs
+# nested code with the outer options and is explicitly discouraged by Apple for
+# signing (it is a verification convenience, not a signing strategy).
+codesign --force ${HARDENED_ARGS[@]+"${HARDENED_ARGS[@]}"} ${ENTITLEMENTS_ARGS[@]+"${ENTITLEMENTS_ARGS[@]}"} \
+    --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 
 # 5. Verify codesign
 echo -e "${CYAN}🔍 Verifying codesign signature...${RESET}"

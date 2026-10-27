@@ -325,7 +325,7 @@ public struct ClipboardItemDrawerView: View {
                         Text(hex.uppercased())
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundColor(palette.style == .native ? .primary : .white)
-                        Text("Click to copy Hex • Drag into editor")
+                        Text("clipboard.hint.hex".localized)
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
@@ -346,10 +346,10 @@ public struct ClipboardItemDrawerView: View {
                             .cornerRadius(6)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Image (\(w)×\(h))")
+                        Text(String(format: "clipboard.imageSize".localized, w, h))
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(palette.style == .native ? .primary : .white)
-                        Text("Click to copy • Drag file out")
+                        Text("clipboard.hint.file".localized)
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
@@ -360,13 +360,13 @@ public struct ClipboardItemDrawerView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .lineLimit(2)
                             .foregroundColor(palette.style == .native ? .primary : .white)
-                        Text("\(text.count) characters • Click to copy")
+                        Text(String(format: "clipboard.hint.text".localized, text.count))
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
                 }
             } else {
-                Text("Clipboard is Empty")
+                Text("clipboard.empty.title".localized)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -391,6 +391,7 @@ public struct ClipboardItemDrawerView: View {
                 }
                 .buttonStyle(.tactile)
                 .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+                .accessibilityLabel(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
 
                 Button {
                     pluginState.copyItem(item)
@@ -404,7 +405,8 @@ public struct ClipboardItemDrawerView: View {
                         .foregroundColor(palette.style == .native ? .primary : .white)
                 }
                 .buttonStyle(.tactile)
-                .help("Copy to Clipboard")
+                .help("help.copyToClipboard".localized)
+                .accessibilityLabel("help.copyToClipboard".localized)
             }
 
             PurahPinButton(isPinned: isPinned, tintColor: itemColor) {
@@ -615,7 +617,7 @@ public struct ClipboardFullDrawerView: View {
                         .font(.system(size: isCompact ? 24 : 32, weight: .regular))
                         .foregroundColor(Color(hex: "#FF9F0A"))
 
-                    Text("No clipping yet")
+                    Text("clipboard.empty.subtitle".localized)
                         .font(.system(size: isCompact ? 11.5 : 13, weight: .semibold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
 
@@ -803,14 +805,14 @@ public struct ClipboardFullDrawerView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: isCompact ? 18 : 26))
                 .foregroundColor(.secondary.opacity(0.6))
-            Text("No results for \"\(searchText)\"")
+            Text(String(format: "clipboard.noResults".localized, searchText))
                 .font(.system(size: isCompact ? 10.5 : 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.secondary)
             Button {
                 searchText = ""
                 selectedFilter = .all
             } label: {
-                Text("Clear Filters")
+                Text("clipboard.clearFilters".localized)
                     .font(.system(size: isCompact ? 9 : 10, weight: .medium))
                     .foregroundColor(palette.primaryAccent)
             }
@@ -898,7 +900,8 @@ public struct ClipboardFullDrawerView: View {
                                     }
                                 }
                                 .buttonStyle(.tactile)
-                                .help("Copy as \(snippet)")
+                                .help(String(format: "help.copyAs".localized, snippet))
+                                .accessibilityLabel(String(format: "help.copyAs".localized, snippet))
                             }
                         }
                     } else {
@@ -939,7 +942,7 @@ public struct ClipboardFullDrawerView: View {
 
                     VStack(alignment: .leading, spacing: isCompact ? 1 : 3) {
                         HStack(spacing: 5) {
-                            Text("Image Clip")
+                            Text("clipboard.imageClip".localized)
                                 .font(.system(size: isCompact ? 10.5 : 11.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(palette.style == .native ? .primary : .white)
 
@@ -953,12 +956,12 @@ public struct ClipboardFullDrawerView: View {
                         }
                         .padding(.trailing, 38)
 
-                        Text("\(w) × \(h) px • \(max(bytes / 1024, 1)) KB")
+                        Text(String(format: "clipboard.imageMeta".localized, w, h, max(bytes / 1024, 1)))
                             .font(.system(size: isCompact ? 8.5 : 9.5, design: .monospaced))
                             .foregroundColor(.secondary)
 
                         if !isCompact {
-                            Text("Hover for detached Quick Look • Drag to export")
+                            Text("clipboard.hint.hover".localized)
                                 .font(.system(size: 8.5))
                                 .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.8))
                         }
@@ -977,13 +980,13 @@ public struct ClipboardFullDrawerView: View {
                         .padding(.trailing, 38)
 
                     HStack {
-                        Text("\(text.count) chars")
+                        Text(String(format: "clipboard.preview.charCount".localized, text.count))
                             .font(.system(size: isCompact ? 8 : 9, design: .monospaced))
                             .foregroundColor(.secondary)
 
                         let lines = text.split(separator: "\n").count
                         if lines > 1 {
-                            Text("• \(lines) lines")
+                            Text(String(format: "clipboard.linesPrefixed".localized, lines))
                                 .font(.system(size: isCompact ? 8 : 9, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
@@ -1020,6 +1023,7 @@ public struct ClipboardFullDrawerView: View {
                 }
                 .buttonStyle(.plain)
                 .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
+                .accessibilityLabel(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
 
                 Button {
                     state.toggleFavorite(id: item.id)
@@ -1033,6 +1037,7 @@ public struct ClipboardFullDrawerView: View {
                 }
                 .buttonStyle(.plain)
                 .help(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
+                .accessibilityLabel(item.isFavorite ? "Unstar item" : "Star item (keep permanently)")
             }
             .padding(isCompact ? 4 : 6)
         }
@@ -1159,10 +1164,10 @@ public struct ClipboardPluginSettingsView: View {
 
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Decomposed Rail Chips")
+                            Text("clipboard.decomposedChips".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(.primary)
-                            Text("Display recent copies as discrete tactile chips along the screen edge")
+                            Text("clipboard.decompose.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -1178,6 +1183,7 @@ public struct ClipboardPluginSettingsView: View {
                         .controlSize(.small)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("clipboard.decomposedChips".localized, detail: "clipboard.decompose.desc".localized)
                     }
                     .padding(9)
                     .background(
@@ -1192,10 +1198,10 @@ public struct ClipboardPluginSettingsView: View {
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Max In-Rail Items")
+                                Text("clipboard.maxInRailItems".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
-                                Text("\(store.clipboardMaxRailItems) Chips")
+                                Text(String(format: "clipboard.chipCount".localized, store.clipboardMaxRailItems))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(Color(hex: "#FF9F0A"))
                             }
@@ -1207,8 +1213,9 @@ public struct ClipboardPluginSettingsView: View {
                                     store.savePersistentState()
                                 }
                             ), in: 2...8, step: 1)
+                            .accessibilityLabel("clipboard.maxInRailItems".localized)
 
-                            Text("Controls the maximum number of recent copied items decomposed into tactile chips along the screen edge.")
+                            Text("clipboard.maxInRailItems.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }

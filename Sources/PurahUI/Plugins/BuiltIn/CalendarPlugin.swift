@@ -375,9 +375,9 @@ public struct CalendarPluginSettingsView: View {
                         .foregroundColor(.orange)
                         .font(.subheadline)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Currently Displaying Sample Calendar")
+                        Text("calendar.sampleBanner".localized)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                        Text("Connect Apple Calendar for live events")
+                        Text("calendar.connectPrompt".localized)
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
@@ -410,7 +410,7 @@ public struct CalendarPluginSettingsView: View {
                     // Calendar Scope
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Calendar Scope")
+                            Text("calendar.scope".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
                             Text(state.scope.title)
@@ -456,9 +456,9 @@ public struct CalendarPluginSettingsView: View {
                     // other decomposed plugins; +N folding is always on).
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Decompose into Quick-Action Rail Chips")
+                            Text("ai.settings.decomposition".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            Text("Independent event chips along the rail; overflow folds into a \"+N\" overview")
+                            Text("calendar.decompose.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -476,6 +476,7 @@ public struct CalendarPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("ai.settings.decomposition".localized, detail: "calendar.decompose.desc".localized)
                     }
                     .padding(10)
                     .background(Color.primary.opacity(0.025))
@@ -488,10 +489,10 @@ public struct CalendarPluginSettingsView: View {
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Max Rail Events")
+                                Text("calendar.maxRailEvents".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
-                                Text("\(state.maxRailEvents) items")
+                                Text(String(format: "calendar.eventCount".localized, state.maxRailEvents))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(palette.primaryAccent)
                             }
@@ -511,8 +512,9 @@ public struct CalendarPluginSettingsView: View {
                                 in: 2...6,
                                 step: 1
                             )
+                            .accessibilityLabel("calendar.maxRailEvents".localized)
 
-                            Text("Primary events shown on bezel before folding into +N More capsule")
+                            Text("calendar.maxRailEvents.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -538,7 +540,7 @@ public struct CalendarPluginSettingsView: View {
                     // Attention Alert Style Pills
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Attention Alert Dynamic")
+                            Text("interaction.alerts.dynamic.title".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
                             Text(state.alertStyle.displayName)
@@ -581,10 +583,10 @@ public struct CalendarPluginSettingsView: View {
                     // Event toast switch row
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Show Toast notification when events start")
+                            Text("calendar.toastOnStart".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(.primary)
-                            Text("Display transient HUD capsule notification at start time")
+                            Text("calendar.hudOnStart".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -601,6 +603,7 @@ public struct CalendarPluginSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .purahRowAccessibility("calendar.toastOnStart".localized, detail: nil)
                     }
                     .padding(9)
                     .background(

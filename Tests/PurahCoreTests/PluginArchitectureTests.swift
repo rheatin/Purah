@@ -1524,4 +1524,67 @@ struct PluginArchitectureTests {
         )
         #expect(store.activeDrawerPodId == "com.test.sdk")
     }
+
+    @Test("Vitals rail capacity is bounded to 2…4, not 2…6")
+    func testVitalsRailMetricRange() {
+        // The slider used to run to 6. Beyond four chips the values stop being
+        // readable at a glance and each chip approaches the §5 56pt floor, so
+        // the ceiling is four. The floor stays at two: a lone telemetry chip is
+        // a button, not a sensor strip.
+        #expect(VitalsPluginState.railMetricRange == 2...4)
+
+        let storage = ScopedPluginStorage(pluginId: "test_vitals_range_\(UUID().uuidString)")
+        let state = VitalsPluginState(storage: storage)
+
+        // A fresh state lands on the ceiling.
+        #expect(state.maxRailMetrics == 4)
+
+        // Out-of-range writes are clamped in both directions.
+        state.setMaxRailMetrics(9)
+        #expect(state.maxRailMetrics == 4)
+        state.setMaxRailMetrics(1)
+        #expect(state.maxRailMetrics == 2)
+        state.setMaxRailMetrics(3)
+        #expect(state.maxRailMetrics == 3)
+
+        // A value persisted by the old 2…6 slider is clamped on load, not
+        // carried forward.
+        let legacyStorage = ScopedPluginStorage(pluginId: "test_vitals_legacy_\(UUID().uuidString)")
+        legacyStorage.set(6, forKey: "maxRailMetrics")
+        #expect(VitalsPluginState(storage: legacyStorage).maxRailMetrics == 4)
+    }
+
+    @Test("A full vitals rail can still admit one more metric")
+    func testVitalsAdmissionIsNotSelfBlocking() {
+        // Regression: `decomposedPolicy.maxRailItems` used to be
+        // `min(maxRailMetrics, enabledMetrics.count)`. `canEnableSubItem` asks
+        // whether `subItemCount < maxRailItems`; with every slot full both sides
+        // evaluated to the same number, so enabling a third metric was always
+        // refused and the rail stayed at two chips no matter how far the slider
+        // was raised.
+        let storage = ScopedPluginStorage(pluginId: "test_vitals_admit_\(UUID().uuidString)")
+        let state = VitalsPluginState(storage: storage)
+        state.setMaxRailMetrics(4)
+        state.enabledMetrics = [.network, .ram]
+        state.save()
+
+        let plugin = HardwareVitalsPlugin(state: state)
+        let store = PurahWorkspaceStore(userDefaults: UserDefaults(suiteName: "test_vitals_admit_store_\(UUID().uuidString)")!)
+        store.registerCapabilityProvider(plugin)
+        // Admission is only consulted for a decomposed pod; a composite bar has
+        // no per-metric slots to run out of.
+        store._isVitalsDecomposed = true
+        // `subItemCount(store:)` prefers the store's mirror of the metric list,
+        // so the fixture has to write both sides the way the settings toggle does.
+        store._vitalsEnabledMetrics = [.network, .ram]
+
+        #expect(plugin.decomposedPolicy(store: store).maxRailItems == 4)
+        #expect(store.canEnableSubItem(for: "vitals"), "A 2-of-4 rail must accept a third metric")
+
+        state.enabledMetrics = [.cpu, .ram, .power, .disk]
+        store._vitalsEnabledMetrics = [.cpu, .ram, .power, .disk]
+        #expect(!store.canEnableSubItem(for: "vitals"), "A 4-of-4 rail must refuse a fifth metric")
+    }
+
+
 }

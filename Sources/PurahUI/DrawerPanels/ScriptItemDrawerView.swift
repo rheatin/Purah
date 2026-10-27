@@ -199,7 +199,7 @@ public struct ScriptItemDrawerView: View {
                     HStack(spacing: 2) {
                         Image(systemName: "stop.fill")
                             .font(.system(size: 6.5, weight: .bold))
-                        Text("Stop")
+                        Text("ai.action.stop".localized)
                             .font(.system(size: 8, weight: .bold))
                     }
                     .padding(.horizontal, 5)
@@ -209,7 +209,8 @@ public struct ScriptItemDrawerView: View {
                     .cornerRadius(4)
                 }
                 .buttonStyle(.tactile)
-                .help("Stop running script")
+                .help("help.stopScript".localized)
+                .accessibilityLabel("help.stopScript".localized)
             }
 
             // Pin button (Matches Hardware Vitals design)

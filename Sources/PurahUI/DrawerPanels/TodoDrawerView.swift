@@ -85,7 +85,8 @@ struct TodoOverviewRow: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Set Quick Due Date")
+            .help("help.setQuickDue".localized)
+            .accessibilityLabel("help.setQuickDue".localized)
 
             Text(todo.listTitle)
                 .font(.system(size: 8))

@@ -39,9 +39,22 @@ public final class VitalsPluginState: Sendable {
         set { enabledMetrics = newValue }
     }
 
+    /// The on-rail chip count is bounded to 2…4.
+    ///
+    /// The floor is ergonomic: a single 56pt telemetry chip on the bezel is not
+    /// a sensor strip, it is a button. The ceiling is the number of metrics a
+    /// glance can actually resolve — beyond four the chips shrink toward the
+    /// §5 minimum and the values stop being readable at a glance.
+    ///
+    /// Both ends are enforced here rather than only in the slider, because the
+    /// stored value outlives the UI that wrote it: settings saved while the
+    /// slider allowed 6 would otherwise stay at 6 forever.
+    public static let railMetricRange: ClosedRange<Int> = 2...4
+
     public func setMaxRailMetrics(_ count: Int) {
-        maxRailMetrics = count
-        storage.set(count, forKey: "maxRailMetrics")
+        let clamped = min(max(count, Self.railMetricRange.lowerBound), Self.railMetricRange.upperBound)
+        maxRailMetrics = clamped
+        storage.set(clamped, forKey: "maxRailMetrics")
     }
 
     public var vitalsThresholds: VitalsColorThresholds {
@@ -66,8 +79,23 @@ public final class VitalsPluginState: Sendable {
             self.isDecomposed = true
         }
         self.enabledMetrics = resolvedStorage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
+        // Missing means "never configured" → the default of four. A stored value
+        // is clamped into the current range, because a settings file written
+        // while the slider went up to 6 must not keep the rail at 6 now that
+        // the ceiling is 4.
         let savedSlotLimit = resolvedStorage.int(forKey: "maxRailMetrics")
-        self.maxRailMetrics = (savedSlotLimit > 0) ? savedSlotLimit : 8
+        let clampedLimit = savedSlotLimit > 0
+            ? min(max(savedSlotLimit, Self.railMetricRange.lowerBound), Self.railMetricRange.upperBound)
+            : Self.railMetricRange.upperBound
+        self.maxRailMetrics = clampedLimit
+        // Write the clamped value back when the stored one was out of range, so
+        // disk and memory agree. Leaving 6 on disk while the app behaves as if
+        // it were 4 makes the setting look broken to anyone inspecting or
+        // backing up their preferences, and the old value would resurface if a
+        // future version widened the range again.
+        if savedSlotLimit != clampedLimit {
+            resolvedStorage.set(clampedLimit, forKey: "maxRailMetrics")
+        }
         self.thresholds = resolvedStorage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
     }
 

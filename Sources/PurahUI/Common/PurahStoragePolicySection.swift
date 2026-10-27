@@ -219,7 +219,7 @@ public struct PurahStoragePolicySection: View {
                         Text("clipboard.settings.autoPrune".localized)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(.primary)
-                        Text("Automatically purge oldest unstarred files when exceeding quota")
+                        Text("storage.autoPurge".localized)
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
@@ -228,6 +228,7 @@ public struct PurahStoragePolicySection: View {
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .labelsHidden()
+                        .purahRowAccessibility("clipboard.settings.autoPrune".localized, detail: "storage.autoPurge".localized)
                 }
                 .padding(9)
                 .background(
@@ -261,7 +262,7 @@ public struct PurahStoragePolicySection: View {
                 // 5. Footer Action Bar
                 HStack(spacing: 8) {
                     HStack(spacing: 4) {
-                        Text("Disk Usage:")
+                        Text("storage.diskUsage".localized)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                         Text(fileStorage.diskUsageFormatted)
@@ -277,7 +278,7 @@ public struct PurahStoragePolicySection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "folder.fill")
                                 .font(.system(size: 10))
-                            Text("Open in Finder")
+                            Text("storage.openInFinder".localized)
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                         }
                         .padding(.horizontal, 9)
@@ -422,5 +423,6 @@ public struct PurahClearButton: View {
             }
         }
         .help(helpText ?? (title ?? "Clear"))
+        .accessibilityLabel(helpText ?? (title ?? "Clear"))
     }
 }

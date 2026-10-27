@@ -77,6 +77,18 @@ struct DecomposedHeightFloorTests {
         let store = PurahWorkspaceStore()
         plugin.onMount(store: store)
 
+        // `onMount` → `syncEvents` replaces the fixture with `defaultEvents`
+        // whenever calendar access is missing, as on a CI runner. Those two
+        // samples floor at 82.5pt, below the composite 140, so the assertion
+        // below would silently measure the sample rather than this fixture.
+        state.events = (0..<4).map { i in
+            CalendarEventItem(
+                id: "e\(i)", title: "E\(i)",
+                startTime: now.addingTimeInterval(Double(i + 1) * 3600),
+                endTime: now.addingTimeInterval(Double(i + 1) * 3600 + 1800)
+            )
+        }
+
         // 4 × 40 + 3 × 2.5 = 167.5 > composite 140.
         #expect(plugin.minimumDrawerHeight(store: store) == 167.5)
 

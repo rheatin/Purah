@@ -215,7 +215,8 @@ public struct CalendarItemDrawerView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .help("Open in Apple Calendar")
+                .help("help.openInAppleCalendar".localized)
+                .accessibilityLabel("help.openInAppleCalendar".localized)
 
                 Text("\(formattedTime(event: event)) · \(event.location)")
                     .font(palette.fontMono)
@@ -484,7 +485,7 @@ public struct CalendarItemDrawerView: View {
                     Circle()
                         .fill(nextEvent.colorHex.flatMap { Color(hex: $0) } ?? podColor)
                         .frame(width: 4, height: 4)
-                    Text("Next: \(nextEvent.title)")
+                    Text(String(format: "calendar.nextEvent".localized, nextEvent.title))
                         .font(.system(size: 8.5, weight: .medium))
                         .foregroundColor(palette.style == .native ? Color.primary : Color.white)
                         .lineLimit(1)
@@ -514,7 +515,7 @@ public struct CalendarItemDrawerView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "video.fill")
                                 .font(.system(size: 8.5, weight: .bold))
-                            Text("Join Video Meeting")
+                            Text("calendar.joinVideoMeeting".localized)
                                 .font(.system(size: 9, weight: .bold, design: .rounded))
                         }
                         .frame(maxWidth: .infinity)
@@ -538,7 +539,8 @@ public struct CalendarItemDrawerView: View {
                             .foregroundColor(palette.style == .native ? Color.primary : .white)
                     }
                     .buttonStyle(.tactile)
-                    .help("Copy Video Meeting Link")
+                    .help("help.copyMeetingLink".localized)
+                    .accessibilityLabel("help.copyMeetingLink".localized)
                 }
 
                 Button {
@@ -561,7 +563,8 @@ public struct CalendarItemDrawerView: View {
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                 }
                 .buttonStyle(.tactile)
-                .help("Open in Apple Calendar")
+                .help("help.openInAppleCalendar".localized)
+                .accessibilityLabel("help.openInAppleCalendar".localized)
             }
         }
     }
@@ -576,12 +579,12 @@ public struct CalendarItemDrawerView: View {
             HStack {
                 HStack(spacing: 3.5) {
                     Circle().fill(calColor).frame(width: 3.5, height: 3.5)
-                    Text("In Progress")
+                    Text("calendar.inProgress".localized)
                         .purahCaption(size: 8.5)
                         .foregroundColor(calColor)
                 }
                 Spacer()
-                Text("\(remainingMins)m remaining")
+                Text(String(format: "calendar.remainingMinutes".localized, remainingMins))
                     .font(palette.fontMono)
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundColor(.secondary)
@@ -633,7 +636,7 @@ public struct CalendarItemDrawerView: View {
                 HStack(spacing: 3.5) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 8, weight: .semibold))
-                    Text("Sample · Connect")
+                    Text("calendar.sampleConnect".localized)
                         .font(.system(size: 8, weight: .semibold, design: .rounded))
                 }
                 .foregroundColor(.orange)
@@ -647,7 +650,8 @@ public struct CalendarItemDrawerView: View {
                 .cornerRadius(4)
             }
             .buttonStyle(.tactile)
-            .help("Using sample events. Click to connect system Apple Calendar")
+            .help("help.sampleCalendar".localized)
+            .accessibilityLabel("help.sampleCalendar".localized)
         }
     }
 
@@ -668,7 +672,8 @@ public struct CalendarItemDrawerView: View {
             .modifier(OptionalGlow(color: calColor, enabled: isOngoing || isAlerting))
         }
         .buttonStyle(.tactile)
-        .help("Open link: \(url.absoluteString)")
+        .help(String(format: "help.openLink".localized, url.absoluteString))
+        .accessibilityLabel(String(format: "help.openLink".localized, url.absoluteString))
     }
 
     private func statusBeacon(isPast: Bool, isAlerting: Bool, calColor: Color) -> some View {

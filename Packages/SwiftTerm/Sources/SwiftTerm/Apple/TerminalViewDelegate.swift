@@ -9,6 +9,12 @@ import Foundation
 
 /// Delegate used by ``TerminalView`` to notify the user of events happening
 /// in it.
+// Main-actor isolated: every implementation in this tree is an AppKit or
+// UIKit view that already touches these members on the main thread. Stating
+// the isolation on the protocol keeps the conformances valid without the
+// isolated-conformance syntax (`@MainActor Protocol` in the inheritance
+// clause), which Swift 6.1 does not recognise.
+@MainActor
 public protocol TerminalViewDelegate: AnyObject {
     /**
      * The client code sending commands to the terminal has requested a new size for the terminal

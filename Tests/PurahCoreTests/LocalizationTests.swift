@@ -64,6 +64,191 @@ struct LocalizationTests {
         #expect(loc.localized("notes.tips.table") == "Tabla")
     }
 
+    @Test("Every language table is a subset of English, never a superset")
+    func testNoOrphanTranslations() {
+        let loc = LocalizationManager()
+        // The fallback chain is target language → English → the key itself, so
+        // a key that exists only in a non-English table is unreachable dead
+        // weight: nothing can ever ask for it in a language that lacks it.
+        // English is therefore the vocabulary, and every other table has to be
+        // drawn from it.
+        let english = Set(LocalizationManager.keys(for: .english))
+        #expect(!english.isEmpty)
+        for language in AppLanguage.allCases where language != .system && language != .english {
+            let orphans = Set(LocalizationManager.keys(for: language)).subtracting(english)
+            #expect(orphans.isEmpty, "\(language.rawValue) defines keys English lacks: \(orphans.sorted())")
+        }
+        // `localizedLanguage` resolves `.system` through the host locale, so it
+        // must always land on a table that exists.
+        loc.currentLanguage = .system
+        #expect(!LocalizationManager.keys(for: loc.resolvedLanguage).isEmpty)
+    }
+
+    @Test("A key added to English is translated everywhere, or explicitly listed")
+    func testTranslationCoverage() {
+        // Japanese/Korean/French/German/Spanish are intentionally partial today,
+        // so "parity" cannot be asserted. What can be asserted is that the drift
+        // is known: this pins the sizes so a table cannot lose rows unnoticed,
+        // and — more usefully — so the gap is a decision someone made rather
+        // than something nobody noticed.
+        let english = Set(LocalizationManager.keys(for: .english))
+        let chinese = Set(LocalizationManager.keys(for: .chinese))
+        #expect(english == chinese, "Simplified Chinese is a complete translation and must stay in sync")
+
+        for language in AppLanguage.allCases where language != .system && language != .english {
+            let count = LocalizationManager.keys(for: language).count
+            #expect(count > 0, "\(language.rawValue) has no translations at all")
+        }
+    }
+
+    @Test("The AI settings strings resolve in every language, not as raw keys")
+    func testAISettingsKeysResolve() {
+        let loc = LocalizationManager()
+        // These were literal `Text("...")` calls with no table entry at all, so
+        // they read as English in every language. A missing key returns the
+        // key itself, which is the failure this catches.
+        let keys = [
+            "ai.settings.appleOnDevice", "ai.settings.executablePath",
+            "ai.settings.mcpServers", "ai.settings.aiRoles",
+            "ai.settings.retentionPeriod", "ai.settings.secretStoredIn",
+        ]
+        for language in AppLanguage.allCases where language != .system {
+            loc.currentLanguage = language
+            for key in keys {
+                #expect(loc.localized(key) != key, "\(key) is untranslated in \(language.rawValue)")
+            }
+        }
+        loc.currentLanguage = .chinese
+        #expect(loc.localized("ai.settings.mcpServers") == "MCP 服务器")
+    }
+
+    @Test("Every UI-facing key used in source exists in the tables")
+    func testNoMissingKeys() {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let english = Set(LocalizationManager.keys(for: .english))
+        var unregistered: [String] = []
+        for plugin in ["PurahUI", "PurahApp"] {
+            let root = dir.appendingPathComponent(plugin)
+            guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
+            for case let file as URL in walker where file.pathExtension == "swift" {
+                guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
+                // `"some.key".localized` and `String(format: "some.key".localized, ...)`
+                for match in source.matches(of: /"([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)"\.localized/) {
+                    let key = String(match.output.1)
+                    if !english.contains(key) { unregistered.append("\(key) in \((file.path as NSString).lastPathComponent)") }
+                }
+            }
+        }
+        #expect(unregistered.isEmpty, "Keys used in the UI but absent from the tables: \(unregistered.sorted())")
+    }
+
+    @Test("`String(format:)` never doubles an integer with %@")
+    func testNoObjectSpecifierForInteger() {
+        // `String(format:)` hands `%@` to `objc_opt_respondsToSelector`, so a
+        // Swift `Int` arrives as a raw pointer. `clipboard.imageMeta` read
+        // "... %@ KB" while the caller passed `bytes / 1024`; rendering an
+        // image item in the Clipboard drawer then dereferenced address 0x23
+        // and killed the process (SIGSEGV, EXC_BAD_ACCESS).
+        //
+        // The specifier count matched the argument count, which is why the
+        // other checks were happy — only the *type* was wrong. `%d` for
+        // integers, `%@` for anything that would bridge to NSString.
+        //
+        // Arguments are located by walking bracket depth rather than with a
+        // regex: `max(bytes / 1024, 1)` nests commas, and a `[^)]*` capture
+        // stops at the inner paren and shifts every later argument by one.
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let manager = LocalizationManager.shared
+        var offenders: [String] = []
+        var scanned = 0
+
+        for plugin in ["PurahUI", "PurahApp"] {
+            let root = dir.appendingPathComponent(plugin)
+            guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
+            for case let file as URL in walker where file.pathExtension == "swift" {
+                guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
+                for call in source.matches(of: /String\(format:\s*"([A-Za-z][\w.]+)"\.localized\s*,/) {
+                    let key = String(call.output.1)
+                    let format = manager.localized(key)
+                    // Note: `#/%(?:%@|%d)/#` silently matches nothing in Swift's Regex,
+                    // while the same alternation written as `#/%(?:d|@)/#` works.
+                    // Matching the specifier letter as a character class sidesteps
+                    // that without needing to explain it at the call site.
+                    let specs = format.matches(of: #/%(?:@|[dfsluiu])/#).map { String($0.output) }
+                    guard specs.contains("%@") else { continue }
+                    scanned += 1
+
+                    let rest = source[call.range.upperBound...]
+                    for (index, arg) in Self.splitTopLevelArguments(rest).enumerated() {
+                        guard index < specs.count, specs[index] == "%@" else { continue }
+                        let a = arg.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard Self.looksNumeric(a) else { continue }
+                        offenders.append("\(key) ← \(a)  [\(file.lastPathComponent)]")
+                    }
+                }
+            }
+        }
+        #expect(scanned > 0, "Scanner found no %@ call sites — the pattern has drifted")
+        #expect(offenders.isEmpty, "Integer fed to %@: \(offenders.sorted())")
+    }
+
+
+    /// True only for expressions that obviously yield a number.
+    ///
+    /// Deliberately conservative: `pod.name`, `snippet`, `error` and the rest of
+    /// the sixty-odd identifiers passed to `%@` are all Strings and all correct.
+    /// Flagging bare identifiers would produce a wall of false positives that
+    /// trains everyone to ignore the test. The crash came from arithmetic and
+    /// integer narrowing, so that is what is matched.
+    static func looksNumeric(_ arg: String) -> Bool {
+        if arg.hasPrefix("\\(") || arg.contains("\"") || arg.hasPrefix("String(") { return false }
+        let numericCalls = ["max(", "min(", "abs(", "Int(", "UInt(", "Double(", "Float(", "CGFloat("]
+        if numericCalls.contains(where: { arg.hasPrefix($0) }) { return true }
+        if arg.contains(".count") || arg.contains(".rawValue") || arg.contains(".pageIndex") { return true }
+        // Bare arithmetic: `bytes / 1024`, `a + b`, `x * 2`.
+        if arg.range(of: #"[A-Za-z0-9_.)]\s*[-+*/]\s*[A-Za-z0-9_(]"#, options: .regularExpression) != nil {
+            return true
+        }
+        return false
+    }
+
+    /// Splits `a, b, f(x, y))` into `["a", "b", "f(x, y)"]`, stopping at the
+    /// paren that closes the enclosing call.
+    static func splitTopLevelArguments(_ text: Substring) -> [String] {
+        var args: [String] = []
+        var depth = 0
+        var current = ""
+        for ch in text {
+            switch ch {
+            case "(", "[", "{":
+                depth += 1
+                current.append(ch)
+            case ")", "]", "}":
+                if depth == 0 { args.append(current); return args.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
+                depth -= 1
+                current.append(ch)
+            case "," where depth == 0:
+                args.append(current)
+                current = ""
+            case "\n" where depth == 0:
+                args.append(current)
+                return args.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            default:
+                current.append(ch)
+            }
+        }
+        args.append(current)
+        return args.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     @Test("LocalizationManager persists currentLanguage to UserDefaults")
     @MainActor
     func testLanguagePersistence() {

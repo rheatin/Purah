@@ -112,7 +112,7 @@ public struct NotesPluginSettingsView: View {
                                     .foregroundColor(.primary)
 
                                 let count = state.documents.filter { $0.folder == folder }.count
-                                Text("\(count) notes")
+                                Text(String(format: "notes.noteCount".localized, count))
                                     .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 6)
@@ -133,6 +133,7 @@ public struct NotesPluginSettingsView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .help("notes.settings.deleteFolderHelp".localized)
+                                    .accessibilityLabel("notes.settings.deleteFolderHelp".localized)
                                 }
                             }
                             .padding(.horizontal, 10)

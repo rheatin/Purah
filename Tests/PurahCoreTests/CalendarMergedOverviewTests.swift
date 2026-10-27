@@ -36,6 +36,14 @@ struct CalendarMergedOverviewTests {
         let plugin = CalendarPlugin(state: state)
         store.registerCapabilityProvider(plugin)
         plugin.onMount(store: store)
+
+        // `mount` calls `syncEvents`, which with no calendar permission
+        // replaces whatever we just set with `defaultEvents` — fixed clock
+        // times on *today*. Those are in the past for any CI run after 15:00
+        // local, so the fixture's "one upcoming event" assumption evaporates
+        // and the tests below would be reading an empty list. Put our events
+        // back after the mount so the fixture is what the assertions see.
+        state.events = events
         return (store, plugin, state)
     }
 
@@ -114,10 +122,13 @@ struct CalendarMergedOverviewTests {
     }
 
     @Test("Regular chip activation keeps the chip-slot hit frame")
-    func testRegularChipFrameStaysSlotSized() {
+    func testRegularChipFrameStaysSlotSized() throws {
         let (store, _, state) = makeStore()
 
-        let regularID = state.events.first { $0.endTime > Date() }!.id
+        // `try #require` rather than `!`: if the fixture ever stops containing
+        // an upcoming event, this records a readable failure instead of
+        // trapping the whole test process.
+        let regularID = try #require(state.events.first { $0.endTime > Date() }).id
         store.activateDrawer(podId: "calendar", itemId: regularID)
 
         let edge = store.pods.first(where: { $0.id == "calendar" })?.edge ?? .right

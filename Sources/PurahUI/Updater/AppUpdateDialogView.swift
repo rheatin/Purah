@@ -23,7 +23,7 @@ public struct AppUpdateDialogView: View {
                     Text("updater.title".localized)
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundColor(.primary)
-                    Text("Current Version: v\(updater.currentVersion)")
+                    Text(String(format: "updater.currentVersion".localized, updater.currentVersion))
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
@@ -38,7 +38,7 @@ public struct AppUpdateDialogView: View {
                 case .idle, .checking:
                     VStack(spacing: 12) {
                         ProgressView()
-                        Text("Checking for updates...")
+                        Text("updater.checking".localized)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -67,11 +67,11 @@ public struct AppUpdateDialogView: View {
                 case .updateAvailable(let release):
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("New Version Available: v\(release.version)")
+                            Text("updater.newVersion".localized)
                                 .font(.headline)
                                 .foregroundColor(.accentColor)
                             Spacer()
-                            Text("RELEASED")
+                            Text("updater.released".localized)
                                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -101,7 +101,7 @@ public struct AppUpdateDialogView: View {
                         ProgressView(value: progress > 0 ? progress : nil)
                             .progressViewStyle(.linear)
                             .frame(width: 260)
-                        Text("Downloading update asset...")
+                        Text("updater.downloading".localized)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -115,7 +115,7 @@ public struct AppUpdateDialogView: View {
                     VStack(spacing: 12) {
                         ProgressView()
                             .progressViewStyle(.circular)
-                        Text("Replacing Purah and restarting...")
+                        Text("updater.replacing".localized)
                             .font(.subheadline.weight(.medium))
                             .foregroundColor(.primary)
                     }
@@ -130,7 +130,7 @@ public struct AppUpdateDialogView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.red)
                             .font(.largeTitle)
-                        Text("Update check failed: \(error)")
+                        Text(String(format: "updater.checkFailed".localized, error))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

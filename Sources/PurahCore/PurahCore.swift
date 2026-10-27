@@ -2,5 +2,5 @@
 import Foundation
 
 public struct PurahCore {
-    public static let version = "0.5.3"
+    public static let version = "0.6.0"
 }

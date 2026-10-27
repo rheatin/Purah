@@ -35,7 +35,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            Text("CPU \(Int(state.metrics.cpuUsage * 100))%")
+            Text(String(format: "vitals.barCpu".localized, Int(state.metrics.cpuUsage * 100)))
                 .font(.system(size: 7.5, weight: .bold, design: .monospaced))
                 .foregroundColor(context.accentColor)
                 .padding(.horizontal, 4)
@@ -70,7 +70,17 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         PurahDecomposedPolicy(
-            maxRailItems: min(state.maxRailMetrics, state.enabledMetrics.count),
+            // Just the user's ceiling — not `min(ceiling, enabledCount)`.
+            //
+            // Folding the enabled count in here made the rail's admission check
+            // unsatisfiable: `canEnableSubItem` asks whether
+            // `subItemCount < maxRailItems`, and both sides became the same
+            // number once every slot was full. With two metrics enabled the
+            // limit read 2, so enabling a third was refused — the rail was
+            // permanently stuck at two chips however high the slider went.
+            // How many chips the rail actually renders is a layout question the
+            // decomposition already answers by clipping to the enabled list.
+            maxRailItems: state.maxRailMetrics,
             minChipHeight: 56.0,
             maxChipHeight: 185.0,
             spacing: 2.5,
@@ -279,10 +289,10 @@ public struct VitalsPluginSettingsView: View {
                     // Switch sub-card for decomposition
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Decompose into Stepped Metric Rail Chips")
+                            Text("vitals.decompose.title".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(.primary)
-                            Text("Splits hardware monitoring into individual rail chips (CPU, GPU, RAM, Power, Network, Disk)")
+                            Text("vitals.decompose.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
                         }
@@ -302,6 +312,7 @@ public struct VitalsPluginSettingsView: View {
                         .controlSize(.small)
                         .labelsHidden()
                         .disabled(isStacked)
+                        .purahRowAccessibility("vitals.decompose.title".localized, detail: "vitals.decompose.desc".localized)
                     }
                     .padding(9)
                     .background(
@@ -316,28 +327,29 @@ public struct VitalsPluginSettingsView: View {
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Rail Slot Limit")
+                                Text("vitals.railSlotLimit".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
-                                Text("\(min(state.maxRailMetrics, state.enabledMetrics.count)) of \(state.enabledMetrics.count) metrics")
+                                Text(String(format: "vitals.railSlotLimit.usage".localized, min(state.maxRailMetrics, state.enabledMetrics.count), state.enabledMetrics.count))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(palette.primaryAccent)
                             }
 
                             Slider(
                                 value: Binding(
-                                    get: { Double(min(max(state.maxRailMetrics, 2), 6)) },
+                                    get: { Double(min(max(state.maxRailMetrics, 2), 4)) },
                                     set: {
                                         state.setMaxRailMetrics(Int($0))
                                         store.invalidateLayoutCache()
                                         store.onWindowsRebuildNeeded?()
                                     }
                                 ),
-                                in: 2.0...6.0,
+                                in: 2.0...4.0,
                                 step: 1.0
                             )
+                            .accessibilityLabel("vitals.railSlotLimit".localized)
 
-                            Text("Metrics beyond this limit stay hidden on the rail — enable fewer metrics or raise the limit to show them all.")
+                            Text("vitals.railSlotLimit.desc".localized)
                                 .font(.system(size: 9.5))
                                 .foregroundColor(.secondary)
 
@@ -362,11 +374,11 @@ public struct VitalsPluginSettingsView: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("Visible Sub-Metrics")
+                                Text("vitals.visibleSubMetrics".localized)
                                     .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundColor(.primary)
                                 Spacer()
-                                Text("\(state.enabledMetrics.count) Active")
+                                Text(String(format: "vitals.activeCount".localized, state.enabledMetrics.count))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(palette.primaryAccent)
                             }
@@ -447,7 +459,7 @@ public struct VitalsPluginSettingsView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.system(size: 9, weight: .semibold))
-                        Text("Reset Defaults")
+                        Text("vitals.resetDefaults".localized)
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                     }
                     .padding(.horizontal, 8)
@@ -465,7 +477,7 @@ public struct VitalsPluginSettingsView: View {
                     // Visual 3-color legend/preview bar
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Color Progression (CPU Baseline)")
+                            Text("vitals.colorProgression".localized)
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -500,21 +512,21 @@ public struct VitalsPluginSettingsView: View {
                         HStack {
                             HStack(spacing: 4) {
                                 Circle().fill(VitalsColorResolver.healthyGreen).frame(width: 8, height: 8)
-                                Text("Green (< \(Int(state.thresholds.cpuWarning * 100))%)")
+                                Text(String(format: "vitals.threshold.green".localized, Int(state.thresholds.cpuWarning * 100)))
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
                             HStack(spacing: 4) {
                                 Circle().fill(VitalsColorResolver.warningYellow).frame(width: 8, height: 8)
-                                Text("Amber (\(Int(state.thresholds.cpuWarning * 100))% ~ \(Int(state.thresholds.cpuDanger * 100))%)")
+                                Text(String(format: "vitals.threshold.amber".localized, Int(state.thresholds.cpuWarning * 100), Int(state.thresholds.cpuDanger * 100)))
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
                             HStack(spacing: 4) {
                                 Circle().fill(VitalsColorResolver.dangerRed).frame(width: 8, height: 8)
-                                Text("Red (> \(Int(state.thresholds.cpuDanger * 100))%)")
+                                Text(String(format: "vitals.threshold.red".localized, Int(state.thresholds.cpuDanger * 100)))
                                     .font(.system(size: 9.5))
                                     .foregroundColor(.secondary)
                             }
@@ -563,7 +575,7 @@ public struct VitalsPluginSettingsView: View {
                         // Battery Low Warning %
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Battery Low Warning")
+                                Text("vitals.batteryLowWarning".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
                                 Text("\(Int(state.thresholds.batteryLow * 100))%")
@@ -572,7 +584,7 @@ public struct VitalsPluginSettingsView: View {
                             }
 
                             HStack(spacing: 8) {
-                                Text("Level")
+                                Text("vitals.level".localized)
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                                     .frame(width: 32, alignment: .leading)
@@ -589,6 +601,7 @@ public struct VitalsPluginSettingsView: View {
                                     in: 5...50,
                                     step: 1
                                 )
+                                .accessibilityLabel("vitals.batteryLowWarning".localized)
                             }
                         }
                         .padding(9)
@@ -602,22 +615,22 @@ public struct VitalsPluginSettingsView: View {
                         // Network Warning MB/s
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text("Network Throughput")
+                                Text("vitals.networkThroughput".localized)
                                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 Spacer()
-                                Text("Warn: \(Int(state.thresholds.networkWarningMB)) MB/s")
+                                Text(String(format: "vitals.networkWarnMB".localized, Int(state.thresholds.networkWarningMB)))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(VitalsColorResolver.warningYellow)
                                 Text("•")
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
-                                Text("Danger: \(Int(state.thresholds.networkDangerMB)) MB/s")
+                                Text(String(format: "vitals.networkDangerMB".localized, Int(state.thresholds.networkDangerMB)))
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(VitalsColorResolver.dangerRed)
                             }
 
                             HStack(spacing: 8) {
-                                Text("Warn")
+                                Text("vitals.warn".localized)
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                                     .frame(width: 32, alignment: .leading)
@@ -634,8 +647,9 @@ public struct VitalsPluginSettingsView: View {
                                     in: 1...100,
                                     step: 1
                                 )
+                                .accessibilityLabel("vitals.warnValue".localized)
 
-                                Text("Danger")
+                                Text("vitals.danger".localized)
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                                     .frame(width: 42, alignment: .leading)
@@ -652,6 +666,7 @@ public struct VitalsPluginSettingsView: View {
                                     in: 10...200,
                                     step: 1
                                 )
+                                .accessibilityLabel("vitals.dangerValue".localized)
                             }
                         }
                         .padding(9)
@@ -665,11 +680,11 @@ public struct VitalsPluginSettingsView: View {
 
                     // Live stats footer row
                     HStack(spacing: 10) {
-                        Text("CPU: \(Int(vitals.cpuUsage * 100))%")
+                        Text(String(format: "vitals.barCpuLabel".localized, Int(vitals.cpuUsage * 100)))
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        Text("RAM: \(Int(vitals.memoryUsage * 100))%")
+                        Text(String(format: "vitals.barRamLabel".localized, Int(vitals.memoryUsage * 100)))
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        Text("Disk: \(Int(vitals.diskFreeGB))GB Free")
+                        Text(String(format: "vitals.barDiskFree".localized, Int(vitals.diskFreeGB)))
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                         Spacer()
                         Button {
@@ -678,7 +693,7 @@ public struct VitalsPluginSettingsView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 9))
-                                Text("Refresh")
+                                Text("vitals.refresh".localized)
                                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                             }
                             .foregroundColor(palette.primaryAccent)
@@ -733,29 +748,31 @@ public struct VitalsPluginSettingsView: View {
                 Text(title)
                     .font(.caption.weight(.medium))
                 Spacer()
-                Text("Warn: \(warningLabel)")
+                Text(String(format: "vitals.warnValue".localized, warningLabel))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(VitalsColorResolver.warningYellow)
                 Text("•")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
-                Text("Danger: \(dangerLabel)")
+                Text(String(format: "vitals.dangerValue".localized, dangerLabel))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(VitalsColorResolver.dangerRed)
             }
 
             HStack(spacing: 8) {
-                Text("Warn")
+                Text("vitals.warn".localized)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                     .frame(width: 32, alignment: .leading)
                 Slider(value: warningValue, in: warningRange, step: 1)
+                .accessibilityLabel("vitals.warn".localized)
 
-                Text("Danger")
+                Text("vitals.danger".localized)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                     .frame(width: 42, alignment: .leading)
                 Slider(value: dangerValue, in: dangerRange, step: 1)
+                .accessibilityLabel("vitals.danger".localized)
             }
         }
     }

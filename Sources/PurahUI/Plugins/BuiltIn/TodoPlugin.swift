@@ -306,7 +306,7 @@ public struct TodoPluginSettingsView: View {
                     // Reminders Scope Selector
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Reminders Scope")
+                            Text("todo.scope".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
                             Text(state.scope.title)
@@ -353,10 +353,10 @@ public struct TodoPluginSettingsView: View {
                     // Max Visible Tasks Slider
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
-                            Text("Max Visible Tasks on Rail")
+                            Text("todo.maxVisibleTasks".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
-                            Text("\(state.maxRailTodos) tasks")
+                            Text(String(format: "todo.taskCount".localized, state.maxRailTodos))
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(palette.primaryAccent)
                         }
@@ -376,8 +376,9 @@ public struct TodoPluginSettingsView: View {
                             in: 2.0...10.0,
                             step: 1.0
                         )
+                        .accessibilityLabel("todo.maxVisibleTasks".localized)
 
-                        Text("Primary tasks shown on bezel before folding into remainder")
+                        Text("todo.maxVisibleTasks.desc".localized)
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                     }
@@ -398,7 +399,7 @@ public struct TodoPluginSettingsView: View {
                             Image(systemName: "clock.badge.checkmark")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
-                            Text("Pending: \(pendingCount) Tasks")
+                            Text(String(format: "todo.pendingTasks".localized, pendingCount))
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.primary)
                         }
@@ -417,7 +418,7 @@ public struct TodoPluginSettingsView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .font(.system(size: 10))
-                                Text("Sync Reminders")
+                                Text("todo.syncReminders".localized)
                                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                             }
                             .foregroundColor(palette.primaryAccent)
