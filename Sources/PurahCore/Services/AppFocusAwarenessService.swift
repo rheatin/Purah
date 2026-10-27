@@ -64,7 +64,7 @@ public struct AppFocusSettings: Codable, Sendable, Equatable {
     // not discard the rest.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        isEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .isEnabled)) ?? false ?? false
+        isEnabled = ((try? container.decodeIfPresent(Bool.self, forKey: .isEnabled)) ?? nil) ?? false
         let raw = (try? container.decodeIfPresent([String: AppFocusRule].self, forKey: .rules)) ?? nil
         rules = raw ?? [:]
     }

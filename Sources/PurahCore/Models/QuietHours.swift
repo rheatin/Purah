@@ -57,7 +57,7 @@ public struct QuietHours: Codable, Sendable, Equatable {
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = QuietHours()
-        isEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .isEnabled)) ?? false ?? defaults.isEnabled
+        isEnabled = ((try? container.decodeIfPresent(Bool.self, forKey: .isEnabled)) ?? nil) ?? defaults.isEnabled
         let rawStart = (try? container.decodeIfPresent(Int.self, forKey: .startMinute)) ?? nil
         let rawEnd = (try? container.decodeIfPresent(Int.self, forKey: .endMinute)) ?? nil
         startMinute = rawStart.map(Self.normalizeMinute) ?? defaults.startMinute
