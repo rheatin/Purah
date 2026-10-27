@@ -24,11 +24,20 @@ public enum UpdateCheckState: Sendable, Equatable {
 /// already quit and cannot run Swift.
 public enum UpdateInstallError: LocalizedError, Equatable {
     case unsignedBuild
+    /// The release published no digest for its archive, so there is nothing to
+    /// check the download against.
+    case unverifiedDownload
+    /// The archive did not hash to the published value.
+    case checksumMismatch
 
     public var errorDescription: String? {
         switch self {
         case .unsignedBuild:
             return "This build is not signed with a Developer ID, so it cannot verify an update."
+        case .unverifiedDownload:
+            return "This release does not publish a checksum, so the update was not installed automatically."
+        case .checksumMismatch:
+            return "The downloaded update did not match its published checksum and was discarded."
         }
     }
 }
@@ -244,6 +253,7 @@ public final class AppUpdaterManager {
                 return
             }
             var downloadURL = fallbackURL
+            var digest: String?
             if let assets = json["assets"] as? [[String: Any]] {
                 for asset in assets {
                     if let name = asset["name"] as? String,
@@ -251,6 +261,14 @@ public final class AppUpdaterManager {
                        let browserURL = asset["browser_download_url"] as? String,
                        let u = URL(string: browserURL) {
                         downloadURL = u
+                        // GitHub reports `sha256:<hex>` for every uploaded
+                        // asset. Prefer it, and strip the algorithm prefix.
+                        if let raw = asset["digest"] as? String {
+                            let parts = raw.split(separator: ":", maxSplits: 1)
+                            if parts.count == 2, parts[0].lowercased() == "sha256" {
+                                digest = String(parts[1])
+                            }
+                        }
                         break
                     }
                 }
@@ -260,7 +278,8 @@ public final class AppUpdaterManager {
                 version: remoteVersion,
                 releaseDate: Date(),
                 releaseNotes: bodyText,
-                downloadURL: downloadURL
+                downloadURL: downloadURL,
+                sha256: digest
             )
 
             state = availability(of: release)
@@ -314,6 +333,29 @@ public final class AppUpdaterManager {
             let (tempURL, response) = try await URLSession.shared.download(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 state = .failed(error: "Download failed (invalid status code)")
+                return
+            }
+
+            // Check the archive against the digest the release published for
+            // it, before it is handed to a script that will replace the app.
+            // A release with no published digest cannot be verified, so it is
+            // not installed in place — same reasoning as the Team ID guard
+            // above: never trade the user's working app for an unverified one.
+            guard let expected = release.normalizedSHA256 else {
+                try? FileManager.default.removeItem(at: tempURL)
+                openURL(release.downloadURL)
+                state = .failed(error: UpdateInstallError.unverifiedDownload.localizedDescription)
+                return
+            }
+            do {
+                try FileChecksum.verify(fileAt: tempURL, matches: expected)
+            } catch {
+                try? FileManager.default.removeItem(at: tempURL)
+                DiagnosticLogger.shared.error(
+                    "Updater",
+                    "Downloaded archive failed checksum verification: \(error.localizedDescription)"
+                )
+                state = .failed(error: UpdateInstallError.checksumMismatch.localizedDescription)
                 return
             }
 

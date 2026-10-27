@@ -86,18 +86,40 @@ struct LocalizationTests {
 
     @Test("A key added to English is translated everywhere, or explicitly listed")
     func testTranslationCoverage() {
-        // Japanese/Korean/French/German/Spanish are intentionally partial today,
-        // so "parity" cannot be asserted. What can be asserted is that the drift
-        // is known: this pins the sizes so a table cannot lose rows unnoticed,
-        // and — more usefully — so the gap is a decision someone made rather
-        // than something nobody noticed.
+        // Simplified Chinese is a complete translation and must stay at parity.
         let english = Set(LocalizationManager.keys(for: .english))
         let chinese = Set(LocalizationManager.keys(for: .chinese))
         #expect(english == chinese, "Simplified Chinese is a complete translation and must stay in sync")
 
-        for language in AppLanguage.allCases where language != .system && language != .english {
-            let count = LocalizationManager.keys(for: language).count
-            #expect(count > 0, "\(language.rawValue) has no translations at all")
+        // The remaining languages are intentionally partial, so parity cannot
+        // be asserted — but the *size* of each gap is a decision, not an
+        // accident. Pin it: a table that silently loses rows (a bad merge, a
+        // truncated edit) fails here instead of quietly falling back to English
+        // for the missing strings. Raise a number when you add translations;
+        // never lower one to make this pass.
+        let pinnedCoverage: [AppLanguage: Int] = [
+            .traditionalChinese: 554,
+            .japanese: 74,
+            .korean: 74,
+            .french: 74,
+            .german: 74,
+            .spanish: 95
+        ]
+
+        for (language, expected) in pinnedCoverage {
+            let actual = LocalizationManager.keys(for: language).count
+            #expect(
+                actual == expected,
+                """
+                \(language.rawValue) has \(actual) keys, expected \(expected). \
+                If you added translations, update the pin. If they went missing, \
+                that is the regression this test exists to catch.
+                """
+            )
+            #expect(
+                actual <= english.count,
+                "\(language.rawValue) defines keys English lacks — see testNoOrphanTranslations"
+            )
         }
     }
 
