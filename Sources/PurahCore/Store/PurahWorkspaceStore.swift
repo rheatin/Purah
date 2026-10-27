@@ -1041,6 +1041,45 @@ public final class PurahWorkspaceStore {
     public var acknowledgedAlertIds: Set<String> = []
     public var notifiedToastEventIds: Set<String> = []
 
+    /// A daily window during which no attention is demanded.
+    ///
+    /// Suppression is deliberately at the *demand* layer, not the data layer:
+    /// events and vitals keep updating while quiet, they just stop pushing
+    /// themselves at the user. Silencing the collection instead would leave the
+    /// rail showing stale information for the first minutes after the window
+    /// ends.
+    /// Backing storage for `quietHours`, so the persistence loader can restore
+    /// it without tripping the property's observer and writing straight back.
+    package var _quietHours: QuietHours = QuietHours()
+
+    public var quietHours: QuietHours {
+        get { _quietHours }
+        set {
+            guard newValue != _quietHours else { return }
+            _quietHours = newValue
+            invalidateLayoutCache()
+            savePersistentState()
+        }
+    }
+    /// True when attention-demanding behaviour should be held back right now.
+    ///
+    /// Read through a function rather than the property so every call site
+    /// answers the same question about the same clock, and so the tests can
+    /// inject a time.
+    public func isQuietNow(at date: Date = Date()) -> Bool {
+        quietHours.isActive(at: date)
+    }
+
+    /// `isPodAlerting` with the quiet window applied.
+    ///
+    /// Views should call this rather than the raw predicate; the raw one stays
+    /// available because acknowledging an alert while quiet must still be
+    /// possible, and the settings UI needs to show what *would* be alerting.
+    public func isPodAlertingNow(podId: String, at date: Date = Date()) -> Bool {
+        guard !isQuietNow(at: date) else { return false }
+        return isPodAlerting(podId: podId)
+    }
+
     // Sensory Feedback Settings
     public var isToastSoundEnabled: Bool = true
     public var toastNotificationSound: ToastNotificationSound = .glass
@@ -1195,6 +1234,15 @@ public final class PurahWorkspaceStore {
 
     public func postToastNotification(id: String, message: String) {
         guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(id) else { return }
+        // A toast is the most intrusive thing this app does, so quiet hours
+        // suppress it outright. The id is still consumed: replaying the same
+        // toast when the window ends would be a backlog dump of everything
+        // that happened while the user was away.
+        guard !isQuietNow() else {
+            notifiedToastEventIds.insert(id)
+            pruneStaleAlertIDs()
+            return
+        }
         notifiedToastEventIds.insert(id)
         pruneStaleAlertIDs()
         onCapacityWarningToast?(message)

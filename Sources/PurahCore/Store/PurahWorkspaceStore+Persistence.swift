@@ -173,6 +173,12 @@ extension PurahWorkspaceStore {
            let style = PluginAlertStyle(rawValue: alertStr) {
             self.alertStyle = style
         }
+        if let quietData = defaults.data(forKey: "purah.quietHours"),
+           let decoded = try? JSONDecoder().decode(QuietHours.self, from: quietData) {
+            // Assign the backing storage directly: the `didSet` would write it
+            // straight back to disk during a load.
+            _quietHours = decoded
+        }
         if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
             self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
         }
@@ -241,6 +247,9 @@ extension PurahWorkspaceStore {
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
         defaults.set(edgeTriggerMode.rawValue, forKey: "purah.edgeTriggerMode")
         defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
+        if let quietData = try? JSONEncoder().encode(quietHours) {
+            defaults.set(quietData, forKey: "purah.quietHours")
+        }
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
         defaults.set(toastNotificationSound.rawValue, forKey: "purah.toastNotificationSound")
