@@ -123,6 +123,37 @@ Purah 的理念是“非请勿扰”，在无意触发时完全隐形，在使�
 
 ---
 
+### 📦 安装
+
+**需要 macOS 14 或更高版本。** 端侧 AI 功能需要 macOS 26。
+
+**1. 安装脚本（推荐）**
+
+从 [Releases](https://github.com/rheatin/Purah/releases/latest) 下载 DMG，打开后双击 **Install Purah.command**。它会把 Purah 复制到「应用程序」、解除系统给下载文件打的隔离标记，然后启动它。脚本是带注释的明文 bash，你可以先读完再双击——它不会改动应用的任何内容。
+
+**2. 如果你自己把 App 拖进了「应用程序」**
+
+macOS 会拒绝打开无法验证的应用。Purah 是 MIT 开源的免费软件，采用 ad-hoc 签名：作者没有 99 美元/年的 Apple 开发者账号，系统找不到可以核对的发布者。
+
+- **macOS 15 (Sequoia) 及更新版本**：双击 Purah → 打开「系统设置 → 隐私与安全性」→ 滑到底 → 点「仍要打开」。
+- **macOS 14 (Sonoma)**：右键（或 Control-点击）Purah → **打开** → **打开**。
+
+右键打开这个老办法在 macOS 15 已经被 Apple 移除了。
+
+**3. 自己编译**
+
+如果不放心别人的二进制，源码就是产出它的同一份代码：
+
+```bash
+git clone https://github.com/rheatin/Purah.git && cd Purah
+./build.sh --configuration release
+open build/Purah.app
+```
+
+每次发布都会在 DMG 旁边附上 SHA-256，可用 `shasum -a 256` 自行核对。
+
+---
+
 ### 🛠 编译与测试
 
 ```bash

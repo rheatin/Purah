@@ -1,0 +1,47 @@
+Purah — 安装说明 / How to install
+=====================================================================
+
+推荐做法 / Recommended
+  双击「Install Purah.command」。
+  它会把 Purah 复制到「应用程序」，解除下载隔离标记，然后启动它。
+
+  Double-click "Install Purah.command". It copies Purah into Applications,
+  clears the download flag, and launches it.
+
+
+如果你已经把 Purah 自己拖进了「应用程序」
+If you already dragged Purah into Applications yourself
+  macOS 15 (Sequoia) 及更新版本 / and later:
+    双击 Purah → 系统提示「无法验证开发者」
+    → 打开「系统设置 → 隐私与安全性」→ 点「仍要打开」
+
+    Double-click Purah → macOS refuses → System Settings → Privacy &
+    Security → "Open Anyway".
+
+  macOS 14 (Sonoma):
+    右键（或 Control-点击）Purah → 打开 → 打开
+    Right-click (or Control-click) Purah → Open → Open
+
+  注意：右键打开这个老办法在 macOS 15 已经被 Apple 移除了。
+  Note: the right-click trick was removed in macOS 15.
+
+
+为什么会有这个提示 / Why the warning exists
+  Purah 是 MIT 开源的免费软件，作者没有 Apple 开发者账号（$99/年），
+  所以系统无法验证它的签名。应用代码全部公开：
+  https://github.com/rheatin/Purah
+  不放心二进制的话，可以直接自己编译：
+      ./build.sh --configuration release
+
+  Purah is free and MIT-licensed. Its author does not have a $99/year Apple
+  Developer account, so macOS cannot verify the signature. The source is at
+  the link above; you can build the exact same app yourself with the command
+  shown above.
+
+
+首次使用 / First run
+  Purah 没有 Dock 图标，也不在程序坞里。
+  把鼠标移到屏幕左边缘或右边缘，抽屉会滑出来。
+
+  Purah has no Dock icon. Move the cursor to the left or right edge of the
+  screen and the drawers slide out.
