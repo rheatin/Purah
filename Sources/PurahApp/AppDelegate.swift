@@ -5,7 +5,7 @@ import PurahCore
 import PurahUI
 
 @MainActor
-public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     public let store = PurahWorkspaceStore()
     var coordinator: ScreenEdgeCoordinator?
     var mouseMonitor: EdgeMouseMonitor?
@@ -210,7 +210,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             button.image?.isTemplate = true
         }
 
-        let menu = NSMenu()
+        // Reuse the menu instead of replacing it: a swap beneath an open menu
+        // leaves the visible one stale, and `menuNeedsUpdate` rebuilds this
+        // object in place every time it opens — which is also how a language
+        // change made in Settings reaches titles that were baked at launch.
+        let menu = statusMenu ?? NSMenu()
+        menu.removeAllItems()
+        menu.delegate = self
 
         // App Title Item
         let headerItem = NSMenuItem(title: "app.name".localized, action: nil, keyEquivalent: "")
@@ -232,7 +238,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         menu.addItem(sculptorItem)
 
         // Freeze / Unfreeze Rails
-        let freezeTitle = frozen ? "Unfreeze Rails (\(store.hotKeyShortcut.displayString))" : "Freeze Rails (\(store.hotKeyShortcut.displayString))"
+        let freezeKey = frozen ? "menu.unfreezeRails" : "menu.freezeRails"
+        let freezeTitle = "\(freezeKey.localized) (\(store.hotKeyShortcut.displayString))"
         let freezeItem = NSMenuItem(title: freezeTitle, action: #selector(toggleFreezeMode), keyEquivalent: "")
         freezeItem.target = self
         menu.addItem(freezeItem)
@@ -250,6 +257,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         self.statusMenu = menu
         statusItem?.menu = menu
+    }
+
+    // MARK: - NSMenuDelegate
+
+    /// The status menu is drawn from live state (frozen or not, current
+    /// shortcut, current language), so it is rebuilt just before it opens.
+    public func menuNeedsUpdate(_ menu: NSMenu) {
+        rebuildMenu()
     }
 
     @objc private func openPreferences() {

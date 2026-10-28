@@ -111,7 +111,7 @@ struct LocalizationTests {
             // `clipboard.quota.*`, and the rest of the dead families). The
             // English vocabulary shrank, so a partial translation loses rows in
             // proportion to how much of it it covered.
-            .traditionalChinese: 514,
+            .traditionalChinese: 518,
             .japanese: 71,
             .korean: 71,
             .french: 71,
@@ -155,6 +155,36 @@ struct LocalizationTests {
         }
         loc.currentLanguage = .chinese
         #expect(loc.localized("ai.settings.mcpServers") == "MCP 服务器")
+    }
+
+    @Test("The Freeze Rails menu item and HUD read Chinese in Chinese")
+    func testFreezeStringsLocalized() {
+        // Both were hardcoded English in AppDelegate and TransientHUDController,
+        // so clicking the menu bar item answered in English under every
+        // language. Pinning the Chinese values catches the other failure too: a
+        // mistyped key falls back to English and looks identical to the bug.
+        let loc = LocalizationManager()
+        let saved = loc.currentLanguage
+        defer { loc.currentLanguage = saved }
+
+        let keys = ["menu.freezeRails", "menu.unfreezeRails", "hud.railsFrozen", "hud.railsActive"]
+        for key in keys {
+            #expect(loc.localized(key) != key, "\(key) is missing from the English table")
+        }
+
+        loc.currentLanguage = .chinese
+        #expect(loc.localized("menu.freezeRails") == "冻结边缘轨")
+        #expect(loc.localized("menu.unfreezeRails") == "解冻边缘轨")
+        for key in keys {
+            #expect(loc.localized(key) != EnglishFor(key), "\(key) still reads as English in zh-Hans")
+        }
+    }
+
+    /// The English text for a key, for comparing across languages.
+    private func EnglishFor(_ key: String) -> String {
+        let loc = LocalizationManager()
+        loc.currentLanguage = .english
+        return loc.localized(key)
     }
 
     @Test("Every UI-facing key used in source exists in the tables")

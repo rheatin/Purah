@@ -108,6 +108,10 @@ public final class LocalizationManager {
             "menu.autoLayout": "Magic Ergonomics Auto-Layout",
             "menu.checkUpdates": "Check for Updates...",
             "menu.quit": "Quit Purah",
+            "menu.freezeRails": "Freeze Rails",
+            "menu.unfreezeRails": "Unfreeze Rails",
+            "hud.railsFrozen": "❄️ Rails Frozen (%@ to restore)",
+            "hud.railsActive": "✨ Rails Active",
 
             // Tabs
             "tab.general": "General",
@@ -939,6 +943,10 @@ public final class LocalizationManager {
             "menu.autoLayout": "智能自适应布局",
             "menu.checkUpdates": "检查更新...",
             "menu.quit": "退出 Purah",
+            "menu.freezeRails": "冻结边缘轨",
+            "menu.unfreezeRails": "解冻边缘轨",
+            "hud.railsFrozen": "❄️ 边缘轨已冻结（%@ 恢复）",
+            "hud.railsActive": "✨ 边缘轨已恢复",
 
             // Tabs
             "tab.general": "通用",
@@ -1766,6 +1774,10 @@ public final class LocalizationManager {
         ],
         .traditionalChinese: [
             "tab.general": "通用",
+            "menu.freezeRails": "凍結邊緣軌",
+            "menu.unfreezeRails": "解凍邊緣軌",
+            "hud.railsFrozen": "❄️ 邊緣軌已凍結（%@ 恢復）",
+            "hud.railsActive": "✨ 邊緣軌已恢復",
             "tab.layout": "布局",
             "tab.motion": "動效",
             "tab.interaction": "動效與通用",

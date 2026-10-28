@@ -93,7 +93,9 @@ public final class TransientHUDController {
     public func show(isFrozen: Bool, shortcut: String) {
         store?.triggerControlHaptic(.levelChange)
         self.isFrozen = isFrozen
-        let message = isFrozen ? "❄️ Rails Frozen (\(shortcut) to restore)" : "✨ Rails Active"
+        let message = isFrozen
+            ? String(format: "hud.railsFrozen".localized, shortcut)
+            : "hud.railsActive".localized
         self.currentText = message
 
         fadeTask?.cancel()
