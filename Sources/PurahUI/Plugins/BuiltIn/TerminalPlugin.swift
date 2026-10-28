@@ -105,6 +105,9 @@ public struct TerminalRailBarPluginView: View {
 public struct TerminalPluginSettingsView: View {
     public let state: TerminalPluginState
     public let store: PurahWorkspaceStore
+    /// Mirrors the persisted preference so the toggle repaints; the shell reads
+    /// `UserDefaults` when it launches, not this view.
+    @State private var isCommandSuggestEnabled = TerminalShellIntegration.isEnabled
     private var manager: TerminalManager {
         TerminalManager.shared
     }
@@ -266,6 +269,34 @@ public struct TerminalPluginSettingsView: View {
 
                         Spacer()
                     }
+                }
+            }
+
+            // Card 3: Natural-Language Commands (`??`)
+            PurahPluginSettingsCard(
+                title: "terminal.suggest.title".localized,
+                subtitle: "terminal.suggest.subtitle".localized,
+                icon: "text.line.last.and.arrowtriangle.forward",
+                iconColor: palette.primaryAccent
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle(isOn: Binding(
+                        get: { isCommandSuggestEnabled },
+                        set: { newValue in
+                            isCommandSuggestEnabled = newValue
+                            UserDefaults.standard.set(newValue, forKey: TerminalShellIntegration.defaultsKey)
+                        }
+                    )) {
+                        Text("terminal.suggest.toggle".localized)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+
+                    Text("terminal.suggest.note".localized)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

@@ -442,6 +442,11 @@ public struct AIAssistantPluginSettingsView: View {
     @State private var newServerCommand: String = ""
     @State private var newServerArgs: String = ""
 
+    /// Templates read from the custom CLI's own `--help`, and why none came back.
+    @State private var inferredTemplates: [CLITemplateCandidate] = []
+    @State private var isInferringTemplates = false
+    @State private var inferTemplateNotice: String? = nil
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -822,6 +827,72 @@ public struct AIAssistantPluginSettingsView: View {
                             .textFieldStyle(.plain)
                             .font(.system(size: 11))
                     }
+
+                    // A custom CLI's flags are the one thing the user cannot
+                    // guess and the binary will not tell them twice. Reading
+                    // `--help` answers it from the binary itself.
+                    if state.selectedCLI == .custom {
+                        Button {
+                            inferTemplatesFromHelp()
+                        } label: {
+                            HStack(spacing: 4) {
+                                if isInferringTemplates {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .scaleEffect(0.7)
+                                        .frame(width: 9, height: 9)
+                                } else {
+                                    Image(systemName: "wand.and.stars")
+                                        .font(.system(size: 9))
+                                }
+                                Text((isInferringTemplates ? "ai.inferTemplate.running" : "ai.inferTemplate").localized)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(palette.primaryAccent.opacity(0.10))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.primaryAccent.opacity(0.45), lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.tactile)
+                        .disabled(isInferringTemplates)
+                        .help("help.inferTemplate".localized)
+                        .accessibilityLabel("ai.inferTemplate".localized)
+                    }
+                }
+
+                if let notice = inferTemplateNotice {
+                    HStack(alignment: .top, spacing: 5) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 9))
+                        Text(notice)
+                            .font(.system(size: 9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 118)
+                }
+
+                if inferredTemplates.count > 1 {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("ai.inferTemplate.fromHelp".localized)
+                            .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)],
+                            spacing: 5
+                        ) {
+                            ForEach(inferredTemplates) { candidate in
+                                inferredTemplatePill(candidate)
+                            }
+                        }
+                    }
+                    .padding(.leading, 118)
                 }
 
                 // 2x2 Quick-Fill Preset Chips Grid
@@ -1020,6 +1091,70 @@ public struct AIAssistantPluginSettingsView: View {
         .buttonStyle(.plain)
         .help(String(format: "help.quickFillTemplate".localized, template))
         .accessibilityLabel(String(format: "help.quickFillTemplate".localized, template))
+    }
+
+    // MARK: - Inferred Template Probe
+
+    /// A template that came out of `<custom CLI> --help`. The help line it came
+    /// from is the tooltip, so the suggestion can be checked before it is used.
+    @ViewBuilder
+    private func inferredTemplatePill(_ candidate: CLITemplateCandidate) -> some View {
+        let isSelected = state.customCLIArguments == candidate.template
+        Button {
+            state.customCLIArguments = candidate.template
+            inferTemplateNotice = nil
+        } label: {
+            Text(candidate.template)
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4.5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isSelected ? palette.primaryAccent.opacity(0.12) : Color.primary.opacity(0.035))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(isSelected ? palette.primaryAccent.opacity(0.6) : palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                )
+                .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+        }
+        .buttonStyle(.plain)
+        .help(candidate.reason)
+        .accessibilityLabel(candidate.template)
+    }
+
+    /// Asks the custom binary how it takes a prompt, and offers what it said.
+    ///
+    /// Nothing is applied automatically: the user picks, because the probe can
+    /// only read what the CLI documents, and a wrong template is worse than the
+    /// one already set.
+    private func inferTemplatesFromHelp() {
+        guard !isInferringTemplates else { return }
+        inferredTemplates = []
+        inferTemplateNotice = nil
+
+        guard let path = AIAssistantService.shared.resolveCLIPath(
+            for: state.selectedCLI,
+            customPath: state.customCLIPath
+        ) else {
+            inferTemplateNotice = "ai.inferTemplate.notFound".localized
+            return
+        }
+
+        isInferringTemplates = true
+        Task {
+            let result = await CLITemplateProbe.probe(executablePath: path)
+            isInferringTemplates = false
+            inferredTemplates = result.candidates
+            if result.didTimeOut {
+                inferTemplateNotice = "ai.inferTemplate.timeout".localized
+            } else if result.candidates.count <= 1 {
+                inferTemplateNotice = "ai.inferTemplate.none".localized
+            }
+        }
     }
 
     // MARK: - Model Selector Row

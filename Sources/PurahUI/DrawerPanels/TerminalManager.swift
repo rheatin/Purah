@@ -446,6 +446,11 @@ public final class TerminalManager: ObservableObject {
         env["PURAH_TERMINAL"] = "1"
         env.removeValue(forKey: "TERM_PROGRAM")
 
+        // `??`: hand the shell a managed ZDOTDIR and the loopback endpoint.
+        // Returns false when the shell is not zsh or the feature is off, in
+        // which case nothing at all is added.
+        TerminalShellIntegration.prepare(environment: &env, shellPath: shell)
+
         let envArray = env.map { "\($0.key)=\($0.value)" }
 
         view.startProcess(

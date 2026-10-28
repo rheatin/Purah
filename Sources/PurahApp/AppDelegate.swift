@@ -35,6 +35,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         PluginRegistry.shared.bindStore(store)
         TransientHUDController.shared.store = store
 
+        // `??` needs its loopback listener and managed zsh files ready before a
+        // shell starts. Warming them now keeps that wait off the terminal's
+        // launch path (and off the main thread).
+        Task.detached(priority: .utility) {
+            TerminalShellIntegration.prewarm()
+        }
+
         // The marketplace reads a published index. Until a catalog repo exists
         // there is no URL to point at, and leaving the provider unconfigured is
         // the honest state: the grid shows built-ins only and the Refresh

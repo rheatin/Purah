@@ -19,7 +19,7 @@ Sources/
 - **`PurahCore`**:
   - `PurahWorkspaceStore`: Primary `@Observable` state container. Handles slot pod layout, active drawer states, and local persistence (`UserDefaults`).
   - `ErgonomicAutoLayoutEngine`: Mathematical solver calculating optimal non-overlapping vertical ranges (`NormalizedRange`: 0.0 ~ 1.0) along screen edges.
-  - `Services`: Native system integrations (`HardwareVitalsService`, `SystemMusicSyncService`, `SystemCalendarSyncService`, `SystemRemindersSyncService`, `ScriptRunwayService`, `AIAssistantService`, `SystemClipboardSyncService`, `LaunchAtLoginService`, and `PurahConfigBackupManager`).
+  - `Services`: Native system integrations (`HardwareVitalsService`, `SystemMusicSyncService`, `SystemCalendarSyncService`, `SystemRemindersSyncService`, `ScriptRunwayService`, `AIAssistantService`, `SystemClipboardSyncService`, `LaunchAtLoginService`, `CommandSuggestionService`, `TerminalSuggestionBridge`, `ZshSuggestionIntegration`, and `PurahConfigBackupManager`).
   - `Plugins`: Standard plugin manifest schema (`PurahPluginManifest`).
 - **`PurahUI`**:
   - `AmbientRailStripView`: Unified edge rail container rendering active pods and drawer cards.
@@ -209,6 +209,13 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 3. **Background EventKit Sync**:
    - `SystemCalendarSyncService` and `SystemRemindersSyncService` maintain `weak var boundStore: PurahWorkspaceStore?`.
    - When `.EKEventStoreChanged` fires, automatically refresh `boundStore`.
+4. **Natural-Language Commands in the Terminal (`??` / `???`)**:
+   - `CommandSuggestionService` reuses the AI Assistant's configured provider (same CLI, endpoint, credentials — keys read from `ScopedPluginStorage(pluginId: "ai")`, so there is no second place to configure) and returns one command plus a one-sentence explanation.
+   - The shell cannot call Swift and Purah has no CLI entry point, so the two talk over `TerminalSuggestionBridge`: a `NWListener` bound to loopback with a per-launch bearer token passed to the shell as `PURAH_BRIDGE_TOKEN` / `PURAH_AI_PORT`. The request body is `application/x-www-form-urlencoded` and the reply is three plain lines (`#risk=…`, command, prose) — JSON on either side would mean shipping a parser into zsh.
+   - `ZshSuggestionIntegration` writes `.zshenv/.zprofile/.zshrc/.zlogin` into `~/Library/Application Support/Purah/ShellIntegration/zsh` and the shell is launched with `ZDOTDIR` pointing there; each managed file sources the real one from `PURAH_REAL_ZDOTDIR` first. Dotfiles are never edited — removing the feature is simply not setting the variable.
+   - `??` and `???` are **aliases, not functions**: zsh filename-generates command words, so a two-character file in the cwd turns a `??` function into "command not found: j1". Alias expansion happens before globbing.
+   - The suggestion is pushed onto the input line with `print -z` and is **never executed**; a `precmd` hook supplies the last exit status and command line for `???`.
+   - Risk is classified by `CommandRiskClassifier` from a fixed vocabulary, never taken from the model: a label from the same source as the command protects nothing. Anything unreadable fails closed (`CommandSuggestionParser` accepts JSON only — a prose answer must not become a command).
 
 ---
 

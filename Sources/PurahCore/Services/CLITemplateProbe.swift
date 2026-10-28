@@ -1,0 +1,238 @@
+// Sources/PurahCore/Services/CLITemplateProbe.swift
+import Foundation
+
+/// A candidate arguments template for a custom CLI, with where it came from.
+public struct CLITemplateCandidate: Identifiable, Equatable, Sendable {
+    /// The template as it would be typed, e.g. `-p {prompt}`.
+    public let template: String
+    /// The help line that suggested it, so the choice is not a guess.
+    public let reason: String
+    /// Higher wins. Ties keep the order they were found in.
+    public let score: Int
+
+    public var id: String { template }
+}
+
+public struct CLITemplateProbeResult: Sendable {
+    public let candidates: [CLITemplateCandidate]
+    public let helpExcerpt: String
+    public let exitCode: Int32
+    public let didTimeOut: Bool
+}
+
+/// Reads a CLI's own `--help` and proposes argument templates for it.
+///
+/// Adding a custom CLI meant guessing how it takes a prompt: an agent takes
+/// `-p`, a runner takes `run`, and a miss is silent — the CLI either opens an
+/// interactive session that never returns or ignores the prompt entirely.
+/// The help text is the one source of truth the binary ships itself, so it is
+/// worth reading before asking the user to guess.
+///
+/// The parse is deterministic on purpose. A model asked to read help text
+/// invents flags that look plausible; a table of what the binary actually
+/// printed can be checked, tested, and shown next to the choice.
+public enum CLITemplateProbe {
+
+    /// Longest help output kept. Anything past this is the licence appendix.
+    public static let maximumHelpBytes = 64 * 1024
+
+    /// Flags that take the prompt as their value, best first.
+    ///
+    /// `--print` is first because the agent CLIs people add here (`claude`,
+    /// `codex`, `pi`) use it for their non-interactive mode, and a template
+    /// that drops into an interactive session is the failure this feature
+    /// exists to prevent.
+    static let promptFlagPreference = [
+        "--print", "-p", "--prompt", "-m", "--message",
+        "-q", "--query", "--ask", "-i", "--input",
+    ]
+
+    /// Subcommands that mean "answer this and exit", best first.
+    static let promptSubcommandPreference = [
+        "exec", "run", "ask", "complete", "generate", "prompt", "chat",
+    ]
+
+    // MARK: - Probing
+
+    /// Runs `<path> --help` and infers templates from what it printed.
+    ///
+    /// - Parameter timeout: A CLI that does not understand `--help` may start
+    ///   an interactive session instead. It is killed at the deadline, and the
+    ///   result says so, so the caller can explain that rather than pretend.
+    public static func probe(executablePath: String, timeout: TimeInterval = 4.0) async -> CLITemplateProbeResult {
+        let path = (executablePath as NSString).expandingTildeInPath
+        guard FileManager.default.isExecutableFile(atPath: path) else {
+            return CLITemplateProbeResult(candidates: fallbackCandidates(), helpExcerpt: "", exitCode: -1, didTimeOut: false)
+        }
+
+        let outcome = await runHelpBounded(path: path, timeout: timeout)
+        let candidates = inferTemplates(from: outcome.text)
+        return CLITemplateProbeResult(
+            candidates: candidates,
+            helpExcerpt: outcome.text,
+            exitCode: outcome.exitCode,
+            didTimeOut: outcome.didTimeOut
+        )
+    }
+
+    private struct HelpOutcome: Sendable {
+        let text: String
+        let exitCode: Int32
+        let didTimeOut: Bool
+    }
+
+    /// Runs the process with its output going to files.
+    ///
+    /// Files rather than pipes: `readDataToEndOfFile` after `waitUntilExit` can
+    /// deadlock once the CLI writes more than a pipe buffer, and a help screen
+    /// easily does.
+    private static func runHelpBounded(path: String, timeout: TimeInterval) async -> HelpOutcome {
+        await Task.detached(priority: .userInitiated) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: path)
+            process.arguments = ["--help"]
+
+            let tempDir = FileManager.default.temporaryDirectory
+            let outURL = tempDir.appendingPathComponent("purah-help-\(UUID().uuidString).out")
+            let errURL = tempDir.appendingPathComponent("purah-help-\(UUID().uuidString).err")
+            FileManager.default.createFile(atPath: outURL.path, contents: nil)
+            FileManager.default.createFile(atPath: errURL.path, contents: nil)
+            defer {
+                try? FileManager.default.removeItem(at: outURL)
+                try? FileManager.default.removeItem(at: errURL)
+            }
+
+            guard let outHandle = try? FileHandle(forWritingTo: outURL),
+                  let errHandle = try? FileHandle(forWritingTo: errURL) else {
+                return HelpOutcome(text: "", exitCode: -1, didTimeOut: false)
+            }
+            process.standardOutput = outHandle
+            process.standardError = errHandle
+            // A CLI with no `--help` may wait for a prompt; EOF ends that
+            // rather than the timeout having to.
+            process.standardInput = FileHandle.nullDevice
+
+            do {
+                try process.run()
+            } catch {
+                try? outHandle.close()
+                try? errHandle.close()
+                return HelpOutcome(text: "", exitCode: -1, didTimeOut: false)
+            }
+
+            let deadline = Date().addingTimeInterval(timeout)
+            while process.isRunning && Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            let didTimeOut = process.isRunning
+            if didTimeOut { process.terminate() }
+            process.waitUntilExit()
+            try? outHandle.close()
+            try? errHandle.close()
+
+            let stdout = (try? Data(contentsOf: outURL)) ?? Data()
+            let stderr = (try? Data(contentsOf: errURL)) ?? Data()
+            var combined = stdout
+            if !stderr.isEmpty {
+                combined.append(Data("\n".utf8))
+                combined.append(stderr)
+            }
+            let clipped = combined.prefix(maximumHelpBytes)
+            let text = String(decoding: clipped, as: UTF8.self)
+            return HelpOutcome(text: text, exitCode: process.terminationStatus, didTimeOut: didTimeOut)
+        }.value
+    }
+
+    // MARK: - Inference
+
+    /// Turns help output into ranked templates. Pure, so it can be tested on
+    /// captured help text without running anything.
+    public static func inferTemplates(from help: String) -> [CLITemplateCandidate] {
+        let lines = help
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        var candidates: [CLITemplateCandidate] = []
+        var seen = Set<String>()
+
+        func add(_ template: String, reason: String, score: Int) {
+            guard !seen.contains(template) else { return }
+            seen.insert(template)
+            candidates.append(CLITemplateCandidate(template: template, reason: reason, score: score))
+        }
+
+        for line in lines {
+            let lowered = line.lowercased()
+
+            // A flag that takes the prompt: `-p, --print <prompt>  Print the answer`.
+            if let flag = leadingFlag(in: line) {
+                let mentionsPrompt = lowered.contains("prompt") || lowered.contains("message")
+                    || lowered.contains("query") || lowered.contains("question")
+                let rank = promptFlagPreference.firstIndex(of: flag)
+                if mentionsPrompt || rank != nil {
+                    let score = (mentionsPrompt ? 3 : 1) + (rank.map { 4 - min($0, 3) } ?? 0)
+                    add("\(flag) {prompt}", reason: line, score: score)
+                }
+            }
+
+            // A subcommand that answers and exits: a bare word at the start of
+            // an entry, with no dash.
+            let firstWord = line.split(separator: " ").first.map(String.init) ?? ""
+            if !firstWord.hasPrefix("-"), firstWord.count >= 2, firstWord.count <= 20,
+               promptSubcommandPreference.contains(firstWord) {
+                let rank = promptSubcommandPreference.firstIndex(of: firstWord) ?? 9
+                add("\(firstWord) {prompt}", reason: line, score: 4 - min(rank, 3))
+            }
+        }
+
+        // Structured output, when the CLI offers it: the assistant parses
+        // better from JSON than from prose when the CLI can produce it.
+        let offersJSON = help.contains("--json") || help.lowercased().contains("--format")
+        if offersJSON, let best = candidates.max(by: { $0.score < $1.score }) {
+            let jsonFlag = help.contains("--json") ? "--json" : "--format json"
+            add(
+                "\(best.template) \(jsonFlag)",
+                reason: "help offers structured output (\(jsonFlag))",
+                score: best.score - 1
+            )
+        }
+
+        // Always offer the bare form last: some CLIs take the prompt as the
+        // only positional argument and say nothing about it.
+        add("{prompt}", reason: "no documented flag; most CLIs accept a positional prompt", score: 0)
+
+        return candidates
+            .enumerated()
+            .sorted { a, b in
+                a.element.score == b.element.score ? a.offset < b.offset : a.element.score > b.element.score
+            }
+            .map(\.element)
+            .prefix(4)
+            .map { $0 }
+    }
+
+    /// The flags an entry opens with, e.g. `-p, --print <prompt>  Print…` → `--print`.
+    ///
+    /// Long form wins when both are listed: it is the one that reads clearly in
+    /// a template. Only the run of leading `-`-prefixed tokens is considered,
+    /// so the description that follows can never be mistaken for a flag.
+    static func leadingFlag(in line: String) -> String? {
+        var names: [String] = []
+        for token in line.split(separator: " ") {
+            let bare = token.trimmingCharacters(in: CharacterSet(charactersIn: ","))
+            guard bare.hasPrefix("-"), bare != "-" else { break }
+            names.append(contentsOf: bare.split(separator: ",").map(String.init))
+        }
+        guard !names.isEmpty else { return nil }
+        return names.first(where: { $0.hasPrefix("--") }) ?? names.first
+    }
+
+    static func fallbackCandidates() -> [CLITemplateCandidate] {
+        [CLITemplateCandidate(
+            template: "{prompt}",
+            reason: "the binary was not readable, so nothing could be inferred",
+            score: 0
+        )]
+    }
+}
