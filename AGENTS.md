@@ -217,6 +217,8 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - The suggestion is pushed onto the input line with `print -z` and is **never executed**; a `precmd` hook supplies the last exit status and command line for `???`.
    - Typing `??` paints the two characters as a chip via `region_highlight` in a `zle-line-pre-redraw` widget, so the mode is visible before Return. An existing `zle-line-pre-redraw` (a syntax highlighter) is chained, never replaced, and only the chip's own entry is removed between frames.
    - Risk is classified by `CommandRiskClassifier` from a fixed vocabulary, never taken from the model: a label from the same source as the command protects nothing. Anything unreadable fails closed (`CommandSuggestionParser` accepts JSON only — a prose answer must not become a command).
+   - Existence is checked the same way: `CommandBinaryProbe` resolves the command's binary against **the shell's `PATH`** (the zsh function sends `$PATH` with the request; the app's launchd PATH knows nothing about Homebrew). A miss earns exactly one corrective turn naming the missing binary — never a silent pass-through, never a warning attached to a command that cannot run. If that turn fails, the failure is surfaced instead.
+   - The chip is colour **and** italics (`fg=#FF5FA2,bold,italic`); the explanatory hint lives in the drawer footer, not in `POSTDISPLAY` — a sentence under every empty prompt is noise the footer already covers.
 
 ---
 
