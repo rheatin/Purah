@@ -242,6 +242,13 @@ public struct ScriptsPluginSettingsView: View {
     @State private var newShowNotification: Bool = true
     @State private var isAddingAction: Bool = false
 
+    // One-sentence drafting, in the form the draft lands in.
+    @State private var draftRequest: String = ""
+    @State private var isDrafting: Bool = false
+    @State private var draftMessage: String? = nil
+    @State private var draftMessageIsWarning: Bool = false
+    @State private var aiAvailability: AIAssistantAvailability? = nil
+
     @State private var editingActionId: String? = nil
     @State private var editActionName: String = ""
     @State private var editCommandType: ScriptCommandType = .shortcut
@@ -278,6 +285,143 @@ public struct ScriptsPluginSettingsView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
             )
+    }
+
+    // MARK: - Draft From One Sentence
+    /// A second way into the same form: describe the job, get the fields
+    /// filled in, then read and edit them before saving.
+    ///
+    /// Deliberately not a separate preview card. The add-action form already
+    /// shows every field a draft produces, with room to correct them, and a
+    /// draft that is only previewed is a draft that gets saved unread.
+    private var draftRow: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(palette.primaryAccent)
+
+                TextField("runway.draft.placeholder".localized, text: $draftRequest)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
+                    .onSubmit(generateDraft)
+
+                if isDrafting {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.7)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Button(action: generateDraft) {
+                        Text("runway.draft.generate".localized)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(canDraft ? .white : .secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(canDraft ? palette.primaryAccent : Color.primary.opacity(0.1))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canDraft)
+                    .help("runway.draft.generate".localized)
+                    .accessibilityLabel("runway.draft.generate".localized)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.primary.opacity(0.05))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+            )
+
+            if let draftMessage {
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: draftMessageIsWarning ? "exclamationmark.triangle.fill" : "info.circle")
+                        .font(.system(size: 8.5))
+                    Text(draftMessage)
+                        .font(.system(size: 9.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundColor(draftMessageIsWarning ? .orange : .secondary)
+                .padding(.horizontal, 2)
+            }
+        }
+        .task {
+            // Read once, when the form opens: the question is "can this Mac
+            // draft at all", and the settings page that changes it is one
+            // click away.
+            aiAvailability = AIAssistantAvailability.current()
+        }
+    }
+
+    private var canDraft: Bool {
+        !isDrafting
+            && !draftRequest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && aiAvailability?.state != .unavailable
+    }
+
+    private func generateDraft() {
+        let request = draftRequest.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !request.isEmpty, !isDrafting else { return }
+        guard aiAvailability?.state != .unavailable else {
+            draftMessage = "runway.draft.unavailable".localized
+            draftMessageIsWarning = true
+            return
+        }
+
+        isDrafting = true
+        draftMessage = nil
+        draftMessageIsWarning = false
+
+        Task {
+            do {
+                let result = try await ScriptDraftService.shared.draft(
+                    description: request,
+                    homeDirectory: NSHomeDirectory()
+                )
+                apply(result)
+            } catch {
+                draftMessage = String(format: "runway.draft.failed".localized, error.localizedDescription)
+                draftMessageIsWarning = true
+            }
+            isDrafting = false
+        }
+    }
+
+    /// Prefills the form. It overwrites what is there: the draft was asked for
+    /// while the form was empty, and every field stays editable afterwards.
+    private func apply(_ result: ScriptDraftResult) {
+        newActionName = result.draft.name
+        newSystemIcon = result.draft.systemIcon
+        newDescription = result.draft.explanation
+        newCommandType = .shell
+        newScriptContent = result.draft.script
+
+        if let warning = draftWarning(for: result.finding) {
+            draftMessage = warning
+            draftMessageIsWarning = true
+        } else {
+            draftMessage = nil
+            draftMessageIsWarning = false
+        }
+    }
+
+    /// What the machine said about the draft, in the order that matters: a
+    /// script that cannot run at all outranks one that does something alarming.
+    private func draftWarning(for finding: ScriptDraftCheck.Finding) -> String? {
+        if let missing = finding.missingBinary {
+            return String(format: "runway.draft.missingBinary".localized, missing)
+        }
+        if let error = finding.syntaxError {
+            return String(format: "runway.draft.syntaxError".localized, error)
+        }
+        switch finding.risk {
+        case .dangerous: return "runway.draft.risk.dangerous".localized
+        case .caution: return "runway.draft.risk.caution".localized
+        case .safe: return nil
+        }
     }
 
     public var body: some View {
@@ -517,6 +661,8 @@ public struct ScriptsPluginSettingsView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("runway.addAction".localized)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
+
+                            draftRow
 
                             HStack(spacing: 8) {
                                 customInputCapsule {
