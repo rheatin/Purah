@@ -469,14 +469,6 @@ public enum AISkillDelivery: Sendable, Equatable {
     case nativeCommand
 }
 
-// MARK: - Persistable Protocol
-public protocol PurahPersistableItem: Identifiable, Codable, Sendable {
-    var id: String { get }
-    var createdAt: Date { get }
-    var isFavorite: Bool { get set }
-    var estimatedByteSize: Int64 { get }
-}
-
 // MARK: - Chat Messages & Sessions
 public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     public enum Role: String, Codable, Sendable {
@@ -580,7 +572,7 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-public struct AIChatSession: PurahPersistableItem, PurahStorableItem, Equatable, Sendable {
+public struct AIChatSession: PurahStorableItem, Equatable, Sendable {
     public var id: String
     public var title: String
     public var messages: [AIChatMessage]

@@ -87,14 +87,6 @@ public struct PurahDecomposedPolicy: Sendable, Codable, Equatable {
         overflowStrategy: .truncate
     )
 
-    public static let clipboardDefault = PurahDecomposedPolicy(
-        maxRailItems: 4,
-        minChipHeight: 42.0,
-        maxChipHeight: 185.0,
-        spacing: 2.5,
-        overflowStrategy: .smartFold
-    )
-
     public static let standardComposite = PurahDecomposedPolicy(
         maxRailItems: 1,
         minChipHeight: 120.0,

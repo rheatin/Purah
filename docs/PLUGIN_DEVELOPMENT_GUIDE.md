@@ -29,7 +29,7 @@ Purah 提供两种层级的插件开发路径，分别针对外部独立生态�
 | **工程依赖** | **完全零宿主依赖**，无需克隆 Purah 主仓库，仅依赖 Apple 原生 `SwiftUI` & `AppKit` | 强依赖 `PurahCore` 与 `PurahUI` 模块 |
 | **开发方式** | 新建标准独立 Swift Package (`.dynamic` library)，拷入单文件 `PurahExternalPluginSDK.swift`（见 `Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift`） | 在 Purah 源码树 `Sources/PurahUI/Plugins/BuiltIn/` 下新增 Swift 文件 |
 | **接入契约** | C-ABI 导出符号 (`@_cdecl`) + `PurahExternalContext` + `PurahHostBridge.shared` | 实现 `PurahPodPlugin` 与 `PurahPodCapabilityProvider` 协议 |
-| **功能支持** | 编写 `RailView`、`DrawerView`、`SettingsView`，读取 `PurahExternalContext`（边缘方向、尺寸、深浅色、沙盒目录），调用 `PurahHostBridge.shared`（`expand`、`dismiss`、`togglePin`、`showToast`、`showWarning`、`openSettings`、`performHaptic`、`requestLayoutRecalculation`） | 直接利用 SwiftUI 原生视图及全部内置组件套件 (`PurahAdaptiveTierDrawer`、`PurahFluidWaveformBarView` 等) |
+| **功能支持** | 编写 `RailView`、`DrawerView`、`SettingsView`，读取 `PurahExternalContext`（边缘方向、尺寸、深浅色、沙盒目录），调用 `PurahHostBridge.shared`（`expand`、`dismiss`、`togglePin`、`showToast`、`showWarning`、`openSettings`、`performHaptic`、`requestLayoutRecalculation`） | 直接利用 SwiftUI 原生视图及全部内置组件套件 (`PurahAdaptiveTierDrawer`、`PurahSegmentGaugeBarView` 等) |
 | **调试与热载** | 打开 Purah 设置面板点击 **`Dev: Load Package...`**，自动 JIT 极速编译、挂载与保存自动单键热重载 | 重新构建运行整个 Purah 宿主应用 (`./run.sh` 或 Xcode) |
 | **分发形式** | 编译为单个 `.dylib` 动态库或直接分发源码 Package 文件夹 | 合并入主分支并跟随宿主版本打包分发 |
 
@@ -235,18 +235,7 @@ VStack(alignment: .leading, spacing: 6) {
 - 内容装得下时按尺寸禁用回弹（`.scrollBounceBehavior(.basedOnSize)`），不会在 120pt 的卡片里橡皮筋。
 - 不进入焦点链，悬停不会抢走底层 App 的键盘焦点。
 
-### 3. 60/120 FPS 高性能流体波形轨条 (`PurahFluidWaveformBarView`)
-通用音频流体波形轨条，支持霓虹 VU 表头 (`.neonVUTower`)、极光波浪 (`.auroraWave`)、平滑进度条 (`.smoothProgress`)：
-```swift
-PurahFluidWaveformBarView(
-    tintColor: context.accentColor,
-    progress: currentProgress,
-    isPlaying: isPlaying,
-    subStyle: .neonVUTower
-)
-```
-
-### 4. 多段指标轨条 (`PurahSegmentGaugeBarView`)
+### 3. 多段指标轨条 (`PurahSegmentGaugeBarView`)
 竖向 gauge：一条圆角轨道 + 一条或多条从底边生长的填充通道。
 
 ```swift
@@ -274,22 +263,6 @@ PurahSegmentGaugeBarView(
 - `segments` 为空只画轨道 —— 用于只保留底色、不带指标的 chip。
 - `minimumVisibleFill`（默认 4pt）保证接近 0 的指标仍可辨认；传 `0` 则完全不画。
 - **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**：通用红黄绿告警变色求解器，支持正向与反向阈值（如电量、RAM、温度），配合上面的 `color` / `isAlerting` 使用。
-
-### 5. 统一人机容量设置组件 (`PurahDecomposedCapacitySettingRow`)
-一行代码为设置页面嵌入标准的最大在轨条目滑块与溢出折叠选择器：
-```swift
-PurahDecomposedCapacitySettingRow(
-    title: "Max Visible Items",
-    maxItems: $state.maxRailItems,
-    overflowStrategy: $state.overflowStrategy
-)
-```
-
----
-
-## 6. 存储引擎与持久化架构 (`PurahPluginStorage` & `PurahPluginFileStorage`)
-
-Purah 为插件提供了**双轨分级持久化体系**：
 
 ### 6.1 轻量键值存储 (`ScopedPluginStorage`)
 用于保存插件的轻量配置、开关或简单状态，自动分配专属的 `UserDefaults` 作用域，键前缀统一为 `purah.plugin.<pluginId>.<key>`，杜绝插件间键名污染：

@@ -8,7 +8,6 @@ public struct DiagnosticReportView: View {
 
     @State private var logEntries: [DiagnosticLogEntry] = []
     @State private var copyFeedback: Bool = false
-    @State private var exportFeedback: String?
 
     private var logger: DiagnosticLogger { DiagnosticLogger.shared }
     private var palette: ThemePalette { ThemeManager.shared.palette }

@@ -452,36 +452,6 @@ public final class ShelfPluginState: Sendable {
         boundStore?._shelfFiles.removeAll()
     }
 
-    /// Prunes expired non-starred items and enforces storage quota.
-    public func pruneExpired(now: Date = Date()) {
-        guard autoPrune else { return }
-        let expiredItems = files.filter { item in
-            !item.isFavorite && retentionPeriod.isExpired(timestamp: item.timestamp, now: now)
-        }
-        for item in expiredItems {
-            if let path = item.filePath, path.hasPrefix(fileStorage.baseDirectory.path) {
-                try? FileManager.default.removeItem(atPath: path)
-            }
-        }
-        let expiredIds = Set(expiredItems.map { $0.id })
-        files.removeAll { expiredIds.contains($0.id) }
-
-        if let maxBytes = diskQuota.maxBytes, fileStorage.diskUsageBytes > maxBytes {
-            let nonFavorites = files.filter { !$0.isFavorite }.sorted { $0.timestamp < $1.timestamp }
-            for item in nonFavorites {
-                if fileStorage.diskUsageBytes <= maxBytes { break }
-                if let path = item.filePath, path.hasPrefix(fileStorage.baseDirectory.path) {
-                    try? FileManager.default.removeItem(atPath: path)
-                }
-                files.removeAll { $0.id == item.id }
-            }
-        }
-        save()
-        if let boundStore {
-            boundStore._shelfFiles = files
-        }
-    }
-
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
         if !store._shelfFiles.isEmpty && self.files.isEmpty {

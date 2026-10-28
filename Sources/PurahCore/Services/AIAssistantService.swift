@@ -52,7 +52,6 @@ public final class AIAssistantService {
     public static let shared = AIAssistantService()
 
     public var isStreaming: Bool = false
-    public var currentProvider: AIProviderKind = .appleIntelligence
     public private(set) var availableCLIs: [AICLIExecutable] = []
     public var lastCapturedSelection: String? = nil
     public var lastCapturedApp: String? = nil

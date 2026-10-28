@@ -257,10 +257,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         DiagnosticLogger.shared.info("Lifecycle", "Live rail sculptor toggled: \(store.isLiveRailEditingMode ? "active" : "inactive")")
     }
 
-    @objc private func openPermissions() {
-        showPreferences(initialTab: .permissions)
-    }
-
     private func showPreferences(initialTab: PreferencesTab, initialPluginId: String? = nil) {
         DiagnosticLogger.shared.info("Lifecycle", "Preferences opened (tab: \(initialTab), plugin: \(initialPluginId ?? "none"))")
         if preferencesWindow == nil {
@@ -315,12 +311,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     @objc private func autoLayout() {
         store.autoLayoutAll()
         coordinator?.rebuildWindows()
-    }
-
-    @objc private func changeLanguage(_ sender: NSMenuItem) {
-        guard let lang = sender.representedObject as? AppLanguage else { return }
-        LocalizationManager.shared.currentLanguage = lang
-        rebuildMenu()
     }
 
     public func windowWillClose(_ notification: Notification) {

@@ -396,13 +396,4 @@ public final class NotesPluginState: Sendable {
         let newContent = modifiedLines.joined(separator: "\n")
         updateNoteContent(id: doc.id, content: newContent)
     }
-
-    public func appendTextToCurrentDocument(_ snippet: String) {
-        guard let doc = currentDocument else {
-            _ = createNote(content: snippet)
-            return
-        }
-        let updated = doc.content.isEmpty ? snippet : "\(doc.content)\n\n\(snippet)"
-        updateNoteContent(id: doc.id, content: updated)
-    }
 }

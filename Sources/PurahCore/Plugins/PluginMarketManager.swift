@@ -57,8 +57,6 @@ public final class PluginMarketManager: Sendable {
     @ObservationIgnored
     private let userDefaultsKey = "purah.installedPluginIds"
 
-    public static let defaultInstalledIds: Set<String> = Set(PurahWorkspaceStore.defaultPods().map(\.id))
-
     public init(
         store: PurahWorkspaceStore? = nil,
         availableCatalog: [PurahPluginManifest] = PurahPluginManifest.fullCatalog,

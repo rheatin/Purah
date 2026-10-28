@@ -12,9 +12,7 @@ public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, S
     case ninetyDays = "90days"
     case never = "never"
 
-    public static var hours1: PurahRetentionPeriod { .oneHour }
     public static var days7: PurahRetentionPeriod { .sevenDays }
-    public static var days30: PurahRetentionPeriod { .thirtyDays }
     public static var forever: PurahRetentionPeriod { .never }
 
     public var timeInterval: TimeInterval? { expirationSeconds }
@@ -109,9 +107,18 @@ public protocol PurahStorableItem: Identifiable, Codable, Sendable {
     var id: String { get }
     var timestamp: Date { get }
     var isFavorite: Bool { get set }
+    /// Files this item owns under the plugin's `assets/` folder.
+    ///
+    /// The quota pruner subtracts these sizes when it removes an item instead
+    /// of re-walking the whole folder, so an item with no files should return
+    /// an empty array rather than leaving the pruner to guess.
+    var assetPaths: [String] { get }
 }
 
 public extension PurahStorableItem {
+    /// Text-only items own no files.
+    var assetPaths: [String] { [] }
+
     /// Backward-compatibility alias: isPinned bridges directly to isFavorite.
     var isPinned: Bool {
         get { isFavorite }

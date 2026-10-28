@@ -272,12 +272,6 @@ public final class AIAssistantPluginState: Sendable {
     public var stagedDropTitle: String? = nil
     public var isAwaitingRoleForDroppedContent: Bool = false
 
-    public func clearStagedDrop() {
-        stagedDropText = nil
-        stagedDropTitle = nil
-        isAwaitingRoleForDroppedContent = false
-    }
-
     @ObservationIgnored private var currentStreamingTask: Task<Void, Never>?
     @ObservationIgnored private var accumulatedStreamRaw: String = ""
 

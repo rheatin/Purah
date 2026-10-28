@@ -65,10 +65,6 @@ public final class EdgeMouseMonitor {
         }
     }
 
-    public func setCoordinator(_ coordinator: ScreenEdgeCoordinator) {
-        self.coordinator = coordinator
-    }
-
     public func setFrozen(_ isFrozen: Bool) {
         self.isFrozen = isFrozen
         if isFrozen {
@@ -1048,7 +1044,7 @@ public final class EdgeMouseMonitor {
             let rawIdx = Int(max(podY, 0.0) / itemPitch)
             guard rawIdx >= 0 && rawIdx < count else { return }
             let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && rawIdx == count - 1)
-            let subItemId = isSmartFoldSlot ? "\(candidate.id)_more_items" : (provider.subItemId(at: rawIdx, store: store) ?? candidate.id)
+            let subItemId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: candidate.id) : (provider.subItemId(at: rawIdx, store: store) ?? candidate.id)
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 store.activateDrawer(podId: candidate.id, itemId: subItemId)

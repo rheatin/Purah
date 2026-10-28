@@ -190,18 +190,7 @@ VStack(alignment: .leading, spacing: 6) {
 - Bounce is size-based (`.scrollBounceBehavior(.basedOnSize)`), so content that fits does not rubber-band inside a short drawer.
 - Stays out of the focus chain, so hovering never pulls key focus from the app underneath.
 
-### 3. 60/120 FPS Fluid Waveform Bar (`PurahFluidWaveformBarView`)
-High-performance fluid audio waveform and VU meter for audio players, recorders, and monitors:
-```swift
-PurahFluidWaveformBarView(
-    tintColor: context.accentColor,
-    progress: playbackProgress,
-    isPlaying: isPlaying,
-    subStyle: .neonVUTower // .neonVUTower, .auroraWave, .smoothProgress, .minimalist
-)
-```
-
-### 4. Multi-Channel Metric Gauge (`PurahSegmentGaugeBarView`)
+### 3. Multi-Channel Metric Gauge (`PurahSegmentGaugeBarView`)
 A vertical gauge: one rounded track plus one or more filled channels growing from the bottom edge.
 
 ```swift
@@ -230,16 +219,6 @@ PurahSegmentGaugeBarView(
 - An empty `segments` array draws the track alone — for chips that keep a tinted rail with no metric behind it.
 - `minimumVisibleFill` (default 4pt) keeps a near-zero metric readable; pass `0` to draw nothing at all.
 - **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**: standardized continuous telemetry colour resolver (Green → Yellow → Red danger pulsing) supporting both direct and inverted metrics (e.g. Battery Low). Feed its result into `color` / `isAlerting` above.
-
-### 5. Decomposed Capacity Setting Row (`PurahDecomposedCapacitySettingRow`)
-One-line slider and overflow strategy configuration row for settings views:
-```swift
-PurahDecomposedCapacitySettingRow(
-    title: "Max Visible Tasks",
-    maxItems: $state.maxRailItems,
-    overflowStrategy: $state.overflowStrategy
-)
-```
 
 ---
 
