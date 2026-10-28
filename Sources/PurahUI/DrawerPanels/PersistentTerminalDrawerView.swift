@@ -9,6 +9,10 @@ public struct PersistentTerminalDrawerView: View {
 
     @ObservedObject private var manager = TerminalManager.shared
 
+    /// Resolved when the drawer opens, not per render: it reads the AI plugin's
+    /// settings and, for an HTTP provider, the secrets file.
+    @State private var aiAvailability: AIAssistantAvailability?
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -42,47 +46,55 @@ public struct PersistentTerminalDrawerView: View {
             )
             .frame(maxHeight: .infinity)
 
-            // Subtle interaction hint & status
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text("terminal.typeHint".localized)
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary.opacity(0.7))
-
-                    if TerminalShellIntegration.isEnabled {
-                        Text("·")
-                            .font(.system(size: 7.5, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.5))
-
-                        // Advertises `??` where it is needed, and clicking it types
-                        // the two characters, so the reminder is also the way in.
-                        Button {
-                            manager.beginNaturalLanguageCommand()
-                        } label: {
-                            Text("terminal.suggest.hint".localized)
-                                .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
-                                .foregroundColor(terminalColor.opacity(0.9))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!manager.isProcessRunning)
-                        .help("terminal.suggest.tooltip".localized)
-                        .accessibilityLabel("terminal.suggest.hint".localized)
-                    }
-
-                    Spacer()
-                    Text("\(String(format: "%.1f", state.fontSize))pt")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-
-                // `???` needs no composed input, so it is a legend rather than a
-                // button: a click would either demand a second Return or fire an
-                // AI request nobody asked for from a status line.
+            // One line: what the two commands are, and whether the AI behind
+            // them can answer. The ⌘C/⌘V/⇥ boilerplate that used to sit here
+            // told people things they already knew, in the space where status
+            // belongs.
+            HStack(spacing: 4) {
                 if TerminalShellIntegration.isEnabled {
+                    // Advertises `??` where it is needed, and clicking it types
+                    // the two characters, so the reminder is also the way in.
+                    Button {
+                        manager.beginNaturalLanguageCommand()
+                    } label: {
+                        Text("terminal.suggest.hint".localized)
+                            .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
+                            .foregroundColor(terminalColor.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!manager.isProcessRunning)
+                    .help("terminal.suggest.tooltip".localized)
+                    .accessibilityLabel("terminal.suggest.hint".localized)
+
+                    Text("·")
+                        .font(.system(size: 7.5, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.5))
+
+                    // `???` needs no composed input, so it is a legend rather
+                    // than a button: a click would either demand a second Return
+                    // or fire an AI request nobody asked for from a status line.
                     Text("terminal.suggest.explainHint".localized)
                         .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
                         .foregroundColor(terminalColor.opacity(0.9))
                         .lineLimit(1)
+                }
+
+                Spacer()
+
+                if let aiAvailability {
+                    Button {
+                        store.openPluginSettings(id: "ai")
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: aiAvailability.provider.systemIcon)
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundColor(aiIconColor(aiAvailability))
+                            aiStateDot(aiAvailability.state)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(aiHelpText(aiAvailability))
+                    .accessibilityLabel(aiHelpText(aiAvailability))
                 }
             }
             .padding(.horizontal, 2)
@@ -90,6 +102,55 @@ public struct PersistentTerminalDrawerView: View {
         .onAppear {
             manager.focusTerminal()
         }
+        .task {
+            aiAvailability = .current()
+        }
+    }
+
+    // MARK: - AI status
+
+    /// Which AI answers `??`, and whether it can — read from the same settings
+    /// the AI Assistant drawer uses, so the two cannot disagree.
+    private func aiHelpText(_ availability: AIAssistantAvailability) -> String {
+        let stateText: String
+        switch availability.state {
+        case .ready: stateText = "ai.settings.available".localized
+        case .configuredUnverified: stateText = "ai.status.configured".localized
+        case .unavailable: stateText = "ai.settings.unavailableOnThisMac".localized
+        }
+        var text = "\(availability.provider.displayName) · \(stateText)"
+        if let detail = availability.detail, !detail.isEmpty {
+            text += "\n\(detail)"
+        }
+        return text
+    }
+
+    private func aiIconColor(_ availability: AIAssistantAvailability) -> Color {
+        switch availability.state {
+        case .ready:
+            return availability.provider == .appleIntelligence ? .purple : terminalColor.opacity(0.9)
+        case .configuredUnverified:
+            return terminalColor.opacity(0.7)
+        case .unavailable:
+            return .orange
+        }
+    }
+
+    /// Filled green when verified, hollow when only configured, orange when
+    /// known to be unusable — the same three levels the settings page shows.
+    @ViewBuilder
+    private func aiStateDot(_ state: AIAssistantAvailabilityState) -> some View {
+        Group {
+            switch state {
+            case .ready:
+                Circle().fill(Color.green)
+            case .configuredUnverified:
+                Circle().stroke(Color.secondary.opacity(0.8), lineWidth: 0.8)
+            case .unavailable:
+                Circle().fill(Color.orange)
+            }
+        }
+        .frame(width: 4.5, height: 4.5)
     }
 }
 

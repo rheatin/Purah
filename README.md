@@ -88,7 +88,7 @@ find . -type f -size +1g -exec du -h {} + | sort -rh
 - **`???` explains the last command**, with its exit status and the failure you just hit.
 - **Risk is decided locally, not by the model.** Every suggestion is classified into `safe` / `caution` / `dangerous` from a fixed vocabulary by `CommandRiskClassifier`; anything destructive is printed in red before you can press Return.
 - **It checks the machine, not just the model.** If the answer names a binary that is not installed here — `airport`, which Apple deleted in macOS 14.4 — Purah sends that fact back for one corrective turn instead of handing you a command that cannot run.
-- **Typing `??` turns it pink and underlined** so the mode is visible *before* Return; the drawer footer names both commands (`??` is clickable there and types the two characters for you).
+- **Typing `??` turns it pink and underlined** so the mode is visible *before* Return. The drawer footer names both commands (`??` is clickable there and types the two characters for you) and shows, at its right edge, which AI is answering and whether it is usable — a filled green dot when verified, a hollow one when an HTTP endpoint is merely configured, orange when it cannot answer. Clicking it opens the AI Assistant settings.
 - **Same brain as the AI Assistant.** Provider, CLI, endpoint and credentials come from your AI Assistant settings — there is no second place to configure.
 - **zsh only, and your dotfiles stay untouched.** The shell is launched with a managed `ZDOTDIR` that sources your real `.zshenv` / `.zshrc` first and adds the alias after it. Turning the feature off simply stops setting the variable.
 - **Toggle**: Terminal plugin → **Settings → Natural-Language Commands**.
