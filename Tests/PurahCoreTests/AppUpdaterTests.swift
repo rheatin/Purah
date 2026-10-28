@@ -173,6 +173,51 @@ struct AppUpdaterTests {
         #expect(UpdateInstallMarker.readAndClear(at: marker) == nil)
     }
 
+    @Test("Download progress is a fraction, and stays indeterminate without a length")
+    func testDownloadProgressFraction() {
+        // The bar used to receive 0 for the whole transfer, which SwiftUI
+        // renders as the indeterminate "bouncing" bar.
+        final class Box: @unchecked Sendable { var values: [Double] = [] }
+        let box = Box()
+        let observer = DownloadProgressObserver { box.values.append($0) }
+        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.invalid/purah.zip")!)
+
+        observer.urlSession(.shared, downloadTask: task, didWriteData: 0, totalBytesWritten: 50, totalBytesExpectedToWrite: 200)
+        #expect(box.values == [0.25])
+
+        // Past 100% (a server that under-reports) must not overshoot the bar.
+        observer.urlSession(.shared, downloadTask: task, didWriteData: 0, totalBytesWritten: 300, totalBytesExpectedToWrite: 200)
+        #expect(box.values.last == 1.0)
+
+        // No Content-Length: nothing is reported, so the bar stays indeterminate
+        // instead of inventing motion.
+        observer.urlSession(.shared, downloadTask: task, didWriteData: 0, totalBytesWritten: 50, totalBytesExpectedToWrite: -1)
+        #expect(box.values.count == 2)
+    }
+
+    @Test("A second check while one is in flight is ignored, not raced")
+    func testConcurrentCheckIsIgnored() async throws {
+        // The dialog's own `.task`, the menu item and the bottom button can all
+        // ask at once. Two requests racing meant the dialog settled on
+        // whichever happened to finish last.
+        let release = AppReleaseInfo(
+            version: "9.9.9",
+            releaseNotes: "Newer",
+            downloadURL: try #require(URL(string: "https://example.com/Purah.zip")),
+            sha256: String(repeating: "ab", count: 32)
+        )
+        let updater = AppUpdaterManager(
+            currentVersion: "2.0.0",
+            bundleURL: URL(fileURLWithPath: "/tmp/PurahTest.app"),
+            expectedTeamIdentifier: nil,
+            openURL: { _ in }
+        )
+
+        updater.state = .checking
+        await updater.checkForUpdates(simulatedRelease: release)
+        #expect(updater.state == .checking, "a check already running must not be restarted or overwritten")
+    }
+
     @Test("Shell-quoting survives spaces and apostrophes in a path")
     func testShellQuoting() {
         #expect(UpdateInstallScript.shellQuoted("/tmp/plain.txt") == "'/tmp/plain.txt'")

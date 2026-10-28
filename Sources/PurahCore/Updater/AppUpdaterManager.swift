@@ -68,6 +68,95 @@ public enum UpdateInstallMarker {
     }
 }
 
+/// Reports transfer progress for one download, and hands back the finished file.
+///
+/// `URLSession.download(for:)` without a delegate reports nothing until the
+/// file is complete, so the dialog had a `downloading(progress:)` state whose
+/// progress was always 0 — and a determinate bar fed 0 renders as the
+/// indeterminate "bouncing" bar. The user saw a bar that moved and learned
+/// nothing from it.
+///
+/// The task-based form is used rather than `download(for:delegate:)` because
+/// the file at `didFinishDownloadingTo` is deleted the moment that callback
+/// returns: with the async form the delegate can take the URL away from the
+/// call that is waiting for it. Copying the file here is what keeps it.
+final class DownloadProgressObserver: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    typealias Completion = CheckedContinuation<(url: URL, statusCode: Int), Error>
+
+    private let onProgress: @Sendable (Double) -> Void
+    private let lock = NSLock()
+    private var continuation: Completion?
+    private var downloadedFile: URL?
+    private var statusCode: Int = 0
+    private var failure: Error?
+
+    init(onProgress: @escaping @Sendable (Double) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func attach(_ continuation: Completion) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.continuation = continuation
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        // A server that sends no Content-Length cannot be turned into a
+        // percentage. Reporting nothing keeps the bar indeterminate, which is
+        // the honest answer, rather than inventing motion.
+        guard totalBytesExpectedToWrite > 0 else { return }
+        onProgress(min(1.0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        lock.lock()
+        statusCode = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? -1
+        lock.unlock()
+
+        // `location` is deleted as soon as this returns.
+        let kept = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PurahDownload-\(UUID().uuidString)")
+        do {
+            try FileManager.default.copyItem(at: location, to: kept)
+            lock.lock()
+            downloadedFile = kept
+            lock.unlock()
+        } catch {
+            lock.lock()
+            failure = error
+            lock.unlock()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        let waiting = continuation
+        continuation = nil
+        let file = downloadedFile
+        let code = statusCode
+        let recorded = failure
+        downloadedFile = nil
+        failure = nil
+        lock.unlock()
+
+        guard let waiting else { return }
+        if let error = error ?? recorded {
+            if let file { try? FileManager.default.removeItem(at: file) }
+            waiting.resume(throwing: error)
+        } else if let file {
+            waiting.resume(returning: (file, code))
+        } else {
+            waiting.resume(throwing: URLError(.cannotCreateFile))
+        }
+    }
+}
+
 /// Source of the latest release manifest. Injected so update checks can be
 /// tested without touching the network (a live GitHub query made the integration
 /// suite fail whenever the API rate-limited or a release was published).
@@ -227,6 +316,11 @@ public final class AppUpdaterManager {
     }
 
     public func checkForUpdates(simulatedRelease: AppReleaseInfo? = nil) async {
+        // Two entry points ask at once — the menu item and the dialog's own
+        // `.task` — and the bottom button used to start a third. A second
+        // request while one is in flight raced the first for `state`, so the
+        // dialog could settle on whichever happened to finish last.
+        guard state != .checking else { return }
         state = .checking
         lastCheckDate = Date()
 
@@ -357,8 +451,23 @@ public final class AppUpdaterManager {
             request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
             request.timeoutInterval = 60.0
 
-            let (tempURL, response) = try await URLSession.shared.download(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            // Progress is reported by a per-download delegate; without it the
+            // transfer is a black box until the archive is complete.
+            let observer = DownloadProgressObserver { [weak self] fraction in
+                Task { @MainActor in
+                    guard let self, case .downloading = self.state else { return }
+                    self.state = .downloading(progress: fraction)
+                }
+            }
+            let session = URLSession(configuration: .default, delegate: observer, delegateQueue: nil)
+            defer { session.finishTasksAndInvalidate() }
+
+            let (tempURL, statusCode) = try await withCheckedThrowingContinuation { (continuation: DownloadProgressObserver.Completion) in
+                observer.attach(continuation)
+                session.downloadTask(with: request).resume()
+            }
+            guard statusCode == 200 else {
+                try? FileManager.default.removeItem(at: tempURL)
                 state = .failed(error: "Download failed (invalid status code)")
                 return
             }
