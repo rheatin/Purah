@@ -106,10 +106,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             self?.toggleLiveRailSculptor()
         }
 
-        // Adapts which rail page a pod sits on when the frontmost app changes.
-        // Bound after the store's callbacks are wired, because applying a rule
-        // asks for a window rebuild.
-        AppFocusAwarenessService.shared.bindStore(store)
+        // Switches the active profile to the one the frontmost app is listed
+        // under. Bound after the store's callbacks are wired, because applying a
+        // profile asks for a window rebuild.
+        AppProfileSwitchService.shared.bindStore(store)
 
         setupStatusItem()
 

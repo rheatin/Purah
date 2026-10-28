@@ -88,6 +88,11 @@ public enum ProfileTrigger: Codable, Sendable, Equatable, Hashable {
     case wifi(ssid: String)
     /// Applied while this many or more external displays are attached.
     case externalDisplay(minimumCount: Int)
+    /// Applied while this app is frontmost.
+    ///
+    /// The set of app triggers *is* the whitelist: an app named here gets its
+    /// profile, every other app gets the store's default profile.
+    case app(bundleId: String)
 
     @MainActor
     public var displayName: String {
@@ -98,7 +103,15 @@ public enum ProfileTrigger: Codable, Sendable, Equatable, Hashable {
             return String(format: "profile.trigger.wifi".localized, ssid)
         case .externalDisplay(let count):
             return String(format: "profile.trigger.display".localized, count)
+        case .app(let bundleId):
+            return AppIdentity.displayName(forBundleId: bundleId)
         }
+    }
+
+    /// The bundle id of an app trigger, or nil for every other kind.
+    public var appBundleId: String? {
+        if case .app(let bundleId) = self { return bundleId }
+        return nil
     }
 }
 
@@ -108,6 +121,12 @@ public struct ContextProfileStore: Codable, Sendable, Equatable {
     /// The profile currently in force, if any. Remembered so the settings list
     /// can mark it and so a restart does not forget what the layout represents.
     public var activeProfileId: UUID?
+    /// What every app outside the whitelist gets.
+    ///
+    /// A separate field rather than a `.manual` trigger: "no app matched" is a
+    /// fact about the current app, not a trigger somebody pressed, and the two
+    /// would fight over the same dictionary slot if they shared one.
+    public var defaultProfileId: UUID?
     /// Associations from trigger to profile id. One profile may have several
     /// triggers; a trigger may only point at one profile.
     public var triggers: [ProfileTrigger: UUID]
@@ -115,15 +134,24 @@ public struct ContextProfileStore: Codable, Sendable, Equatable {
     public init(
         profiles: [ContextProfile] = [],
         activeProfileId: UUID? = nil,
+        defaultProfileId: UUID? = nil,
         triggers: [ProfileTrigger: UUID] = [:]
     ) {
         self.profiles = profiles
         self.activeProfileId = activeProfileId
+        self.defaultProfileId = defaultProfileId
         self.triggers = triggers
     }
 
     public var activeProfile: ContextProfile? {
         guard let id = activeProfileId else { return nil }
+        return profiles.first { $0.id == id }
+    }
+
+    /// The fallback profile, resolved only while it still exists — a deleted
+    /// profile leaves a dangling id behind, which must not resolve.
+    public var defaultProfile: ContextProfile? {
+        guard let id = defaultProfileId else { return nil }
         return profiles.first { $0.id == id }
     }
 
@@ -134,11 +162,47 @@ public struct ContextProfileStore: Codable, Sendable, Equatable {
         return id
     }
 
+    /// The profile whose whitelist names this app, or nil when it is not listed.
+    public func profileId(forApp bundleId: String) -> UUID? {
+        profileId(for: .app(bundleId: bundleId))
+    }
+
+    /// Bundle ids listed in the whitelist for a profile, sorted for display.
+    public func appBundleIds(for profileId: UUID) -> [String] {
+        triggers
+            .filter { $0.value == profileId }
+            .compactMap { $0.key.appBundleId }
+            .sorted()
+    }
+
+    /// Points an app at a profile.
+    ///
+    /// An app belongs to at most one profile, so this first drops any earlier
+    /// association — otherwise adding the app to a second profile would leave
+    /// both claiming it and resolution would depend on dictionary order.
+    public mutating func setAppTrigger(bundleId: String, profileId: UUID) {
+        triggers = triggers.filter { $0.key.appBundleId != bundleId }
+        triggers[.app(bundleId: bundleId)] = profileId
+    }
+
+    public mutating func removeAppTrigger(bundleId: String) {
+        triggers.removeValue(forKey: .app(bundleId: bundleId))
+    }
+
+    /// Every profile that has at least one app in its whitelist, in list order.
+    public var profilesWithAppTriggers: [ContextProfile] {
+        let ids = Set(triggers.filter { $0.key.appBundleId != nil }.map(\.value))
+        return profiles.filter { ids.contains($0.id) }
+    }
+
     public mutating func remove(profileId: UUID) {
         profiles.removeAll { $0.id == profileId }
         triggers = triggers.filter { $0.value != profileId }
         if activeProfileId == profileId {
             activeProfileId = nil
+        }
+        if defaultProfileId == profileId {
+            defaultProfileId = nil
         }
     }
 
@@ -164,6 +228,8 @@ extension ProfileTrigger: CodingKeyRepresentable {
             return StringKey("wifi:\(ssid)")
         case .externalDisplay(let count):
             return StringKey("display:\(count)")
+        case .app(let bundleId):
+            return StringKey("app:\(bundleId)")
         }
     }
 
@@ -176,6 +242,10 @@ extension ProfileTrigger: CodingKeyRepresentable {
         } else if raw.hasPrefix("display:") {
             guard let count = Int(raw.dropFirst("display:".count)) else { return nil }
             self = .externalDisplay(minimumCount: count)
+        } else if raw.hasPrefix("app:") {
+            let bundleId = String(raw.dropFirst("app:".count))
+            guard !bundleId.isEmpty else { return nil }
+            self = .app(bundleId: bundleId)
         } else {
             return nil
         }

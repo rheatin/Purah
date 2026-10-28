@@ -319,25 +319,26 @@ struct ContextProfileTests {
         #expect(store.contextProfiles.profiles.isEmpty)
     }
 
-    // MARK: - Interaction with focus rules
+    // MARK: - Interaction with held app switches
 
-    /// A focus rule's snapshot describes pages from before the profile was
-    /// applied. Keeping it would let a later app switch restore pages that
-    /// belong to a layout the user just left.
-    @Test("Applying a profile invalidates an armed focus snapshot")
-    func testApplyClearsFocusSnapshot() {
+    /// A switch that arrived while a drawer was open belongs to the app that
+    /// asked for it. Applying a profile by hand says "stop waiting, this is the
+    /// layout I want" — letting the held switch land afterwards would undo the
+    /// user's own choice a moment later.
+    @Test("Applying a profile by hand drops a held app switch")
+    func testApplyClearsHeldSwitch() {
         let store = makeStore()
         let profile = store.saveProfile(named: "Desk")
-        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
-            Issue.record("expected an enabled pod")
-            return
-        }
-
-        store.applyFocusRule(AppFocusRule(bundleId: "com.test", hiddenPodIds: [pod.id]))
-        #expect(store.focusRuleSnapshot != nil)
-
+        let other = store.saveProfile(named: "Other")
         store.applyProfile(id: profile.id)
-        #expect(store.focusRuleSnapshot == nil)
+        store.activeDrawerPodId = "music"
+
+        store.switchProfile(id: other.id)
+        #expect(store.pendingProfileId != nil)
+
+        store.switchProfile(id: profile.id, deferWhileBusy: false)
+        #expect(store.pendingProfileId == nil)
+        #expect(store.contextProfiles.activeProfileId == profile.id)
     }
 
     // MARK: - Summary

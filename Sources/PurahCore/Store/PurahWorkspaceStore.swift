@@ -39,8 +39,17 @@ public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifia
 @MainActor
 public final class PurahWorkspaceStore {
     public var pods: [SlotPod] = []
-    public var activeDrawerPodId: String? = nil
-    public var activeDrawerItemId: String? = nil
+    public var activeDrawerPodId: String? = nil {
+        didSet {
+            // A held profile switch waits for exactly this: the drawer closing.
+            if activeDrawerPodId == nil { flushPendingProfileSwitchIfIdle() }
+        }
+    }
+    public var activeDrawerItemId: String? = nil {
+        didSet {
+            if activeDrawerItemId == nil { flushPendingProfileSwitchIfIdle() }
+        }
+    }
     public var activePodId: String? {
         get { activeDrawerPodId }
         set { activeDrawerPodId = newValue }
@@ -189,6 +198,9 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         if !enabled {
             savePersistentState()
+            // A switch held back while the user was sculpting lands here, once
+            // the edits it interrupted have been written back.
+            flushPendingProfileSwitchIfIdle()
         }
         onLiveRailEditingChanged?(enabled)
         onWindowsRebuildNeeded?()
@@ -1152,6 +1164,21 @@ public final class PurahWorkspaceStore {
     public func applyProfile(id: UUID) {
         guard let profile = _contextProfiles.profiles.first(where: { $0.id == id }) else { return }
 
+        // The outgoing profile is a live workspace: edits made while it was in
+        // force belong to it. Flushing here — rather than waiting for a save —
+        // is what keeps those edits from being written into the profile we are
+        // about to switch to.
+        //
+        // Only when actually *leaving* it: re-applying the profile that is
+        // already active is the user asking for its saved arrangement back, and
+        // absorbing the current layout first would make Apply do nothing.
+        if _contextProfiles.activeProfileId != id {
+            flushProfileWriteBack()
+        }
+
+        isApplyingProfile = true
+        defer { isApplyingProfile = false }
+
         pods = profile.pods
         customPodColors = profile.customPodColors
         pinnedDrawerItemIds = profile.pinnedDrawerItemIds
@@ -1163,10 +1190,14 @@ public final class PurahWorkspaceStore {
         store.activeProfileId = id
         _contextProfiles = store
 
-        // A focus rule's snapshot describes pages from before the profile was
-        // applied; keeping it would let a later app switch restore pages that
-        // belong to a layout the user just left.
-        focusRuleSnapshot = nil
+        // An open drawer belongs to a pod from the layout that was just
+        // replaced. Leaving the id set would leave the rail hovering a pod that
+        // the new profile may not even mount.
+        if let openPodId = activeDrawerPodId,
+           profile.pods.first(where: { $0.id == openPodId })?.isEnabled != true {
+            activeDrawerPodId = nil
+            activeDrawerItemId = nil
+        }
 
         invalidateLayoutCache()
         savePersistentState()
@@ -1219,102 +1250,125 @@ public final class PurahWorkspaceStore {
         contextProfiles = store
     }
 
-    // MARK: - Focus-driven layout
+    // MARK: - Frontmost-app profile switching
 
-    /// Rules that rearrange the rail page in response to the frontmost app.
+    /// Whether the frontmost app is allowed to change the active profile.
     ///
-    /// Opt-in, and deliberately narrow: a rule may only choose which page a pod
-    /// sits on. It cannot resize a pod, reorder within a page, or mount and
-    /// unmount plugins — those are the parts of the layout people sculpt by
-    /// hand, and having them move when they switch apps is what makes this kind
-    /// of feature tiring rather than helpful.
-    package var _appFocusSettings: AppFocusSettings = AppFocusSettings()
+    /// A machine-level preference like quiet hours, not part of any profile: a
+    /// profile describes the rails, while "switch profiles with the app you are
+    /// in" describes how the person works.
+    public var isAppProfileSwitchingEnabled: Bool = false
 
-    public var appFocusSettings: AppFocusSettings {
-        get { _appFocusSettings }
-        set {
-            guard newValue != _appFocusSettings else { return }
-            _appFocusSettings = newValue
-            savePersistentState()
-            if !newValue.isEnabled {
-                clearFocusRule()
-            }
-        }
-    }
-
-    /// Page assignments captured before a focus rule moved them, so the rule can
-    /// be undone exactly. `nil` when no rule is currently applied.
+    /// A switch that arrived while the rail was busy.
+    ///
+    /// Replacing the layout under an open drawer makes the drawer vanish
+    /// mid-read. The request is held and applied once the rail goes idle.
     @ObservationIgnored
-    package var focusRuleSnapshot: [String: Int]?
+    public private(set) var pendingProfileId: UUID?
 
-    /// Applies a rule by moving pods between page 0 and page 1.
-    ///
-    /// Re-entrant by design: switching from Xcode to Terminal applies the
-    /// second rule on top of the first, which is what a person expects. The
-    /// snapshot is taken only on the first application, so the original layout
-    /// survives a chain of app switches rather than only the last one.
-    public func applyFocusRule(_ rule: AppFocusRule) {
-        // Work out what would change *before* arming a snapshot: an inert rule,
-        // or one naming only absent pods, must leave no state behind.
-        var moves: [(index: Int, page: Int, edge: MountEdge)] = []
-        for podId in rule.surfacedPodIds {
-            guard let idx = pods.firstIndex(where: { $0.id == podId }), pods[idx].pageIndex != 0 else { continue }
-            moves.append((idx, 0, pods[idx].edge))
-        }
-        for podId in rule.hiddenPodIds {
-            guard let idx = pods.firstIndex(where: { $0.id == podId }), pods[idx].pageIndex != 1 else { continue }
-            moves.append((idx, 1, pods[idx].edge))
-        }
-        guard !moves.isEmpty else { return }
+    @ObservationIgnored
+    private var isApplyingProfile = false
+    @ObservationIgnored
+    private var isWritingBackProfile = false
 
-        if focusRuleSnapshot == nil {
-            let snapshot = Dictionary(uniqueKeysWithValues: pods.map { ($0.id, $0.pageIndex) })
-            focusRuleSnapshot = snapshot
-            // Mirrored to disk so a quit inside the ruled app — which skips
-            // `clearFocusRule` — can still be undone on the next launch.
-            userDefaults.set(snapshot, forKey: Self.focusRuleBaselineKey)
-        }
-
-        for move in moves {
-            pods[move.index].pageIndex = move.page
-        }
-
-        let edges = Set(moves.map(\.edge))
-        for edge in edges {
-            normalizePageRanges(for: edge)
-        }
-        invalidateLayoutCache()
-        onWindowsRebuildNeeded?()
+    /// True while the rail must not be rearranged: an open drawer or the live
+    /// sculptor is using the layout the person is looking at right now.
+    public var isRailBusy: Bool {
+        activeDrawerPodId != nil || activeDrawerItemId != nil || isLiveRailEditingMode
     }
 
-    /// Restores the page assignments the active rule moved.
+    /// Switches to a profile on behalf of a trigger.
     ///
-    /// Restoring the snapshot wholesale would be simpler but wrong: the user may
-    /// have dragged a pod while the rule was active, and that gesture should not
-    /// be thrown away when they switch to another app.
-    ///
-    /// Deliberately does not re-run `normalizePageRanges`: that helper re-packs
-    /// pods into pages by height, which can shuffle an unrelated pod to a
-    /// different page than the one the user had it on. Putting the recorded
-    /// index back is the whole job.
-    public func clearFocusRule() {
-        guard let snapshot = focusRuleSnapshot else { return }
-        focusRuleSnapshot = nil
-        userDefaults.removeObject(forKey: Self.focusRuleBaselineKey)
-
-        var changed = false
-        for idx in pods.indices {
-            guard let original = snapshot[pods[idx].id] else { continue }
-            if pods[idx].pageIndex != original {
-                pods[idx].pageIndex = original
-                changed = true
-            }
+    /// - Returns: `true` when the layout is now that profile, `false` when the
+    ///   switch is waiting for the rail to go idle.
+    @discardableResult
+    public func switchProfile(id: UUID, deferWhileBusy: Bool = true) -> Bool {
+        guard id != _contextProfiles.activeProfileId else {
+            // Already there. A switch held earlier for some other profile is
+            // stale now — the app that asked for it is no longer frontmost — so
+            // it must not land when the drawer closes.
+            pendingProfileId = nil
+            return true
         }
-        guard changed else { return }
-
-        invalidateLayoutCache()
-        onWindowsRebuildNeeded?()
+        guard _contextProfiles.profiles.contains(where: { $0.id == id }) else { return false }
+        if deferWhileBusy && isRailBusy {
+            pendingProfileId = id
+            return false
+        }
+        pendingProfileId = nil
+        applyProfile(id: id)
+        return true
     }
+
+    /// Applies a switch that was held back.
+    ///
+    /// Called from the places the rail can become idle, so a held switch never
+    /// outlives the drawer or sculptor that caused it.
+    public func flushPendingProfileSwitchIfIdle() {
+        guard !isApplyingProfile, let id = pendingProfileId, !isRailBusy else { return }
+        pendingProfileId = nil
+        applyProfile(id: id)
+    }
+
+    public func setDefaultProfile(id: UUID?) {
+        var store = _contextProfiles
+        guard store.defaultProfileId != id else { return }
+        if let id, !store.profiles.contains(where: { $0.id == id }) { return }
+        store.defaultProfileId = id
+        contextProfiles = store
+    }
+
+    /// Adds an app to a profile's whitelist.
+    ///
+    /// An app belongs to at most one profile, so this moves it when a different
+    /// profile had already claimed it.
+    public func assignApp(bundleId: String, to profileId: UUID) {
+        var store = _contextProfiles
+        guard store.profiles.contains(where: { $0.id == profileId }),
+              store.profileId(forApp: bundleId) != profileId else { return }
+        store.setAppTrigger(bundleId: bundleId, profileId: profileId)
+        contextProfiles = store
+    }
+
+    public func removeAppTrigger(bundleId: String) {
+        var store = _contextProfiles
+        guard store.profileId(forApp: bundleId) != nil else { return }
+        store.removeAppTrigger(bundleId: bundleId)
+        contextProfiles = store
+    }
+
+    /// Writes the live layout back into the active profile, on the way out.
+    ///
+    /// The active profile is a workspace, not a frozen snapshot: the next app
+    /// change replaces the whole layout, so an edit that is not written back
+    /// when the profile is left is gone. It is deliberately *not* called on
+    /// every save — a profile that absorbed every drag would make "Apply" a
+    /// no-op and the saved arrangement unrecoverable.
+    public func flushProfileWriteBack() {
+        guard !isApplyingProfile, !isWritingBackProfile else { return }
+        guard let id = _contextProfiles.activeProfileId,
+              let index = _contextProfiles.profiles.firstIndex(where: { $0.id == id }) else { return }
+        let existing = _contextProfiles.profiles[index]
+        guard !layoutMatches(profile: existing) else { return }
+
+        var captured = captureProfile(named: existing.name)
+        captured.id = existing.id
+        captured.createdAt = existing.createdAt
+        captured.updatedAt = Date()
+
+        var store = _contextProfiles
+        store.profiles[index] = captured
+        isWritingBackProfile = true
+        _contextProfiles = store
+        isWritingBackProfile = false
+
+        // Written straight to disk: going through the `contextProfiles` setter
+        // would call `savePersistentState`, which calls back into this method.
+        if let data = try? JSONEncoder().encode(store) {
+            userDefaults.set(data, forKey: "purah.contextProfiles")
+        }
+    }
+
 
     // Sensory Feedback Settings
     public var isToastSoundEnabled: Bool = true

@@ -9,10 +9,6 @@ import AppKit
 // deserialises. Keeping it here means a persistence change cannot accidentally
 // be reviewed as a layout change.
 extension PurahWorkspaceStore {
-    /// Where a focus rule's pre-rule page map is mirrored, so an interrupted
-    /// undo can still be completed on the next launch. See
-    /// `restoreInterruptedFocusRule()`.
-    static let focusRuleBaselineKey = "purah.focusRuleBaseline"
     // MARK: - Local Persistence
     public static func resetToFactoryDefaults(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: "purah.pods")
@@ -183,9 +179,14 @@ extension PurahWorkspaceStore {
             // straight back to disk during a load.
             _quietHours = decoded
         }
-        if let focusData = defaults.data(forKey: "purah.appFocusSettings"),
-           let decoded = try? JSONDecoder().decode(AppFocusSettings.self, from: focusData) {
-            _appFocusSettings = decoded
+        if defaults.object(forKey: "purah.appFocusSettings") != nil {
+            // The per-app page rules this build replaced are gone. The blob is
+            // removed rather than merely ignored so a stale rules dictionary
+            // cannot confuse a future migration.
+            defaults.removeObject(forKey: "purah.appFocusSettings")
+        }
+        if defaults.object(forKey: "purah.isAppProfileSwitchingEnabled") != nil {
+            self.isAppProfileSwitchingEnabled = defaults.bool(forKey: "purah.isAppProfileSwitchingEnabled")
         }
         if let profileData = defaults.data(forKey: "purah.contextProfiles"),
            let decoded = try? JSONDecoder().decode(ContextProfileStore.self, from: profileData) {
@@ -239,38 +240,6 @@ extension PurahWorkspaceStore {
         if didRepairPods {
             savePersistentState()
         }
-
-        restoreInterruptedFocusRule()
-    }
-
-    /// Puts back pages that a focus rule had moved, when the app did not get to
-    /// undo them.
-    ///
-    /// A rule's rearrangement is meant to last only while its app is frontmost,
-    /// and it is held in memory so leaving the app can undo it exactly. Quitting
-    /// or crashing while inside that app skips the undo — and any later save
-    /// writes the temporary pages to disk, leaving a layout no rule explains.
-    /// The snapshot is therefore mirrored into defaults while a rule is active
-    /// and consumed here on the next launch.
-    private func restoreInterruptedFocusRule() {
-        guard let raw = userDefaults.dictionary(forKey: Self.focusRuleBaselineKey) else { return }
-        userDefaults.removeObject(forKey: Self.focusRuleBaselineKey)
-
-        var restored = false
-        for idx in pods.indices {
-            guard let original = raw[pods[idx].id] as? Int,
-                  pods[idx].pageIndex != original else { continue }
-            pods[idx].pageIndex = original
-            restored = true
-        }
-        guard restored else { return }
-
-        invalidateLayoutCache()
-        savePersistentState()
-        DiagnosticLogger.shared.info(
-            "Store",
-            "Restored pages left behind by an interrupted focus rule"
-        )
     }
 
     public func savePersistentState() {
@@ -294,12 +263,10 @@ extension PurahWorkspaceStore {
         if let quietData = try? JSONEncoder().encode(quietHours) {
             defaults.set(quietData, forKey: "purah.quietHours")
         }
-        if let focusData = try? JSONEncoder().encode(appFocusSettings) {
-            defaults.set(focusData, forKey: "purah.appFocusSettings")
-        }
         if let profileData = try? JSONEncoder().encode(contextProfiles) {
             defaults.set(profileData, forKey: "purah.contextProfiles")
         }
+        defaults.set(isAppProfileSwitchingEnabled, forKey: "purah.isAppProfileSwitchingEnabled")
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
         defaults.set(toastNotificationSound.rawValue, forKey: "purah.toastNotificationSound")
