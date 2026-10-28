@@ -107,6 +107,41 @@ struct PurahConfigBackupTests {
         #expect(store.pods.contains(where: { $0.id == "ai" && $0.isEnabled }))
     }
 
+    @Test("A factory reset resets the settings nobody remembered to set by hand")
+    func testResetClearsEveryPersistedSetting() {
+        let suite = "test_reset_full_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        // Settings that live outside the handful the old reset assigned. The
+        // reset used to clear the keys and then save, so `savePersistentState`
+        // wrote these straight back from the live store — a reset that undid
+        // almost nothing.
+        store.quietHours = QuietHours(isEnabled: true, startMinute: 22 * 60, endMinute: 7 * 60)
+        store.alertStyle = .sonarWave
+        store.isAppProfileSwitchingEnabled = true
+        store.isToastSoundEnabled = false
+        store.customExitGraceMs = 500.0
+        store.isTrackpadHapticsEnabled = false
+        store.savePersistentState()
+
+        PurahConfigBackupManager.resetToFactoryDefaults(store: store, defaults: defaults)
+
+        #expect(store.quietHours.isEnabled == false, "quiet hours survived the reset")
+        #expect(store.alertStyle == .breathingBeacon)
+        #expect(store.isAppProfileSwitchingEnabled == false)
+        #expect(store.isToastSoundEnabled == true)
+        #expect(store.customExitGraceMs == 280.0)
+        #expect(store.isTrackpadHapticsEnabled == true)
+
+        // And it must be the value on disk too, not just in memory: reloading
+        // from the same defaults has to produce the same fresh install.
+        let reloaded = PurahWorkspaceStore(userDefaults: defaults)
+        #expect(reloaded.quietHours.isEnabled == false)
+        #expect(reloaded.alertStyle == .breathingBeacon)
+        #expect(reloaded.customExitGraceMs == 280.0)
+    }
+
     @Test("Auto-installs and enables AI plugin for existing users lacking it in saved pods")
     func testAIPluginMigrationForExistingUsers() {
         let suite = "test_ai_migration_\(UUID().uuidString)"

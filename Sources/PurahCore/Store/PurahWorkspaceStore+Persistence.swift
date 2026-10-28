@@ -22,20 +22,31 @@ extension PurahWorkspaceStore {
             defaults.set(true, forKey: "purah.hasCompletedOnboarding")
         }
 
-        if let data = defaults.data(forKey: "purah.pods"),
-           let savedPods = try? JSONDecoder().decode([SlotPod].self, from: data),
-           !savedPods.isEmpty {
-            var merged = savedPods
-            let savedIds = Set(savedPods.map(\.id))
-            for var def in Self.defaultPods() where !savedIds.contains(def.id) {
-                if def.id == "ai" && !defaults.bool(forKey: "purah.didAutoInstallAIPlugin") {
-                    def.isEnabled = true
-                } else {
-                    def.isEnabled = false
+        if let data = defaults.data(forKey: "purah.pods") {
+            let decoded = try? JSONDecoder().decode([SlotPod].self, from: data)
+            if let savedPods = decoded, !savedPods.isEmpty {
+                var merged = savedPods
+                let savedIds = Set(savedPods.map(\.id))
+                for var def in Self.defaultPods() where !savedIds.contains(def.id) {
+                    if def.id == "ai" && !defaults.bool(forKey: "purah.didAutoInstallAIPlugin") {
+                        def.isEnabled = true
+                    } else {
+                        def.isEnabled = false
+                    }
+                    merged.append(def)
                 }
-                merged.append(def)
+                self.pods = merged
+            } else if decoded == nil {
+                // Undecodable, as opposed to an empty-but-valid list. Keep the
+                // bytes: the next save writes the default pods over this key,
+                // so one added field would otherwise erase a hand-sculpted
+                // layout with nothing left to recover from.
+                defaults.set(data, forKey: "purah.pods.corrupt")
+                DiagnosticLogger.shared.warn(
+                    "Workspace",
+                    "purah.pods could not be decoded; the original is kept under purah.pods.corrupt"
+                )
             }
-            self.pods = merged
         }
 
         var didRepairPods = false
@@ -289,5 +300,52 @@ extension PurahWorkspaceStore {
             guard !Task.isCancelled, let self else { return }
             self.savePersistentState()
         }
+    }
+
+    /// Puts every persisted setting back to what a fresh install has.
+    ///
+    /// A factory reset used to clear the keys and call the caller-supplied
+    /// handful of assignments, then save. `savePersistentState` writes *every*
+    /// property, so everything the caller forgot (profiles, quiet hours, alert
+    /// style, toast settings, trigger tuning, …) was deleted from disk and
+    /// immediately written back — a reset that reset almost nothing.
+    ///
+    /// Every property here is one `savePersistentState` persists, set to the
+    /// value its declaration gives a new store. Add a field to the save and it
+    /// has to be added here; `FactoryResetTests` checks the whole list.
+    package func applyFreshInstallDefaults() {
+        pods = Self.defaultPods()
+        customPodColors = [:]
+        drawerWidthMode = .adaptive
+        fixedDrawerWidth = 290.0
+        railBarWidth = 8.0
+        isDynamicBreathingEnabled = true
+        hotKeyShortcut = .defaultShortcut
+        sculptorHotKeyShortcut = .defaultSculptorShortcut
+        displayTargetMode = .followCursor
+        edgeTriggerMode = .hoverDwell
+        alertStyle = .breathingBeacon
+        isEventToastAlertEnabled = true
+        // Backing storage, so the setters do not save halfway through a reset.
+        _quietHours = QuietHours()
+        _contextProfiles = ContextProfileStore()
+        isAppProfileSwitchingEnabled = false
+        isToastSoundEnabled = true
+        toastNotificationSound = .glass
+        isTrackpadHapticsEnabled = true
+        isDrawerPopHapticEnabled = true
+        isControlHapticEnabled = true
+        edgeTriggerSensitivity = .balanced
+        customInitialDwellMs = 150.0
+        customExitGraceMs = 280.0
+        customCatchCorridorPt = 50.0
+        customPushForceThreshold = 380.0
+        customPushResistanceBarrier = 40.0
+
+        leftRailPage = 0
+        rightRailPage = 0
+        pinnedDrawerItemIds.removeAll()
+        dismissActiveDrawer()
+        invalidateLayoutCache()
     }
 }
