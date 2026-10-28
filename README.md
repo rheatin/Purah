@@ -64,13 +64,33 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 | **Drop Shelf** | `tray.fill` | Desktop staging shelf with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, and pinned interactive floating sidecar preview (`👁`). |
 | **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, pinned interactive floating sidecar preview (`👁`), color preview, image caching, and fuzzy search. |
 | **Quick Notes** | `note.text` | Typora-style live Markdown & resizable tables, cross-folder instant search, image paste, and 1-click `.md` export. |
-| **Terminal** | `apple.terminal.fill` | Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with 1-click `cd` to active Finder folder, Starship & Nerd Font glyph support. |
+| **Terminal** | `apple.terminal.fill` | Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with 1-click `cd` to active Finder folder, Starship & Nerd Font glyph support, and natural-language commands (`??`) that write the shell command for you. |
 | **Music Waveform** | `waveform` | Apple Music playback controller with dynamic visualizer and fluid scrub bar. |
 | **Calendar Timeline** | `calendar` | Day agenda timeline with meeting link detection (`Zoom`, `Meet`, `Teams`). |
 | **Todo Checklist** | `checklist` | System Reminders integration with one-tap completion. |
 | **Script Runway** | `terminal.fill` | Quick-fire developer automation runway for everyday maintenance tasks. |
 
 > 🚀 **More to come**: Additional plugins, custom widgets, and third-party developer extensibility are actively in development.
+
+---
+
+### ⚡ Natural-Language Commands in the Terminal (`??` / `???`)
+
+Nobody remembers every flag. Describe the task in the terminal you already have open and Purah writes the command:
+
+```zsh
+❯ ?? find every file over 1 GB, sorted by size
+⚡ Purah is thinking…
+find . -type f -size +1g -exec du -h {} + | sort -rh
+```
+
+- **Nothing runs on its own.** The suggestion is placed on the input line, never executed — read it, edit it, then press Return.
+- **`???` explains the last command**, with its exit status and the failure you just hit.
+- **Risk is decided locally, not by the model.** Every suggestion is classified into `safe` / `caution` / `dangerous` from a fixed vocabulary by `CommandRiskClassifier`; anything destructive is printed in red before you can press Return.
+- **Typing `??` paints it pink** so the mode is visible *before* Return, and a grey ghost hint advertises it whenever the line is empty. Clicking the `⚡ ??` hint in the drawer footer types the two characters for you.
+- **Same brain as the AI Assistant.** Provider, CLI, endpoint and credentials come from your AI Assistant settings — there is no second place to configure.
+- **zsh only, and your dotfiles stay untouched.** The shell is launched with a managed `ZDOTDIR` that sources your real `.zshenv` / `.zshrc` first and adds the alias after it. Turning the feature off simply stops setting the variable.
+- **Toggle**: Terminal plugin → **Settings → Natural-Language Commands**.
 
 ---
 

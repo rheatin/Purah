@@ -47,6 +47,27 @@ public struct PersistentTerminalDrawerView: View {
                 Text("terminal.typeHint".localized)
                     .font(.system(size: 7.5, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
+
+                if TerminalShellIntegration.isEnabled {
+                    Text("·")
+                        .font(.system(size: 7.5, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.5))
+
+                    // Advertises `??` where it is needed, and clicking it types
+                    // the two characters, so the reminder is also the way in.
+                    Button {
+                        manager.beginNaturalLanguageCommand()
+                    } label: {
+                        Text("terminal.suggest.hint".localized)
+                            .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
+                            .foregroundColor(terminalColor.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!manager.isProcessRunning)
+                    .help("terminal.suggest.tooltip".localized)
+                    .accessibilityLabel("terminal.suggest.hint".localized)
+                }
+
                 Spacer()
                 Text("\(String(format: "%.1f", state.fontSize))pt")
                     .font(.system(size: 7.5, design: .monospaced))

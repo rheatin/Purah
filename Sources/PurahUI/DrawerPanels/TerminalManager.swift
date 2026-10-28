@@ -569,6 +569,17 @@ public final class TerminalManager: ObservableObject {
         view.send(txt: "\u{03}") // Ctrl+C
     }
 
+    /// Types `?? ` into the active shell.
+    ///
+    /// The drawer footer advertises the feature; clicking that advert should
+    /// land the person at the prompt with the mode already entered, rather than
+    /// asking them to remember two question marks.
+    public func beginNaturalLanguageCommand() {
+        guard let view = terminalView, isProcessRunning else { return }
+        focusTerminal()
+        view.send(txt: "?? ")
+    }
+
     public func sendEOF() {
         guard let view = terminalView else { return }
         view.send(txt: "\u{04}") // Ctrl+D
