@@ -121,10 +121,10 @@ public enum CommandRiskClassifier {
 
 public enum CommandSuggestionPrompt {
 
-    public static func systemPrompt() -> String {
+    public static func systemPrompt(osVersion: String = currentOSVersion) -> String {
         """
         You turn a person's plain-language request into one shell command for \
-        zsh on macOS (BSD userland, not GNU).
+        zsh on \(osVersion) (BSD userland, not GNU).
         Reply with JSON only, no prose and no code fences:
         {"command": "...", "explanation": "..."}
 
@@ -136,11 +136,20 @@ public enum CommandSuggestionPrompt {
         return a command that prints what the person should run instead.
         - Do not invent file or directory names that were not given; use the working \
         directory as the base.
+        - Apple removes tools between releases. When you are not certain a binary \
+        still ships, reach for the one you are certain about instead of a path you \
+        remember from an older system.
         - "explanation" is one short sentence, in the same language as the request, \
         saying what the command does.
         - Answer in one step. Do not deliberate at length: this runs while a \
         person waits at their prompt.
         """
+    }
+
+    /// "macOS 27.0" for the machine Purah is running on.
+    public static var currentOSVersion: String {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        return "macOS \(version.majorVersion).\(version.minorVersion)"
     }
 
     /// The request as the model sees it: what the person asked, where they are,
@@ -150,7 +159,8 @@ public enum CommandSuggestionPrompt {
         description: String,
         workingDirectory: String,
         lastCommand: String?,
-        lastExitStatus: Int32?
+        lastExitStatus: Int32?,
+        correction: String? = nil
     ) -> String {
         var lines = ["Working directory: \(workingDirectory)"]
         switch mode {
@@ -177,6 +187,10 @@ public enum CommandSuggestionPrompt {
         // Repeated here as well as in the system prompt: models weigh the end of
         // the user message more heavily than a preamble, and a provider that
         // drops the system prompt entirely still gets the contract.
+        if let correction {
+            lines.append("")
+            lines.append("Correction: \(correction)")
+        }
         lines.append("")
         lines.append(#"Answer with exactly this JSON and nothing else: {"command": "...", "explanation": "..."}"#)
         return lines.joined(separator: "\n")

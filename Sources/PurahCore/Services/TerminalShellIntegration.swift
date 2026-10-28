@@ -31,7 +31,10 @@ public enum TerminalShellIntegration {
                     description: form["description"] ?? "",
                     workingDirectory: form["cwd"] ?? NSHomeDirectory(),
                     lastCommand: form["last"],
-                    lastExitStatus: Int32(form["status"] ?? "")
+                    lastExitStatus: Int32(form["status"] ?? ""),
+                    // The shell's PATH, not the app's: it is the one the
+                    // command will run under when Return is pressed.
+                    pathList: form["path"]
                 )
             }
         }

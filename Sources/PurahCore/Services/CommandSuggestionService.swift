@@ -52,7 +52,8 @@ public final class CommandSuggestionService {
         description: String,
         workingDirectory: String,
         lastCommand: String? = nil,
-        lastExitStatus: Int32? = nil
+        lastExitStatus: Int32? = nil,
+        pathList: String? = nil
     ) async throws -> CommandSuggestion {
         let request = String(description.prefix(Self.maximumDescriptionLength))
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -84,30 +85,59 @@ public final class CommandSuggestionService {
             }
         }()
 
-        let answer = try await assistant.streamChat(
-            messages: [AIChatMessage(
-                role: .user,
-                content: CommandSuggestionPrompt.userPrompt(
-                    mode: mode,
-                    description: request,
-                    workingDirectory: workingDirectory,
-                    lastCommand: lastCommand,
-                    lastExitStatus: lastExitStatus
-                )
-            )],
-            provider: provider,
-            cliExecutable: cli,
-            customCLIPath: storage.string(forKey: "customCLIPath"),
-            customCLIArguments: storage.string(forKey: "customCLIArguments"),
-            apiKey: apiKey,
-            endpoint: endpoint,
-            model: model,
-            systemPromptOverride: CommandSuggestionPrompt.systemPrompt()
-        )
-
-        guard let suggestion = CommandSuggestionParser.parse(answer) else {
-            throw SuggestError.unreadableAnswer
+        func ask(correction: String?) async throws -> CommandSuggestion {
+            let answer = try await assistant.streamChat(
+                messages: [AIChatMessage(
+                    role: .user,
+                    content: CommandSuggestionPrompt.userPrompt(
+                        mode: mode,
+                        description: request,
+                        workingDirectory: workingDirectory,
+                        lastCommand: lastCommand,
+                        lastExitStatus: lastExitStatus,
+                        correction: correction
+                    )
+                )],
+                provider: provider,
+                cliExecutable: cli,
+                customCLIPath: storage.string(forKey: "customCLIPath"),
+                customCLIArguments: storage.string(forKey: "customCLIArguments"),
+                apiKey: apiKey,
+                endpoint: endpoint,
+                model: model,
+                systemPromptOverride: CommandSuggestionPrompt.systemPrompt()
+            )
+            guard let suggestion = CommandSuggestionParser.parse(answer) else {
+                throw SuggestError.unreadableAnswer
+            }
+            return suggestion
         }
-        return suggestion
+
+        let suggestion = try await ask(correction: nil)
+
+        // The one fact the model cannot know is what is installed here. Checking
+        // it costs a few file lookups and catches the answer that was plausible
+        // and impossible: an `airport` path Apple deleted in macOS 14.4.
+        let path = pathList ?? Self.shellPath()
+        guard let missing = CommandBinaryProbe.missingBinary(in: suggestion.command, pathList: path) else {
+            return suggestion
+        }
+
+        // A second turn rather than a warning: the person asked for a command
+        // that works, and "this one will not" is not an answer. If the retry
+        // itself fails, the failure is surfaced — pushing the known-broken
+        // command onto the prompt line would be the worse outcome.
+        return try await ask(correction: """
+            `\(missing)` does not exist on this Mac (\(CommandSuggestionPrompt.currentOSVersion)), \
+            so the command would stop with "command not found". Propose a different command that \
+            achieves the same thing using a tool that ships with macOS.
+            """)
+    }
+
+    /// The `PATH` the shell will use. A GUI app inherits a four-entry launchd
+    /// default, so the shell hands its own over with the request.
+    static func shellPath() -> String {
+        ProcessInfo.processInfo.environment["PATH"]
+            ?? "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     }
 }
