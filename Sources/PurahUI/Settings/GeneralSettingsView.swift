@@ -342,6 +342,9 @@ public struct GeneralSettingsView: View {
             content()
         }
         .padding(16)
+        // Fill the column rather than sizing to content; see the identical
+        // note in InteractionSettingsView.settingsCard.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.surfaceBackground)
         .cornerRadius(12)
         .overlay(
