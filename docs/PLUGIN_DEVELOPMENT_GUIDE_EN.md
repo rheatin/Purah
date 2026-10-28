@@ -523,7 +523,59 @@ dynamic telemetry colour). Load it with
 
 ---
 
-## 10. Automated Unit Testing
+## 10. Calling the Assistant from a Plugin (`PurahAIService`)
+
+Plugins often need one sentence of intelligence: three bullet points from a note, a clipboard line rewritten in a formal tone, a summary for a calendar event. Do not resolve a provider, read a key, or handle a 404 yourself — the AI Assistant already does that once, and `PurahAIService` is the seam that hands it to the rest of the app.
+
+```swift
+@MainActor
+public enum PurahAIService {
+    public enum Privacy: Sendable {
+        case localOnly      // must not leave this Mac (only Apple Intelligence qualifies)
+        case remoteAllowed  // may use whatever the person configured
+    }
+
+    public static func ask(
+        _ prompt: String,
+        system: String? = nil,
+        privacy: Privacy = .remoteAllowed
+    ) async throws -> String
+}
+```
+
+```swift
+Button("Summarise") {
+    Task {
+        do {
+            let summary = try await PurahAIService.ask(
+                noteText,
+                system: "Summarise in at most three bullet points.",
+                privacy: .localOnly        // the note is the person's own words
+            )
+            state.summary = summary
+        } catch PurahAIService.Failure.localModelRequired(let provider) {
+            // They are on a remote model right now: say so, never send quietly
+            context.showWarning("This content needs the on-device model (currently \(provider.displayName))")
+        } catch {
+            context.showWarning(error.localizedDescription)
+        }
+    }
+}
+```
+
+**Rules:**
+
+- **The host keeps the person's decisions.** Provider, CLI, credentials and the on-device preference all come from the AI Assistant settings. A plugin cannot route around them, and does not need to know which one is in use.
+- **`localOnly` is a promise, not a hint.** Only `.appleIntelligence` counts as local: a CLI agent and an HTTP endpoint both leave the machine. When the configured provider cannot honour it, `Failure.localModelRequired(provider:)` is thrown — **never** a silent downgrade. That check runs before the availability check, because it is the one the caller can act on.
+- **The answer is already cleaned.** `<think>` reasoning spans are stripped before the text is returned: a plugin receives content, not the transcript of how it was reached.
+- **Surface failures.** There are four: `emptyPrompt`, `unavailable(detail:)`, `localModelRequired(provider:)` and `emptyAnswer`. All are `LocalizedError`, so `error.localizedDescription` is enough.
+- **Never call it from `body`.** These are real, token-billed requests: one user action, one call. Prompts are capped at `maximumPromptLength` (24,000 characters) and truncated beyond it.
+
+> **External (C-ABI) plugins cannot reach this yet.** Built-in plugins call it directly; dynamically loaded third-party plugins still have to talk to a model through their own CLI.
+
+---
+
+## 11. Automated Unit Testing
 
 Write standard Swift Testing test cases verifying manifest initialization, context interaction, and pin protection:
 

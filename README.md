@@ -68,7 +68,7 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 | **Music Waveform** | `waveform` | Apple Music playback controller with dynamic visualizer and fluid scrub bar. |
 | **Calendar Timeline** | `calendar` | Day agenda timeline with meeting link detection (`Zoom`, `Meet`, `Teams`). |
 | **Todo Checklist** | `checklist` | System Reminders integration with one-tap completion. |
-| **Script Runway** | `terminal.fill` | Quick-fire developer automation runway for everyday maintenance tasks. |
+| **Script Runway** | `terminal.fill` | Quick-fire developer automation runway for everyday maintenance tasks, with one-sentence script drafting: describe the job and review the zsh it writes. |
 
 > 🚀 **More to come**: Additional plugins, custom widgets, and third-party developer extensibility are actively in development.
 
@@ -92,6 +92,17 @@ find . -type f -size +1g -exec du -h {} + | sort -rh
 - **Same brain as the AI Assistant.** Provider, CLI, endpoint and credentials come from your AI Assistant settings — there is no second place to configure.
 - **zsh only, and your dotfiles stay untouched.** The shell is launched with a managed `ZDOTDIR` that sources your real `.zshenv` / `.zshrc` first and adds the alias after it. Turning the feature off simply stops setting the variable.
 - **Toggle**: Terminal plugin → **Settings → Natural-Language Commands**.
+
+---
+
+### ⚡ Script Runway: Describe a Job, Get a Script
+
+Scripts → **Add Action** → describe the job in one sentence (`archive downloads by month`) → **✨ Generate** fills in the name, icon, description and a multi-line zsh script.
+
+- **Nothing is saved or run until you press Save.** The draft lands in the add-action form itself, where every field is still editable — a draft you can only preview is a draft you save unread.
+- **The machine checks it, not just the model.** `zsh -n` parses the script without running it; every command word is resolved against the PATH the action will actually run under, so a Homebrew-only tool is reported as missing rather than failing at 3 a.m.; `CommandRiskClassifier` labels the script `safe` / `caution` / `dangerous`, and a destructive one says so before you keep it.
+- **One corrective turn**, exactly like `??`: a script naming a tool this Mac does not have — or one zsh cannot parse — goes back to the model once. If the retry fails too, you still see the draft, with the problem stated instead of hidden.
+- **Same brain as the AI Assistant.** Provider and credentials come from the AI Assistant settings; there is no second place to configure.
 
 ---
 
