@@ -23,6 +23,13 @@ public final class AIPermissionBridge: @unchecked Sendable {
 
     public static let shared = AIPermissionBridge()
 
+    /// Largest request body the loopback listener will hold.
+    ///
+    /// A hook payload is a tool name and its input — kilobytes at most. Without
+    /// a cap any local process could declare a huge `Content-Length` and stream
+    /// until the app ran out of memory.
+    static let maximumRequestBytes = 1 << 20
+
     /// True when the listener is up and a hook can reach it. If this is false
     /// the CLI must not be launched with permission routing, because
     /// `onFailure: "block"` would turn every gated call into a denial.
@@ -160,6 +167,13 @@ public final class AIPermissionBridge: @unchecked Sendable {
     }
 
     private func handle(body: Data, http: HTTPConnection) {
+        guard body.count <= Self.maximumRequestBytes else {
+            // The size is checked before the bytes are kept in memory (see
+            // `HTTPConnection.completeBody`), but an oversized body that got
+            // this far is never a real hook call.
+            http.respond(decision: .deny, suggestions: nil)
+            return
+        }
         guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
             http.respond(decision: .deny, suggestions: nil)
             return
@@ -283,6 +297,13 @@ private final class HTTPConnection: @unchecked Sendable {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             if let data { self.buffer.append(data) }
+            // Stop before an oversized or endless request turns into memory
+            // pressure. Header slack covers the request line and headers.
+            if self.buffer.count > AIPermissionBridge.maximumRequestBytes + 64 * 1024 {
+                DiagnosticLogger.shared.warn("AI", "Permission bridge rejected an oversized request")
+                self.respond(decision: .deny, suggestions: nil)
+                return
+            }
             if let error {
                 _ = error
                 completion(nil)
@@ -313,6 +334,7 @@ private final class HTTPConnection: @unchecked Sendable {
                   parts[0].trimmingCharacters(in: .whitespaces).lowercased() == "content-length" else { continue }
             contentLength = Int(parts[1].trimmingCharacters(in: .whitespaces)) ?? 0
         }
+        guard contentLength <= AIPermissionBridge.maximumRequestBytes else { return nil }
 
         let body = buffer[headerEnd.upperBound...]
         guard body.count >= contentLength else { return nil }
