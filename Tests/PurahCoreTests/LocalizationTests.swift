@@ -104,12 +104,19 @@ struct LocalizationTests {
             // compact idle strips" toggle went with the breathing rewrite; and
             // the two "left/right rail page" labels moved into the module
             // assembly card's page tabs, which need no prose.
-            .traditionalChinese: 545,
-            .japanese: 74,
-            .korean: 74,
-            .french: 74,
-            .german: 74,
-            .spanish: 95
+            //
+            // -46: 108 keys no code, test or run-time interpolation asks for
+            // were removed from every table (`layout.presets.*`,
+            // `overflow.mode.*`, `notes.folder.*`, `ai.welcome.*`,
+            // `clipboard.quota.*`, and the rest of the dead families). The
+            // English vocabulary shrank, so a partial translation loses rows in
+            // proportion to how much of it it covered.
+            .traditionalChinese: 499,
+            .japanese: 71,
+            .korean: 71,
+            .french: 71,
+            .german: 71,
+            .spanish: 89
         ]
 
         for (language, expected) in pinnedCoverage {

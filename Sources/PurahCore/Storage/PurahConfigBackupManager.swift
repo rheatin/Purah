@@ -221,23 +221,13 @@ public enum PurahConfigBackupManager {
         }
 
         defaults.set(true, forKey: "purah.didAutoInstallAIPlugin")
-        store.pods = PurahWorkspaceStore.defaultPods()
-        store.railBarWidth = 8.0
-        store.fixedDrawerWidth = 290.0
-        store.drawerWidthMode = .adaptive
-        store.isDynamicBreathingEnabled = true
-        store.hotKeyShortcut = .defaultShortcut
-        store.sculptorHotKeyShortcut = .defaultSculptorShortcut
-        store.edgeTriggerMode = .hoverDwell
-        store.edgeTriggerSensitivity = .balanced
-        store.customPodColors = [:]
-        store.leftRailPage = 0
-        store.rightRailPage = 0
-        store.pinnedDrawerItemIds.removeAll()
-        store.dismissActiveDrawer()
+        // The store, not this function, owns "what a fresh install looks like".
+        // Setting a few fields by hand here is what made reset leave quiet
+        // hours, profiles and the rest in place: `savePersistentState` writes
+        // every property, so anything not reset was written straight back.
+        store.applyFreshInstallDefaults()
 
         store.savePersistentState()
-        store.invalidateLayoutCache()
         store.onWindowsRebuildNeeded?()
 
         if triggerOnboarding {

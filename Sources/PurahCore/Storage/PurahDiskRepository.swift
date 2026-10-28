@@ -32,17 +32,43 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
     }
 
     public func loadFromDisk() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([Item].self, from: data) else {
+        guard let data = try? Data(contentsOf: indexURL) else { return }
+        guard let decoded = try? JSONDecoder().decode([Item].self, from: data) else {
+            quarantineUnreadableIndex()
             return
         }
         self.items = decoded
     }
 
+    /// Moves an index that cannot be decoded out of the way.
+    ///
+    /// Leaving it in place would mean the next `saveToDisk` writes the empty
+    /// list over it, so one added field (or one launch of an older build)
+    /// would silently erase the whole collection. A rename costs nothing and
+    /// keeps the bytes recoverable.
+    private func quarantineUnreadableIndex() {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backup = indexURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("index.corrupt-\(stamp).json")
+        do {
+            try FileManager.default.moveItem(at: indexURL, to: backup)
+            DiagnosticLogger.shared.warn(
+                "Storage",
+                "\(indexURL.lastPathComponent) could not be decoded; kept as \(backup.lastPathComponent)"
+            )
+        } catch {
+            DiagnosticLogger.shared.warn(
+                "Storage",
+                "\(indexURL.lastPathComponent) could not be decoded and could not be moved aside: \(error.localizedDescription)"
+            )
+        }
+    }
+
     public func saveToDisk() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(items) {
+        // No `.prettyPrinted`: this is machine state, and indentation roughly
+        // doubles every write and every later parse.
+        if let data = try? JSONEncoder().encode(items) {
             try? data.write(to: indexURL, options: .atomic)
         }
     }
@@ -169,10 +195,14 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         var prunedCount = 0
 
         if shouldPrune {
-            // Every iteration must re-measure *after* the index has been
-            // rewritten. The old loop measured before saving, so the on-disk
-            // index never shrank and the loop pruned every non-favourite item
-            // (plus their files) instead of stopping at the quota.
+            // Size is updated by subtraction, not by re-walking the folder.
+            // `computeDiskUsageBytes` stats every file, so measuring once per
+            // removed item made pruning quadratic in the collection size — a
+            // collection 500 items over budget did 500 full walks.
+            //
+            // What a removal actually frees is the item's own files plus
+            // whatever the index lost. Both are measured directly here, so the
+            // loop still stops the moment the folder fits.
             while currentSize > maxBytes {
                 guard let oldestIdx = items.indices
                     .filter({ !items[$0].isFavorite })
@@ -182,9 +212,12 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
 
                 let removed = items.remove(at: oldestIdx)
                 prunedCount += 1
+                let indexBytesBefore = Self.fileSize(at: indexURL)
                 onRemoveAssociatedFiles?(removed)
                 saveToDisk()
-                currentSize = storage.computeDiskUsageBytes()
+                let freedFiles = Self.bytesOnDisk(atPaths: removed.assetPaths)
+                let freedIndex = indexBytesBefore - Self.fileSize(at: indexURL)
+                currentSize = max(0, currentSize - freedFiles - freedIndex)
             }
         }
 
@@ -195,5 +228,25 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         }
 
         return prunedCount
+    }
+
+    private static func fileSize(at url: URL) -> Int64 {
+        // `resourceValues` caches per URL instance, and this is called on the
+        // same `indexURL` before and after the write: it reported the size from
+        // before the save, so the freed bytes came out as zero.
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return Int64((attrs?[.size] as? NSNumber)?.int64Value ?? 0)
+    }
+
+    private static func bytesOnDisk(atPaths paths: [String]) -> Int64 {
+        guard !paths.isEmpty else { return 0 }
+        var total: Int64 = 0
+        for path in paths {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? Int64 {
+                total += size
+            }
+        }
+        return total
     }
 }

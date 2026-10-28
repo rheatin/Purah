@@ -179,7 +179,7 @@ public struct CalendarDrawerView: View {
                 }
 
                 HStack(spacing: 6) {
-                    Text(formattedTime(event: event))
+                    Text(event.timeRangeLabel)
                         .font(palette.fontMono)
                         .foregroundColor(isPast ? .secondary.opacity(0.45) : .gray)
 
@@ -680,10 +680,6 @@ public struct CalendarDrawerView: View {
         .opacity(isPast ? 0.55 : 1.0)
     }
 
-    private func formattedTime(event: CalendarEventItem) -> String {
-        if event.isAllDay { return "All Day" }
-        return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
-    }
 }
 
 internal func launchAppleCalendar(at date: Date? = nil) {
@@ -958,7 +954,7 @@ public struct CalendarAgendaOverviewDrawerView: View {
                 }
 
                 HStack(spacing: 4) {
-                    Text(formattedTime(event: event))
+                    Text(event.timeRangeLabel)
                         .font(palette.fontMono)
                         .font(.system(size: 9))
                         .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
@@ -997,10 +993,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
         .opacity(isPast ? 0.55 : 1.0)
     }
 
-    private func formattedTime(event: CalendarEventItem) -> String {
-        if event.isAllDay { return "All Day" }
-        return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
-    }
 
     private func openInSystemCalendar(event: CalendarEventItem? = nil) {
         launchAppleCalendar(at: event?.startTime)

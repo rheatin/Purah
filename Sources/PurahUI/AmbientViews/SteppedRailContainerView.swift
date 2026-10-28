@@ -62,7 +62,7 @@ public struct SteppedRailContainerView: View {
                 let remaining = allItems.count - visibleCount
                 if remaining > 0 {
                     result.append(PurahPluginSubItem(
-                        id: "\(pod.id)_more_items",
+                        id: PurahPluginSubItem.moreItemsID(forPod: pod.id),
                         title: "+\(remaining) More",
                         systemIcon: "ellipsis",
                         badge: "\(remaining)",

@@ -199,11 +199,6 @@ public final class ScreenEdgeCoordinator {
         }
     }
 
-    public func updateRailWidths() {
-        leftRailWindow?.updateWidth()
-        rightRailWindow?.updateWidth()
-    }
-
     /// Dynamically expands rail canvas from 28pt compact docked width to full drawer canvas width (580pt)
     public func expandCanvas(for edge: MountEdge) {
         guard !isFrozen else { return }
@@ -250,14 +245,6 @@ public final class ScreenEdgeCoordinator {
             leftRailWindow?.setInteractive(interactive)
         } else {
             rightRailWindow?.setInteractive(interactive)
-        }
-    }
-
-    /// Synchronizes drawer presentation on the unified rail window canvas
-    public func syncDrawer(for edge: MountEdge? = nil) {
-        guard !isFrozen else { return }
-        if let edge = edge {
-            expandCanvas(for: edge)
         }
     }
 

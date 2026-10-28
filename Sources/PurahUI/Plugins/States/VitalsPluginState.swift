@@ -123,10 +123,6 @@ public final class VitalsPluginState: Sendable {
         storage.setCodable(thresholds, forKey: "thresholds")
     }
 
-    public func startPolling(interval: TimeInterval = 1.0) {
-        HardwareVitalsService.shared.startMonitoring(interval: interval)
-    }
-
     public func stopPolling() {
         HardwareVitalsService.shared.stopMonitoring()
     }

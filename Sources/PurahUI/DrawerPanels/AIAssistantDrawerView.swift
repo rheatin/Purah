@@ -1084,52 +1084,6 @@ public struct AISessionHistoryManagerView: View {
     }
 }
 
-// MARK: - Shimmer Skeleton Lines View
-struct AIShimmerSkeletonView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let roleColor: Color
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
-
-            VStack(alignment: .leading, spacing: 6) {
-                skeletonLine(widthFraction: 0.92, phase: phase)
-                skeletonLine(widthFraction: 0.82, phase: phase)
-                skeletonLine(widthFraction: 0.48, phase: phase)
-            }
-        }
-    }
-
-    private func skeletonLine(widthFraction: CGFloat, phase: CGFloat) -> some View {
-        GeometryReader { geo in
-            let w = geo.size.width * widthFraction
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: max(0, phase - 0.25)),
-                                .init(color: roleColor.opacity(0.40), location: phase),
-                                .init(color: .white.opacity(0.60), location: min(1, phase + 0.1)),
-                                .init(color: roleColor.opacity(0.40), location: min(1, phase + 0.2)),
-                                .init(color: .clear, location: min(1, phase + 0.4))
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            }
-            .frame(width: w, height: 7)
-        }
-        .frame(height: 7)
-    }
-}
-
 // MARK: - Single Line Shimmer Skeleton View
 struct AIShimmerSingleLineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

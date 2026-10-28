@@ -728,10 +728,6 @@ public final class HardwareVitalsService {
         )
     }
 
-    public func readCPUUsage() -> Double {
-        readCPUBreakdown().totalUsage
-    }
-
     deinit {
         monitorTask?.cancel()
         mach_port_deallocate(mach_task_self_, hostPort)
@@ -916,8 +912,4 @@ public final class HardwareVitalsService {
         )
     }
 
-    public func readNetworkThroughput() -> (down: Double, up: Double) {
-        let det = readNetworkThroughputDetailed()
-        return (det.down, det.up)
-    }
 }

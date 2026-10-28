@@ -103,7 +103,7 @@ public struct VisualLayoutSimulatorView: View {
                 moduleAssemblyCard
 
                 // 4. Rail & Drawer Geometry Card
-                settingsCard(title: "layout.geometry.title".localized, icon: "ruler.fill") {
+                PurahSettingsCard(title: "layout.geometry.title".localized, icon: "ruler.fill") {
                     VStack(spacing: 16) {
                         // Rail bar width
                         PurahThemedSliderRow(
@@ -191,7 +191,7 @@ public struct VisualLayoutSimulatorView: View {
     private var overflowStrategyCard: some View {
         let palette = theme.palette
 
-        return settingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
+        return PurahSettingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
             VStack(alignment: .leading, spacing: 14) {
                 // Toggle 1: Dynamic Breathing
                 HStack(alignment: .top, spacing: 12) {
@@ -314,7 +314,7 @@ public struct VisualLayoutSimulatorView: View {
         let mountedCount = leftMountedPods.count + rightMountedPods.count
         let unmountedPods = store.pods.filter { !$0.isEnabled }
 
-        return settingsCard(title: "layout.moduleAssembly.title".localized, icon: "square.grid.2x2.fill") {
+        return PurahSettingsCard(title: "layout.moduleAssembly.title".localized, icon: "square.grid.2x2.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("layout.moduleAssembly.subtitle".localized)
@@ -784,34 +784,6 @@ public struct VisualLayoutSimulatorView: View {
         )
     }
 
-    @ViewBuilder
-    private func settingsCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        let palette = theme.palette
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(palette.primaryAccent)
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-            }
-
-            content()
-        }
-        .padding(16)
-        // Fill the column rather than sizing to content; see the identical
-        // note in InteractionSettingsView.settingsCard.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceBackground)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
-        )
-    }
-
     // MARK: - Context Profiles
 
     /// Named whole-layout snapshots.
@@ -824,7 +796,7 @@ public struct VisualLayoutSimulatorView: View {
         let palette = theme.palette
         let profiles = store.contextProfiles
 
-        settingsCard(title: "profile.card.title".localized, icon: "square.stack.3d.up.fill") {
+        PurahSettingsCard(title: "profile.card.title".localized, icon: "square.stack.3d.up.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("profile.card.subtitle".localized)
                     .font(.caption2)
@@ -1011,7 +983,7 @@ public struct VisualLayoutSimulatorView: View {
     /// profiles card directly above.
     @ViewBuilder
     private func appProfileSwitchCard(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
-        settingsCard(title: "layout.appProfile.card".localized, icon: "macwindow.on.rectangle") {
+        PurahSettingsCard(title: "layout.appProfile.card".localized, icon: "macwindow.on.rectangle") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle(isOn: Binding(
                     get: { store.isAppProfileSwitchingEnabled },

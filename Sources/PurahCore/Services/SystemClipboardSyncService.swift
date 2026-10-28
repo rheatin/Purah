@@ -94,17 +94,28 @@ public final class SystemClipboardSyncService {
     }
 
     public func loadFromDisk() {
-        guard let data = try? Data(contentsOf: metadataURL),
-              let savedItems = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+        guard let data = try? Data(contentsOf: metadataURL) else { return }
+        guard let savedItems = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+            // Keep the unreadable file instead of letting the next save write
+            // an empty history over it: one added field, or one launch of an
+            // older build, must not cost the user their whole clipboard.
+            let backup = metadataURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("metadata.corrupt-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.moveItem(at: metadataURL, to: backup)
+            DiagnosticLogger.shared.warn(
+                "Clipboard",
+                "Clipboard history could not be decoded; kept as \(backup.lastPathComponent)"
+            )
             return
         }
         self._history = savedItems
     }
 
     private func saveToDisk() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(_history) {
+        // No `.prettyPrinted`: this is machine state, and indentation roughly
+        // doubles every write and every later parse.
+        if let data = try? JSONEncoder().encode(_history) {
             try? data.write(to: metadataURL, options: .atomic)
         }
     }
@@ -130,10 +141,6 @@ public final class SystemClipboardSyncService {
             }
         }
         return total
-    }
-
-    public func openStorageInFinder() {
-        NSWorkspace.shared.selectFile(storageDirectory.path, inFileViewerRootedAtPath: "")
     }
 
     public func clearDiskStorage() {

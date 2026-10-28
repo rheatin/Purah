@@ -40,7 +40,7 @@ public struct InteractionSettingsView: View {
                 .padding(.horizontal, 4)
 
                 // 1. Edge Trigger & Motion Physics Card
-                settingsCard(title: "interaction.trigger.card".localized, icon: "cursorarrow.motionlines") {
+                PurahSettingsCard(title: "interaction.trigger.card".localized, icon: "cursorarrow.motionlines") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -184,7 +184,7 @@ public struct InteractionSettingsView: View {
                 }
 
                 // 2. Dynamic Attention Alerts Card
-                settingsCard(title: "interaction.alerts.card".localized, icon: "bell.badge.waveform.fill") {
+                PurahSettingsCard(title: "interaction.alerts.card".localized, icon: "bell.badge.waveform.fill") {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -216,7 +216,7 @@ public struct InteractionSettingsView: View {
                 quietHoursCard(store: store, palette: palette)
 
                 // 4. Sensory Feedback Card
-                settingsCard(title: "interaction.sensory.card".localized, icon: "hand.tap.fill") {
+                PurahSettingsCard(title: "interaction.sensory.card".localized, icon: "hand.tap.fill") {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
                             Toggle(isOn: Binding(
@@ -358,40 +358,7 @@ public struct InteractionSettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func settingsCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        let palette = theme.palette
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(palette.primaryAccent)
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-            }
-
-            content()
-        }
-        .padding(16)
-        // The card must fill the column regardless of what it holds. Without
-        // this its width is its content's intrinsic width, so a card with a
-        // trailing Spacer ran edge to edge while a card holding just a Toggle
-        // shrank and was centred by the parent VStack — the two sat misaligned
-        // side by side.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceBackground)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Quiet Hours
-
-    /// A daily window that holds back alerts and toasts.
+    // MARK: - Quiet Hours    /// A daily window that holds back alerts and toasts.
     ///
     /// The two ends are minute pickers rather than `DatePicker`s: this is a
     /// recurring wall-clock window, not a date, and a date picker would imply
@@ -399,7 +366,7 @@ public struct InteractionSettingsView: View {
     /// picker round-trips without an arbitrary reference date.
     @ViewBuilder
     private func quietHoursCard(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
-        settingsCard(title: "interaction.quiet.card".localized, icon: "moon.zzz.fill") {
+        PurahSettingsCard(title: "interaction.quiet.card".localized, icon: "moon.zzz.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle(isOn: Binding(
                     get: { store.quietHours.isEnabled },

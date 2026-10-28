@@ -95,13 +95,4 @@ public enum TerminalFontManager: Sendable {
         return NSFont(descriptor: cascadedDescriptor, size: size) ?? baseFont
     }
 
-    /// Calculates single character advance width and line height for PTY window sizing (TIOCSWINSZ)
-    @MainActor
-    public static func charDimensions(font: NSFont) -> (width: CGFloat, height: CGFloat) {
-        let testString = "W" as NSString
-        let size = testString.size(withAttributes: [.font: font])
-        let width = max(size.width, 7.0)
-        let height = max(size.height, 14.0)
-        return (width, height)
-    }
 }

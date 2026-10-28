@@ -72,10 +72,12 @@ public struct PurahPluginFileStorage: Sendable {
     public func computeDiskUsageBytes() -> Int64 {
         guard let enumerator = FileManager.default.enumerator(at: rootDirectory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
         var total: Int64 = 0
+        // The enumerator already prefetched the size; asking the file system
+        // again for each one doubled the syscalls on this path.
         for case let fileURL as URL in enumerator {
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-               let size = attrs[.size] as? Int64 {
-                total += size
+            if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+               let size = values.fileSize {
+                total += Int64(size)
             }
         }
         return total

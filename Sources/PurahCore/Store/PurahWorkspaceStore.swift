@@ -1078,14 +1078,6 @@ public final class PurahWorkspaceStore {
 
     /// `isPodAlerting` with the quiet window applied.
     ///
-    /// Views should call this rather than the raw predicate; the raw one stays
-    /// available because acknowledging an alert while quiet must still be
-    /// possible, and the settings UI needs to show what *would* be alerting.
-    public func isPodAlertingNow(podId: String, at date: Date = Date()) -> Bool {
-        guard !isQuietNow(at: date) else { return false }
-        return isPodAlerting(podId: podId)
-    }
-
     // MARK: - Context profiles
 
     package var _contextProfiles: ContextProfileStore = ContextProfileStore()
@@ -1233,12 +1225,6 @@ public final class PurahWorkspaceStore {
     public func assignTrigger(_ trigger: ProfileTrigger, to profileId: UUID) {
         var store = _contextProfiles
         store.triggers[trigger] = profileId
-        contextProfiles = store
-    }
-
-    public func removeTrigger(_ trigger: ProfileTrigger) {
-        var store = _contextProfiles
-        store.triggers.removeValue(forKey: trigger)
         contextProfiles = store
     }
 
@@ -1967,18 +1953,6 @@ public final class PurahWorkspaceStore {
         return totalHeight
     }
 
-    public func effectivePodSpan(for pod: SlotPod, totalHeight: CGFloat) -> CGFloat {
-        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
-        let minStandalone = CGFloat(standaloneMinimumRailHeight(for: pod.id))
-        let podHeight = max(pod.range.length * totalHeight, minStandalone)
-        let isShortened = pod.minLength <= 0.06 && (pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0)
-        if isSculptingRails || isShortened {
-            return podHeight
-        }
-        let minReserved = minimumDrawerHeight(for: pod.id)
-        return max(podHeight, minReserved)
-    }
-
     /// Universal rail-slot admission check for decomposed pods. Base knows the
     /// counts (subItemCount vs policy.maxRailItems) — plugins call this before
     /// enabling an entry and reject the enable when it returns false.
@@ -2145,6 +2119,11 @@ public final class PurahWorkspaceStore {
         let podsCount: Int
         let enabledSignature: String
         let isDynamicBreathingEnabled: Bool
+        /// Sculpting changes the top inset and every minimum floor, so a layout
+        /// computed for one sub-mode must never be served for the other. The
+        /// pagination cache already keys on this; this one did not, and the
+        /// sculptor's rehearsal toggle writes the flag without invalidating.
+        let isSculptingRails: Bool
         let hoveredPodId: String?
         let activePodId: String?
         let activeItemId: String?
@@ -2208,12 +2187,14 @@ public final class PurahWorkspaceStore {
             "\($0.id):\($0.range.start):\($0.range.length):\($0.pageIndex):\($0.majorGroupId ?? ""):\($0.preferredExpandedHeight ?? 0)"
         }.joined(separator: "|")
         let curPage = currentRailPage(for: edge)
+        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
 
         if let cached = cachedResolvedLayouts[edge],
            abs(cached.height - totalHeight) < 0.5,
            cached.podsCount == allEdgePods.count,
            cached.enabledSignature == signature,
            cached.isDynamicBreathingEnabled == isDynamicBreathingEnabled,
+           cached.isSculptingRails == isSculptingRails,
            cached.hoveredPodId == hoveredPodId,
            cached.activePodId == activeDrawerPodId,
            cached.activeItemId == activeDrawerItemId,
@@ -2230,7 +2211,6 @@ public final class PurahWorkspaceStore {
         let pagePods = pages[pageIdx]
         guard !pagePods.isEmpty else { return [] }
 
-        let isSculptingRails = isLiveRailEditingMode && !isRehearsingBreathingInSculptor
         let safeTop = isSculptingRails ? 72.0 : (pages.count > 1 ? 48.0 : 16.0)
         let safeBottom = pages.count > 1 ? (totalHeight - 48.0) : (totalHeight - 16.0)
         let availableH = max(safeBottom - safeTop, 160.0)
@@ -2685,6 +2665,7 @@ public final class PurahWorkspaceStore {
             podsCount: allEdgePods.count,
             enabledSignature: signature,
             isDynamicBreathingEnabled: isDynamicBreathingEnabled,
+            isSculptingRails: isSculptingRails,
             hoveredPodId: hoveredPodId,
             activePodId: activeDrawerPodId,
             activeItemId: activeDrawerItemId,
@@ -2746,7 +2727,7 @@ public final class PurahWorkspaceStore {
                 var matchedSubItem = false
                 for idx in 0..<count {
                     let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
-                    let subId = isSmartFoldSlot ? "\(pod.id)_more_items" : provider.subItemId(at: idx, store: self)
+                    let subId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: pod.id) : provider.subItemId(at: idx, store: self)
                     guard let subId = subId else { continue }
                     let itemActive = (activeDrawerItemId == subId) || (isSmartFoldSlot && pod.id == "calendar" && activeDrawerItemId == "calendar_more_events")
                     let itemPinned = isItemPinned(id: subId) || (isSmartFoldSlot && pod.id == "calendar" && isItemPinned(id: "calendar_more_events"))

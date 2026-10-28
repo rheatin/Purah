@@ -218,7 +218,7 @@ public struct CalendarItemDrawerView: View {
                 .help("help.openInAppleCalendar".localized)
                 .accessibilityLabel("help.openInAppleCalendar".localized)
 
-                Text("\(formattedTime(event: event)) · \(event.location)")
+                Text("\(event.timeRangeLabel) · \(event.location)")
                     .font(palette.fontMono)
                     .foregroundColor(isPast ? .secondary.opacity(0.45) : .gray)
                     .lineLimit(1)
@@ -313,7 +313,7 @@ public struct CalendarItemDrawerView: View {
                         Image(systemName: "clock.fill")
                             .font(.system(size: 8))
                             .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
-                        Text(formattedTime(event: event))
+                        Text(event.timeRangeLabel)
                             .font(palette.fontMono)
                             .font(.system(size: 8.5))
                             .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
@@ -413,7 +413,7 @@ public struct CalendarItemDrawerView: View {
                     Image(systemName: "clock.fill")
                         .font(.system(size: 8.5))
                         .foregroundColor(isPast ? .secondary.opacity(0.4) : ((isImminent && !isOngoing) ? Color.orange : calColor))
-                    Text(formattedTime(event: event))
+                    Text(event.timeRangeLabel)
                         .font(palette.fontMono)
                         .font(.system(size: 9))
                         .foregroundColor(isPast ? .secondary.opacity(0.45) : .secondary)
@@ -490,7 +490,7 @@ public struct CalendarItemDrawerView: View {
                         .foregroundColor(palette.style == .native ? Color.primary : Color.white)
                         .lineLimit(1)
                     Spacer()
-                    Text(formattedTime(event: nextEvent))
+                    Text(nextEvent.timeRangeLabel)
                         .font(palette.fontMono)
                         .font(.system(size: 8))
                         .foregroundColor(.secondary)
@@ -723,8 +723,4 @@ public struct CalendarItemDrawerView: View {
         launchAppleCalendar(at: event.startTime)
     }
 
-    private func formattedTime(event: CalendarEventItem) -> String {
-        if event.isAllDay { return "All Day" }
-        return "\(event.startTime.formatted(date: .omitted, time: .shortened)) - \(event.endTime.formatted(date: .omitted, time: .shortened))"
-    }
 }
