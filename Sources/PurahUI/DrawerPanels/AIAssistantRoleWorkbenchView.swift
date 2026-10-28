@@ -1463,6 +1463,14 @@ public struct AIAssistantRoleWorkbenchView: View {
                         fontSize: 11,
                         focusRequest: refineFocusRequest,
                         autoFocus: true,
+                        // Esc folds the editor back to the 24pt pill; the draft
+                        // stays in `refineInputText`, so nothing is lost and a
+                        // second Esc closes the drawer as before.
+                        onEscape: {
+                            withAnimation(PurahMotionPolicy.microLight) {
+                                state.isRefiningOutput = false
+                            }
+                        },
                         onSubmit: submitRefinement
                     )
                     .frame(height: 44)
@@ -1489,6 +1497,27 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .foregroundColor(Color.white.opacity(0.45))
 
                     Spacer()
+
+                    // Visible fold control. Esc does the same, but a keyboard
+                    // shortcut nobody can see is not a control; the expandable
+                    // pill had no way back that a person could find.
+                    Button {
+                        withAnimation(PurahMotionPolicy.microLight) {
+                            state.isRefiningOutput = false
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .foregroundColor(Color.white.opacity(0.60))
+                            .frame(width: 18, height: 18)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                                    .fill(Color.white.opacity(0.09))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("help.collapseRefineEditor".localized)
+                    .accessibilityLabel("help.collapseRefineEditor".localized)
 
                     Button {
                         submitRefinement()
