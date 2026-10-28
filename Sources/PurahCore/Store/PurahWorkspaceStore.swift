@@ -1268,7 +1268,11 @@ public final class PurahWorkspaceStore {
         guard !moves.isEmpty else { return }
 
         if focusRuleSnapshot == nil {
-            focusRuleSnapshot = Dictionary(uniqueKeysWithValues: pods.map { ($0.id, $0.pageIndex) })
+            let snapshot = Dictionary(uniqueKeysWithValues: pods.map { ($0.id, $0.pageIndex) })
+            focusRuleSnapshot = snapshot
+            // Mirrored to disk so a quit inside the ruled app — which skips
+            // `clearFocusRule` — can still be undone on the next launch.
+            userDefaults.set(snapshot, forKey: Self.focusRuleBaselineKey)
         }
 
         for move in moves {
@@ -1296,6 +1300,7 @@ public final class PurahWorkspaceStore {
     public func clearFocusRule() {
         guard let snapshot = focusRuleSnapshot else { return }
         focusRuleSnapshot = nil
+        userDefaults.removeObject(forKey: Self.focusRuleBaselineKey)
 
         var changed = false
         for idx in pods.indices {

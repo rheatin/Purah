@@ -215,4 +215,132 @@ struct AppFocusRuleTests {
         #expect(!settings.isEnabled)
         #expect(settings.rules.isEmpty)
     }
+
+    // MARK: - The service end of the feature
+
+    /// The store tests above prove `applyFocusRule` works when it is called.
+    /// This proves something calls it: an app switch, arriving through
+    /// `evaluate`, actually moves the rail.
+    @Test("Evaluating a frontmost app applies its rule")
+    func testEvaluateAppliesRule() {
+        let store = makeStore()
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected at least one enabled pod")
+            return
+        }
+        store.appFocusSettings = AppFocusSettings(
+            isEnabled: true,
+            rules: ["com.test.editor": AppFocusRule(bundleId: "com.test.editor", hiddenPodIds: [pod.id])]
+        )
+
+        let service = AppFocusAwarenessService(debounceMilliseconds: 0)
+        service.bindStore(store)
+        service.evaluate(bundleId: "com.test.editor", name: "Editor")
+
+        #expect(
+            store.pods.first { $0.id == pod.id }?.pageIndex == 1,
+            "switching to an app with a rule must move its pods"
+        )
+        #expect(service.activeBundleId == "com.test.editor")
+        #expect(service.lastExternalBundleId == "com.test.editor")
+    }
+
+    @Test("Leaving a ruled app restores the original pages")
+    func testEvaluateRevertsOnLeave() {
+        let store = makeStore()
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected at least one enabled pod")
+            return
+        }
+        let originalPage = pod.pageIndex
+        store.appFocusSettings = AppFocusSettings(
+            isEnabled: true,
+            rules: ["com.test.editor": AppFocusRule(bundleId: "com.test.editor", hiddenPodIds: [pod.id])]
+        )
+
+        let service = AppFocusAwarenessService(debounceMilliseconds: 0)
+        service.bindStore(store)
+        service.evaluate(bundleId: "com.test.editor", name: "Editor")
+        service.evaluate(bundleId: "com.test.other", name: "Other")
+
+        #expect(store.pods.first { $0.id == pod.id }?.pageIndex == originalPage)
+    }
+
+    /// The settings window makes Purah frontmost. Evaluating it must not undo
+    /// the user's arrangement while they are configuring the feature.
+    @Test("Purah activating itself is ignored")
+    func testSelfActivationIsIgnored() {
+        let store = makeStore()
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected at least one enabled pod")
+            return
+        }
+        store.appFocusSettings = AppFocusSettings(
+            isEnabled: true,
+            rules: [Bundle.main.bundleIdentifier ?? "self": AppFocusRule(
+                bundleId: Bundle.main.bundleIdentifier ?? "self",
+                hiddenPodIds: [pod.id]
+            )]
+        )
+
+        let service = AppFocusAwarenessService(debounceMilliseconds: 0)
+        service.bindStore(store)
+        service.evaluate(bundleId: Bundle.main.bundleIdentifier, name: "Purah")
+
+        #expect(store.pods.first { $0.id == pod.id }?.pageIndex == 0)
+    }
+
+    @Test("A rule is inert while the feature is switched off")
+    func testDisabledFeatureDoesNotMovePods() {
+        let store = makeStore()
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected at least one enabled pod")
+            return
+        }
+        store.appFocusSettings = AppFocusSettings(
+            isEnabled: false,
+            rules: ["com.test.editor": AppFocusRule(bundleId: "com.test.editor", hiddenPodIds: [pod.id])]
+        )
+
+        let service = AppFocusAwarenessService(debounceMilliseconds: 0)
+        service.bindStore(store)
+        service.evaluate(bundleId: "com.test.editor", name: "Editor")
+
+        #expect(store.pods.first { $0.id == pod.id }?.pageIndex == 0)
+    }
+
+    /// Quitting inside a ruled app skips the undo. The temporary pages must not
+    /// survive the relaunch, or the user is left with a layout no rule explains.
+    @Test("Pages left behind by an interrupted rule are restored on launch")
+    func testInterruptedRuleIsRestoredOnLaunch() {
+        let suiteName = "purah.focus.interrupt.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        guard let pod = store.pods.first(where: { $0.isEnabled }) else {
+            Issue.record("expected at least one enabled pod")
+            return
+        }
+        let originalPage = pod.pageIndex
+        store.appFocusSettings = AppFocusSettings(
+            isEnabled: true,
+            rules: ["com.test.editor": AppFocusRule(bundleId: "com.test.editor", hiddenPodIds: [pod.id])]
+        )
+
+        let service = AppFocusAwarenessService(debounceMilliseconds: 0)
+        service.bindStore(store)
+        service.evaluate(bundleId: "com.test.editor", name: "Editor")
+        #expect(store.pods.first { $0.id == pod.id }?.pageIndex == 1)
+        // Simulate the quit: persist exactly as the app would, without undoing.
+        store.savePersistentState()
+
+        let relaunched = PurahWorkspaceStore(userDefaults: defaults)
+        relaunched.loadPersistentState()
+
+        #expect(
+            relaunched.pods.first { $0.id == pod.id }?.pageIndex == originalPage,
+            "the temporary page must not survive a relaunch"
+        )
+    }
 }

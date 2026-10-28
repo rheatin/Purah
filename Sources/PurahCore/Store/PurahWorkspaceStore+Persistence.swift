@@ -9,6 +9,10 @@ import AppKit
 // deserialises. Keeping it here means a persistence change cannot accidentally
 // be reviewed as a layout change.
 extension PurahWorkspaceStore {
+    /// Where a focus rule's pre-rule page map is mirrored, so an interrupted
+    /// undo can still be completed on the next launch. See
+    /// `restoreInterruptedFocusRule()`.
+    static let focusRuleBaselineKey = "purah.focusRuleBaseline"
     // MARK: - Local Persistence
     public static func resetToFactoryDefaults(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: "purah.pods")
@@ -235,6 +239,38 @@ extension PurahWorkspaceStore {
         if didRepairPods {
             savePersistentState()
         }
+
+        restoreInterruptedFocusRule()
+    }
+
+    /// Puts back pages that a focus rule had moved, when the app did not get to
+    /// undo them.
+    ///
+    /// A rule's rearrangement is meant to last only while its app is frontmost,
+    /// and it is held in memory so leaving the app can undo it exactly. Quitting
+    /// or crashing while inside that app skips the undo — and any later save
+    /// writes the temporary pages to disk, leaving a layout no rule explains.
+    /// The snapshot is therefore mirrored into defaults while a rule is active
+    /// and consumed here on the next launch.
+    private func restoreInterruptedFocusRule() {
+        guard let raw = userDefaults.dictionary(forKey: Self.focusRuleBaselineKey) else { return }
+        userDefaults.removeObject(forKey: Self.focusRuleBaselineKey)
+
+        var restored = false
+        for idx in pods.indices {
+            guard let original = raw[pods[idx].id] as? Int,
+                  pods[idx].pageIndex != original else { continue }
+            pods[idx].pageIndex = original
+            restored = true
+        }
+        guard restored else { return }
+
+        invalidateLayoutCache()
+        savePersistentState()
+        DiagnosticLogger.shared.info(
+            "Store",
+            "Restored pages left behind by an interrupted focus rule"
+        )
     }
 
     public func savePersistentState() {
