@@ -65,8 +65,24 @@ public enum CLITemplateProbe {
             return CLITemplateProbeResult(candidates: fallbackCandidates(), helpExcerpt: "", exitCode: -1, didTimeOut: false)
         }
 
-        let outcome = await runHelpBounded(path: path, timeout: timeout)
+        let outcome = await runHelpBounded(path: path, arguments: ["--help"], timeout: timeout)
         let candidates = inferTemplates(from: outcome.text)
+
+        // Plenty of hand-rolled CLIs implement `-h` and nothing else. One extra
+        // run is cheaper than telling the person their binary documents nothing.
+        if candidates.count <= 1, !outcome.didTimeOut {
+            let shortForm = await runHelpBounded(path: path, arguments: ["-h"], timeout: timeout)
+            let shortCandidates = inferTemplates(from: shortForm.text)
+            if shortCandidates.count > candidates.count {
+                return CLITemplateProbeResult(
+                    candidates: shortCandidates,
+                    helpExcerpt: shortForm.text,
+                    exitCode: shortForm.exitCode,
+                    didTimeOut: shortForm.didTimeOut
+                )
+            }
+        }
+
         return CLITemplateProbeResult(
             candidates: candidates,
             helpExcerpt: outcome.text,
@@ -86,11 +102,11 @@ public enum CLITemplateProbe {
     /// Files rather than pipes: `readDataToEndOfFile` after `waitUntilExit` can
     /// deadlock once the CLI writes more than a pipe buffer, and a help screen
     /// easily does.
-    private static func runHelpBounded(path: String, timeout: TimeInterval) async -> HelpOutcome {
+    private static func runHelpBounded(path: String, arguments: [String], timeout: TimeInterval) async -> HelpOutcome {
         await Task.detached(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
-            process.arguments = ["--help"]
+            process.arguments = arguments
 
             let tempDir = FileManager.default.temporaryDirectory
             let outURL = tempDir.appendingPathComponent("purah-help-\(UUID().uuidString).out")
@@ -144,6 +160,69 @@ public enum CLITemplateProbe {
     }
 
     // MARK: - Inference
+
+    /// A binary whose conventions we know from its name.
+    public struct KnownFamily: Sendable, Equatable {
+        public let family: String
+        public let template: String
+    }
+
+    /// Name → convention, so an obvious binary answers without being run.
+    ///
+    /// Forks keep their parent's command line far more often than they change
+    /// it, and the fork's own name is the cheapest evidence available. A miss
+    /// costs one `--help` run, so this table stays short and only lists names
+    /// that are not also ordinary English words.
+    static let knownFamilies: [(prefix: String, family: KnownFamily)] = [
+        ("claude", KnownFamily(family: "Claude Code", template: "-p {prompt}")),
+        ("pi", KnownFamily(family: "Pi", template: "-p {prompt}")),
+        ("codex", KnownFamily(family: "Codex", template: "exec {prompt}")),
+        ("opencode", KnownFamily(family: "opencode", template: "run {prompt}")),
+        ("gemini", KnownFamily(family: "Gemini CLI", template: "-p {prompt}")),
+        ("aider", KnownFamily(family: "Aider", template: "--message {prompt}")),
+        ("ollama", KnownFamily(family: "Ollama", template: "run llama3.2 {prompt}")),
+    ]
+
+    public static func knownFamily(for executablePath: String) -> KnownFamily? {
+        let name = (executablePath as NSString).lastPathComponent.lowercased()
+        // A short name has to match exactly: "pi" is a prefix of "pip", "pilot"
+        // and a dozen other things that are not AI agents.
+        return knownFamilies.first { entry in
+            name == entry.prefix || (entry.prefix.count >= 4 && name.hasPrefix(entry.prefix))
+        }?.family
+    }
+
+    /// What this binary most likely takes, best first: its own name first, then
+    /// whatever its `--help` documents.
+    public struct Inference: Sendable {
+        public let candidates: [CLITemplateCandidate]
+        /// True when `--help` never returned, which is worth saying out loud.
+        public let didTimeOut: Bool
+        public let knownFamily: KnownFamily?
+    }
+
+    public static func infer(for executablePath: String) async -> Inference {
+        var candidates: [CLITemplateCandidate] = []
+        let known = knownFamily(for: executablePath)
+        if let known {
+            candidates.append(CLITemplateCandidate(
+                template: known.template,
+                reason: "\(known.family) takes its prompt this way",
+                score: 100
+            ))
+        }
+        let probed = await probe(executablePath: executablePath)
+        var seen = Set(candidates.map(\.template))
+        for candidate in probed.candidates where !seen.contains(candidate.template) {
+            seen.insert(candidate.template)
+            candidates.append(candidate)
+        }
+        return Inference(
+            candidates: Array(candidates.prefix(4)),
+            didTimeOut: probed.didTimeOut,
+            knownFamily: known
+        )
+    }
 
     /// Turns help output into ranked templates. Pure, so it can be tested on
     /// captured help text without running anything.

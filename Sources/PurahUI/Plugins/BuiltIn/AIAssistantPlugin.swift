@@ -446,6 +446,10 @@ public struct AIAssistantPluginSettingsView: View {
     @State private var inferredTemplates: [CLITemplateCandidate] = []
     @State private var isInferringTemplates = false
     @State private var inferTemplateNotice: String? = nil
+    /// The last template this view filled in by itself, so a hand-typed one is
+    /// never overwritten by picking a different binary.
+    @State private var autoFilledTemplate: String? = nil
+    @State private var autoInferTask: Task<Void, Never>? = nil
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -736,6 +740,11 @@ public struct AIAssistantPluginSettingsView: View {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             state.selectedCLI = cli
                         }
+                        if cli == .custom {
+                            // Arriving at the custom pill with a path already
+                            // set is the same request as typing one.
+                            scheduleTemplateInference()
+                        }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: cli == .custom ? "gearshape.fill" : "terminal.fill")
@@ -789,6 +798,11 @@ public struct AIAssistantPluginSettingsView: View {
                     TextField("Path override or custom binary", text: $state.customCLIPath)
                         .textFieldStyle(.plain)
                         .font(.system(size: 11))
+                        // The path is the strongest hint available: the binary's
+                        // name, then its own --help, decide how it is called.
+                        .onChange(of: state.customCLIPath) { _, _ in
+                            scheduleTemplateInference()
+                        }
                 }
 
                 Button {
@@ -1128,9 +1142,8 @@ public struct AIAssistantPluginSettingsView: View {
 
     /// Asks the custom binary how it takes a prompt, and offers what it said.
     ///
-    /// Nothing is applied automatically: the user picks, because the probe can
-    /// only read what the CLI documents, and a wrong template is worse than the
-    /// one already set.
+    /// Nothing is applied automatically here: the button is a question, and the
+    /// user picks, because the probe can only read what the CLI documents.
     private func inferTemplatesFromHelp() {
         guard !isInferringTemplates else { return }
         inferredTemplates = []
@@ -1146,13 +1159,44 @@ public struct AIAssistantPluginSettingsView: View {
 
         isInferringTemplates = true
         Task {
-            let result = await CLITemplateProbe.probe(executablePath: path)
+            let inference = await CLITemplateProbe.infer(for: path)
             isInferringTemplates = false
-            inferredTemplates = result.candidates
-            if result.didTimeOut {
+            inferredTemplates = inference.candidates
+            if inference.didTimeOut {
                 inferTemplateNotice = "ai.inferTemplate.timeout".localized
-            } else if result.candidates.count <= 1 {
+            } else if inference.candidates.count <= 1 {
                 inferTemplateNotice = "ai.inferTemplate.none".localized
+            }
+        }
+    }
+
+    /// Picking a file *is* the answer to "how is this called?" — so the template
+    /// is filled in from the binary's name, and from its `--help` when the name
+    /// says nothing. A template the person typed is never replaced.
+    private func scheduleTemplateInference() {
+        autoInferTask?.cancel()
+        let typed = state.customCLIPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+
+        autoInferTask = Task {
+            // Typing a path letter by letter would otherwise launch a process
+            // per keystroke; the pause is what makes this a single probe.
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+
+            let path = (typed as NSString).expandingTildeInPath
+            guard FileManager.default.isExecutableFile(atPath: path) else { return }
+
+            let inference = await CLITemplateProbe.infer(for: path)
+            guard !Task.isCancelled, let best = inference.candidates.first else { return }
+
+            inferredTemplates = inference.candidates
+            inferTemplateNotice = nil
+            let current = state.customCLIArguments.trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.isEmpty || current == "{prompt}" || current == autoFilledTemplate {
+                state.customCLIArguments = best.template
+                autoFilledTemplate = best.template
+                inferTemplateNotice = String(format: "ai.inferTemplate.detected".localized, best.template)
             }
         }
     }

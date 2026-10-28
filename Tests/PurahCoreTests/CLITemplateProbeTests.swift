@@ -118,11 +118,79 @@ struct CLITemplateProbeTests {
         #expect(result.candidates.map(\.template) == ["{prompt}"])
     }
 
+    @Test("A binary whose name is a known agent answers without being run")
+    func recognisesKnownFamilies() {
+        #expect(CLITemplateProbe.knownFamily(for: "/opt/homebrew/bin/claude")?.template == "-p {prompt}")
+        #expect(CLITemplateProbe.knownFamily(for: "/usr/local/bin/codex-0.9")?.template == "exec {prompt}")
+        // A short name has to match exactly: these are ordinary words.
+        #expect(CLITemplateProbe.knownFamily(for: "/bin/pi")?.template == "-p {prompt}")
+        #expect(CLITemplateProbe.knownFamily(for: "/usr/bin/pip") == nil)
+        #expect(CLITemplateProbe.knownFamily(for: "/usr/bin/pilot") == nil)
+        // A fork that kept none of the name gets no guess at all.
+        #expect(CLITemplateProbe.knownFamily(for: "/Users/x/bin/qoder") == nil)
+    }
+
+    @Test("The name wins over --help, and --help still supplies the alternatives")
+    func nameBeatsHelp() async throws {
+        let script = try makeScript(named: "claude", """
+        #!/bin/zsh
+        cat <<'EOF'
+        Usage: claude [options]
+
+        Options:
+          -q, --query <prompt>   Send the query
+        EOF
+        """)
+        defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
+
+        let inference = await CLITemplateProbe.infer(for: script.path)
+        #expect(inference.knownFamily?.family == "Claude Code")
+        #expect(inference.candidates.first?.template == "-p {prompt}")
+        #expect(inference.candidates.contains { $0.template == "--query {prompt}" },
+                "the binary's own help is still offered below the convention")
+    }
+
+    @Test("An unknown fork is decided by its help text")
+    func forkFallsBackToHelp() async throws {
+        let script = try makeScript(named: "qoder-cli", """
+        #!/bin/zsh
+        cat <<'EOF'
+        Usage: qoder-cli [options]
+
+        Options:
+          --prompt <text>   Ask the model and print the reply
+        EOF
+        """)
+        defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
+
+        let inference = await CLITemplateProbe.infer(for: script.path)
+        #expect(inference.knownFamily == nil)
+        #expect(inference.candidates.first?.template == "--prompt {prompt}")
+    }
+
+    @Test("A binary that documents itself only under -h is still understood")
+    func fallsBackToShortHelpFlag() async throws {
+        let script = try makeScript("""
+        #!/bin/zsh
+        if [[ "$1" == "-h" ]]; then
+          printf 'Usage: fake [options]\n\n  -p, --prompt <text>   Ask and print\n'
+        fi
+        """)
+        defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
+
+        let result = await CLITemplateProbe.probe(executablePath: script.path)
+        #expect(result.candidates.first?.template == "--prompt {prompt}")
+    }
+
     private func makeScript(_ body: String) throws -> URL {
+        try makeScript(named: "fakecli", body)
+    }
+
+    private func makeScript(named name: String, _ body: String) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah_cli_probe_\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("fakecli")
+        let url = dir.appendingPathComponent(name)
         try body.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url
