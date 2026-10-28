@@ -312,7 +312,6 @@ struct OnboardingAndLaunchAtLoginTests {
         // Step 5: Breathing demo
         store.selectOnboardingStep(.breathingDemo)
         #expect(store.isDynamicBreathingEnabled == true)
-        #expect(store.isAlwaysCompactBreathing == false)
         #expect(store.isRehearsingBreathingInSculptor == true)
         #expect(store.isCurrentOnboardingMissionCompleted == false)
 
@@ -325,7 +324,6 @@ struct OnboardingAndLaunchAtLoginTests {
 
         // Step 6: Anti-touch calibration
         store.selectOnboardingStep(.antiTouchCalibration)
-        #expect(store.isAlwaysCompactBreathing == false)
         #expect(store.isRehearsingBreathingInSculptor == true)
         #expect(store.isCurrentOnboardingMissionCompleted == false)
 

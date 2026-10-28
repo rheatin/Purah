@@ -98,7 +98,11 @@ struct LocalizationTests {
         // for the missing strings. Raise a number when you add translations;
         // never lower one to make this pass.
         let pinnedCoverage: [AppLanguage: Int] = [
-            .traditionalChinese: 556,
+            // 556 - 9: the miniature screen simulator was deleted, taking its
+            // seven strings (zone labels, menu-bar mock, sample clock, and the
+            // four drag hints its capsules carried) with it, and the "always
+            // compact idle strips" toggle went with the breathing rewrite.
+            .traditionalChinese: 547,
             .japanese: 74,
             .korean: 74,
             .french: 74,

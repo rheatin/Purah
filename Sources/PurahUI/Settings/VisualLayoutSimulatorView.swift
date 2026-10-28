@@ -90,8 +90,11 @@ public struct VisualLayoutSimulatorView: View {
                 // 1. Context Profiles (whole-layout presets)
                 contextProfilesCard
 
-                // 2. Mini Screen Simulation (Top Primary Focus)
-                ScreenSimulationCanvas(store: store)
+                // The miniature screen simulator that used to sit here is gone.
+                // Editing belongs to the live rail sculptor (⌃⌥E), which is
+                // 1:1 with the real bezel; a scaled-down copy underneath could
+                // only approximate the same drags while adding a second set of
+                // mount / transfer / page controls that this tab already owns.
 
                 // 2. High-Density Rail Overflow Mode Card
                 overflowStrategyCard
@@ -230,45 +233,6 @@ public struct VisualLayoutSimulatorView: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .purahRowAccessibility("overflow.breathing.toggleTitle".localized, detail: "overflow.breathing.toggleSubtitle".localized)
-                }
-
-                // Toggle 2: Always Compact Breathing (when breathing is enabled)
-                if store.isDynamicBreathingEnabled {
-                    Divider()
-
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(store.isAlwaysCompactBreathing ? palette.primaryAccent : .secondary)
-                            .frame(width: 24, height: 24)
-                            .padding(4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(store.isAlwaysCompactBreathing ? palette.primaryAccent.opacity(0.16) : Color.primary.opacity(0.06))
-                            )
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("overflow.breathing.alwaysCompactTitle".localized)
-                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                            Text("overflow.breathing.alwaysCompactSubtitle".localized)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(
-                            get: { store.isAlwaysCompactBreathing },
-                            set: { store.setAlwaysCompactBreathing($0) }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .purahRowAccessibility("overflow.breathing.alwaysCompactTitle".localized, detail: "overflow.breathing.alwaysCompactSubtitle".localized)
-                    }
-                    .padding(.leading, 12)
                 }
 
                 // Multi-Page Navigation when pages > 1

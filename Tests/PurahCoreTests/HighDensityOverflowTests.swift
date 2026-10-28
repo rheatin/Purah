@@ -11,12 +11,11 @@ import SwiftUI
 @MainActor
 struct HighDensityOverflowTests {
 
-    private func makeNinePodsLeftRailStore(breathingEnabled: Bool = true, alwaysCompact: Bool = false) -> PurahWorkspaceStore {
+    private func makeNinePodsLeftRailStore(breathingEnabled: Bool = true) -> PurahWorkspaceStore {
         let suiteName = "test_unified_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isDynamicBreathingEnabled = breathingEnabled
-        store.isAlwaysCompactBreathing = alwaysCompact
         store.pods.removeAll(where: { $0.id == "ai" })
 
         // Move all 9 pods to the left rail and ensure all 9 are enabled via togglePodEnabled
@@ -81,37 +80,6 @@ struct HighDensityOverflowTests {
                 #expect(item.startY >= (prev.startY + prev.spanH - 0.01), "Expanded and idle pods must remain 100% non-overlapping")
             }
         }
-    }
-
-    @Test("Dynamic Accordion with 3-4 pods on a 900pt rail expands hovered pod from compact idle height to preferredDrawerHeight (>= 220pt) and resets Page 2")
-    func testDynamicAccordionPreferredHeightAndPageReset() throws {
-        let suiteName = "test_accordion_pref_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
-        let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.isDynamicBreathingEnabled = true
-        store.isAlwaysCompactBreathing = true
-
-        // Verify with 3~4 pods on left rail (default balanced/initial left rail has 4 enabled pods)
-        let totalHeight = 900.0
-        let idleLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
-        #expect(idleLayout.count >= 3 && idleLayout.count <= 4)
-
-        let targetItem = idleLayout[1]
-        let targetPodId = targetItem.pod.id
-        let idleSpanH = targetItem.spanH
-        let idleCenter = targetItem.startY + (idleSpanH * 0.5)
-        let prefH = Double(store.preferredDrawerHeight(for: targetPodId))
-        #expect(prefH >= 220.0)
-        #expect(idleSpanH < prefH, "Idle accordion bar must be compact and smaller than preferredDrawerHeight")
-
-        // Hover target pod -> must expand up to preferredDrawerHeight anchored over idleCenter
-        store.activateDrawer(podId: targetPodId)
-        let expandedLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
-        let expandedItem = try #require(expandedLayout.first(where: { $0.pod.id == targetPodId }))
-
-        #expect(expandedItem.spanH >= prefH - 0.5, "Hovered pod in Dynamic Accordion must expand to its preferredDrawerHeight (>= 220pt)")
-        #expect(expandedItem.spanH > idleSpanH)
-        #expect(expandedItem.startY <= idleCenter && (expandedItem.startY + expandedItem.spanH) >= idleCenter)
     }
 
     @Test("Mode 2 (Decomposed Major Pod): sub-bars have distinct rail ranges while sharing full Major Pod drawer range and frames")
@@ -1186,11 +1154,10 @@ struct HighDensityOverflowTests {
         let pagedPodsDisabled = store.paginatedPods(for: .left, totalHeight: totalHeight)
         #expect(pagedPodsDisabled.count == 2, "With Dynamic Breathing disabled, 7 pods exceeding height budget must overflow to Page 2")
 
-        // 2) With 7 pods on .left and isDynamicBreathingEnabled == true (and isAlwaysCompactBreathing == false):
+        // 2) With 7 pods on .left and isDynamicBreathingEnabled == true:
         // paginatedPods count == 1 and resolvedPhysicalLayout spans entire rail from safeTop (~16pt) to safeBottom (~884pt) when idle,
         // and hovering a pod expands it to preferredDrawerHeight
         store.isDynamicBreathingEnabled = true
-        store.isAlwaysCompactBreathing = false
         store.invalidateLayoutCache()
 
         let pagedPodsEnabled = store.paginatedPods(for: .left, totalHeight: totalHeight)

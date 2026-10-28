@@ -60,7 +60,6 @@ public final class PurahWorkspaceStore {
     public var pinnedDrawerItemIds: Set<String> = []
     public var isDraggingFromDrawer: Bool = false
     public var isDynamicBreathingEnabled: Bool = true
-    public var isAlwaysCompactBreathing: Bool = false
     @ObservationIgnored
     public var onToast: ((String, String?) -> Void)? = nil
 
@@ -130,13 +129,6 @@ public final class PurahWorkspaceStore {
         if isOnboardingGuideActive {
             onboardingDidCreateStack = true
         }
-        invalidateLayoutCache()
-        savePersistentState()
-        onWindowsRebuildNeeded?()
-    }
-
-    public func setAlwaysCompactBreathing(_ enabled: Bool) {
-        isAlwaysCompactBreathing = enabled
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -1841,7 +1833,6 @@ public final class PurahWorkspaceStore {
 
     public func isBreathingActive(for edge: MountEdge, totalHeight: Double? = nil) -> Bool {
         guard (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled else { return false }
-        if isAlwaysCompactBreathing { return true }
         let refH = totalHeight ?? lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: refH)
         guard !pages.isEmpty else { return false }
@@ -2154,7 +2145,6 @@ public final class PurahWorkspaceStore {
         let podsCount: Int
         let enabledSignature: String
         let isDynamicBreathingEnabled: Bool
-        let isAlwaysCompactBreathing: Bool
         let hoveredPodId: String?
         let activePodId: String?
         let activeItemId: String?
@@ -2224,7 +2214,6 @@ public final class PurahWorkspaceStore {
            cached.podsCount == allEdgePods.count,
            cached.enabledSignature == signature,
            cached.isDynamicBreathingEnabled == isDynamicBreathingEnabled,
-           cached.isAlwaysCompactBreathing == isAlwaysCompactBreathing,
            cached.hoveredPodId == hoveredPodId,
            cached.activePodId == activeDrawerPodId,
            cached.activeItemId == activeDrawerItemId,
@@ -2289,7 +2278,7 @@ public final class PurahWorkspaceStore {
                 return acc + (hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0)
             }
         }
-        let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
+        let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && sumMinRequired > netAvailable
 
         let clusterWeights = clusters.map { cl in cl.reduce(0.0) { $0 + max($1.range.length, 0.035) } }
 
@@ -2328,18 +2317,7 @@ public final class PurahWorkspaceStore {
         }
 
         if isBreathingActiveOnPage {
-            if isAlwaysCompactBreathing {
-                idleClusterSpans = clusters.indices.map { cIdx in
-                    min(standardSpans[cIdx], max(42.0, Double(clusters[cIdx].count) * 28.0))
-                }
-                let sumIdle = idleClusterSpans.reduce(0.0, +)
-                if sumIdle > netAvailable && sumIdle > 0 {
-                    let scale = netAvailable / sumIdle
-                    idleClusterSpans = idleClusterSpans.enumerated().map { idx, val in
-                        max(val * scale, max(20.0, Double(clusters[idx].count) * 20.0))
-                    }
-                }
-            } else if sumStandard > netAvailable {
+            if sumStandard > netAvailable {
                 let avgSlotH = netAvailable / Double(max(clusters.count, 1))
                 let lockedMask = clusters.indices.map { i in
                     clusters[i].count == 1 && clusters[i][0].minLength <= 0.06 && standardSpans[i] <= avgSlotH
@@ -2367,47 +2345,20 @@ public final class PurahWorkspaceStore {
                 idleClusterSpans = standardSpans
             }
 
-            if !isAlwaysCompactBreathing {
-                let sumIdle = idleClusterSpans.reduce(0.0, +)
-                if sumIdle > 0 && abs(sumIdle - netAvailable) > 0.001 {
-                    let scale = netAvailable / sumIdle
-                    idleClusterSpans = idleClusterSpans.map { $0 * scale }
-                }
+            let sumIdle = idleClusterSpans.reduce(0.0, +)
+            if sumIdle > 0 && abs(sumIdle - netAvailable) > 0.001 {
+                let scale = netAvailable / sumIdle
+                idleClusterSpans = idleClusterSpans.map { $0 * scale }
             }
 
+            // A squeezed rail fills the whole rail from `safeTop` down: it
+            // never bunches at the top and leaves the bottom half of the
+            // screen empty.
             idleClusterStartYs = []
-            if !isAlwaysCompactBreathing || sumStandard > netAvailable || isAlwaysCompactBreathing {
-                var curY = safeTop
-                for span in idleClusterSpans {
-                    idleClusterStartYs.append(curY)
-                    curY += span + clusterGap
-                }
-            } else {
-                var curY = safeTop
-                for cIdx in 0..<clusters.count {
-                    let desired = clusters[cIdx][0].range.start * totalHeight
-                    let startY = max(desired, curY)
-                    idleClusterStartYs.append(startY)
-                    curY = startY + idleClusterSpans[cIdx] + clusterGap
-                }
-                if let lastStart = idleClusterStartYs.last, let lastSpan = idleClusterSpans.last {
-                    let overflow = (lastStart + lastSpan) - safeBottom
-                    if overflow > 0 {
-                        var targetBottom = safeBottom
-                        for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
-                            let maxAllowed = targetBottom - idleClusterSpans[cIdx]
-                            idleClusterStartYs[cIdx] = min(idleClusterStartYs[cIdx], maxAllowed)
-                            targetBottom = idleClusterStartYs[cIdx] - clusterGap
-                        }
-                    }
-                }
-                for cIdx in 0..<clusters.count {
-                    if cIdx == 0 {
-                        idleClusterStartYs[cIdx] = max(idleClusterStartYs[cIdx], safeTop)
-                    } else {
-                        idleClusterStartYs[cIdx] = max(idleClusterStartYs[cIdx], idleClusterStartYs[cIdx - 1] + idleClusterSpans[cIdx - 1] + clusterGap)
-                    }
-                }
+            var curY = safeTop
+            for span in idleClusterSpans {
+                idleClusterStartYs.append(curY)
+                curY += span + clusterGap
             }
 
             let fullClusterSpans: [Double] = clusters.indices.map { cIdx in
@@ -2734,7 +2685,6 @@ public final class PurahWorkspaceStore {
             podsCount: allEdgePods.count,
             enabledSignature: signature,
             isDynamicBreathingEnabled: isDynamicBreathingEnabled,
-            isAlwaysCompactBreathing: isAlwaysCompactBreathing,
             hoveredPodId: hoveredPodId,
             activePodId: activeDrawerPodId,
             activeItemId: activeDrawerItemId,
@@ -3708,7 +3658,6 @@ public final class PurahWorkspaceStore {
         onboardingRehearsalTask?.cancel()
         onboardingRehearsalTask = nil
         isRehearsingBreathingInSculptor = false
-        isAlwaysCompactBreathing = false
         restoreUserLayoutSnapshotIfNeeded()
         dismissActiveDrawer()
         invalidateLayoutCache()
@@ -3792,8 +3741,7 @@ public final class PurahWorkspaceStore {
                 normalizePageRanges(for: .left)
                 normalizePageRanges(for: .right)
             }
-            isAlwaysCompactBreathing = false
-            isRehearsingBreathingInSculptor = true
+                isRehearsingBreathingInSculptor = true
         case .antiTouchCalibration:
             dismissActiveDrawer()
             if edgeTriggerSensitivity == .custom || edgeTriggerSensitivity == .agile {
@@ -3814,8 +3762,7 @@ public final class PurahWorkspaceStore {
                 normalizePageRanges(for: .left)
                 normalizePageRanges(for: .right)
             }
-            isAlwaysCompactBreathing = false
-            isRehearsingBreathingInSculptor = true
+                isRehearsingBreathingInSculptor = true
         }
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
@@ -4022,7 +3969,6 @@ public final class PurahWorkspaceStore {
         resetMajorGroups(for: .left)
         normalizePageRanges(for: .left)
         isDynamicBreathingEnabled = true
-        isAlwaysCompactBreathing = false
         isRehearsingBreathingInSculptor = true
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
@@ -4050,7 +3996,6 @@ public final class PurahWorkspaceStore {
                 self.restoreUserLayoutSnapshotIfNeeded()
             }
             self.onboardingBreathingHoveredPods = ["vitals", "shelf"]
-            self.isAlwaysCompactBreathing = false
             self.isRehearsingBreathingInSculptor = false
             self.invalidateLayoutCache()
             self.onWindowsRebuildNeeded?()

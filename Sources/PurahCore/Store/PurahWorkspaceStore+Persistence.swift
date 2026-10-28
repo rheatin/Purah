@@ -150,9 +150,6 @@ extension PurahWorkspaceStore {
         } else {
             self.isDynamicBreathingEnabled = true
         }
-        if defaults.object(forKey: "purah.isAlwaysCompactBreathing") != nil {
-            self.isAlwaysCompactBreathing = defaults.bool(forKey: "purah.isAlwaysCompactBreathing")
-        }
 
         if defaults.object(forKey: "purah.hotkey.keyCode") != nil {
             let code = UInt32(defaults.integer(forKey: "purah.hotkey.keyCode"))
@@ -252,7 +249,6 @@ extension PurahWorkspaceStore {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(isDynamicBreathingEnabled, forKey: "purah.isDynamicBreathingEnabled")
-        defaults.set(isAlwaysCompactBreathing, forKey: "purah.isAlwaysCompactBreathing")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(Int(sculptorHotKeyShortcut.keyCode), forKey: "purah.sculptorHotkey.keyCode")
