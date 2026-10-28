@@ -39,8 +39,17 @@ public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifia
 @MainActor
 public final class PurahWorkspaceStore {
     public var pods: [SlotPod] = []
-    public var activeDrawerPodId: String? = nil
-    public var activeDrawerItemId: String? = nil
+    public var activeDrawerPodId: String? = nil {
+        didSet {
+            // A held profile switch waits for exactly this: the drawer closing.
+            if activeDrawerPodId == nil { flushPendingProfileSwitchIfIdle() }
+        }
+    }
+    public var activeDrawerItemId: String? = nil {
+        didSet {
+            if activeDrawerItemId == nil { flushPendingProfileSwitchIfIdle() }
+        }
+    }
     public var activePodId: String? {
         get { activeDrawerPodId }
         set { activeDrawerPodId = newValue }
@@ -51,7 +60,6 @@ public final class PurahWorkspaceStore {
     public var pinnedDrawerItemIds: Set<String> = []
     public var isDraggingFromDrawer: Bool = false
     public var isDynamicBreathingEnabled: Bool = true
-    public var isAlwaysCompactBreathing: Bool = false
     @ObservationIgnored
     public var onToast: ((String, String?) -> Void)? = nil
 
@@ -126,13 +134,6 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
-    public func setAlwaysCompactBreathing(_ enabled: Bool) {
-        isAlwaysCompactBreathing = enabled
-        invalidateLayoutCache()
-        savePersistentState()
-        onWindowsRebuildNeeded?()
-    }
-
     public var leftRailPage: Int = 0
     public var rightRailPage: Int = 0
     public var isLeftTopPortalRevealed: Bool = false
@@ -189,6 +190,9 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         if !enabled {
             savePersistentState()
+            // A switch held back while the user was sculpting lands here, once
+            // the edits it interrupted have been written back.
+            flushPendingProfileSwitchIfIdle()
         }
         onLiveRailEditingChanged?(enabled)
         onWindowsRebuildNeeded?()
@@ -1041,6 +1045,323 @@ public final class PurahWorkspaceStore {
     public var acknowledgedAlertIds: Set<String> = []
     public var notifiedToastEventIds: Set<String> = []
 
+    /// A daily window during which no attention is demanded.
+    ///
+    /// Suppression is deliberately at the *demand* layer, not the data layer:
+    /// events and vitals keep updating while quiet, they just stop pushing
+    /// themselves at the user. Silencing the collection instead would leave the
+    /// rail showing stale information for the first minutes after the window
+    /// ends.
+    ///
+    /// Backing storage is separate so the persistence loader can restore it
+    /// without tripping an observer and writing straight back to disk.
+    package var _quietHours: QuietHours = QuietHours()
+
+    public var quietHours: QuietHours {
+        get { _quietHours }
+        set {
+            guard newValue != _quietHours else { return }
+            _quietHours = newValue
+            invalidateLayoutCache()
+            savePersistentState()
+        }
+    }
+
+    /// True when attention-demanding behaviour should be held back right now.
+    ///
+    /// Read through a function rather than the property so every call site
+    /// answers the same question about the same clock, and so the tests can
+    /// inject a time.
+    public func isQuietNow(at date: Date = Date()) -> Bool {
+        quietHours.isActive(at: date)
+    }
+
+    /// `isPodAlerting` with the quiet window applied.
+    ///
+    /// Views should call this rather than the raw predicate; the raw one stays
+    /// available because acknowledging an alert while quiet must still be
+    /// possible, and the settings UI needs to show what *would* be alerting.
+    public func isPodAlertingNow(podId: String, at date: Date = Date()) -> Bool {
+        guard !isQuietNow(at: date) else { return false }
+        return isPodAlerting(podId: podId)
+    }
+
+    // MARK: - Context profiles
+
+    package var _contextProfiles: ContextProfileStore = ContextProfileStore()
+
+    public var contextProfiles: ContextProfileStore {
+        get { _contextProfiles }
+        set {
+            guard newValue != _contextProfiles else { return }
+            _contextProfiles = newValue
+            savePersistentState()
+        }
+    }
+
+    /// Captures the current arrangement as a profile.
+    ///
+    /// Reads the live layout rather than the persisted blob, so an unsaved
+    /// hand-sculpt is included. `savePersistentState` is called first so the
+    /// profile and the on-disk state agree.
+    public func captureProfile(named name: String) -> ContextProfile {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmed.isEmpty
+            ? _contextProfiles.uniqueName(basedOn: "profile.defaultName".localized)
+            : trimmed
+        return ContextProfile(
+            name: finalName,
+            pods: pods,
+            customPodColors: customPodColors,
+            pinnedDrawerItemIds: pinnedDrawerItemIds,
+            externalDecomposedStates: externalDecomposedSnapshot,
+            drawerWidthMode: drawerWidthMode,
+            fixedDrawerWidth: fixedDrawerWidth
+        )
+    }
+
+    /// Saves the current arrangement as a new profile and selects it.
+    @discardableResult
+    public func saveProfile(named name: String) -> ContextProfile {
+        var store = _contextProfiles
+        let profile = captureProfile(named: store.uniqueName(basedOn: name.trimmingCharacters(in: .whitespacesAndNewlines)))
+        store.profiles.append(profile)
+        store.activeProfileId = profile.id
+        contextProfiles = store
+        return profile
+    }
+
+    /// Overwrites an existing profile with the current arrangement.
+    public func updateProfile(id: UUID) {
+        guard let index = _contextProfiles.profiles.firstIndex(where: { $0.id == id }) else { return }
+        var store = _contextProfiles
+        let captured = captureProfile(named: store.profiles[index].name)
+        // Keep the identity and creation date; only the arrangement moves.
+        var updated = captured
+        updated.id = store.profiles[index].id
+        updated.createdAt = store.profiles[index].createdAt
+        updated.updatedAt = Date()
+        store.profiles[index] = updated
+        store.activeProfileId = id
+        contextProfiles = store
+    }
+
+    /// Applies a profile to the live layout.
+    ///
+    /// Pods are restored wholesale, including their heights. A pod that exists
+    /// in the profile but whose plugin has since been uninstalled is still
+    /// restored: `pruneOrphanedPods` owns that decision and runs at the moment
+    /// it can actually tell (after registration), so dropping it here would
+    /// race a plugin that is merely slow to load.
+    public func applyProfile(id: UUID) {
+        guard let profile = _contextProfiles.profiles.first(where: { $0.id == id }) else { return }
+
+        // The outgoing profile is a live workspace: edits made while it was in
+        // force belong to it. Flushing here — rather than waiting for a save —
+        // is what keeps those edits from being written into the profile we are
+        // about to switch to.
+        //
+        // Only when actually *leaving* it: re-applying the profile that is
+        // already active is the user asking for its saved arrangement back, and
+        // absorbing the current layout first would make Apply do nothing.
+        if _contextProfiles.activeProfileId != id {
+            flushProfileWriteBack()
+        }
+
+        isApplyingProfile = true
+        defer { isApplyingProfile = false }
+
+        pods = profile.pods
+        customPodColors = profile.customPodColors
+        pinnedDrawerItemIds = profile.pinnedDrawerItemIds
+        restoreExternalDecomposed(profile.externalDecomposedStates)
+        drawerWidthMode = profile.drawerWidthMode
+        fixedDrawerWidth = profile.fixedDrawerWidth
+
+        var store = _contextProfiles
+        store.activeProfileId = id
+        _contextProfiles = store
+
+        // An open drawer belongs to a pod from the layout that was just
+        // replaced. Leaving the id set would leave the rail hovering a pod that
+        // the new profile may not even mount.
+        if let openPodId = activeDrawerPodId,
+           profile.pods.first(where: { $0.id == openPodId })?.isEnabled != true {
+            activeDrawerPodId = nil
+            activeDrawerItemId = nil
+        }
+
+        invalidateLayoutCache()
+        savePersistentState()
+        onWindowsRebuildNeeded?()
+    }
+
+    /// Whether the live layout currently matches a profile exactly.
+    ///
+    /// This — not `activeProfileId` — is what decides if "Apply" has anything
+    /// left to do. `activeProfileId` only records which profile was last saved
+    /// or applied; the user can rearrange the rail right after, at which point
+    /// applying that same profile is exactly what they want and must be
+    /// possible.
+    public func layoutMatches(profile: ContextProfile) -> Bool {
+        pods == profile.pods
+            && customPodColors == profile.customPodColors
+            && pinnedDrawerItemIds == profile.pinnedDrawerItemIds
+            && drawerWidthMode == profile.drawerWidthMode
+            && fixedDrawerWidth == profile.fixedDrawerWidth
+    }
+
+    public func deleteProfile(id: UUID) {
+        var store = _contextProfiles
+        store.remove(profileId: id)
+        contextProfiles = store
+    }
+
+    public func renameProfile(id: UUID, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = _contextProfiles.profiles.firstIndex(where: { $0.id == id }) else { return }
+        // Reject a name another profile already uses; the association list and
+        // the picker both key on it visually.
+        guard !_contextProfiles.profiles.contains(where: { $0.id != id && $0.nameMatches(trimmed) }) else { return }
+        var store = _contextProfiles
+        store.profiles[index].name = trimmed
+        store.profiles[index].updatedAt = Date()
+        contextProfiles = store
+    }
+
+    public func assignTrigger(_ trigger: ProfileTrigger, to profileId: UUID) {
+        var store = _contextProfiles
+        store.triggers[trigger] = profileId
+        contextProfiles = store
+    }
+
+    public func removeTrigger(_ trigger: ProfileTrigger) {
+        var store = _contextProfiles
+        store.triggers.removeValue(forKey: trigger)
+        contextProfiles = store
+    }
+
+    // MARK: - Frontmost-app profile switching
+
+    /// Whether the frontmost app is allowed to change the active profile.
+    ///
+    /// A machine-level preference like quiet hours, not part of any profile: a
+    /// profile describes the rails, while "switch profiles with the app you are
+    /// in" describes how the person works.
+    public var isAppProfileSwitchingEnabled: Bool = false
+
+    /// A switch that arrived while the rail was busy.
+    ///
+    /// Replacing the layout under an open drawer makes the drawer vanish
+    /// mid-read. The request is held and applied once the rail goes idle.
+    @ObservationIgnored
+    public private(set) var pendingProfileId: UUID?
+
+    @ObservationIgnored
+    private var isApplyingProfile = false
+    @ObservationIgnored
+    private var isWritingBackProfile = false
+
+    /// True while the rail must not be rearranged: an open drawer or the live
+    /// sculptor is using the layout the person is looking at right now.
+    public var isRailBusy: Bool {
+        activeDrawerPodId != nil || activeDrawerItemId != nil || isLiveRailEditingMode
+    }
+
+    /// Switches to a profile on behalf of a trigger.
+    ///
+    /// - Returns: `true` when the layout is now that profile, `false` when the
+    ///   switch is waiting for the rail to go idle.
+    @discardableResult
+    public func switchProfile(id: UUID, deferWhileBusy: Bool = true) -> Bool {
+        guard id != _contextProfiles.activeProfileId else {
+            // Already there. A switch held earlier for some other profile is
+            // stale now — the app that asked for it is no longer frontmost — so
+            // it must not land when the drawer closes.
+            pendingProfileId = nil
+            return true
+        }
+        guard _contextProfiles.profiles.contains(where: { $0.id == id }) else { return false }
+        if deferWhileBusy && isRailBusy {
+            pendingProfileId = id
+            return false
+        }
+        pendingProfileId = nil
+        applyProfile(id: id)
+        return true
+    }
+
+    /// Applies a switch that was held back.
+    ///
+    /// Called from the places the rail can become idle, so a held switch never
+    /// outlives the drawer or sculptor that caused it.
+    public func flushPendingProfileSwitchIfIdle() {
+        guard !isApplyingProfile, let id = pendingProfileId, !isRailBusy else { return }
+        pendingProfileId = nil
+        applyProfile(id: id)
+    }
+
+    public func setDefaultProfile(id: UUID?) {
+        var store = _contextProfiles
+        guard store.defaultProfileId != id else { return }
+        if let id, !store.profiles.contains(where: { $0.id == id }) { return }
+        store.defaultProfileId = id
+        contextProfiles = store
+    }
+
+    /// Adds an app to a profile's whitelist.
+    ///
+    /// An app belongs to at most one profile, so this moves it when a different
+    /// profile had already claimed it.
+    public func assignApp(bundleId: String, to profileId: UUID) {
+        var store = _contextProfiles
+        guard store.profiles.contains(where: { $0.id == profileId }),
+              store.profileId(forApp: bundleId) != profileId else { return }
+        store.setAppTrigger(bundleId: bundleId, profileId: profileId)
+        contextProfiles = store
+    }
+
+    public func removeAppTrigger(bundleId: String) {
+        var store = _contextProfiles
+        guard store.profileId(forApp: bundleId) != nil else { return }
+        store.removeAppTrigger(bundleId: bundleId)
+        contextProfiles = store
+    }
+
+    /// Writes the live layout back into the active profile, on the way out.
+    ///
+    /// The active profile is a workspace, not a frozen snapshot: the next app
+    /// change replaces the whole layout, so an edit that is not written back
+    /// when the profile is left is gone. It is deliberately *not* called on
+    /// every save — a profile that absorbed every drag would make "Apply" a
+    /// no-op and the saved arrangement unrecoverable.
+    public func flushProfileWriteBack() {
+        guard !isApplyingProfile, !isWritingBackProfile else { return }
+        guard let id = _contextProfiles.activeProfileId,
+              let index = _contextProfiles.profiles.firstIndex(where: { $0.id == id }) else { return }
+        let existing = _contextProfiles.profiles[index]
+        guard !layoutMatches(profile: existing) else { return }
+
+        var captured = captureProfile(named: existing.name)
+        captured.id = existing.id
+        captured.createdAt = existing.createdAt
+        captured.updatedAt = Date()
+
+        var store = _contextProfiles
+        store.profiles[index] = captured
+        isWritingBackProfile = true
+        _contextProfiles = store
+        isWritingBackProfile = false
+
+        // Written straight to disk: going through the `contextProfiles` setter
+        // would call `savePersistentState`, which calls back into this method.
+        if let data = try? JSONEncoder().encode(store) {
+            userDefaults.set(data, forKey: "purah.contextProfiles")
+        }
+    }
+
+
     // Sensory Feedback Settings
     public var isToastSoundEnabled: Bool = true
     public var toastNotificationSound: ToastNotificationSound = .glass
@@ -1195,6 +1516,15 @@ public final class PurahWorkspaceStore {
 
     public func postToastNotification(id: String, message: String) {
         guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(id) else { return }
+        // A toast is the most intrusive thing this app does, so quiet hours
+        // suppress it outright. The id is still consumed: replaying the same
+        // toast when the window ends would be a backlog dump of everything
+        // that happened while the user was away.
+        guard !isQuietNow() else {
+            notifiedToastEventIds.insert(id)
+            pruneStaleAlertIDs()
+            return
+        }
         notifiedToastEventIds.insert(id)
         pruneStaleAlertIDs()
         onCapacityWarningToast?(message)
@@ -1503,7 +1833,6 @@ public final class PurahWorkspaceStore {
 
     public func isBreathingActive(for edge: MountEdge, totalHeight: Double? = nil) -> Bool {
         guard (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled else { return false }
-        if isAlwaysCompactBreathing { return true }
         let refH = totalHeight ?? lastKnownTotalHeight[edge] ?? max(Double(availableScreenHeight(for: edge)), 600.0)
         let pages = paginatedPods(for: edge, totalHeight: refH)
         guard !pages.isEmpty else { return false }
@@ -1593,6 +1922,21 @@ public final class PurahWorkspaceStore {
     // plugin's default on the next launch.
     @ObservationIgnored private var externalDecomposedStates: [String: Bool] = [:]
     private static let externalDecomposedKey = "purah.externalDecomposedStates"
+
+    /// The raw map, for capturing and restoring a context profile.
+    ///
+    /// Exposed as a whole rather than per-id because a profile has to be able to
+    /// tell "never touched" apart from "explicitly chose composite": copying
+    /// only the ids it happens to know about would turn an untouched plugin into
+    /// an explicitly-composite one on restore.
+    package var externalDecomposedSnapshot: [String: Bool] {
+        externalDecomposedStates
+    }
+
+    package func restoreExternalDecomposed(_ states: [String: Bool]) {
+        externalDecomposedStates = states
+        userDefaults.set(states, forKey: Self.externalDecomposedKey)
+    }
 
     /// `nil` when the user never touched the toggle for this pod — the plugin's
     /// own default (stepped symbols exported → stepped) then applies.
@@ -1801,7 +2145,6 @@ public final class PurahWorkspaceStore {
         let podsCount: Int
         let enabledSignature: String
         let isDynamicBreathingEnabled: Bool
-        let isAlwaysCompactBreathing: Bool
         let hoveredPodId: String?
         let activePodId: String?
         let activeItemId: String?
@@ -1871,7 +2214,6 @@ public final class PurahWorkspaceStore {
            cached.podsCount == allEdgePods.count,
            cached.enabledSignature == signature,
            cached.isDynamicBreathingEnabled == isDynamicBreathingEnabled,
-           cached.isAlwaysCompactBreathing == isAlwaysCompactBreathing,
            cached.hoveredPodId == hoveredPodId,
            cached.activePodId == activeDrawerPodId,
            cached.activeItemId == activeDrawerItemId,
@@ -1936,7 +2278,7 @@ public final class PurahWorkspaceStore {
                 return acc + (hasManualResize ? max(96.0, Double(cluster.count) * 24.0) : 155.0)
             }
         }
-        let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && (isAlwaysCompactBreathing || sumMinRequired > netAvailable)
+        let isBreathingActiveOnPage = (!isLiveRailEditingMode || isRehearsingBreathingInSculptor) && isDynamicBreathingEnabled && sumMinRequired > netAvailable
 
         let clusterWeights = clusters.map { cl in cl.reduce(0.0) { $0 + max($1.range.length, 0.035) } }
 
@@ -1975,18 +2317,7 @@ public final class PurahWorkspaceStore {
         }
 
         if isBreathingActiveOnPage {
-            if isAlwaysCompactBreathing {
-                idleClusterSpans = clusters.indices.map { cIdx in
-                    min(standardSpans[cIdx], max(42.0, Double(clusters[cIdx].count) * 28.0))
-                }
-                let sumIdle = idleClusterSpans.reduce(0.0, +)
-                if sumIdle > netAvailable && sumIdle > 0 {
-                    let scale = netAvailable / sumIdle
-                    idleClusterSpans = idleClusterSpans.enumerated().map { idx, val in
-                        max(val * scale, max(20.0, Double(clusters[idx].count) * 20.0))
-                    }
-                }
-            } else if sumStandard > netAvailable {
+            if sumStandard > netAvailable {
                 let avgSlotH = netAvailable / Double(max(clusters.count, 1))
                 let lockedMask = clusters.indices.map { i in
                     clusters[i].count == 1 && clusters[i][0].minLength <= 0.06 && standardSpans[i] <= avgSlotH
@@ -2014,47 +2345,20 @@ public final class PurahWorkspaceStore {
                 idleClusterSpans = standardSpans
             }
 
-            if !isAlwaysCompactBreathing {
-                let sumIdle = idleClusterSpans.reduce(0.0, +)
-                if sumIdle > 0 && abs(sumIdle - netAvailable) > 0.001 {
-                    let scale = netAvailable / sumIdle
-                    idleClusterSpans = idleClusterSpans.map { $0 * scale }
-                }
+            let sumIdle = idleClusterSpans.reduce(0.0, +)
+            if sumIdle > 0 && abs(sumIdle - netAvailable) > 0.001 {
+                let scale = netAvailable / sumIdle
+                idleClusterSpans = idleClusterSpans.map { $0 * scale }
             }
 
+            // A squeezed rail fills the whole rail from `safeTop` down: it
+            // never bunches at the top and leaves the bottom half of the
+            // screen empty.
             idleClusterStartYs = []
-            if !isAlwaysCompactBreathing || sumStandard > netAvailable || isAlwaysCompactBreathing {
-                var curY = safeTop
-                for span in idleClusterSpans {
-                    idleClusterStartYs.append(curY)
-                    curY += span + clusterGap
-                }
-            } else {
-                var curY = safeTop
-                for cIdx in 0..<clusters.count {
-                    let desired = clusters[cIdx][0].range.start * totalHeight
-                    let startY = max(desired, curY)
-                    idleClusterStartYs.append(startY)
-                    curY = startY + idleClusterSpans[cIdx] + clusterGap
-                }
-                if let lastStart = idleClusterStartYs.last, let lastSpan = idleClusterSpans.last {
-                    let overflow = (lastStart + lastSpan) - safeBottom
-                    if overflow > 0 {
-                        var targetBottom = safeBottom
-                        for cIdx in stride(from: clusters.count - 1, through: 0, by: -1) {
-                            let maxAllowed = targetBottom - idleClusterSpans[cIdx]
-                            idleClusterStartYs[cIdx] = min(idleClusterStartYs[cIdx], maxAllowed)
-                            targetBottom = idleClusterStartYs[cIdx] - clusterGap
-                        }
-                    }
-                }
-                for cIdx in 0..<clusters.count {
-                    if cIdx == 0 {
-                        idleClusterStartYs[cIdx] = max(idleClusterStartYs[cIdx], safeTop)
-                    } else {
-                        idleClusterStartYs[cIdx] = max(idleClusterStartYs[cIdx], idleClusterStartYs[cIdx - 1] + idleClusterSpans[cIdx - 1] + clusterGap)
-                    }
-                }
+            var curY = safeTop
+            for span in idleClusterSpans {
+                idleClusterStartYs.append(curY)
+                curY += span + clusterGap
             }
 
             let fullClusterSpans: [Double] = clusters.indices.map { cIdx in
@@ -2381,7 +2685,6 @@ public final class PurahWorkspaceStore {
             podsCount: allEdgePods.count,
             enabledSignature: signature,
             isDynamicBreathingEnabled: isDynamicBreathingEnabled,
-            isAlwaysCompactBreathing: isAlwaysCompactBreathing,
             hoveredPodId: hoveredPodId,
             activePodId: activeDrawerPodId,
             activeItemId: activeDrawerItemId,
@@ -3355,7 +3658,6 @@ public final class PurahWorkspaceStore {
         onboardingRehearsalTask?.cancel()
         onboardingRehearsalTask = nil
         isRehearsingBreathingInSculptor = false
-        isAlwaysCompactBreathing = false
         restoreUserLayoutSnapshotIfNeeded()
         dismissActiveDrawer()
         invalidateLayoutCache()
@@ -3439,8 +3741,7 @@ public final class PurahWorkspaceStore {
                 normalizePageRanges(for: .left)
                 normalizePageRanges(for: .right)
             }
-            isAlwaysCompactBreathing = false
-            isRehearsingBreathingInSculptor = true
+                isRehearsingBreathingInSculptor = true
         case .antiTouchCalibration:
             dismissActiveDrawer()
             if edgeTriggerSensitivity == .custom || edgeTriggerSensitivity == .agile {
@@ -3461,8 +3762,7 @@ public final class PurahWorkspaceStore {
                 normalizePageRanges(for: .left)
                 normalizePageRanges(for: .right)
             }
-            isAlwaysCompactBreathing = false
-            isRehearsingBreathingInSculptor = true
+                isRehearsingBreathingInSculptor = true
         }
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
@@ -3669,7 +3969,6 @@ public final class PurahWorkspaceStore {
         resetMajorGroups(for: .left)
         normalizePageRanges(for: .left)
         isDynamicBreathingEnabled = true
-        isAlwaysCompactBreathing = false
         isRehearsingBreathingInSculptor = true
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
@@ -3697,7 +3996,6 @@ public final class PurahWorkspaceStore {
                 self.restoreUserLayoutSnapshotIfNeeded()
             }
             self.onboardingBreathingHoveredPods = ["vitals", "shelf"]
-            self.isAlwaysCompactBreathing = false
             self.isRehearsingBreathingInSculptor = false
             self.invalidateLayoutCache()
             self.onWindowsRebuildNeeded?()

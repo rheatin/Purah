@@ -226,7 +226,6 @@ public enum PurahConfigBackupManager {
         store.fixedDrawerWidth = 290.0
         store.drawerWidthMode = .adaptive
         store.isDynamicBreathingEnabled = true
-        store.isAlwaysCompactBreathing = false
         store.hotKeyShortcut = .defaultShortcut
         store.sculptorHotKeyShortcut = .defaultSculptorShortcut
         store.edgeTriggerMode = .hoverDwell

@@ -1,9 +1,16 @@
 // Sources/PurahUI/Settings/VisualLayoutSimulatorView.swift
 import SwiftUI
+import UniformTypeIdentifiers
 import PurahCore
 
 public struct VisualLayoutSimulatorView: View {
     public let store: PurahWorkspaceStore
+
+    /// The name being typed for a new profile. Held here rather than in the
+    /// store because an abandoned draft is not configuration.
+    @State private var newProfileName: String = ""
+    /// The profile whose name is being edited, if any.
+    @State private var renamingProfileId: UUID?
 
     private var theme: ThemeManager {
         ThemeManager.shared
@@ -80,8 +87,14 @@ public struct VisualLayoutSimulatorView: View {
                 }
                 .padding(.horizontal, 4)
 
-                // 1. Mini Screen Simulation (Top Primary Focus)
-                ScreenSimulationCanvas(store: store)
+                // 1. Context Profiles (whole-layout presets)
+                contextProfilesCard
+
+                // The miniature screen simulator that used to sit here is gone.
+                // Editing belongs to the live rail sculptor (⌃⌥E), which is
+                // 1:1 with the real bezel; a scaled-down copy underneath could
+                // only approximate the same drags while adding a second set of
+                // mount / transfer / page controls that this tab already owns.
 
                 // 2. High-Density Rail Overflow Mode Card
                 overflowStrategyCard
@@ -160,6 +173,13 @@ public struct VisualLayoutSimulatorView: View {
                         }
                     }
                 }
+
+                // Frontmost-App Profile Switching sits last: it is a
+                // once-in-a-while mapping, and the rail simulator above is what
+                // the Layout tab is opened for. Keeping it up top pushed the
+                // thing people actually came to see below the fold.
+                appProfileSwitchCard(store: store, palette: palette)
+                    .padding(.top, 8)
             }
             .padding(24)
             .frame(width: 680)
@@ -170,14 +190,6 @@ public struct VisualLayoutSimulatorView: View {
     // MARK: - Unified Elastic & Multi-Page Card
     private var overflowStrategyCard: some View {
         let palette = theme.palette
-        let realLeftH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
-        let realRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
-        let leftPages = store.paginatedPods(for: .left, totalHeight: realLeftH)
-        let rightPages = store.paginatedPods(for: .right, totalHeight: realRightH)
-        let leftPageCount = max(leftPages.count, 1)
-        let rightPageCount = max(rightPages.count, 1)
-        let curLeftPage = min(max(store.currentRailPage(for: .left), 0), leftPageCount - 1)
-        let curRightPage = min(max(store.currentRailPage(for: .right), 0), rightPageCount - 1)
 
         return settingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
             VStack(alignment: .leading, spacing: 14) {
@@ -213,102 +225,6 @@ public struct VisualLayoutSimulatorView: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .purahRowAccessibility("overflow.breathing.toggleTitle".localized, detail: "overflow.breathing.toggleSubtitle".localized)
-                }
-
-                // Toggle 2: Always Compact Breathing (when breathing is enabled)
-                if store.isDynamicBreathingEnabled {
-                    Divider()
-
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(store.isAlwaysCompactBreathing ? palette.primaryAccent : .secondary)
-                            .frame(width: 24, height: 24)
-                            .padding(4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(store.isAlwaysCompactBreathing ? palette.primaryAccent.opacity(0.16) : Color.primary.opacity(0.06))
-                            )
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("overflow.breathing.alwaysCompactTitle".localized)
-                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                            Text("overflow.breathing.alwaysCompactSubtitle".localized)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(
-                            get: { store.isAlwaysCompactBreathing },
-                            set: { store.setAlwaysCompactBreathing($0) }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .purahRowAccessibility("overflow.breathing.alwaysCompactTitle".localized, detail: "overflow.breathing.alwaysCompactSubtitle".localized)
-                    }
-                    .padding(.leading, 12)
-                }
-
-                // Multi-Page Navigation when pages > 1
-                if leftPageCount > 1 || rightPageCount > 1 {
-                    Divider()
-
-                    HStack(spacing: 12) {
-                        if leftPageCount > 1 {
-                            Button {
-                                withAnimation(PurahMotionPolicy.drawerEntrance) {
-                                    store.cycleRailPage(for: .left, delta: 1)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.left.to.line")
-                                        .font(.caption2)
-                                    Text("\("overflow.paged.leftRail".localized): \(curLeftPage + 1)/\(leftPageCount)")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Image(systemName: "chevron.right.circle.fill")
-                                        .font(.caption2)
-                                }
-                                .foregroundColor(palette.primaryAccent)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(palette.primaryAccent.opacity(0.12))
-                                .cornerRadius(6)
-                            }
-                            .buttonStyle(.tactile)
-                        }
-
-                        Spacer()
-
-                        if rightPageCount > 1 {
-                            Button {
-                                withAnimation(PurahMotionPolicy.drawerEntrance) {
-                                    store.cycleRailPage(for: .right, delta: 1)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.right.to.line")
-                                        .font(.caption2)
-                                    Text("\("overflow.paged.rightRail".localized): \(curRightPage + 1)/\(rightPageCount)")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Image(systemName: "chevron.right.circle.fill")
-                                        .font(.caption2)
-                                }
-                                .foregroundColor(palette.primaryAccent)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(palette.primaryAccent.opacity(0.12))
-                                .cornerRadius(6)
-                            }
-                            .buttonStyle(.tactile)
-                        }
-                    }
                 }
 
                 // Shared Major Pod / Stack manager section (always visible)
@@ -415,12 +331,14 @@ public struct VisualLayoutSimulatorView: View {
                     railAssemblyColumn(
                         edge: .left,
                         title: "Left Rail",
-                        pods: leftMountedPods
+                        pods: leftMountedPods,
+                        pages: railPages(for: .left)
                     )
                     railAssemblyColumn(
                         edge: .right,
                         title: "Right Rail",
-                        pods: rightMountedPods
+                        pods: rightMountedPods,
+                        pages: railPages(for: .right)
                     )
                 }
 
@@ -476,17 +394,75 @@ public struct VisualLayoutSimulatorView: View {
         }
     }
 
+    /// The pages this rail actually shows, in order.
+    ///
+    /// Taken from the same method the rail windows use, so a page here is a
+    /// page there — including one that only exists because the pods did not
+    /// fit and overflowed onto it.
+    private func railPages(for edge: MountEdge) -> [[SlotPod]] {
+        let height = max(Double(store.availableScreenHeight(for: edge)), 600.0)
+        return store.paginatedPods(for: edge, totalHeight: height)
+    }
+
+    /// One tab per page of this rail: `2·1` is "page 2, one module on it".
+    ///
+    /// Switching tabs is the same action as flipping the rail, so the only
+    /// place a page number is chosen is also the place the page is edited.
+    @ViewBuilder
+    private func railPageTabs(
+        edge: MountEdge,
+        pages: [[SlotPod]],
+        currentPage: Int,
+        palette: ThemePalette
+    ) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Array(pages.enumerated()), id: \.offset) { rank, pagePods in
+                let isCurrent = rank == currentPage
+                let title = String(format: "simulator.page".localized, rank + 1)
+
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.setRailPage(rank, for: edge)
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    Text("\(rank + 1)·\(pagePods.count)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(isCurrent ? (palette.style == .native ? palette.primaryAccent : .white) : .secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(isCurrent ? palette.primaryAccent.opacity(0.18) : Color.primary.opacity(0.05))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(palette.primaryAccent.opacity(isCurrent ? 0.55 : 0), lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help(title)
+                .accessibilityLabel(title)
+            }
+        }
+    }
+
     @ViewBuilder
     private func railAssemblyColumn(
         edge: MountEdge,
         title: String,
-        pods: [SlotPod]
+        pods: [SlotPod],
+        pages: [[SlotPod]]
     ) -> some View {
         let palette = theme.palette
         let maxExistingPage = max(pods.map(\.pageIndex).max() ?? 0, 1)
+        let pageCount = max(pages.count, 1)
+        let currentPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
+        let pagePodIds = Set((pages.indices.contains(currentPage) ? pages[currentPage] : []).map(\.id))
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: edge == .left ? "arrow.left.to.line" : "arrow.right.to.line")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(palette.primaryAccent)
@@ -494,14 +470,25 @@ public struct VisualLayoutSimulatorView: View {
                     .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
-                Spacer()
+                    .fixedSize()
+
+                if pageCount > 1 {
+                    railPageTabs(edge: edge, pages: pages, currentPage: currentPage, palette: palette)
+                }
+
+                Spacer(minLength: 2)
                 Text("\(pods.count)")
                     .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                     .foregroundColor(.secondary)
             }
             .padding(.bottom, 2)
 
+            // Only this page's modules are listed: "第 2 页的那个插件" is found
+            // by switching to page 2, not by scanning a list of every page at
+            // once. The tab strip above is the switch, and it flips the real
+            // rail with it, so the list and the screen never disagree.
             let clusters = majorPodClusters(for: edge)
+                .filter { cluster in cluster.contains { pagePodIds.contains($0.id) } }
             ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
                 if cluster.count >= 2 {
                     let clusterIds = Set(cluster.map(\.id))
@@ -814,11 +801,495 @@ public struct VisualLayoutSimulatorView: View {
             content()
         }
         .padding(16)
+        // Fill the column rather than sizing to content; see the identical
+        // note in InteractionSettingsView.settingsCard.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.surfaceBackground)
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
         )
+    }
+
+    // MARK: - Context Profiles
+
+    /// Named whole-layout snapshots.
+    ///
+    /// Placed at the top of the Layout tab because it acts on the entire
+    /// arrangement rather than on one control, and a person reaching for it is
+    /// usually about to rearrange everything.
+    @ViewBuilder
+    private var contextProfilesCard: some View {
+        let palette = theme.palette
+        let profiles = store.contextProfiles
+
+        settingsCard(title: "profile.card.title".localized, icon: "square.stack.3d.up.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("profile.card.subtitle".localized)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if profiles.profiles.isEmpty {
+                    Text("profile.empty".localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(profiles.profiles) { profile in
+                            profileRow(profile: profile, isActive: profiles.activeProfileId == profile.id, palette: palette)
+                        }
+                    }
+                }
+
+                Divider()
+                    .background(palette.borderColor.opacity(0.2))
+
+                HStack(spacing: 8) {
+                    TextField("profile.newPlaceholder".localized, text: $newProfileName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .frame(maxWidth: 200)
+
+                    Button {
+                        let name = newProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        store.saveProfile(named: name.isEmpty
+                                          ? "profile.defaultName".localized
+                                          : name)
+                        newProfileName = ""
+                        store.triggerControlHaptic(.alignment)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 10.5))
+                            Text("profile.saveCurrent".localized)
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+                    .accessibilityLabel("profile.saveCurrent".localized)
+
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func profileRow(profile: ContextProfile, isActive: Bool, palette: ThemePalette) -> some View {
+        let isRenaming = renamingProfileId == profile.id
+        // Two different questions, deliberately answered separately:
+        // `isActive` is "this is the profile you last saved or applied", and
+        // `matchesLayout` is "the rail right now looks exactly like this".
+        // Only the second one makes Apply a no-op, and it is the only one that
+        // should ever look like a completed state.
+        let matchesLayout = store.layoutMatches(profile: profile)
+        HStack(spacing: 8) {
+            Image(systemName: matchesLayout ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 11))
+                .foregroundColor(matchesLayout ? palette.primaryAccent : palette.borderColor.opacity(0.5))
+
+            VStack(alignment: .leading, spacing: 1) {
+                if isRenaming {
+                    // Commit on Return; the store rejects empty and duplicate
+                    // names, so a bad entry leaves the old name in place rather
+                    // than producing an unnamed profile.
+                    TextField("profile.namePlaceholder".localized, text: Binding(
+                        get: { profile.name },
+                        set: { store.renameProfile(id: profile.id, to: $0) }
+                    ), onCommit: { renamingProfileId = nil })
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: 180)
+                } else {
+                    HStack(spacing: 5) {
+                        Text(profile.name)
+                            .font(.system(size: 11.5, weight: matchesLayout ? .semibold : .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                            .lineLimit(1)
+                        if matchesLayout {
+                            Text("profile.current".localized)
+                                .font(.system(size: 8.5, weight: .semibold))
+                                .foregroundColor(palette.primaryAccent)
+                        } else if isActive {
+                            // Applied earlier, edited since. Worth saying,
+                            // because the row would otherwise look identical
+                            // to one that still matches.
+                            Text("profile.modified".localized)
+                                .font(.system(size: 8.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                Text(profile.summary)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            if isRenaming {
+                Button("profile.done".localized) { renamingProfileId = nil }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(palette.primaryAccent)
+            } else {
+                // Apply stays enabled even on the active profile. The active
+                // mark only says which profile was last saved or applied — the
+                // user may have rearranged the rail since, and that is exactly
+                // when they reach for Apply. Greying it out here made a saved
+                // profile impossible to restore.
+                Button("profile.apply".localized) {
+                    store.applyProfile(id: profile.id)
+                    store.triggerControlHaptic(.alignment)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(palette.primaryAccent)
+
+                Button("profile.update".localized) {
+                    store.updateProfile(id: profile.id)
+                    store.triggerControlHaptic(.alignment)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+
+                Button {
+                    renamingProfileId = profile.id
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("profile.rename".localized)
+
+                Button {
+                    store.deleteProfile(id: profile.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("profile.delete".localized)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(matchesLayout ? 0.05 : 0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(
+                    matchesLayout ? palette.primaryAccent.opacity(0.4) : palette.borderColor.opacity(0.2),
+                    lineWidth: matchesLayout ? 1.2 : 0.8
+                )
+        )
+    }
+
+    // MARK: - Frontmost-app profile switching
+
+    /// The whitelist half of the feature: which app gets which profile, and
+    /// what everything else falls back to.
+    ///
+    /// The unit is the profile, so there is nothing to configure per app beyond
+    /// picking one — the arrangement itself was already described by the
+    /// profiles card directly above.
+    @ViewBuilder
+    private func appProfileSwitchCard(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        settingsCard(title: "layout.appProfile.card".localized, icon: "macwindow.on.rectangle") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: Binding(
+                    get: { store.isAppProfileSwitchingEnabled },
+                    set: { newValue in
+                        store.isAppProfileSwitchingEnabled = newValue
+                        store.savePersistentState()
+                        if newValue {
+                            AppProfileSwitchService.shared.applyRememberedAppResolution()
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("layout.appProfile.toggle".localized)
+                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        Text("layout.appProfile.description".localized)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if store.isAppProfileSwitchingEnabled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        defaultProfileRow(store: store, palette: palette)
+                        appWhitelistList(store: store, palette: palette)
+                        HStack {
+                            addAppMenu(store: store, palette: palette)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func defaultProfileRow(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let profiles = store.contextProfiles.profiles
+        let current = store.contextProfiles.defaultProfileId
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("layout.appProfile.default".localized)
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    Text("layout.appProfile.default.subtitle".localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // The themed picker, not a stock `Picker(.menu)`: a native
+                // popup renders as the one grey NSPopUpButton on a page of
+                // themed controls, which reads as a bug rather than a choice.
+                PurahThemedMenuPicker(
+                    options: [UUID?.none] + profiles.map { Optional($0.id) },
+                    selection: Binding<UUID?>(
+                        get: { current },
+                        set: { store.setDefaultProfile(id: $0) }
+                    ),
+                    titleForOption: { id in
+                        guard let id, let profile = profiles.first(where: { $0.id == id }) else {
+                            return "layout.appProfile.default.unset".localized
+                        }
+                        return profile.name
+                    }
+                )
+                .disabled(profiles.isEmpty)
+            }
+
+            if current == nil || store.contextProfiles.defaultProfile == nil {
+                // Without a fallback, every app off the list would leave the
+                // last layout in place and the feature would look broken.
+                Text("layout.appProfile.default.required".localized)
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Every app with a profile, one row each.
+    ///
+    /// Flat rather than grouped by profile even though the model is
+    /// profile → apps: a row is one decision ("what does *this* app get"), and
+    /// the number of rows is the number of apps instead of profiles plus apps.
+    @ViewBuilder
+    private func appWhitelistList(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let bundleIds = orderedWhitelistedApps(store: store)
+        if bundleIds.isEmpty {
+            Text("layout.appProfile.empty".localized)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            // One boxed row per app, the same row treatment the profiles card
+            // above uses: two row idioms inside one settings window is exactly
+            // the kind of drift this pass is meant to remove.
+            VStack(spacing: 6) {
+                ForEach(bundleIds, id: \.self) { bundleId in
+                    appWhitelistRow(bundleId: bundleId, store: store, palette: palette)
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(0.03))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                        )
+                }
+            }
+        }
+    }
+
+    /// Whitelisted bundle ids in the order a person reads them: by app name.
+    ///
+    /// An app that is no longer installed still sorts by its bundle id, so a
+    /// rule for a deleted app stays visible and removable instead of silently
+    /// disappearing.
+    private func orderedWhitelistedApps(store: PurahWorkspaceStore) -> [String] {
+        store.contextProfiles.triggers
+            .compactMap { $0.key.appBundleId }
+            .sorted { lhs, rhs in
+                AppIdentity.displayName(forBundleId: lhs)
+                    .localizedStandardCompare(AppIdentity.displayName(forBundleId: rhs)) == .orderedAscending
+            }
+    }
+
+    @ViewBuilder
+    private func appWhitelistRow(bundleId: String, store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let profiles = store.contextProfiles.profiles
+        let assigned = store.contextProfiles.profileId(forApp: bundleId)
+        let displayName = AppIdentity.displayName(forBundleId: bundleId)
+        let isInstalled = AppIdentity.runningApp(forBundleId: bundleId) != nil
+            || AppIdentity.icon(forBundleId: bundleId) != nil
+
+        HStack(spacing: 8) {
+            if let icon = AppIdentity.icon(forBundleId: bundleId) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                // Same type as the profile rows above: 11.5 semibold name over a
+                // 9pt monospaced identifier.
+                Text(displayName)
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(bundleId)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if !isInstalled {
+                        Text("layout.appProfile.notInstalled".localized)
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // The picker *is* the relationship: an app maps to one profile, and
+            // changing it here is how the mapping moves.
+            if let selectionId = assigned ?? profiles.first?.id {
+                PurahThemedMenuPicker(
+                    options: profiles.map(\.id),
+                    selection: Binding<UUID>(
+                        get: { selectionId },
+                        set: { newValue in
+                            store.assignApp(bundleId: bundleId, to: newValue)
+                            AppProfileSwitchService.shared.applyRememberedAppResolution()
+                        }
+                    ),
+                    titleForOption: { id in
+                        profiles.first { $0.id == id }?.name ?? "—"
+                    }
+                )
+            }
+
+            Button {
+                store.removeAppTrigger(bundleId: bundleId)
+                AppProfileSwitchService.shared.applyRememberedAppResolution()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("layout.appProfile.remove".localized)
+            .accessibilityLabel("layout.appProfile.remove".localized)
+        }
+    }
+
+    /// Adds an app to a profile, from the apps that are running or from disk.
+    ///
+    /// Running apps alone would make it impossible to configure an app before
+    /// opening it — which is exactly when you think of doing so.
+    @ViewBuilder
+    private func addAppMenu(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let profiles = store.contextProfiles.profiles
+        let listed = Set(orderedWhitelistedApps(store: store))
+        let running = AppIdentity.runningAppCandidates()
+        if !profiles.isEmpty {
+            Menu {
+                ForEach(running) { candidate in
+                    Menu(candidate.name) {
+                        ForEach(profiles) { profile in
+                            Button(profile.name) {
+                                addApp(candidate.bundleId, to: profile.id, store: store)
+                            }
+                        }
+                    }
+                    .disabled(listed.contains(candidate.bundleId))
+                }
+                if !running.isEmpty {
+                    Divider()
+                }
+                Button("layout.appProfile.chooseInstalled".localized) {
+                    chooseAppFromDisk(store: store)
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 10.5))
+                    Text("layout.appProfile.add".localized)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.visible)
+            .fixedSize()
+            .accessibilityLabel("layout.appProfile.add".localized)
+        }
+    }
+
+    private func addApp(_ bundleId: String, to profileId: UUID, store: PurahWorkspaceStore) {
+        store.assignApp(bundleId: bundleId, to: profileId)
+        AppProfileSwitchService.shared.applyRememberedAppResolution()
+    }
+
+    /// Picks any installed `.app`, whether or not it is running.
+    private func chooseAppFromDisk(store: PurahWorkspaceStore) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = "layout.appProfile.chooseInstalled.prompt".localized
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let bundleId = Bundle(url: url)?.bundleIdentifier else { return }
+
+        let profiles = store.contextProfiles.profiles
+        // A brand-new app has no mapping yet; put it on the default profile,
+        // which is the one it would have landed on anyway.
+        let target = store.contextProfiles.defaultProfileId ?? profiles.first?.id
+        guard let target else { return }
+        addApp(bundleId, to: target, store: store)
     }
 }

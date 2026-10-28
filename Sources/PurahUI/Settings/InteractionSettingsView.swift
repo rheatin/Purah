@@ -208,12 +208,14 @@ public struct InteractionSettingsView: View {
                                 ),
                                 titleForOption: { $0.localizedDisplayName }
                             )
-                            .frame(width: 220)
                         }
                     }
                 }
 
-                // 3. Sensory Feedback Card
+                // 3. Quiet Hours Card
+                quietHoursCard(store: store, palette: palette)
+
+                // 4. Sensory Feedback Card
                 settingsCard(title: "interaction.sensory.card".localized, icon: "hand.tap.fill") {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -255,7 +257,6 @@ public struct InteractionSettingsView: View {
                                         ),
                                         titleForOption: { $0.localizedName }
                                     )
-                                    .frame(width: 180)
 
                                     Button {
                                         _ = store.previewToastSound()
@@ -374,11 +375,177 @@ public struct InteractionSettingsView: View {
             content()
         }
         .padding(16)
+        // The card must fill the column regardless of what it holds. Without
+        // this its width is its content's intrinsic width, so a card with a
+        // trailing Spacer ran edge to edge while a card holding just a Toggle
+        // shrank and was centred by the parent VStack — the two sat misaligned
+        // side by side.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.surfaceBackground)
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
         )
+    }
+
+    // MARK: - Quiet Hours
+
+    /// A daily window that holds back alerts and toasts.
+    ///
+    /// The two ends are minute pickers rather than `DatePicker`s: this is a
+    /// recurring wall-clock window, not a date, and a date picker would imply
+    /// the day matters. Times are stored as minutes-since-midnight, so the
+    /// picker round-trips without an arbitrary reference date.
+    @ViewBuilder
+    private func quietHoursCard(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        settingsCard(title: "interaction.quiet.card".localized, icon: "moon.zzz.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: Binding(
+                    get: { store.quietHours.isEnabled },
+                    set: { newValue in
+                        var updated = store.quietHours
+                        updated.isEnabled = newValue
+                        store.quietHours = updated
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("interaction.quiet.toggle".localized)
+                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        Text("interaction.quiet.description".localized)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if store.quietHours.isEnabled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Text("interaction.quiet.start".localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            minutePicker(
+                                binding: Binding(
+                                    get: { store.quietHours.startMinute },
+                                    set: { newValue in
+                                        var updated = store.quietHours
+                                        updated.startMinute = newValue
+                                        store.quietHours = updated
+                                    }
+                                ),
+                                palette: palette
+                            )
+
+                            Text("interaction.quiet.end".localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            minutePicker(
+                                binding: Binding(
+                                    get: { store.quietHours.endMinute },
+                                    set: { newValue in
+                                        var updated = store.quietHours
+                                        updated.endMinute = newValue
+                                        store.quietHours = updated
+                                    }
+                                ),
+                                palette: palette
+                            )
+
+                            Spacer()
+                        }
+
+                        HStack(spacing: 6) {
+                            Text("interaction.quiet.days".localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            ForEach(Weekday.allCases) { day in
+                                let isOn = store.quietHours.weekdays.contains(day)
+                                Button {
+                                    var updated = store.quietHours
+                                    if isOn { updated.weekdays.remove(day) } else { updated.weekdays.insert(day) }
+                                    store.quietHours = updated
+                                } label: {
+                                    Text(day.localizedShortName)
+                                        .font(.system(size: 10, weight: isOn ? .bold : .medium, design: .rounded))
+                                        .foregroundColor(isOn ? palette.primaryAccent : .secondary)
+                                        .frame(width: 30, height: 22)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                                .fill(isOn ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                                .stroke(isOn ? palette.primaryAccent.opacity(0.45) : palette.borderColor.opacity(0.2), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(day.localizedShortName)
+                                .accessibilityAddTraits(isOn ? [.isSelected] : [])
+                            }
+
+                            if store.quietHours.weekdays.isEmpty {
+                                Text("interaction.quiet.everyDay".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.leading, 2)
+
+                        // Explain the two configurations that look like bugs:
+                        // a window spanning midnight, and one whose ends meet.
+                        if store.quietHours.isZeroLength {
+                            inlineNote("interaction.quiet.zeroLength".localized, palette: palette, isWarning: true)
+                        } else if store.quietHours.crossesMidnight {
+                            inlineNote("interaction.quiet.crossMidnight".localized, palette: palette, isWarning: false)
+                        }
+
+                        if store.isQuietNow() {
+                            inlineNote("interaction.quiet.activeNow".localized, palette: palette, isWarning: false)
+                        }
+                    }
+                    .padding(.leading, 18)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func inlineNote(_ text: String, palette: ThemePalette, isWarning: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .font(.system(size: 9))
+            Text(text)
+                .font(.system(size: 9.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundColor(isWarning ? .orange : .secondary)
+    }
+
+    /// Half-hour steps, which is the resolution people actually pick with.
+    private func minutePicker(binding: Binding<Int>, palette: ThemePalette) -> some View {
+        let options = Array(stride(from: 0, to: QuietHours.minutesPerDay, by: 30))
+        return PurahThemedMenuPicker(
+            options: options,
+            selection: Binding(
+                get: {
+                    // A stored value off the grid (hand-edited, or a future
+                    // finer step) must still show *something*; snap to the
+                    // nearest option rather than rendering an empty picker.
+                    options.min { abs($0 - binding.wrappedValue) < abs($1 - binding.wrappedValue) } ?? 0
+                },
+                set: { binding.wrappedValue = $0 }
+            ),
+            titleForOption: { Self.formatMinute($0) }
+        )
+    }
+
+    static func formatMinute(_ minute: Int) -> String {
+        let normalized = QuietHours.normalizeMinute(minute)
+        return String(format: "%02d:%02d", normalized / 60, normalized % 60)
     }
 }

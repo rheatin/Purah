@@ -65,7 +65,6 @@ public struct GeneralSettingsView: View {
                             ),
                             titleForOption: { $0.displayName }
                         )
-                        .frame(width: 200)
                     }
                 }
 
@@ -92,7 +91,6 @@ public struct GeneralSettingsView: View {
                             ),
                             titleForOption: { $0.localizedDisplayName }
                         )
-                        .frame(width: 280)
                     }
                 }
 
@@ -342,6 +340,9 @@ public struct GeneralSettingsView: View {
             content()
         }
         .padding(16)
+        // Fill the column rather than sizing to content; see the identical
+        // note in InteractionSettingsView.settingsCard.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.surfaceBackground)
         .cornerRadius(12)
         .overlay(

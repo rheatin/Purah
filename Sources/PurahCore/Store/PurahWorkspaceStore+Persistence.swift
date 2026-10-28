@@ -150,9 +150,6 @@ extension PurahWorkspaceStore {
         } else {
             self.isDynamicBreathingEnabled = true
         }
-        if defaults.object(forKey: "purah.isAlwaysCompactBreathing") != nil {
-            self.isAlwaysCompactBreathing = defaults.bool(forKey: "purah.isAlwaysCompactBreathing")
-        }
 
         if defaults.object(forKey: "purah.hotkey.keyCode") != nil {
             let code = UInt32(defaults.integer(forKey: "purah.hotkey.keyCode"))
@@ -172,6 +169,25 @@ extension PurahWorkspaceStore {
         if let alertStr = defaults.string(forKey: "purah.alertStyle"),
            let style = PluginAlertStyle(rawValue: alertStr) {
             self.alertStyle = style
+        }
+        if let quietData = defaults.data(forKey: "purah.quietHours"),
+           let decoded = try? JSONDecoder().decode(QuietHours.self, from: quietData) {
+            // Assign the backing storage directly: the `didSet` would write it
+            // straight back to disk during a load.
+            _quietHours = decoded
+        }
+        if defaults.object(forKey: "purah.appFocusSettings") != nil {
+            // The per-app page rules this build replaced are gone. The blob is
+            // removed rather than merely ignored so a stale rules dictionary
+            // cannot confuse a future migration.
+            defaults.removeObject(forKey: "purah.appFocusSettings")
+        }
+        if defaults.object(forKey: "purah.isAppProfileSwitchingEnabled") != nil {
+            self.isAppProfileSwitchingEnabled = defaults.bool(forKey: "purah.isAppProfileSwitchingEnabled")
+        }
+        if let profileData = defaults.data(forKey: "purah.contextProfiles"),
+           let decoded = try? JSONDecoder().decode(ContextProfileStore.self, from: profileData) {
+            _contextProfiles = decoded
         }
         if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
             self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
@@ -233,7 +249,6 @@ extension PurahWorkspaceStore {
         defaults.set(fixedDrawerWidth, forKey: "purah.fixedDrawerWidth")
         defaults.set(railBarWidth, forKey: "purah.railBarWidth")
         defaults.set(isDynamicBreathingEnabled, forKey: "purah.isDynamicBreathingEnabled")
-        defaults.set(isAlwaysCompactBreathing, forKey: "purah.isAlwaysCompactBreathing")
         defaults.set(Int(hotKeyShortcut.keyCode), forKey: "purah.hotkey.keyCode")
         defaults.set(Int(hotKeyShortcut.modifiers), forKey: "purah.hotkey.modifiers")
         defaults.set(Int(sculptorHotKeyShortcut.keyCode), forKey: "purah.sculptorHotkey.keyCode")
@@ -241,6 +256,13 @@ extension PurahWorkspaceStore {
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
         defaults.set(edgeTriggerMode.rawValue, forKey: "purah.edgeTriggerMode")
         defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
+        if let quietData = try? JSONEncoder().encode(quietHours) {
+            defaults.set(quietData, forKey: "purah.quietHours")
+        }
+        if let profileData = try? JSONEncoder().encode(contextProfiles) {
+            defaults.set(profileData, forKey: "purah.contextProfiles")
+        }
+        defaults.set(isAppProfileSwitchingEnabled, forKey: "purah.isAppProfileSwitchingEnabled")
         defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
         defaults.set(toastNotificationSound.rawValue, forKey: "purah.toastNotificationSound")

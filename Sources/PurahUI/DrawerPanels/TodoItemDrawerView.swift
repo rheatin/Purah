@@ -157,6 +157,36 @@ public struct TodoItemDrawerView: View {
                 SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
             }
             Divider()
+            Menu {
+                Button {
+                    applyRecurrence(nil)
+                } label: {
+                    if todo.recurrence == nil {
+                        Label("todo.repeat.none".localized, systemImage: "checkmark")
+                    } else {
+                        Text("todo.repeat.none".localized)
+                    }
+                }
+                Divider()
+                ForEach(RecurrenceFrequency.allCases) { frequency in
+                    Button {
+                        applyRecurrence(TodoRecurrence(frequency: frequency))
+                    } label: {
+                        if todo.recurrence?.frequency == frequency {
+                            Label(frequency.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(frequency.displayName)
+                        }
+                    }
+                }
+            } label: {
+                if let recurrence = todo.recurrence {
+                    Label(recurrence.badgeText, systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                } else {
+                    Label("todo.repeat.title".localized, systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                }
+            }
+            Divider()
             Button {
                 store.openPluginSettings(id: "todo")
             } label: {
@@ -168,6 +198,16 @@ public struct TodoItemDrawerView: View {
                 Label(isPinned ? "Unpin Task" : "Pin Task", systemImage: isPinned ? "pin.slash" : "pin")
             }
         }
+    }
+
+    /// Applies a repeating schedule to this item, in both the plugin state and
+    /// the store's mirror. Both are written because the drawer renders from the
+    /// store while completion flows through the plugin state, and a rule
+    /// visible in only one of them would silently do nothing.
+    private func applyRecurrence(_ recurrence: TodoRecurrence?) {
+        (PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin)?
+            .state.setRecurrence(id: todo.id, recurrence: recurrence, store: store)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
     }
 
     private var drawerShape: UnevenRoundedRectangle {

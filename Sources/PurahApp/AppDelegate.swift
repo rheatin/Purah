@@ -106,6 +106,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             self?.toggleLiveRailSculptor()
         }
 
+        // Switches the active profile to the one the frontmost app is listed
+        // under. Bound after the store's callbacks are wired, because applying a
+        // profile asks for a window rebuild.
+        AppProfileSwitchService.shared.bindStore(store)
+
         setupStatusItem()
 
         // Post-launch memory optimization:
