@@ -873,7 +873,59 @@ Purah 内置了直通开发者的即时编译工具链，参考仓库内置的�
 
 ---
 
-## 10. 自动化单元测试编写规范
+## 10. 在插件中调用 AI (`PurahAIService`)
+
+插件经常只需要「一句话的智能」：把便签总结成三行、把剪贴板文本改成正式语气、给日程写一句摘要。不要自己解析 provider、读密钥、处理 404 —— 这些 AI 助理已经做了一次，`PurahAIService` 就是把它交给其余插件的接口。
+
+```swift
+@MainActor
+public enum PurahAIService {
+    public enum Privacy: Sendable {
+        case localOnly      // 文本不得离开本机（只有 Apple Intelligence 满足）
+        case remoteAllowed  // 允许使用用户配置的任意 provider
+    }
+
+    public static func ask(
+        _ prompt: String,
+        system: String? = nil,
+        privacy: Privacy = .remoteAllowed
+    ) async throws -> String
+}
+```
+
+```swift
+Button("总结") {
+    Task {
+        do {
+            let summary = try await PurahAIService.ask(
+                noteText,
+                system: "Summarise in at most three bullet points.",
+                privacy: .localOnly        // 便签是用户自己的文字
+            )
+            state.summary = summary
+        } catch PurahAIService.Failure.localModelRequired(let provider) {
+            // 用户此刻配的是远端模型：告诉他，而不是偷偷发出去
+            context.showWarning("这条内容需要端侧模型（当前为 \(provider.displayName)）")
+        } catch {
+            context.showWarning(error.localizedDescription)
+        }
+    }
+}
+```
+
+**守则：**
+
+- **宿主持有用户的决定。** 供应商、CLI、密钥、端侧偏好全部来自 AI 助理设置，插件无法绕过，也不需要知道用的是哪一家。
+- **`localOnly` 是承诺，不是建议。** 只有 `.appleIntelligence` 算本地：CLI Agent 与 HTTP 接口都会离开本机。配置做不到时会抛 `Failure.localModelRequired(provider:)`，**绝不静默降级**——这条检查先于可用性检查，因为它是调用方唯一能补救的错误。
+- **答案已清洗。** `<think>` 推理片段在返回前被剥离：插件拿到的是内容，不是过程。
+- **失败要显示。** `Failure` 共四种——`emptyPrompt`、`unavailable(detail:)`、`localModelRequired(provider:)`、`emptyAnswer`，都实现了 `LocalizedError`，直接 `error.localizedDescription` 即可。
+- **别在 `body` 里调用。** 这是按 token 计费的真实请求：一次用户动作发一次。`ask` 也限制在 `maximumPromptLength`（24,000 字符）以内，超出部分会被截断。
+
+> **外部插件（C-ABI）暂未暴露该能力。** 内置插件直接调用即可；动态加载的第三方插件目前只能通过自己的 CLI 自行请求模型。
+
+---
+
+## 11. 自动化单元测试编写规范
 
 为保证插件生命周期与布局解析的鲁棒性，推荐编写标准 Swift Testing 用例：
 
