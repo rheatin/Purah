@@ -86,7 +86,8 @@ public final class SystemRemindersSyncService {
                             listTitle: rem.calendar?.title ?? "Reminders",
                             listColorHex: SystemCalendarSyncService.hexString(from: rem.calendar?.cgColor),
                             dueDate: dueDate,
-                            isCompleted: rem.isCompleted
+                            isCompleted: rem.isCompleted,
+                            recurrence: Self.recurrence(from: rem.recurrenceRules)
                         )
                     }
                     continuation.resume(returning: mapped)
@@ -153,7 +154,14 @@ public final class SystemRemindersSyncService {
         }
     }
 
-    public func toggleCompletion(id: String, into store: PurahWorkspaceStore? = nil) async {
+    /// Toggles completion in the real Reminders store.
+    ///
+    /// Returns whether a real reminder was updated. That answer matters to the
+    /// caller: Reminders maintains the recurrence itself, so completing a
+    /// repeating reminder there already produced the next occurrence. Only a
+    /// local-only item needs the pod to derive one.
+    @discardableResult
+    public func toggleCompletion(id: String, into store: PurahWorkspaceStore? = nil) async -> Bool {
         if let store = store {
             self.boundStore = store
         }
@@ -167,7 +175,7 @@ public final class SystemRemindersSyncService {
                 do {
                     try eventStore.save(item, commit: true)
                     await syncReminders(into: targetStore)
-                    return
+                    return true
                 } catch {
                     DiagnosticLogger.shared.error("Reminders", "Failed to save reminder completion: \(error.localizedDescription)")
                 }
@@ -176,6 +184,103 @@ public final class SystemRemindersSyncService {
 
         if let idx = targetStore?._todos.firstIndex(where: { $0.id == id }) {
             targetStore?._todos[idx].isCompleted.toggle()
+        }
+        return false
+    }
+
+    // MARK: - Recurrence mapping
+
+    /// Reads the repeat schedule EventKit holds for a reminder.
+    ///
+    /// The pod used to ignore `recurrenceRules` entirely on the theory that the
+    /// rule could not round-trip. It can, in this direction at least: a reminder
+    /// made repeating in the Reminders app must not show up here as a one-off,
+    /// or the rule is invisible exactly where the user looks for it.
+    ///
+    /// Only the first rule is read. EventKit stores a list so that "every
+    /// Monday and Thursday" can be one entry, and the pod's model has no way to
+    /// express a union of cadences; taking the first is honest about what the
+    /// UI can show.
+    static func recurrence(from rules: [EKRecurrenceRule]?) -> TodoRecurrence? {
+        guard let rule = rules?.first else { return nil }
+
+        // `.weekdays` is EventKit's "weekly, on Mon–Fri". Detecting it matters
+        // because it is the one cadence whose EventKit spelling does not say
+        // what it means.
+        if rule.frequency == .weekly,
+           let days = rule.daysOfTheWeek,
+           days.count == 5,
+           Set(days.map(\.dayOfTheWeek)) == [.monday, .tuesday, .wednesday, .thursday, .friday] {
+            return TodoRecurrence(frequency: .weekdays)
+        }
+
+        let frequency: RecurrenceFrequency
+        switch rule.frequency {
+        case .daily: frequency = .daily
+        case .weekly: frequency = .weekly
+        case .monthly: frequency = .monthly
+        case .yearly: frequency = .yearly
+        default: return nil
+        }
+        return TodoRecurrence(
+            frequency: frequency,
+            interval: rule.interval,
+            endDate: rule.recurrenceEnd?.endDate
+        )
+    }
+
+    /// The EventKit rule for a pod recurrence.
+    ///
+    /// The two models are close enough to be lossless in this direction, which
+    /// is what makes "set it here, it shows up in Reminders" true.
+    static func recurrenceRule(from recurrence: TodoRecurrence) -> EKRecurrenceRule {
+        let end: EKRecurrenceEnd? = recurrence.endDate.map { EKRecurrenceEnd(end: $0) }
+        switch recurrence.frequency {
+        case .daily:
+            return EKRecurrenceRule(recurrenceWith: .daily, interval: recurrence.interval, end: end)
+        case .weekdays:
+            let weekdays: [EKWeekday] = [.monday, .tuesday, .wednesday, .thursday, .friday]
+            return EKRecurrenceRule(
+                recurrenceWith: .weekly,
+                interval: 1,
+                daysOfTheWeek: weekdays.map { EKRecurrenceDayOfWeek(dayOfTheWeek: $0, weekNumber: 0) },
+                daysOfTheMonth: nil,
+                monthsOfTheYear: nil,
+                weeksOfTheYear: nil,
+                daysOfTheYear: nil,
+                setPositions: nil,
+                end: end
+            )
+        case .weekly:
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: recurrence.interval, end: end)
+        case .monthly:
+            return EKRecurrenceRule(recurrenceWith: .monthly, interval: recurrence.interval, end: end)
+        case .yearly:
+            return EKRecurrenceRule(recurrenceWith: .yearly, interval: recurrence.interval, end: end)
+        }
+    }
+
+    /// Writes a repeat schedule to the underlying reminder, or clears it.
+    ///
+    /// Returns false when there is no real reminder behind the id (the item is
+    /// local-only), so the caller knows to keep the rule in its own model.
+    @discardableResult
+    public func setRecurrence(id: String, recurrence: TodoRecurrence?) -> Bool {
+        guard permissionStatus().isGranted else { return false }
+        let baseIdentifier = id.components(separatedBy: "_").first ?? id
+        guard let item = eventStore.calendarItem(withIdentifier: baseIdentifier) as? EKReminder else {
+            return false
+        }
+        item.recurrenceRules = recurrence.map { [Self.recurrenceRule(from: $0)] }
+        do {
+            try eventStore.save(item, commit: true)
+            return true
+        } catch {
+            DiagnosticLogger.shared.error(
+                "Reminders",
+                "Failed to save recurrence: \(error.localizedDescription)"
+            )
+            return false
         }
     }
 }

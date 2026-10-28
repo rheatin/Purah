@@ -94,8 +94,9 @@ public final class TodoPluginState: Sendable {
             save()
         }
         let targetStore = store ?? boundStore
+        var didUpdateRealReminder = false
         if let targetStore {
-            await SystemRemindersSyncService.shared.toggleCompletion(id: id, into: targetStore)
+            didUpdateRealReminder = await SystemRemindersSyncService.shared.toggleCompletion(id: id, into: targetStore)
             if let idx = targetStore._todos.firstIndex(where: { $0.id == id }),
                let selfIdx = todos.firstIndex(where: { $0.id == id }) {
                 todos[selfIdx].isCompleted = targetStore._todos[idx].isCompleted
@@ -104,10 +105,12 @@ public final class TodoPluginState: Sendable {
             targetStore.onWindowsRebuildNeeded?()
         }
 
-        // Completing a repeating todo schedules its successor. Done after the
-        // Reminders round trip so the new item is appended to the authoritative
-        // list rather than being overwritten by the sync that just ran.
-        if let before, before.recurrence != nil, !before.isCompleted {
+        // Completing a repeating todo schedules its successor — but only for
+        // items that live in this pod alone. A repeating reminder in Reminders
+        // is maintained by EventKit: completing it already spawned the next
+        // occurrence, which the round trip above pulled in. Deriving one here
+        // as well would show every repeating task twice.
+        if let before, before.recurrence != nil, !before.isCompleted, !didUpdateRealReminder {
             scheduleNextOccurrence(of: before, store: store)
         }
     }
@@ -171,6 +174,13 @@ public final class TodoPluginState: Sendable {
         if let target, let idx = target._todos.firstIndex(where: { $0.id == id }) {
             target._todos[idx].recurrence = recurrence
         }
+
+        // Write through to Reminders as well. The pod mirrors that list, and a
+        // rule that only existed locally would vanish on the next sync — which
+        // replaces the whole array with what EventKit reports. Returns false
+        // for local-only items, where the local rule above is the only copy and
+        // is correct as it stands.
+        SystemRemindersSyncService.shared.setRecurrence(id: id, recurrence: recurrence)
     }
 
     public func updateTitle(id: String, title: String) {

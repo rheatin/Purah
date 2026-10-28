@@ -80,4 +80,34 @@ struct RemindersSyncTests {
         #expect(todo.listColorHex == "#34C759")
         #expect(todo.listTitle == "Personal")
     }
+
+    /// Reminders owns the recurrence of a real reminder: completing one there
+    /// already produced the next occurrence. The pod must know whether its own
+    /// derivation is needed, so the toggle reports which side it acted on.
+    @Test("Toggling a local-only todo reports that no real reminder was updated")
+    func testToggleReportsLocalFallback() async {
+        let store = makeStore()
+        let service = makeDeniedService()
+        guard let todo = store._todos.first else {
+            Issue.record("missing seeded todo")
+            return
+        }
+
+        let didUpdateRealReminder = await service.toggleCompletion(id: todo.id, into: store)
+
+        #expect(
+            didUpdateRealReminder == false,
+            "a local item must let the pod derive its own successor"
+        )
+    }
+
+    /// The write-through must fail closed when there is no reminder behind the
+    /// id, so the caller keeps its local rule instead of trusting a save that
+    /// never happened.
+    @Test("Writing a recurrence without a real reminder reports failure")
+    func testSetRecurrenceFailsWithoutPermission() {
+        let service = makeDeniedService()
+        #expect(service.setRecurrence(id: "not-a-reminder", recurrence: TodoRecurrence(frequency: .daily)) == false)
+        #expect(service.setRecurrence(id: "not-a-reminder", recurrence: nil) == false)
+    }
 }
