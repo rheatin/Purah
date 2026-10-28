@@ -59,31 +59,9 @@ public final class CommandSuggestionService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty || mode == .explain else { throw SuggestError.emptyRequest }
 
-        let provider = AIProviderKind(rawValue: storage.string(forKey: "selectedProvider") ?? "") ?? .appleIntelligence
-        let cli = AICLIExecutable(rawValue: storage.string(forKey: "selectedCLI") ?? "") ?? .claude
-
-        let apiKey: String? = {
-            switch provider {
-            case .httpOpenAI: return secretStore.secret(forKey: "ai.openAIAPIKey")
-            case .httpAnthropic: return secretStore.secret(forKey: "ai.anthropicAPIKey")
-            default: return nil
-            }
-        }()
-        let endpoint: String? = {
-            switch provider {
-            case .httpOpenAI: return storage.string(forKey: "openAIBaseURL")
-            case .httpOllama: return storage.string(forKey: "ollamaBaseURL")
-            default: return nil
-            }
-        }()
-        let model: String? = {
-            switch provider {
-            case .httpOpenAI: return storage.string(forKey: "openAIModel")
-            case .httpAnthropic: return storage.string(forKey: "anthropicModel")
-            case .httpOllama: return storage.string(forKey: "ollamaModel")
-            default: return nil
-            }
-        }()
+        // One reader for the AI settings: `??`, the script drafter and the
+        // drawer must never disagree about which provider is in use.
+        let settings = AISettingsSnapshot.load(storage: storage, secretStore: secretStore)
 
         func ask(correction: String?) async throws -> CommandSuggestion {
             let answer = try await assistant.streamChat(
@@ -98,13 +76,13 @@ public final class CommandSuggestionService {
                         correction: correction
                     )
                 )],
-                provider: provider,
-                cliExecutable: cli,
-                customCLIPath: storage.string(forKey: "customCLIPath"),
-                customCLIArguments: storage.string(forKey: "customCLIArguments"),
-                apiKey: apiKey,
-                endpoint: endpoint,
-                model: model,
+                provider: settings.provider,
+                cliExecutable: settings.cli,
+                customCLIPath: settings.customCLIPath,
+                customCLIArguments: settings.customCLIArguments,
+                apiKey: settings.apiKey,
+                endpoint: settings.endpoint,
+                model: settings.model,
                 systemPromptOverride: CommandSuggestionPrompt.systemPrompt()
             )
             guard let suggestion = CommandSuggestionParser.parse(answer) else {

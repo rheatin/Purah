@@ -48,6 +48,11 @@ public enum CommandBinaryProbe {
 
     /// Splits on `|`, `&&`, `||` and `;`, after removing quoted text so a
     /// semicolon inside `echo "a; b"` cannot invent a segment.
+    ///
+    /// Comments are dropped, not checked: a script starts with `# Archive
+    /// downloads by month`, and reading the first word of that as a command
+    /// would report `#` as a missing binary. Mid-line comments need no special
+    /// case — `ls -la # note` still has `ls` as its command word.
     static func segments(of command: String) -> [String] {
         var unquoted = ""
         var quote: Character?
@@ -70,7 +75,7 @@ public enum CommandBinaryProbe {
             .replacingOccurrences(of: ";", with: "\n")
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
     }
 
     /// The command word of one segment: assignments and wrapper words are
@@ -85,6 +90,9 @@ public enum CommandBinaryProbe {
                 continue
             }
             if word.hasPrefix("(") || word.hasPrefix(")") { return nil }
+            // A brace group is structure, not a command: `{ … }` and the
+            // closing `}` of a function have no binary behind them.
+            if word.hasPrefix("{") || word.hasPrefix("}") { return nil }
             // Dynamic expansion: nothing to check without running the shell.
             if word.contains("$") || word.contains("`") { return nil }
             // A builtin *is* the command: there is no file to look for, and the
