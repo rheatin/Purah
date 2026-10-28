@@ -89,6 +89,16 @@ public final class AppFocusAwarenessService {
     public private(set) var activeBundleId: String?
     public private(set) var activeAppName: String?
 
+    /// The last application that was frontmost *other than Purah*.
+    ///
+    /// `activeBundleId` is deliberately nil while Purah is frontmost, but the
+    /// settings window needs to answer "add a rule for the app I was just in"
+    /// — and at that moment Purah is the active app, so asking
+    /// `NSRunningApplication.isActive` finds nothing. This remembers the last
+    /// real answer instead.
+    public private(set) var lastExternalBundleId: String?
+    public private(set) var lastExternalAppName: String?
+
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
     @ObservationIgnored nonisolated(unsafe) private var activationObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var pendingTask: Task<Void, Never>?
@@ -114,6 +124,14 @@ public final class AppFocusAwarenessService {
     public func bindStore(_ store: PurahWorkspaceStore) {
         boundStore = store
         startObserving()
+        // Catch up with whatever is already frontmost. Without this a rule only
+        // took effect after the user switched away and back, which reads as
+        // "the feature does nothing".
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        evaluate(
+            bundleId: frontmost?.bundleIdentifier,
+            name: frontmost?.localizedName
+        )
     }
 
     private func startObserving() {
@@ -158,6 +176,10 @@ public final class AppFocusAwarenessService {
         let isSelf = bundleId == Bundle.main.bundleIdentifier
         activeBundleId = isSelf ? nil : bundleId
         activeAppName = isSelf ? nil : name
+        if !isSelf, let bundleId {
+            lastExternalBundleId = bundleId
+            lastExternalAppName = name
+        }
 
         guard settings.isEnabled else {
             revertIfNeeded(store: store)

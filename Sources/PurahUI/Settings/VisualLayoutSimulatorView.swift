@@ -89,6 +89,12 @@ public struct VisualLayoutSimulatorView: View {
                 // 1. Context Profiles (whole-layout presets)
                 contextProfilesCard
 
+                // 1b. Frontmost-App Adaptation. Lives here rather than in
+                // Motion because it rearranges the rails — it is another way
+                // of choosing a layout, sitting next to the profiles it
+                // resembles.
+                appFocusCard(store: store, palette: palette)
+
                 // 2. Mini Screen Simulation (Top Primary Focus)
                 ScreenSimulationCanvas(store: store)
 
@@ -823,6 +829,9 @@ public struct VisualLayoutSimulatorView: View {
             content()
         }
         .padding(16)
+        // Fill the column rather than sizing to content; see the identical
+        // note in InteractionSettingsView.settingsCard.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.surfaceBackground)
         .cornerRadius(12)
         .overlay(
@@ -1018,5 +1027,230 @@ public struct VisualLayoutSimulatorView: View {
                     lineWidth: matchesLayout ? 1.2 : 0.8
                 )
         )
+    }
+
+    // MARK: - App Focus Adaptation
+
+    /// Rules that move pods between rail pages when the frontmost app changes.
+    ///
+    /// The per-rule editor only offers page membership, matching what the store
+    /// is allowed to do. Offering a height slider here would be a control that
+    /// silently does nothing, which is worse than not offering it.
+    @ViewBuilder
+    private func appFocusCard(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let settings = store.appFocusSettings
+        settingsCard(title: "interaction.focus.card".localized, icon: "macwindow.on.rectangle") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: Binding(
+                    get: { settings.isEnabled },
+                    set: { newValue in
+                        var updated = settings
+                        updated.isEnabled = newValue
+                        store.appFocusSettings = updated
+                        if newValue {
+                            AppFocusAwarenessService.shared.bindStore(store)
+                        } else {
+                            AppFocusAwarenessService.shared.stop()
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("interaction.focus.toggle".localized)
+                            .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        Text("interaction.focus.description".localized)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if settings.isEnabled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if settings.rules.isEmpty {
+                            Text("interaction.focus.empty".localized)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            ForEach(settings.sortedRules) { rule in
+                                appFocusRuleRow(rule: rule, store: store, palette: palette)
+                            }
+                        }
+
+                        Button {
+                            addCurrentAppRule(store: store)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 10.5))
+                                Text("interaction.focus.addCurrent".localized)
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.tactile)
+                        .accessibilityLabel("interaction.focus.addCurrent".localized)
+                    }
+                    .padding(.leading, 18)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func appFocusRuleRow(rule: AppFocusRule, store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let isActive = AppFocusAwarenessService.shared.activeBundleId == rule.bundleId
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: isActive ? "circle.fill" : "circle")
+                    .font(.system(size: 6))
+                    .foregroundColor(isActive ? palette.primaryAccent : palette.borderColor.opacity(0.5))
+
+                Text(rule.displayName)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+
+                if isActive {
+                    Text("interaction.focus.active".localized)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(palette.primaryAccent)
+                }
+
+                Spacer()
+
+                Button {
+                    var updated = store.appFocusSettings
+                    updated.rules.removeValue(forKey: rule.bundleId)
+                    store.appFocusSettings = updated
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("interaction.focus.remove".localized)
+            }
+
+            // One chip per pod, toggling which page it lands on. Only pods that
+            // exist are offered, so a rule cannot accumulate ids for plugins the
+            // user has uninstalled.
+            HStack(spacing: 5) {
+                ForEach(store.pods.filter(\.isEnabled)) { pod in
+                    let isSurfaced = rule.surfacedPodIds.contains(pod.id)
+                    let isHidden = rule.hiddenPodIds.contains(pod.id)
+                    Button {
+                        var updated = store.appFocusSettings
+                        var edited = rule
+                        // Cycle: neutral → surfaced → hidden → neutral.
+                        if isSurfaced {
+                            edited.surfacedPodIds.removeAll { $0 == pod.id }
+                            edited.hiddenPodIds.append(pod.id)
+                        } else if isHidden {
+                            edited.hiddenPodIds.removeAll { $0 == pod.id }
+                        } else {
+                            edited.surfacedPodIds.append(pod.id)
+                        }
+                        updated.rules[rule.bundleId] = edited
+                        store.appFocusSettings = updated
+                    } label: {
+                        Text(pod.name)
+                            .font(.system(size: 9, weight: isSurfaced || isHidden ? .bold : .medium, design: .rounded))
+                            .foregroundColor(
+                                isSurfaced ? palette.primaryAccent
+                                    : (isHidden ? .secondary : .secondary.opacity(0.7))
+                            )
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(isSurfaced
+                                          ? palette.primaryAccent.opacity(0.16)
+                                          : Color.primary.opacity(isHidden ? 0.03 : 0.06))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(
+                                        isSurfaced ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.2),
+                                        lineWidth: 1
+                                    )
+                            )
+                            .overlay(alignment: .topTrailing) {
+                                // A hidden chip needs a mark of its own; the
+                                // dimmed fill alone reads as "not selected".
+                                if isHidden {
+                                    Image(systemName: "minus")
+                                        .font(.system(size: 6, weight: .bold))
+                                        .foregroundColor(.secondary)
+                                        .offset(x: 2, y: -2)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help(isSurfaced
+                          ? "interaction.focus.surface".localized
+                          : (isHidden ? "interaction.focus.hide".localized : pod.name))
+                    .accessibilityLabel("\(pod.name): \(isSurfaced ? "interaction.focus.surface".localized : (isHidden ? "interaction.focus.hide".localized : ""))")
+                }
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+        )
+    }
+
+    /// Adds a rule for the app the user was in just before opening Settings.
+    ///
+    /// It cannot ask `NSRunningApplication.isActive` for that answer: while
+    /// this window is up Purah *is* the active application, so the filter
+    /// never matched anything and the button silently did nothing. The service
+    /// records the last non-Purah frontmost app for exactly this purpose.
+    private func addCurrentAppRule(store: PurahWorkspaceStore) {
+        let service = AppFocusAwarenessService.shared
+        let ownBundleId = Bundle.main.bundleIdentifier
+
+        let bundleId: String
+        let displayName: String
+        if let remembered = service.lastExternalBundleId {
+            bundleId = remembered
+            displayName = service.lastExternalAppName ?? remembered
+        } else if let app = NSWorkspace.shared.runningApplications.first(where: {
+            // `.regular` only: agents and background helpers have bundle ids
+            // but no window a person could ever have been "in".
+            $0.activationPolicy == .regular
+                && $0.bundleIdentifier != nil
+                && $0.bundleIdentifier != ownBundleId
+        }), let id = app.bundleIdentifier {
+            // Nothing remembered yet (the service may not have observed an
+            // activation during this launch). Fall back to any other running
+            // app rather than refusing outright.
+            bundleId = id
+            displayName = app.localizedName ?? id
+        } else {
+            return
+        }
+
+        var updated = store.appFocusSettings
+        guard updated.rules[bundleId] == nil else { return }
+        updated.rules[bundleId] = AppFocusRule(
+            bundleId: bundleId,
+            displayName: displayName
+        )
+        store.appFocusSettings = updated
     }
 }
