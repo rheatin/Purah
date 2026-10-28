@@ -898,9 +898,13 @@ struct AIAssistantPluginTests {
         // Verify fallback gating: when allowPasteboardFallback is false and no window is selected, returns nil safely
         _ = service.captureFrontmostSelection(allowPasteboardFallback: false)
 
-        // Verify replaceSelectionInTargetApp safely copies to general pasteboard
-        service.replaceSelectionInTargetApp(with: "Replaced text payload")
-        let pbString = NSPasteboard.general.string(forType: .string)
+        // Verify replaceSelectionInTargetApp copies the payload for the ⌘V
+        // fallback. A scratch pasteboard, not the general one: the suite ran
+        // inside whatever the person had on their clipboard and left
+        // "Replaced text payload" there every single run.
+        let scratch = NSPasteboard.withUniqueName()
+        service.replaceSelectionInTargetApp(with: "Replaced text payload", pasteboard: scratch)
+        let pbString = scratch.string(forType: .string)
         #expect(pbString == "Replaced text payload")
     }
 

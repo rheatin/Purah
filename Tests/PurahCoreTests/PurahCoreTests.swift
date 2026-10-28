@@ -62,11 +62,11 @@ struct MemoryFootprintTests {
             img.unlockFocus()
 
             if let tiff = img.tiffRepresentation {
-                let pb = NSPasteboard.general
-                let canWritePB = pb.clearContents() > 0 && pb.setData(tiff, forType: .tiff)
-                if canWritePB {
-                    service.checkPasteboard()
-                } else if let item = service.processImageData(tiff) {
+                // Fed straight to the image pipeline instead of through
+                // NSPasteboard.general: the test is about memory and thumbnail
+                // downsampling, and a suite that overwrites the person's
+                // clipboard to check them is a suite they stop running.
+                if let item = service.processImageData(tiff) {
                     service.addItem(item)
                 }
             }

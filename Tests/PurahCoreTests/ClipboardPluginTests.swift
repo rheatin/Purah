@@ -71,12 +71,10 @@ struct ClipboardPluginTests {
 
         guard let tiff = img.tiffRepresentation else { return }
 
-        // Set to pasteboard and process
-        let pb = NSPasteboard.general
-        let canWritePB = pb.clearContents() > 0 && pb.setData(tiff, forType: .tiff)
-        if canWritePB {
-            service.checkPasteboard()
-        } else if let item = service.processImageData(tiff) {
+        // Straight into the image pipeline. Writing the fixture to
+        // NSPasteboard.general would overwrite the person's clipboard on every
+        // test run, which is an expensive way to test a thumbnail.
+        if let item = service.processImageData(tiff) {
             service.addItem(item)
         }
 

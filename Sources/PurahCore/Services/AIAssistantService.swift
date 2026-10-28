@@ -178,10 +178,13 @@ public final class AIAssistantService {
     }
 
     // MARK: - Replace Selection In Target App
-    public func replaceSelectionInTargetApp(with replacementText: String) {
+    /// - Parameter pasteboard: the clipboard the ⌘V fallback pastes from. It is
+    ///   a parameter so tests can hand over a scratch pasteboard instead of
+    ///   overwriting whatever the person was carrying around in their clipboard.
+    public func replaceSelectionInTargetApp(with replacementText: String, pasteboard: NSPasteboard = .general) {
         guard !replacementText.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(replacementText, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(replacementText, forType: .string)
 
         if let elem = lastFocusedAXElement {
             let axStatus = AXUIElementSetAttributeValue(elem, kAXSelectedTextAttribute as CFString, replacementText as CFTypeRef)
