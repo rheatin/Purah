@@ -46,7 +46,7 @@ public struct GeneralSettingsView: View {
                 .padding(.horizontal, 4)
 
                 // 1. Language & Regional Card
-                settingsCard(title: "interaction.language.card".localized, icon: "globe") {
+                PurahSettingsCard(title: "interaction.language.card".localized, icon: "globe") {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("interaction.language.title".localized)
@@ -69,7 +69,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 2. Display & Multi-Monitor Card
-                settingsCard(title: "general.display.card".localized, icon: "display.2") {
+                PurahSettingsCard(title: "general.display.card".localized, icon: "display.2") {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("general.display.title".localized)
@@ -95,7 +95,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 3. Startup & Interactive Guide Card
-                settingsCard(title: "general.startup.card".localized, icon: "sparkles") {
+                PurahSettingsCard(title: "general.startup.card".localized, icon: "sparkles") {
                     VStack(alignment: .leading, spacing: 14) {
                         // Launch at Login
                         HStack {
@@ -150,7 +150,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 4. Global Hotkeys & Freeze Mode Card
-                settingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill") {
+                PurahSettingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill") {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("interaction.hotkeys.description".localized)
                             .font(.caption)
@@ -165,7 +165,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 4. Configuration & Backup Card
-                settingsCard(title: "general.config.card".localized, icon: "slider.horizontal.2.gobackward") {
+                PurahSettingsCard(title: "general.config.card".localized, icon: "slider.horizontal.2.gobackward") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("general.config.subtitle".localized)
                             .font(.caption)
@@ -323,31 +323,4 @@ public struct GeneralSettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func settingsCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        let palette = theme.palette
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(palette.primaryAccent)
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-            }
-
-            content()
-        }
-        .padding(16)
-        // Fill the column rather than sizing to content; see the identical
-        // note in InteractionSettingsView.settingsCard.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceBackground)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
-        )
-    }
 }

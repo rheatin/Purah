@@ -2,6 +2,53 @@
 import SwiftUI
 import PurahCore
 
+// MARK: - Settings Card
+/// The titled panel every settings tab is built from.
+///
+/// It used to exist as an identical private copy in three tabs, so a change to
+/// the padding, the border or the background had to be made three times.
+public struct PurahSettingsCard<Content: View>: View {
+    public let title: String
+    public let icon: String
+    @ViewBuilder public let content: () -> Content
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(title: String, icon: String, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.content = content
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(palette.primaryAccent)
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+            }
+
+            content()
+        }
+        .padding(16)
+        // Fill the column rather than sizing to content: a card that hugs its
+        // widest row makes the cards beside it different widths.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.surfaceBackground)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
+        )
+    }
+}
+
 // MARK: - Themed Segmented Capsule Picker
 public struct PurahThemedSegmentedPicker<T: Hashable>: View {
     public let options: [T]

@@ -37,6 +37,18 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable, Equatable {
         self.isAllDay = isAllDay
     }
 
+    /// "All Day", or "9:30 AM - 10:15 AM".
+    ///
+    /// The rail bar, the composite drawer and the stepped card each carried
+    /// their own copy of this formatter, so changing the format in one left
+    /// the other two showing something else for the same event.
+    public var timeRangeLabel: String {
+        if isAllDay { return "All Day" }
+        let start = startTime.formatted(date: .omitted, time: .shortened)
+        let end = endTime.formatted(date: .omitted, time: .shortened)
+        return "\(start) - \(end)"
+    }
+
     public var isPast: Bool {
         endTime < Date()
     }

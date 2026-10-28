@@ -55,6 +55,12 @@ public struct PreferencesView: View {
     @State public var selectedTab: PreferencesTab = .general
     public let initialPluginId: String?
 
+    @State private var isRepoBadgeHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Where the settings badge sends a click.
+    private static let repositoryURL = URL(string: "https://github.com/rheatin/Purah")!
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -106,11 +112,29 @@ public struct PreferencesView: View {
                 Spacer()
 
                 if let appIcon = NSApp.applicationIconImage {
-                    Image(nsImage: appIcon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 26, height: 26)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    Button {
+                        NSWorkspace.shared.open(Self.repositoryURL)
+                    } label: {
+                        Image(nsImage: appIcon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 26, height: 26)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            // A faint glow at rest so the badge reads as a
+                            // control; a brighter one under the cursor. Kept
+                            // small — this sits beside the tabs, not on top
+                            // of them.
+                            .shadow(
+                                color: palette.primaryAccent.opacity(isRepoBadgeHovered ? 0.50 : 0.20),
+                                radius: isRepoBadgeHovered ? 7 : 4
+                            )
+                            .scaleEffect(isRepoBadgeHovered && !reduceMotion ? 1.06 : 1.0)
+                            .animation(PurahMotionPolicy.hover, value: isRepoBadgeHovered)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { isRepoBadgeHovered = $0 }
+                    .help("View Purah on GitHub")
+                    .accessibilityLabel("View Purah on GitHub")
                 }
             }
             .padding(.horizontal, 20)
