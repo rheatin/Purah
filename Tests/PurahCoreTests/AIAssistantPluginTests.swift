@@ -356,6 +356,56 @@ struct AIAssistantPluginTests {
         #expect(!state.sessions.contains(where: { $0.id == newSessionId }))
     }
 
+    @Test("The header pill names the provider the next message will use, not the one that wrote the last answer")
+    func testHeaderPillFollowsConfiguredProvider() {
+        let isolated = UserDefaults(suiteName: "test_ai_header_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_ai_header_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+        let plugin = AIAssistantPlugin(state: state)
+
+        // An answer from Apple Intelligence is on screen.
+        state.sessions = [AIChatSession(id: "s1", messages: [
+            AIChatMessage(role: .user, content: "find the big files"),
+            AIChatMessage(
+                role: .assistant,
+                content: "find . -size +500M",
+                resolvedModel: "(on-device)",
+                providerKind: .appleIntelligence
+            ),
+        ])]
+        state.activeSessionId = "s1"
+
+        #expect(plugin.headerAttribution().fullName == "Apple Intelligence")
+        // The answer's own attribution is still available, as a separate fact.
+        #expect(
+            plugin.viewedAnswerAttribution(differingFrom: plugin.headerAttribution().fullName)
+                == "Apple Intelligence · (on-device)"
+        )
+
+        // Switching provider — exactly what the menu does — has to move the
+        // pill. It used to stay pinned to the answer on screen, so the click
+        // looked like it had done nothing while `??` already used the new one.
+        state.selectedProvider = .httpOpenAI
+        state.openAIModel = "auto/hy3"
+        #expect(plugin.headerAttribution().label == "auto/hy3")
+        #expect(plugin.headerAttribution().fullName == "OpenAI Compatible · auto/hy3")
+        // ...and the older answer is still named, because it is still true.
+        #expect(
+            plugin.viewedAnswerAttribution(differingFrom: plugin.headerAttribution().fullName)
+                == "Apple Intelligence · (on-device)"
+        )
+
+        // Nothing has answered: there is no second fact to report.
+        state.sessions = [AIChatSession(id: "s2")]
+        state.activeSessionId = "s2"
+        #expect(plugin.viewedAnswerAttribution(differingFrom: plugin.headerAttribution().fullName) == nil)
+    }
+
     @Test("AIAssistantPlugin conforms to PurahPodPlugin with valid views and drawer dimensions")
     func testAIAssistantPluginConforms() {
         let plugin = AIAssistantPlugin()
