@@ -1073,7 +1073,6 @@ public struct VisualLayoutSimulatorView: View {
                             Spacer()
                         }
                     }
-                    .padding(.leading, 18)
                 }
             }
         }
@@ -1084,25 +1083,34 @@ public struct VisualLayoutSimulatorView: View {
         let profiles = store.contextProfiles.profiles
         let current = store.contextProfiles.defaultProfileId
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text("layout.appProfile.default".localized)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("layout.appProfile.default".localized)
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    Text("layout.appProfile.default.subtitle".localized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
 
                 Spacer()
 
-                Picker("", selection: Binding<UUID?>(
-                    get: { current },
-                    set: { store.setDefaultProfile(id: $0) }
-                )) {
-                    Text("layout.appProfile.default.unset".localized).tag(UUID?.none)
-                    ForEach(profiles) { profile in
-                        Text(profile.name).tag(UUID?.some(profile.id))
+                // The themed picker, not a stock `Picker(.menu)`: a native
+                // popup renders as the one grey NSPopUpButton on a page of
+                // themed controls, which reads as a bug rather than a choice.
+                PurahThemedMenuPicker(
+                    options: [UUID?.none] + profiles.map { Optional($0.id) },
+                    selection: Binding<UUID?>(
+                        get: { current },
+                        set: { store.setDefaultProfile(id: $0) }
+                    ),
+                    titleForOption: { id in
+                        guard let id, let profile = profiles.first(where: { $0.id == id }) else {
+                            return "layout.appProfile.default.unset".localized
+                        }
+                        return profile.name
                     }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: 180)
+                )
                 .disabled(profiles.isEmpty)
             }
 
@@ -1115,15 +1123,6 @@ public struct VisualLayoutSimulatorView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-        )
     }
 
     /// Every app with a profile, one row each.
@@ -1140,24 +1139,23 @@ public struct VisualLayoutSimulatorView: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            VStack(spacing: 0) {
+            // One boxed row per app, the same row treatment the profiles card
+            // above uses: two row idioms inside one settings window is exactly
+            // the kind of drift this pass is meant to remove.
+            VStack(spacing: 6) {
                 ForEach(bundleIds, id: \.self) { bundleId in
                     appWhitelistRow(bundleId: bundleId, store: store, palette: palette)
-                    if bundleId != bundleIds.last {
-                        Divider()
-                            .background(palette.borderColor.opacity(0.15))
-                            .padding(.leading, 24)
-                    }
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color.primary.opacity(0.03))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                        )
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.03))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-            )
         }
     }
 
@@ -1195,13 +1193,15 @@ public struct VisualLayoutSimulatorView: View {
             }
 
             VStack(alignment: .leading, spacing: 1) {
+                // Same type as the profile rows above: 11.5 semibold name over a
+                // 9pt monospaced identifier.
                 Text(displayName)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
                 HStack(spacing: 4) {
                     Text(bundleId)
-                        .font(.system(size: 8.5, design: .monospaced))
+                        .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -1217,24 +1217,21 @@ public struct VisualLayoutSimulatorView: View {
 
             // The picker *is* the relationship: an app maps to one profile, and
             // changing it here is how the mapping moves.
-            Picker("", selection: Binding<UUID?>(
-                get: { assigned },
-                set: { newValue in
-                    guard let newValue else {
-                        store.removeAppTrigger(bundleId: bundleId)
-                        return
+            if let selectionId = assigned ?? profiles.first?.id {
+                PurahThemedMenuPicker(
+                    options: profiles.map(\.id),
+                    selection: Binding<UUID>(
+                        get: { selectionId },
+                        set: { newValue in
+                            store.assignApp(bundleId: bundleId, to: newValue)
+                            AppProfileSwitchService.shared.applyRememberedAppResolution()
+                        }
+                    ),
+                    titleForOption: { id in
+                        profiles.first { $0.id == id }?.name ?? "—"
                     }
-                    store.assignApp(bundleId: bundleId, to: newValue)
-                    AppProfileSwitchService.shared.applyRememberedAppResolution()
-                }
-            )) {
-                ForEach(profiles) { profile in
-                    Text(profile.name).tag(UUID?.some(profile.id))
-                }
+                )
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: 150)
 
             Button {
                 store.removeAppTrigger(bundleId: bundleId)
@@ -1248,8 +1245,6 @@ public struct VisualLayoutSimulatorView: View {
             .help("layout.appProfile.remove".localized)
             .accessibilityLabel("layout.appProfile.remove".localized)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
     }
 
     /// Adds an app to a profile, from the apps that are running or from disk.

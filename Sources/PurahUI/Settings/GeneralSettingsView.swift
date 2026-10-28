@@ -65,7 +65,6 @@ public struct GeneralSettingsView: View {
                             ),
                             titleForOption: { $0.displayName }
                         )
-                        .frame(width: 200)
                     }
                 }
 
@@ -92,7 +91,6 @@ public struct GeneralSettingsView: View {
                             ),
                             titleForOption: { $0.localizedDisplayName }
                         )
-                        .frame(width: 280)
                     }
                 }
 

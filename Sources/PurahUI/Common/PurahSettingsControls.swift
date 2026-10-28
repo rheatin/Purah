@@ -101,17 +101,19 @@ public struct PurahThemedMenuPicker<T: Hashable>: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Text(titleForOption(selection))
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
+                    .truncationMode(.tail)
 
-                Spacer(minLength: 4)
-
+                // Small and quiet: at full size the arrow's ink sat to the
+                // right of the value and pulled the whole field off centre,
+                // even when the two were measured as centred together.
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 7.5, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -122,7 +124,19 @@ public struct PurahThemedMenuPicker<T: Hashable>: View {
                     .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
             )
         }
-        .menuStyle(.borderlessButton)
+        // `.borderlessButton` drops the label's own background, which left the
+        // control looking like plain text with a stray chevron. `.button` with a
+        // plain button style draws the label verbatim, so every dropdown in the
+        // window is the same bordered field with one chevron of its own.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        // No `.fixedSize()`: a field with a long value (the sensitivity preset
+        // names a dwell, a barrier and a buffer) then overflowed its row and
+        // hung past the card's trailing edge. Left to take the proposed width
+        // it hugs a short value and truncates a long one, so every field still
+        // ends on the same trailing line as the row it belongs to.
+        .help(titleForOption(selection))
     }
 }
 

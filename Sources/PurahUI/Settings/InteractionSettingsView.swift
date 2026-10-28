@@ -208,7 +208,6 @@ public struct InteractionSettingsView: View {
                                 ),
                                 titleForOption: { $0.localizedDisplayName }
                             )
-                            .frame(width: 220)
                         }
                     }
                 }
@@ -258,7 +257,6 @@ public struct InteractionSettingsView: View {
                                         ),
                                         titleForOption: { $0.localizedName }
                                     )
-                                    .frame(width: 180)
 
                                     Button {
                                         _ = store.previewToastSound()
@@ -544,7 +542,6 @@ public struct InteractionSettingsView: View {
             ),
             titleForOption: { Self.formatMinute($0) }
         )
-        .frame(width: 92)
     }
 
     static func formatMinute(_ minute: Int) -> String {
