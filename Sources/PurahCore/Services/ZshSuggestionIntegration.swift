@@ -212,6 +212,36 @@ public enum ZshSuggestionIntegration {
 
       alias '??'='__purah_suggest'
       alias '???'='__purah_explain'
+
+      # Turning the typed `??` into a chip, so the mode is visible before Return
+      # is pressed. zle owns the input line; `region_highlight` is how a widget
+      # colours a span of the buffer, and `zle-line-pre-redraw` runs on every
+      # keystroke.
+      #
+      # Anything already redrawing the line (a syntax highlighter) is chained
+      # rather than replaced, and only our own entry is removed between frames,
+      # never the whole array.
+      typeset -g __purah_prior_pre_redraw="${widgets[zle-line-pre-redraw]:-}"
+
+      __purah_mode_chip() {
+        # Drop our own entry from the previous frame by its exact text; the
+        # pattern is quoted so `#` in the colour cannot be read as a glob.
+        region_highlight=(${region_highlight:#"0 2 fg=#0B0E14,bg=#FF5FA2,bold"})
+        region_highlight=(${region_highlight:#"0 3 fg=#0B0E14,bg=#FF5FA2,bold"})
+        if [[ "$BUFFER" == \\?\\?\\?* ]]; then
+          region_highlight+=("0 3 fg=#0B0E14,bg=#FF5FA2,bold")
+        elif [[ "$BUFFER" == \\?\\?* ]]; then
+          region_highlight+=("0 2 fg=#0B0E14,bg=#FF5FA2,bold")
+        fi
+      }
+
+      zle-line-pre-redraw() {
+        if [[ -n "$__purah_prior_pre_redraw" && "$__purah_prior_pre_redraw" != zle-line-pre-redraw ]]; then
+          "$__purah_prior_pre_redraw"
+        fi
+        __purah_mode_chip
+      }
+      zle -N zle-line-pre-redraw
     fi
     """
 }

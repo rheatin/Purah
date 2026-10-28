@@ -284,4 +284,14 @@ struct ZshSuggestionIntegrationTests {
         #expect(!ZshSuggestionIntegration.zshrc.contains("function ??"))
         #expect(ZshSuggestionIntegration.zshrc.contains("print -z -- \"$command\""), "the command goes to the input line, never into execution")
     }
+
+    @Test("Typing ?? colours the two characters, so the mode is visible before Return")
+    func highlightsMode() {
+        let zshrc = ZshSuggestionIntegration.zshrc
+        #expect(zshrc.contains("region_highlight"))
+        #expect(zshrc.contains("zle -N zle-line-pre-redraw"))
+        // Any widget that already redraws the line must be chained, not
+        // replaced: a syntax highlighter losing its hook is a regression.
+        #expect(zshrc.contains("__purah_prior_pre_redraw"))
+    }
 }

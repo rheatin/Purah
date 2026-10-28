@@ -215,6 +215,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - `ZshSuggestionIntegration` writes `.zshenv/.zprofile/.zshrc/.zlogin` into `~/Library/Application Support/Purah/ShellIntegration/zsh` and the shell is launched with `ZDOTDIR` pointing there; each managed file sources the real one from `PURAH_REAL_ZDOTDIR` first. Dotfiles are never edited — removing the feature is simply not setting the variable.
    - `??` and `???` are **aliases, not functions**: zsh filename-generates command words, so a two-character file in the cwd turns a `??` function into "command not found: j1". Alias expansion happens before globbing.
    - The suggestion is pushed onto the input line with `print -z` and is **never executed**; a `precmd` hook supplies the last exit status and command line for `???`.
+   - Typing `??` paints the two characters as a chip via `region_highlight` in a `zle-line-pre-redraw` widget, so the mode is visible before Return. An existing `zle-line-pre-redraw` (a syntax highlighter) is chained, never replaced, and only the chip's own entry is removed between frames.
    - Risk is classified by `CommandRiskClassifier` from a fixed vocabulary, never taken from the model: a label from the same source as the command protects nothing. Anything unreadable fails closed (`CommandSuggestionParser` accepts JSON only — a prose answer must not become a command).
 
 ---
