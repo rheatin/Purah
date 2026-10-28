@@ -36,7 +36,27 @@ public struct AppUpdateDialogView: View {
             // Content based on state
             ZStack {
                 switch updater.state {
-                case .idle, .checking:
+                case .idle:
+                    // Not the same thing as checking. This used to share the
+                    // checking branch, so the dialog opened on a spinner that
+                    // was not spinning on anything — it looked like a check in
+                    // progress and waited for a button nobody knew to press.
+                    VStack(spacing: 10) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 34))
+                            .foregroundColor(.secondary)
+                        Text("updater.idle".localized)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+
+                case .checking:
                     VStack(spacing: 12) {
                         ProgressView()
                         Text("updater.checking".localized)
@@ -117,11 +137,16 @@ public struct AppUpdateDialogView: View {
 
                 case .downloading(let progress):
                     VStack(spacing: 12) {
+                        // Determinate as soon as the server reports a length.
+                        // A bar that only ever bounces says "something is
+                        // happening" without saying how much is left.
                         ProgressView(value: progress > 0 ? progress : nil)
                             .progressViewStyle(.linear)
                             .frame(width: 260)
-                        Text("updater.downloading".localized)
-                            .font(.subheadline)
+                        Text(progress > 0
+                             ? String(format: "updater.downloadingPercent".localized, Int((progress * 100).rounded()))
+                             : "updater.downloading".localized)
+                            .font(.system(.subheadline, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
@@ -191,7 +216,10 @@ public struct AppUpdateDialogView: View {
                     }
                     .buttonStyle(.borderedProminent)
 
-                case .downloading, .installing:
+                case .downloading, .installing, .checking:
+                    // Nothing to press: the dialog is working. Offering a
+                    // "Check for Updates" button mid-check is what made the
+                    // dialog look like it was waiting for a click.
                     EmptyView()
 
                 default:
@@ -214,5 +242,14 @@ public struct AppUpdateDialogView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
         )
+        .task {
+            // Opening the dialog *is* the request to check. The menu item
+            // starts one too; `checkForUpdates` ignores a second call while
+            // one is in flight, so whichever arrives first wins and the
+            // dialog never sits on a check that nobody started.
+            if case .idle = updater.state {
+                await updater.checkForUpdates()
+            }
+        }
     }
 }
