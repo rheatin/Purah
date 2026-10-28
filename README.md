@@ -123,6 +123,37 @@ Purah is designed to stay completely out of your way until intentionally summone
 
 ---
 
+### 📦 Install
+
+**Requires macOS 14 or later.** The on-device AI features need macOS 26.
+
+**1. The installer (recommended)**
+
+Download the DMG from [Releases](https://github.com/rheatin/Purah/releases/latest), open it, and double-click **Install Purah.command**. It copies Purah into Applications, clears the download flag macOS attaches to anything fetched from the internet, and launches it. The script is plain, commented bash — read it first if you like; it changes nothing inside the app.
+
+**2. If you moved the app into Applications yourself**
+
+macOS refuses to open apps it cannot verify. Purah is free and MIT-licensed, and it is **ad-hoc signed**: there is no $99/year Apple Developer account behind it, so Gatekeeper has no publisher to check.
+
+- **macOS 15 (Sequoia) and later** — double-click Purah, then open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**.
+- **macOS 14 (Sonoma)** — right-click (or Control-click) Purah → **Open** → **Open**.
+
+The right-click trick no longer exists on macOS 15 and later; Apple removed that menu item.
+
+**3. Build it yourself**
+
+If you would rather not trust a binary, the source is the same code that produced it:
+
+```bash
+git clone https://github.com/rheatin/Purah.git && cd Purah
+./build.sh --configuration release
+open build/Purah.app
+```
+
+Every release publishes its SHA-256 beside the DMG; check it with `shasum -a 256`.
+
+---
+
 ### 🛠 Building & Verification
 
 ```bash
@@ -153,13 +184,18 @@ PURAH_NOTARY_PROFILE="purah-notary" \
 `main`, and local `main` contains `origin/main` — a release tagged from an
 unmerged branch ships assets that do not match the commit its tag points at.
 
+The DMG carries `Install Purah.command` and `Read Me.txt` from `packaging/`.
+The script is what makes an ad-hoc build openable: it copies the app into
+Applications and clears the quarantine flag, and it says so in the file where
+anyone can read it before running it.
+
 Signing is optional but decides what the in-app updater can do:
 
 | Build | Self-update | Why |
 |---|---|---|
 | Developer ID + notarized | Installs in place and relaunches | The download's Team ID and Gatekeeper verdict can both be checked |
-| Developer ID only | Rejected after download | Gatekeeper assessment fails |
-| Ad-hoc / unsigned | Offers a download link instead | There is no Team ID to verify against, so it never quits into a doomed install |
+| Developer ID only | Installs in place | The download is matched against the published SHA-256; the publisher is known, the app is not notarized |
+| Ad-hoc / unsigned | Installs in place; the dialog says the publisher cannot be proven | There is no Team ID to compare, so the SHA-256 is the whole guarantee |
 
 
 ---

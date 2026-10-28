@@ -388,6 +388,19 @@ mkdir -p "$DMG_STAGING"
 cp -Rp "$APP_PATH" "$DMG_STAGING/"
 ln -s /Applications "$DMG_STAGING/Applications"
 
+# The installer and the note are the difference between "downloaded an app"
+# and "an app that opens". An ad-hoc build is refused by Gatekeeper on the
+# first launch, and since macOS 15 removed the right-click bypass, the user's
+# only route is System Settings → Privacy & Security → Open Anyway. The
+# script does that part for them (and says so, in full, where they can read it).
+if [ -f "packaging/Install Purah.command" ]; then
+    cp "packaging/Install Purah.command" "$DMG_STAGING/"
+    chmod +x "$DMG_STAGING/Install Purah.command"
+    cp "packaging/Read Me.txt" "$DMG_STAGING/"
+else
+    echo -e "${YELLOW}⚠️  packaging/Install Purah.command missing — the DMG will have no installer.${RESET}" >&2
+fi
+
 echo -e "   └── Building DMG: ${DMG_PATH}"
 hdiutil create -volname "Purah" \
     -srcfolder "$DMG_STAGING" \
