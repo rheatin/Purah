@@ -293,9 +293,10 @@ struct ZshSuggestionIntegrationTests {
         // Any widget that already redraws the line must be chained, not
         // replaced: a syntax highlighter losing its hook is a regression.
         #expect(zshrc.contains("__purah_prior_pre_redraw"))
-        // The two question marks read as a mode: coloured *and* italic. Bold
-        // alone was a hint nobody noticed.
-        #expect(zshrc.contains("fg=#FF5FA2,bold,italic"))
+        // The two question marks read as a mode: coloured and underlined. An
+        // earlier `italic` attribute was silently dropped by zle — the escape
+        // never reached the terminal — so the chip looked like plain text.
+        #expect(zshrc.contains("fg=#FF5FA2,bold,underline"))
         // The hint text lives in the drawer footer. Drawing it inside the
         // terminal as well put a sentence under every empty prompt.
         #expect(!zshrc.contains("POSTDISPLAY"))

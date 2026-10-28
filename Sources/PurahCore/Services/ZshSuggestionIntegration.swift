@@ -214,10 +214,15 @@ public enum ZshSuggestionIntegration {
       alias '??'='__purah_suggest'
       alias '???'='__purah_explain'
 
-      # Typing `??` is the mode indicator. Foreground colour and italics only: a
+      # Typing `??` is the mode indicator. Foreground colour and underline: a
       # background block paints the whole cell, fights every theme, and looks
       # like a selection rather than a state. The hint itself lives in the
       # drawer footer, so the input line stays clean.
+      #
+      # Underline, not italic: zle drops the `italic` attribute on the floor.
+      # Probed with zsh 5.9 on xterm-256color — `region_highlight=(0 2 italic)`
+      # emits no escape at all, while underline, standout and bold all do. An
+      # italic chip was invisible no matter which font the terminal used.
       #
       # Anything already redrawing the line (a syntax highlighter) is chained
       # rather than replaced, and only our own entry is removed between frames.
@@ -226,12 +231,12 @@ public enum ZshSuggestionIntegration {
       __purah_mode_chip() {
         # Drop our own entry from the previous frame by its exact text; the
         # pattern is quoted so `#` in the colour cannot be read as a glob.
-        region_highlight=(${region_highlight:#"0 2 fg=#FF5FA2,bold,italic"})
-        region_highlight=(${region_highlight:#"0 3 fg=#FF5FA2,bold,italic"})
+        region_highlight=(${region_highlight:#"0 2 fg=#FF5FA2,bold,underline"})
+        region_highlight=(${region_highlight:#"0 3 fg=#FF5FA2,bold,underline"})
         if [[ "$BUFFER" == \\?\\?\\?* ]]; then
-          region_highlight+=("0 3 fg=#FF5FA2,bold,italic")
+          region_highlight+=("0 3 fg=#FF5FA2,bold,underline")
         elif [[ "$BUFFER" == \\?\\?* ]]; then
-          region_highlight+=("0 2 fg=#FF5FA2,bold,italic")
+          region_highlight+=("0 2 fg=#FF5FA2,bold,underline")
         fi
       }
 
