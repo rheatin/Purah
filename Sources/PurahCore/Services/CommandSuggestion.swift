@@ -172,6 +172,11 @@ public enum CommandSuggestionPrompt {
                 lines.append("Request: \(description)")
             }
         }
+        // Repeated here as well as in the system prompt: models weigh the end of
+        // the user message more heavily than a preamble, and a provider that
+        // drops the system prompt entirely still gets the contract.
+        lines.append("")
+        lines.append(#"Answer with exactly this JSON and nothing else: {"command": "...", "explanation": "..."}"#)
         return lines.joined(separator: "\n")
     }
 }
@@ -190,19 +195,23 @@ public enum CommandSuggestionParser {
 
     /// Reads a suggestion out of what the model returned.
     ///
-    /// JSON only. Models wrap it in fences or prefix it with a sentence, and
-    /// both are handled — but a model that answers with prose has not answered,
-    /// and taking its first line as a command would put a paragraph fragment on
-    /// the prompt line. A suggestion that cannot be read is reported as such;
-    /// the person can ask again.
+    /// Two shapes are accepted, because two are what models actually produce:
+    /// the JSON we asked for, and a fenced code block with prose around it. A
+    /// model that ignores the instruction and writes a fence is still answering
+    /// the question — taking its command is not a guess. Prose with no fence is
+    /// not an answer, and is refused rather than truncated into a command.
     public static func parse(_ raw: String) -> CommandSuggestion? {
-        let text = stripFences(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        return parseJSON(text) ?? parseFencedBlock(text)
+    }
 
-        guard let start = text.firstIndex(of: "{"),
-              let end = text.lastIndex(of: "}"),
+    private static func parseJSON(_ text: String) -> CommandSuggestion? {
+        let body = stripFences(text)
+        guard let start = body.firstIndex(of: "{"),
+              let end = body.lastIndex(of: "}"),
               start < end,
-              let data = String(text[start...end]).data(using: .utf8),
+              let data = String(body[start...end]).data(using: .utf8),
               let payload = try? JSONDecoder().decode(Payload.self, from: data),
               let command = singleLine(payload.command) else {
             return nil
@@ -212,6 +221,54 @@ public enum CommandSuggestionParser {
             explanation: (payload.explanation ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             risk: CommandRiskClassifier.classify(command)
         )
+    }
+
+    /// Languages a model uses for a shell block. An unlabelled fence counts too:
+    /// a block in an answer about shell commands is a command.
+    static let shellFenceLanguages: Set<String> = [
+        "", "bash", "sh", "zsh", "shell", "console", "terminal", "shell-session",
+    ]
+
+    private static func parseFencedBlock(_ text: String) -> CommandSuggestion? {
+        let lines = text.components(separatedBy: .newlines)
+        var index = 0
+        while index < lines.count {
+            let line = lines[index].trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("```") else { index += 1; continue }
+
+            let openingIndex = index
+            let language = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces).lowercased()
+            var body: [String] = []
+            index += 1
+            while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                body.append(lines[index])
+                index += 1
+            }
+
+            if shellFenceLanguages.contains(language),
+               let command = singleLine(body.joined(separator: "\n")) {
+                return CommandSuggestion(
+                    command: command,
+                    explanation: explanationBefore(fenceAt: openingIndex, in: lines),
+                    risk: CommandRiskClassifier.classify(command)
+                )
+            }
+            index += 1
+        }
+        return nil
+    }
+
+    /// The sentence a person would read as the answer's summary: the last line
+    /// before the fence that is a sentence rather than a lead-in.
+    static func explanationBefore(fenceAt index: Int, in lines: [String]) -> String {
+        for line in lines.prefix(max(0, index)).reversed() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), !trimmed.hasPrefix("```") else { continue }
+            // "Here is the command:" introduces the block; it says nothing.
+            if trimmed.hasSuffix(":") || trimmed.hasSuffix("：") { continue }
+            return trimmed
+        }
+        return ""
     }
 
     /// `print -z` puts the text straight onto the input line, where a newline

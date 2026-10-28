@@ -28,6 +28,46 @@ struct CommandSuggestionTests {
         #expect(suggestion.command == "du -sh * | sort -hr | head")
     }
 
+    @Test("A fenced shell block is an answer, with the line above it as the explanation")
+    func parsesFencedBlock() throws {
+        // The exact shape that came back from a real run: prose, a lead-in
+        // ending in a colon, then the command in a bash fence.
+        let raw = """
+        **系统全盘扫描（提权）**
+
+        若需在系统受保护目录（如 `/`）中搜索，请加上 `sudo` 以避免权限拒绝：
+
+        ```bash
+        sudo find / -type f -size +500M -exec ls -lh {} \\;
+        ```
+        """
+        let suggestion = try #require(CommandSuggestionParser.parse(raw))
+        #expect(suggestion.command == #"sudo find / -type f -size +500M -exec ls -lh {} \;"#)
+        #expect(suggestion.explanation == "**系统全盘扫描（提权）**")
+        // The model's own advice was to escalate privileges; the classifier
+        // says so independently of anything the model claimed.
+        #expect(suggestion.risk == .dangerous)
+    }
+
+    @Test("A fence with no language, or a non-shell language, is judged on its contents")
+    func fenceLanguages() throws {
+        let unlabelled = """
+        ```
+        df -h
+        ```
+        """
+        #expect(try #require(CommandSuggestionParser.parse(unlabelled)).command == "df -h")
+
+        // A Python fence is not a shell command, so it is refused rather than
+        // pushed onto zsh's input line.
+        let python = """
+        ```python
+        print("hello")
+        ```
+        """
+        #expect(CommandSuggestionParser.parse(python) == nil)
+    }
+
     @Test("Prose is not a command, however plausible its first line looks")
     func rejectsProse() {
         // The on-device fallback answers in markdown. Taking its first line
