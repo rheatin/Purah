@@ -98,11 +98,13 @@ struct LocalizationTests {
         // for the missing strings. Raise a number when you add translations;
         // never lower one to make this pass.
         let pinnedCoverage: [AppLanguage: Int] = [
-            // 556 - 9: the miniature screen simulator was deleted, taking its
+            // 556 - 11: the miniature screen simulator was deleted, taking its
             // seven strings (zone labels, menu-bar mock, sample clock, and the
-            // four drag hints its capsules carried) with it, and the "always
-            // compact idle strips" toggle went with the breathing rewrite.
-            .traditionalChinese: 547,
+            // four drag hints its capsules carried) with it; the "always
+            // compact idle strips" toggle went with the breathing rewrite; and
+            // the two "left/right rail page" labels moved into the module
+            // assembly card's page tabs, which need no prose.
+            .traditionalChinese: 545,
             .japanese: 74,
             .korean: 74,
             .french: 74,

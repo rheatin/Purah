@@ -190,14 +190,6 @@ public struct VisualLayoutSimulatorView: View {
     // MARK: - Unified Elastic & Multi-Page Card
     private var overflowStrategyCard: some View {
         let palette = theme.palette
-        let realLeftH = max(Double(store.availableScreenHeight(for: .left)), 600.0)
-        let realRightH = max(Double(store.availableScreenHeight(for: .right)), 600.0)
-        let leftPages = store.paginatedPods(for: .left, totalHeight: realLeftH)
-        let rightPages = store.paginatedPods(for: .right, totalHeight: realRightH)
-        let leftPageCount = max(leftPages.count, 1)
-        let rightPageCount = max(rightPages.count, 1)
-        let curLeftPage = min(max(store.currentRailPage(for: .left), 0), leftPageCount - 1)
-        let curRightPage = min(max(store.currentRailPage(for: .right), 0), rightPageCount - 1)
 
         return settingsCard(title: "overflow.card.title".localized, icon: "rectangle.expand.vertical") {
             VStack(alignment: .leading, spacing: 14) {
@@ -233,63 +225,6 @@ public struct VisualLayoutSimulatorView: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .purahRowAccessibility("overflow.breathing.toggleTitle".localized, detail: "overflow.breathing.toggleSubtitle".localized)
-                }
-
-                // Multi-Page Navigation when pages > 1
-                if leftPageCount > 1 || rightPageCount > 1 {
-                    Divider()
-
-                    HStack(spacing: 12) {
-                        if leftPageCount > 1 {
-                            Button {
-                                withAnimation(PurahMotionPolicy.drawerEntrance) {
-                                    store.cycleRailPage(for: .left, delta: 1)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.left.to.line")
-                                        .font(.caption2)
-                                    Text("\("overflow.paged.leftRail".localized): \(curLeftPage + 1)/\(leftPageCount)")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Image(systemName: "chevron.right.circle.fill")
-                                        .font(.caption2)
-                                }
-                                .foregroundColor(palette.primaryAccent)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(palette.primaryAccent.opacity(0.12))
-                                .cornerRadius(6)
-                            }
-                            .buttonStyle(.tactile)
-                        }
-
-                        Spacer()
-
-                        if rightPageCount > 1 {
-                            Button {
-                                withAnimation(PurahMotionPolicy.drawerEntrance) {
-                                    store.cycleRailPage(for: .right, delta: 1)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.right.to.line")
-                                        .font(.caption2)
-                                    Text("\("overflow.paged.rightRail".localized): \(curRightPage + 1)/\(rightPageCount)")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Image(systemName: "chevron.right.circle.fill")
-                                        .font(.caption2)
-                                }
-                                .foregroundColor(palette.primaryAccent)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(palette.primaryAccent.opacity(0.12))
-                                .cornerRadius(6)
-                            }
-                            .buttonStyle(.tactile)
-                        }
-                    }
                 }
 
                 // Shared Major Pod / Stack manager section (always visible)
@@ -396,12 +331,14 @@ public struct VisualLayoutSimulatorView: View {
                     railAssemblyColumn(
                         edge: .left,
                         title: "Left Rail",
-                        pods: leftMountedPods
+                        pods: leftMountedPods,
+                        pages: railPages(for: .left)
                     )
                     railAssemblyColumn(
                         edge: .right,
                         title: "Right Rail",
-                        pods: rightMountedPods
+                        pods: rightMountedPods,
+                        pages: railPages(for: .right)
                     )
                 }
 
@@ -457,17 +394,75 @@ public struct VisualLayoutSimulatorView: View {
         }
     }
 
+    /// The pages this rail actually shows, in order.
+    ///
+    /// Taken from the same method the rail windows use, so a page here is a
+    /// page there — including one that only exists because the pods did not
+    /// fit and overflowed onto it.
+    private func railPages(for edge: MountEdge) -> [[SlotPod]] {
+        let height = max(Double(store.availableScreenHeight(for: edge)), 600.0)
+        return store.paginatedPods(for: edge, totalHeight: height)
+    }
+
+    /// One tab per page of this rail: `2·1` is "page 2, one module on it".
+    ///
+    /// Switching tabs is the same action as flipping the rail, so the only
+    /// place a page number is chosen is also the place the page is edited.
+    @ViewBuilder
+    private func railPageTabs(
+        edge: MountEdge,
+        pages: [[SlotPod]],
+        currentPage: Int,
+        palette: ThemePalette
+    ) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Array(pages.enumerated()), id: \.offset) { rank, pagePods in
+                let isCurrent = rank == currentPage
+                let title = String(format: "simulator.page".localized, rank + 1)
+
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.setRailPage(rank, for: edge)
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    Text("\(rank + 1)·\(pagePods.count)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(isCurrent ? (palette.style == .native ? palette.primaryAccent : .white) : .secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(isCurrent ? palette.primaryAccent.opacity(0.18) : Color.primary.opacity(0.05))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(palette.primaryAccent.opacity(isCurrent ? 0.55 : 0), lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help(title)
+                .accessibilityLabel(title)
+            }
+        }
+    }
+
     @ViewBuilder
     private func railAssemblyColumn(
         edge: MountEdge,
         title: String,
-        pods: [SlotPod]
+        pods: [SlotPod],
+        pages: [[SlotPod]]
     ) -> some View {
         let palette = theme.palette
         let maxExistingPage = max(pods.map(\.pageIndex).max() ?? 0, 1)
+        let pageCount = max(pages.count, 1)
+        let currentPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
+        let pagePodIds = Set((pages.indices.contains(currentPage) ? pages[currentPage] : []).map(\.id))
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: edge == .left ? "arrow.left.to.line" : "arrow.right.to.line")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(palette.primaryAccent)
@@ -475,14 +470,25 @@ public struct VisualLayoutSimulatorView: View {
                     .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
                     .lineLimit(1)
-                Spacer()
+                    .fixedSize()
+
+                if pageCount > 1 {
+                    railPageTabs(edge: edge, pages: pages, currentPage: currentPage, palette: palette)
+                }
+
+                Spacer(minLength: 2)
                 Text("\(pods.count)")
                     .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                     .foregroundColor(.secondary)
             }
             .padding(.bottom, 2)
 
+            // Only this page's modules are listed: "第 2 页的那个插件" is found
+            // by switching to page 2, not by scanning a list of every page at
+            // once. The tab strip above is the switch, and it flips the real
+            // rail with it, so the list and the screen never disagree.
             let clusters = majorPodClusters(for: edge)
+                .filter { cluster in cluster.contains { pagePodIds.contains($0.id) } }
             ForEach(Array(clusters.enumerated()), id: \.offset) { _, cluster in
                 if cluster.count >= 2 {
                     let clusterIds = Set(cluster.map(\.id))
