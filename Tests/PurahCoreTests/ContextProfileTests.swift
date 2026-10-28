@@ -352,7 +352,7 @@ struct ContextProfileTests {
             ergonomicWeight: 30, minLength: 0.1, isEnabled: true,
             drawerWidth: 300, defaultColorHex: "#FFFFFF", pageIndex: 0
         )
-        var right = SlotPod(
+        let right = SlotPod(
             id: "b", nameKey: "b", defaultName: "B", systemIcon: "circle",
             edge: MountEdge.right, range: NormalizedRange(start: 0.5, length: 0.2),
             ambientStyle: .ghostDot, preferredZone: .goldenAction,
