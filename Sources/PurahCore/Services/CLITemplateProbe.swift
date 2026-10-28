@@ -141,8 +141,29 @@ public enum CLITemplateProbe {
                 try? await Task.sleep(for: .milliseconds(20))
             }
             let didTimeOut = process.isRunning
-            if didTimeOut { process.terminate() }
-            process.waitUntilExit()
+            if didTimeOut {
+                // SIGTERM first: an interactive session gets a chance to clean
+                // up. A shell wrapper that forked a child can outlive it, so
+                // SIGKILL follows once the grace period runs out.
+                process.terminate()
+                let graceDeadline = Date().addingTimeInterval(2)
+                while process.isRunning && Date() < graceDeadline {
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                    let hardDeadline = Date().addingTimeInterval(1)
+                    while process.isRunning && Date() < hardDeadline {
+                        try? await Task.sleep(for: .milliseconds(20))
+                    }
+                }
+            }
+            // Deliberately not `waitUntilExit()`: it blocks until Foundation's
+            // own reaping source fires, and in a test bundle that source
+            // occasionally never does — the child is gone, nothing is waiting
+            // on the pid, and the suite sits there for the rest of the hour.
+            // Reading the cached status is enough, and cannot block.
+            let exitStatus: Int32 = process.isRunning ? -1 : process.terminationStatus
             try? outHandle.close()
             try? errHandle.close()
 
@@ -155,7 +176,7 @@ public enum CLITemplateProbe {
             }
             let clipped = combined.prefix(maximumHelpBytes)
             let text = String(decoding: clipped, as: UTF8.self)
-            return HelpOutcome(text: text, exitCode: process.terminationStatus, didTimeOut: didTimeOut)
+            return HelpOutcome(text: text, exitCode: exitStatus, didTimeOut: didTimeOut)
         }.value
     }
 
