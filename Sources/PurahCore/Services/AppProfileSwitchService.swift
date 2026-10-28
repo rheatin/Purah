@@ -3,17 +3,6 @@ import AppKit
 import Foundation
 import Observation
 
-/// The app a whitelist edit is about, with a name to show for it.
-public struct RememberedApp: Sendable, Equatable {
-    public let bundleId: String
-    public let name: String
-
-    public init(bundleId: String, name: String) {
-        self.bundleId = bundleId
-        self.name = name
-    }
-}
-
 /// Notices which application is frontmost and switches to the profile that
 /// app's whitelist entry points at.
 ///
@@ -149,39 +138,6 @@ public final class AppProfileSwitchService {
     public func applyRememberedAppResolution(in store: PurahWorkspaceStore? = nil) {
         guard let target = store ?? boundStore else { return }
         applyResolution(in: target)
-    }
-
-    /// Adds the app the person was just in to a profile's whitelist.
-    public func addRememberedApp(to profileId: UUID, store: PurahWorkspaceStore) {
-        guard let candidate = rememberedAppCandidate() else { return }
-        store.assignApp(bundleId: candidate.bundleId, to: profileId)
-        applyResolution(in: store)
-    }
-
-    /// The app a whitelist edit should be about: the last one the person was
-    /// in, falling back to any other regular app when nothing was observed yet.
-    ///
-    /// `.regular` only — agents and background helpers have bundle ids but no
-    /// window a person could ever have been "in".
-    public func rememberedAppCandidate() -> RememberedApp? {
-        if let bundleId = lastExternalBundleId {
-            return RememberedApp(
-                bundleId: bundleId,
-                name: lastExternalAppName ?? AppIdentity.displayName(forBundleId: bundleId)
-            )
-        }
-        let ownBundleId = Bundle.main.bundleIdentifier
-        if let app = NSWorkspace.shared.runningApplications.first(where: {
-            $0.activationPolicy == .regular
-                && $0.bundleIdentifier != nil
-                && $0.bundleIdentifier != ownBundleId
-        }), let id = app.bundleIdentifier {
-            return RememberedApp(
-                bundleId: id,
-                name: app.localizedName ?? AppIdentity.displayName(forBundleId: id)
-            )
-        }
-        return nil
     }
 
     private func applyResolution(in store: PurahWorkspaceStore) {

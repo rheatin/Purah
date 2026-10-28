@@ -1,5 +1,6 @@
 // Sources/PurahUI/Settings/VisualLayoutSimulatorView.swift
 import SwiftUI
+import UniformTypeIdentifiers
 import PurahCore
 
 public struct VisualLayoutSimulatorView: View {
@@ -89,11 +90,6 @@ public struct VisualLayoutSimulatorView: View {
                 // 1. Context Profiles (whole-layout presets)
                 contextProfilesCard
 
-                // 1b. Frontmost-App Profile Switching. Lives here rather than in
-                // Motion because it is another way of choosing which of the
-                // profiles above is in force, not an animation preference.
-                appProfileSwitchCard(store: store, palette: palette)
-
                 // 2. Mini Screen Simulation (Top Primary Focus)
                 ScreenSimulationCanvas(store: store)
 
@@ -174,6 +170,13 @@ public struct VisualLayoutSimulatorView: View {
                         }
                     }
                 }
+
+                // Frontmost-App Profile Switching sits last: it is a
+                // once-in-a-while mapping, and the rail simulator above is what
+                // the Layout tab is opened for. Keeping it up top pushed the
+                // thing people actually came to see below the fold.
+                appProfileSwitchCard(store: store, palette: palette)
+                    .padding(.top, 8)
             }
             .padding(24)
             .frame(width: 680)
@@ -1064,8 +1067,11 @@ public struct VisualLayoutSimulatorView: View {
                 if store.isAppProfileSwitchingEnabled {
                     VStack(alignment: .leading, spacing: 10) {
                         defaultProfileRow(store: store, palette: palette)
-                        whitelistRows(store: store, palette: palette)
-                        addCurrentAppButton(store: store, palette: palette)
+                        appWhitelistList(store: store, palette: palette)
+                        HStack {
+                            addAppMenu(store: store, palette: palette)
+                            Spacer()
+                        }
                     }
                     .padding(.leading, 18)
                 }
@@ -1120,156 +1126,205 @@ public struct VisualLayoutSimulatorView: View {
         )
     }
 
+    /// Every app with a profile, one row each.
+    ///
+    /// Flat rather than grouped by profile even though the model is
+    /// profile → apps: a row is one decision ("what does *this* app get"), and
+    /// the number of rows is the number of apps instead of profiles plus apps.
     @ViewBuilder
-    private func whitelistRows(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
-        let grouped = store.contextProfiles.profilesWithAppTriggers
-        if grouped.isEmpty {
+    private func appWhitelistList(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let bundleIds = orderedWhitelistedApps(store: store)
+        if bundleIds.isEmpty {
             Text("layout.appProfile.empty".localized)
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            ForEach(grouped) { profile in
-                appWhitelistRow(profile: profile, store: store, palette: palette)
+            VStack(spacing: 0) {
+                ForEach(bundleIds, id: \.self) { bundleId in
+                    appWhitelistRow(bundleId: bundleId, store: store, palette: palette)
+                    if bundleId != bundleIds.last {
+                        Divider()
+                            .background(palette.borderColor.opacity(0.15))
+                            .padding(.leading, 24)
+                    }
+                }
             }
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+            )
         }
     }
 
+    /// Whitelisted bundle ids in the order a person reads them: by app name.
+    ///
+    /// An app that is no longer installed still sorts by its bundle id, so a
+    /// rule for a deleted app stays visible and removable instead of silently
+    /// disappearing.
+    private func orderedWhitelistedApps(store: PurahWorkspaceStore) -> [String] {
+        store.contextProfiles.triggers
+            .compactMap { $0.key.appBundleId }
+            .sorted { lhs, rhs in
+                AppIdentity.displayName(forBundleId: lhs)
+                    .localizedStandardCompare(AppIdentity.displayName(forBundleId: rhs)) == .orderedAscending
+            }
+    }
+
     @ViewBuilder
-    private func appWhitelistRow(profile: ContextProfile, store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
-        let bundleIds = store.contextProfiles.appBundleIds(for: profile.id)
-        let isDefault = store.contextProfiles.defaultProfileId == profile.id
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(profile.name)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
+    private func appWhitelistRow(bundleId: String, store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+        let profiles = store.contextProfiles.profiles
+        let assigned = store.contextProfiles.profileId(forApp: bundleId)
+        let displayName = AppIdentity.displayName(forBundleId: bundleId)
+        let isInstalled = AppIdentity.runningApp(forBundleId: bundleId) != nil
+            || AppIdentity.icon(forBundleId: bundleId) != nil
 
-                if isDefault {
-                    Text("layout.appProfile.defaultBadge".localized)
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundColor(palette.primaryAccent)
-                }
-
-                Spacer()
-
-                Button {
-                    AppProfileSwitchService.shared.addRememberedApp(to: profile.id, store: store)
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("layout.appProfile.addTo".localized)
-                .accessibilityLabel("layout.appProfile.addTo".localized)
+        HStack(spacing: 8) {
+            if let icon = AppIdentity.icon(forBundleId: bundleId) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
             }
 
-            // One row per app: a bundle id is not a name, and a whitelist the
-            // person cannot read is one they cannot check.
-            ForEach(bundleIds, id: \.self) { bundleId in
-                HStack(spacing: 6) {
-                    if let icon = AppIdentity.icon(forBundleId: bundleId) {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .frame(width: 12, height: 12)
-                    } else {
-                        Image(systemName: "questionmark.circle")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Text(AppIdentity.displayName(forBundleId: bundleId))
-                        .font(.system(size: 10.5, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .lineLimit(1)
-
+            VStack(alignment: .leading, spacing: 1) {
+                Text(displayName)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
                     Text(bundleId)
                         .font(.system(size: 8.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-
-                    Spacer()
-
-                    Button {
-                        store.removeAppTrigger(bundleId: bundleId)
-                        AppProfileSwitchService.shared.applyRememberedAppResolution()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
+                    if !isInstalled {
+                        Text("layout.appProfile.notInstalled".localized)
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundColor(.orange)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("layout.appProfile.remove".localized)
                 }
-                .padding(.leading, 4)
             }
+
+            Spacer()
+
+            // The picker *is* the relationship: an app maps to one profile, and
+            // changing it here is how the mapping moves.
+            Picker("", selection: Binding<UUID?>(
+                get: { assigned },
+                set: { newValue in
+                    guard let newValue else {
+                        store.removeAppTrigger(bundleId: bundleId)
+                        return
+                    }
+                    store.assignApp(bundleId: bundleId, to: newValue)
+                    AppProfileSwitchService.shared.applyRememberedAppResolution()
+                }
+            )) {
+                ForEach(profiles) { profile in
+                    Text(profile.name).tag(UUID?.some(profile.id))
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: 150)
+
+            Button {
+                store.removeAppTrigger(bundleId: bundleId)
+                AppProfileSwitchService.shared.applyRememberedAppResolution()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("layout.appProfile.remove".localized)
+            .accessibilityLabel("layout.appProfile.remove".localized)
         }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-        )
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 
-    /// Lists an app on a profile's whitelist.
+    /// Adds an app to a profile, from the apps that are running or from disk.
     ///
-    /// The app is the one the person was in before opening Settings: while this
-    /// window is up Purah *is* the active application, so asking
-    /// `NSRunningApplication.isActive` never matches anything.
+    /// Running apps alone would make it impossible to configure an app before
+    /// opening it — which is exactly when you think of doing so.
     @ViewBuilder
-    private func addCurrentAppButton(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
+    private func addAppMenu(store: PurahWorkspaceStore, palette: ThemePalette) -> some View {
         let profiles = store.contextProfiles.profiles
-        let candidate = AppProfileSwitchService.shared.rememberedAppCandidate()
+        let listed = Set(orderedWhitelistedApps(store: store))
+        let running = AppIdentity.runningAppCandidates()
         if !profiles.isEmpty {
-            HStack(spacing: 8) {
-                Menu {
-                    ForEach(profiles) { profile in
-                        Button(profile.name) {
-                            if let candidate {
-                                store.assignApp(bundleId: candidate.bundleId, to: profile.id)
-                                AppProfileSwitchService.shared.applyRememberedAppResolution()
+            Menu {
+                ForEach(running) { candidate in
+                    Menu(candidate.name) {
+                        ForEach(profiles) { profile in
+                            Button(profile.name) {
+                                addApp(candidate.bundleId, to: profile.id, store: store)
                             }
                         }
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 10.5))
-                        if let candidate {
-                            Text(String(
-                                format: "layout.appProfile.addApp".localized,
-                                candidate.name
-                            ))
-                            .font(.system(size: 11, weight: .medium))
-                        } else {
-                            Text("layout.appProfile.addApp.unknown".localized)
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
-                    )
+                    .disabled(listed.contains(candidate.bundleId))
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.visible)
-                .fixedSize()
-                .disabled(candidate == nil)
-                .accessibilityLabel("layout.appProfile.addApp.unknown".localized)
-
-                Spacer()
+                if !running.isEmpty {
+                    Divider()
+                }
+                Button("layout.appProfile.chooseInstalled".localized) {
+                    chooseAppFromDisk(store: store)
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 10.5))
+                    Text("layout.appProfile.add".localized)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
+                )
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.visible)
+            .fixedSize()
+            .accessibilityLabel("layout.appProfile.add".localized)
         }
+    }
+
+    private func addApp(_ bundleId: String, to profileId: UUID, store: PurahWorkspaceStore) {
+        store.assignApp(bundleId: bundleId, to: profileId)
+        AppProfileSwitchService.shared.applyRememberedAppResolution()
+    }
+
+    /// Picks any installed `.app`, whether or not it is running.
+    private func chooseAppFromDisk(store: PurahWorkspaceStore) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = "layout.appProfile.chooseInstalled.prompt".localized
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let bundleId = Bundle(url: url)?.bundleIdentifier else { return }
+
+        let profiles = store.contextProfiles.profiles
+        // A brand-new app has no mapping yet; put it on the default profile,
+        // which is the one it would have landed on anyway.
+        let target = store.contextProfiles.defaultProfileId ?? profiles.first?.id
+        guard let target else { return }
+        addApp(bundleId, to: target, store: store)
     }
 }

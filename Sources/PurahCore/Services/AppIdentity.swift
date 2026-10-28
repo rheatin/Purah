@@ -40,4 +40,43 @@ public enum AppIdentity {
         }
         return NSWorkspace.shared.icon(forFile: url.path)
     }
+
+    /// Apps a person could plausibly be "in", for the whitelist picker.
+    ///
+    /// `.regular` only: agents, background helpers and login items have bundle
+    /// ids but no window anyone could be working in, and listing them would
+    /// bury the ten apps that matter under a hundred that cannot be frontmost.
+    /// Deduplicated by bundle id because several instances of one app are still
+    /// one app to the person choosing.
+    @MainActor
+    public static func runningAppCandidates(excluding excludedBundleId: String? = nil) -> [AppCandidate] {
+        let own = excludedBundleId ?? Bundle.main.bundleIdentifier
+        var seen = Set<String>()
+        var candidates: [AppCandidate] = []
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            guard let bundleId = app.bundleIdentifier,
+                  bundleId != own,
+                  seen.insert(bundleId).inserted else { continue }
+            candidates.append(AppCandidate(
+                bundleId: bundleId,
+                name: app.localizedName ?? displayName(forBundleId: bundleId)
+            ))
+        }
+        return candidates.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+}
+
+/// One app offered in the whitelist picker.
+public struct AppCandidate: Sendable, Equatable, Identifiable {
+    public let bundleId: String
+    public let name: String
+
+    public var id: String { bundleId }
+
+    public init(bundleId: String, name: String) {
+        self.bundleId = bundleId
+        self.name = name
+    }
 }
