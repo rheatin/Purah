@@ -24,6 +24,27 @@ struct PurahWorkspaceStoreTests {
         #expect(store.pods.contains(where: { $0.id == "ai" }))
     }
 
+    @Test("Leaving the sculptor's rehearsal mode re-lays the rail out at once")
+    func testRehearsalToggleInvalidatesLayoutCache() {
+        let isolated = UserDefaults(suiteName: "test_rehearsal_cache_\(UUID().uuidString)")!
+        let store = PurahWorkspaceStore(userDefaults: isolated)
+        let totalHeight = 900.0
+
+        store.setLiveRailEditingMode(true)
+        // Sculpting reserves a 72pt top strip for the HUD.
+        let sculpting = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(sculpting.first?.startY == 72.0)
+
+        // The rehearsal toggle writes the flag directly (LiveRailSculptorDockView)
+        // and asks for a window rebuild, not a layout invalidation. If the cache
+        // key ignores the sub-mode this second call returns the sculpting layout
+        // for a rail that is no longer sculpting.
+        store.isRehearsingBreathingInSculptor = true
+        let rehearsing = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
+        #expect(rehearsing.first?.startY != 72.0,
+                "the rail kept the sculptor's 72pt top strip while rehearsing")
+    }
+
     @Test("A fresh install starts on adaptive drawer widths")
     func testFreshInstallDefaultsToAdaptiveWidth() {
         let isolated = UserDefaults(suiteName: "test_fresh_adaptive_\(UUID().uuidString)")!
