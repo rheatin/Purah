@@ -111,7 +111,7 @@ struct LocalizationTests {
             // `clipboard.quota.*`, and the rest of the dead families). The
             // English vocabulary shrank, so a partial translation loses rows in
             // proportion to how much of it it covered.
-            .traditionalChinese: 527,
+            .traditionalChinese: 528,
             .japanese: 71,
             .korean: 71,
             .french: 71,

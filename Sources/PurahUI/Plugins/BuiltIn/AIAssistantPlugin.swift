@@ -58,25 +58,35 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     // MARK: - Header Accessory & Trailing
-    /// The header pill answers "which model wrote this?", and the menu behind it
-    /// still answers "which provider should run next?".
+    /// The pill names the provider that will answer the next message, which is
+    /// also the thing the menu behind it changes.
     ///
-    /// Those are deliberately different questions. The pill reports the model
-    /// recorded on the answer currently on screen, which can differ from the
-    /// configured one for three ordinary reasons: the provider routed the
-    /// request elsewhere, the auto-heal swapped models after a 400/404, or the
-    /// user switched provider after reading an older answer. Showing the
-    /// configured model here would paper over all three.
+    /// It used to name the model recorded on the answer on screen instead. That
+    /// made the pill describe something other than its own control: switching
+    /// provider left the label on the old answer, so the click looked like it
+    /// had done nothing while the terminal footer — which reads the settings —
+    /// already said OpenAI. The answer's own attribution is still shown, as a
+    /// non-clickable line in the menu, where it cannot be read as the current
+    /// setting.
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         let attribution = headerAttribution()
+        let answerAuthor = viewedAnswerAttribution(differingFrom: attribution.fullName)
         return AnyView(
             Menu {
-                // Naming the subject of the pill, since the menu below changes
-                // something else entirely.
+                // What the menu below changes.
                 Button {} label: {
                     Text(attribution.fullName)
                 }
                 .disabled(true)
+
+                // And what wrote what is on screen, when that is not the same
+                // thing. Both facts are true; only one of them is the setting.
+                if let answerAuthor {
+                    Button {} label: {
+                        Text(String(format: "ai.header.answerBy".localized, answerAuthor))
+                    }
+                    .disabled(true)
+                }
 
                 Divider()
 
@@ -114,7 +124,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize(horizontal: true, vertical: false)
-            .help(attribution.fullName)
+            .help(answerAuthor.map { "\(attribution.fullName)\n" + String(format: "ai.header.answerBy".localized, $0) } ?? attribution.fullName)
             // A `Menu` lays out its label as three separate accessibility
             // elements — the icon, the text and the chevron — so VoiceOver
             // announced this pill three times (as "Network Nodes Connected By
@@ -126,31 +136,34 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         )
     }
 
-    /// What the header pill says, and the full text behind it.
-    private func headerAttribution() -> (icon: String, label: String, fullName: String) {
-        let viewed = state.currentViewedAssistantMessage
-        let recordedModel = viewed?.resolvedModel?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        // 1. The answer on screen recorded the model that produced it.
-        if !recordedModel.isEmpty {
-            let provider = viewed?.providerKind ?? state.selectedProvider
-            return (provider.systemIcon, recordedModel, "\(provider.displayName) · \(recordedModel)")
-        }
-
-        // 2. An answer exists but predates model recording. Its provider is
-        //    still known, and inventing a model for it would be a lie.
-        if let provider = viewed?.providerKind {
-            return (provider.systemIcon, provider.shortTitle, provider.displayName)
-        }
-
-        // 3. Nothing has answered yet: show what the next turn will request.
+    /// What the header pill says, and the full text behind it: the provider the
+    /// next message will use.
+    func headerAttribution() -> (icon: String, label: String, fullName: String) {
         let configured = state.selectedProvider
         if let model = configuredModelName(for: configured)?
             .trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
             return (configured.systemIcon, model, "\(configured.displayName) · \(model)")
         }
         return (configured.systemIcon, providerShortLabel(configured), configured.displayName)
+    }
+
+    /// The provider and model recorded on the answer currently on screen, when
+    /// that differs from what the next message will use — the provider routed
+    /// elsewhere, the auto-heal swapped models after a 400/404, or the setting
+    /// changed after the answer arrived.
+    ///
+    /// Nil when nothing has answered, when the answer predates attribution, or
+    /// when it agrees with the pill.
+    func viewedAnswerAttribution(differingFrom configured: String) -> String? {
+        guard let viewed = state.currentViewedAssistantMessage else { return nil }
+        let model = viewed.resolvedModel?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // An old message with neither a model nor a provider says nothing.
+        guard let provider = viewed.providerKind ?? (model.isEmpty ? nil : state.selectedProvider) else {
+            return nil
+        }
+        let fullName = model.isEmpty ? provider.displayName : "\(provider.displayName) · \(model)"
+        return fullName == configured ? nil : fullName
     }
 
     private func configuredModelName(for kind: AIProviderKind) -> String? {
