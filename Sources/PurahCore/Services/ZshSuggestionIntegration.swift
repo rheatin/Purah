@@ -142,8 +142,13 @@ public enum ZshSuggestionIntegration {
         local description="$*"
         local response
 
+        # A local model that reasons first can take 20-30 seconds, which is a
+        # long time to stare at a prompt that looks stuck. The banner is
+        # replaced by the answer once it arrives.
+        print -P "%F{213}%B⚡ Purah 正在思考…%b%f"
+
         # `Expect:` suppresses curl's 100-continue wait on larger bodies.
-        response=$(/usr/bin/curl -sS -m 45 -H "Expect:" \\
+        response=$(/usr/bin/curl -sS -m 120 -H "Expect:" \\
           -H "Authorization: Bearer $PURAH_BRIDGE_TOKEN" \\
           --data-urlencode "mode=$mode" \\
           --data-urlencode "description=$description" \\
@@ -151,6 +156,9 @@ public enum ZshSuggestionIntegration {
           --data-urlencode "last=$__purah_last_command" \\
           --data-urlencode "status=$__purah_last_status" \\
           "http://127.0.0.1:$PURAH_AI_PORT/v1/suggest" 2>&1)
+
+        # Drop the banner line so the answer takes its place.
+        printf '\\e[1A\\e[2K\\r'
 
         if [[ -z "$response" ]]; then
           print -u2 "purah: no answer — is Purah running?"

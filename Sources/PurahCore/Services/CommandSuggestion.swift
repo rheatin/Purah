@@ -138,6 +138,8 @@ public enum CommandSuggestionPrompt {
         directory as the base.
         - "explanation" is one short sentence, in the same language as the request, \
         saying what the command does.
+        - Answer in one step. Do not deliberate at length: this runs while a \
+        person waits at their prompt.
         """
     }
 
@@ -201,26 +203,83 @@ public enum CommandSuggestionParser {
     /// the question — taking its command is not a guess. Prose with no fence is
     /// not an answer, and is refused rather than truncated into a command.
     public static func parse(_ raw: String) -> CommandSuggestion? {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Reasoning first. `AIAssistantService` wraps every reasoning delta in
+        // `<think>` tags and appends it to the same string as the answer, and a
+        // model's reasoning about this task quotes the JSON shape it was asked
+        // for — a literal `{"command": "..."}` in the thinking would otherwise
+        // be found before the real answer.
+        let text = strippingReasoning(raw).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         return parseJSON(text) ?? parseFencedBlock(text)
     }
 
-    private static func parseJSON(_ text: String) -> CommandSuggestion? {
-        let body = stripFences(text)
-        guard let start = body.firstIndex(of: "{"),
-              let end = body.lastIndex(of: "}"),
-              start < end,
-              let data = String(body[start...end]).data(using: .utf8),
-              let payload = try? JSONDecoder().decode(Payload.self, from: data),
-              let command = singleLine(payload.command) else {
-            return nil
+    /// Removes `<think>…</think>` spans. An unclosed opener loses only the tag,
+    /// so an answer that follows it is not thrown away with it.
+    static func strippingReasoning(_ text: String) -> String {
+        guard text.contains("<think>") else { return text }
+        var result = text
+        while let open = result.range(of: "<think>") {
+            if let close = result.range(of: "</think>", range: open.upperBound..<result.endIndex) {
+                result.removeSubrange(open.lowerBound..<close.upperBound)
+            } else {
+                result.removeSubrange(open)
+            }
         }
-        return CommandSuggestion(
-            command: command,
-            explanation: (payload.explanation ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-            risk: CommandRiskClassifier.classify(command)
-        )
+        return result
+    }
+
+    private static func parseJSON(_ text: String) -> CommandSuggestion? {
+        for object in balancedObjects(in: text) {
+            guard let data = object.data(using: .utf8),
+                  let payload = try? JSONDecoder().decode(Payload.self, from: data),
+                  let command = singleLine(payload.command) else { continue }
+            return CommandSuggestion(
+                command: command,
+                explanation: (payload.explanation ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                risk: CommandRiskClassifier.classify(command)
+            )
+        }
+        return nil
+    }
+
+    /// Every top-level `{…}` span, in order, with string literals respected so a
+    /// brace inside a command stays inside the object.
+    ///
+    /// Scanning beats slicing from the first `{` to the last `}`: an answer that
+    /// mentions an example object before the real one would otherwise decode
+    /// nothing at all.
+    static func balancedObjects(in text: String) -> [String] {
+        var objects: [String] = []
+        var depth = 0
+        var start: String.Index?
+        var inString = false
+        var escaped = false
+
+        for index in text.indices {
+            let character = text[index]
+            if inString {
+                if escaped { escaped = false }
+                else if character == "\\" { escaped = true }
+                else if character == "\"" { inString = false }
+                continue
+            }
+            switch character {
+            case "\"": inString = true
+            case "{":
+                if depth == 0 { start = index }
+                depth += 1
+            case "}":
+                guard depth > 0 else { continue }
+                depth -= 1
+                if depth == 0, let begin = start {
+                    objects.append(String(text[begin...index]))
+                    start = nil
+                }
+            default:
+                continue
+            }
+        }
+        return objects
     }
 
     /// Languages a model uses for a shell block. An unlabelled fence counts too:
@@ -281,18 +340,5 @@ public enum CommandSuggestionParser {
         guard !lines.isEmpty else { return nil }
         let joined = lines.joined(separator: " && ")
         return joined.isEmpty ? nil : joined
-    }
-
-    static func stripFences(_ raw: String) -> String {
-        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.hasPrefix("```") else { return text }
-        // Drop the opening fence (and its language tag) and the closing one.
-        if let firstNewline = text.firstIndex(of: "\n") {
-            text = String(text[text.index(after: firstNewline)...])
-        }
-        if let fence = text.range(of: "```", options: .backwards) {
-            text = String(text[..<fence.lowerBound])
-        }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

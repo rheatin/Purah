@@ -68,6 +68,45 @@ struct CommandSuggestionTests {
         #expect(CommandSuggestionParser.parse(python) == nil)
     }
 
+    @Test("Reasoning is stripped before the answer is read")
+    func stripsReasoning() throws {
+        // The real failure: the provider streams `reasoning_content`, which gets
+        // wrapped in <think> and appended to the same string as the answer. The
+        // model's own reasoning quotes the JSON shape, so slicing from the first
+        // brace found the example, not the command.
+        let raw = """
+        <think>The user wants files larger than 1G.
+        Need to output JSON: {"command": "...", "explanation": "..."}</think>{"command": "find . -type f -size +1G", "explanation": "列出大于1G的文件。"}
+        """
+        let suggestion = try #require(CommandSuggestionParser.parse(raw))
+        #expect(suggestion.command == "find . -type f -size +1G")
+
+        // Streamed reasoning arrives as one <think> per delta.
+        let streamed = "<think>The</think><think> user</think>{\"command\": \"ls\", \"explanation\": \"x\"}"
+        #expect(try #require(CommandSuggestionParser.parse(streamed)).command == "ls")
+    }
+
+    @Test("A fenced example inside the reasoning does not win over the real answer")
+    func reasoningFenceIsIgnored() throws {
+        let raw = """
+        <think>I could answer with:
+        ```bash
+        echo example
+        ```
+        </think>
+        ```bash
+        du -sh * | sort -hr | head
+        ```
+        """
+        #expect(try #require(CommandSuggestionParser.parse(raw)).command == "du -sh * | sort -hr | head")
+    }
+
+    @Test("A brace inside a command does not end the object early")
+    func bracesInStrings() throws {
+        let raw = #"{"command": "awk '{print $1}' file.txt", "explanation": "print the first column"}"#
+        #expect(try #require(CommandSuggestionParser.parse(raw)).command == "awk '{print $1}' file.txt")
+    }
+
     @Test("Prose is not a command, however plausible its first line looks")
     func rejectsProse() {
         // The on-device fallback answers in markdown. Taking its first line
