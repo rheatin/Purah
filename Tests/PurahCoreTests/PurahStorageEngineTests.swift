@@ -167,4 +167,31 @@ struct PurahStorageEngineTests {
         #expect(repo.items.contains { $0.id == "item-5" && $0.isFavorite },
                 "the Star Protection Immunity Rule must survive quota pruning")
     }
+
+    @Test("An unreadable index is kept aside instead of being overwritten")
+    func testUnreadableIndexIsQuarantined() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_corrupt_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = PurahPluginFileStorage(pluginId: "corrupt-plugin", customBaseDirectory: tempDir)
+        // What a schema change leaves behind: valid JSON of the wrong shape.
+        try Data(#"{"unexpected": true}"#.utf8).write(to: storage.rootDirectory.appendingPathComponent("index.json"))
+
+        let repo = PurahDiskRepository<MockStorableItem>(
+            pluginId: "corrupt-plugin",
+            customStorage: storage,
+            retentionPeriod: .never
+        )
+        #expect(repo.items.isEmpty)
+
+        // The next save must not be the only record of the collection: the
+        // original bytes have to still be on disk somewhere.
+        repo.append(MockStorableItem(id: "new", title: "after", timestamp: Date(), isFavorite: false))
+
+        let backups = try FileManager.default
+            .contentsOfDirectory(atPath: storage.rootDirectory.path)
+            .filter { $0.hasPrefix("index.corrupt-") }
+        #expect(backups.count == 1, "the unreadable index should have been renamed, not overwritten")
+    }
 }
