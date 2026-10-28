@@ -169,12 +169,17 @@ public final class ScriptRunwayService {
 
     private func runShell(
         command: String,
+        executable: String = "/bin/zsh",
+        argv: [String]? = nil,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
         DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command: \(command.prefix(40))...")
         let task = Process()
-        task.launchPath = "/bin/zsh"
-        task.arguments = ["-c", command]
+        task.launchPath = executable
+        // `argv` lets a caller run a tool directly. Shelling out to do it means
+        // quoting whatever the tool takes, and a shortcut named `Daily "Standup"`
+        // then fails with a shell error instead of running.
+        task.arguments = argv ?? ["-c", command]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -317,7 +322,14 @@ public final class ScriptRunwayService {
         name: String,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
-        return await runShell(command: "/usr/bin/shortcuts run \"\(name)\"", onStreamUpdate: onStreamUpdate)
+        // Straight to `shortcuts` with the name as one argument: no shell, so
+        // no quoting. The `command` string is only what the log line shows.
+        return await runShell(
+            command: "/usr/bin/shortcuts run \(name)",
+            executable: "/usr/bin/shortcuts",
+            argv: ["run", name],
+            onStreamUpdate: onStreamUpdate
+        )
     }
 
     public static func defaultActions() -> [ScriptActionItem] {
