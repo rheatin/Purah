@@ -314,6 +314,7 @@ public struct InteractiveMarkdownPreviewView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("notes.toggleChecklist".localized)
 
                 renderInlineMarkdown(itemText, fontSize: fontSize)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -334,6 +335,7 @@ public struct InteractiveMarkdownPreviewView: View {
                         .foregroundColor(accentColor)
                 }
                 .buttonStyle(.plain)
+                .help("notes.toggleChecklist".localized)
 
                 renderInlineMarkdown(itemText, fontSize: fontSize)
                     .strikethrough(true, color: .secondary.opacity(0.6))
@@ -936,15 +938,13 @@ public struct MarkdownCodeBlockView: View {
 // MARK: - Quick Note Drawer View
 
 public struct QuickNoteDrawerView: View {
-    public let state: NotesPluginState
+    @Bindable public var state: NotesPluginState
     public let store: PurahWorkspaceStore
 
     @State private var activeTextView: PurahNotesNSTextView? = nil
     @State private var isCopied: Bool = false
     @State private var isExported: Bool = false
     @State private var isShowingTips: Bool = false
-    @State private var isSearchingNotes: Bool = false
-    @State private var searchQuery: String = ""
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -956,12 +956,6 @@ public struct QuickNoteDrawerView: View {
 
     private var currentText: String {
         state.currentDocument?.content ?? state.noteContent.text
-    }
-
-    private var wordCount: Int {
-        let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return 0 }
-        return text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
     }
 
     public init(state: NotesPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
@@ -976,11 +970,14 @@ public struct QuickNoteDrawerView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Search, Tips, Star
-            navigationToolbar
-
-            if isSearchingNotes {
-                crossFolderSearchOverlay
+            // The header row that used to sit here — folder, note, new, find,
+            // assistant, star — now lives in the drawer header itself, so the
+            // note gets the whole card.
+            if state.isFinding {
+                findBar
+                if state.findScope == .all {
+                    allNotesResults
+                }
             }
 
             // 2. Single Continuous Native NSTextView Live Markdown Document Canvas
@@ -991,40 +988,21 @@ public struct QuickNoteDrawerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(keyboardShortcutsOverlay)
+        .onChange(of: state.isFinding) { _, isFinding in
+            state.findIndex = 0
+            if isFinding && state.findScope == .current { selectCurrentMatch() }
+        }
         .onDisappear {
             state.save()
             store.savePersistentState()
         }
     }
 
-    // MARK: - Cross-Folder Search Bar & Results
-    private var crossFolderSearchOverlay: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(noteColor)
-                TextField("Search across all notes...", text: $searchQuery)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 10, design: .rounded))
-                if !searchQuery.isEmpty {
-                    Button {
-                        searchQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3.5)
-            .background(Color.primary.opacity(0.06))
-            .cornerRadius(5)
-
-            let matches = state.searchNotes(query: searchQuery)
-            if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    // MARK: - Cross-note results (the ".all" half of the find bar)
+    private var allNotesResults: some View {
+        let matches = state.searchNotes(query: state.findQuery)
+        return Group {
+            if !state.findQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // A capped result list (6 rows) in a transient overlay: it can
                 // overflow a short drawer, but it is a picker, not a document.
                 PurahScrollableBody {
@@ -1038,12 +1016,10 @@ public struct QuickNoteDrawerView: View {
                         } else {
                             ForEach(matches.prefix(6)) { doc in
                                 Button {
-                                    state.selectedFolder = doc.folder
                                     state.selectedNoteId = doc.id
                                     state.save()
                                     withAnimation(PurahMotionPolicy.confirm) {
-                                        isSearchingNotes = false
-                                        searchQuery = ""
+                                        closeFindBar()
                                     }
                                     store.triggerControlHaptic(.alignment)
                                 } label: {
@@ -1056,13 +1032,16 @@ public struct QuickNoteDrawerView: View {
                                             .foregroundColor(.primary)
                                             .lineLimit(1)
                                         Spacer()
-                                        Text(doc.folder)
-                                            .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 1)
-                                            .background(noteColor.opacity(0.14))
-                                            .foregroundColor(noteColor)
-                                            .cornerRadius(3)
+                                        if let tag = state.tag(named: doc.tag) {
+                                            HStack(spacing: 3) {
+                                                Circle()
+                                                    .fill(Color(hex: tag.colorHex))
+                                                    .frame(width: 5, height: 5)
+                                                Text(tag.name)
+                                                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                                                    .foregroundColor(Color(hex: tag.colorHex))
+                                            }
+                                        }
                                     }
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
@@ -1080,6 +1059,114 @@ public struct QuickNoteDrawerView: View {
         .transition(.opacity)
     }
 
+    // MARK: - Find & Replace
+    private var findBar: some View {
+        let ranges = findRanges
+        let matchCount = state.findScope == .current ? ranges.count : state.searchNotes(query: state.findQuery).count
+        return NotesFindBarView(
+            query: $state.findQuery,
+            replacement: $state.replaceQuery,
+            showsReplace: $state.showsReplace,
+            scope: state.findScope,
+            onScopeChange: { scope in
+                withAnimation(PurahMotionPolicy.confirm) { state.findScope = scope }
+                state.findIndex = 0
+                if scope == .current { selectCurrentMatch() }
+            },
+            matchCount: matchCount,
+            currentMatch: ranges.isEmpty ? 0 : min(state.findIndex, ranges.count - 1) + 1,
+            accentColor: noteColor,
+            onPrevious: { stepFind(-1) },
+            onNext: { stepFind(1) },
+            onReplace: { replaceCurrentMatch() },
+            onReplaceAll: { replaceAllMatches() },
+            onClose: { closeFindBar() }
+        )
+        .onChange(of: state.findQuery) { _, _ in
+            state.findIndex = 0
+            if state.findScope == .current { selectCurrentMatch() }
+        }
+        .transition(.opacity)
+    }
+
+    private var findableText: String {
+        activeTextView?.string ?? currentText
+    }
+
+    private var findRanges: [NSRange] {
+        NoteSearch.ranges(of: state.findQuery, in: findableText)
+    }
+
+    private func selectCurrentMatch() {
+        let ranges = findRanges
+        guard ranges.indices.contains(state.findIndex) else { return }
+        selectMatch(ranges[state.findIndex])
+    }
+
+    private func selectMatch(_ range: NSRange) {
+        activeTextView?.setSelectedRange(range)
+        activeTextView?.scrollRangeToVisible(range)
+    }
+
+    private func stepFind(_ delta: Int) {
+        let ranges = findRanges
+        guard !ranges.isEmpty else { return }
+        state.findIndex = (state.findIndex + delta + ranges.count) % ranges.count
+        selectMatch(ranges[state.findIndex])
+    }
+
+    private func replaceCurrentMatch() {
+        let ranges = findRanges
+        guard ranges.indices.contains(state.findIndex), let textView = activeTextView else { return }
+        let range = ranges[state.findIndex]
+        guard textView.shouldChangeText(in: range, replacementString: state.replaceQuery) else { return }
+        textView.textStorage?.replaceCharacters(in: range, with: state.replaceQuery)
+        textView.didChangeText()
+
+        // Keep going from where the replacement ended, wrapping to the top.
+        let caret = range.location + (state.replaceQuery as NSString).length
+        let updated = NoteSearch.ranges(of: state.findQuery, in: textView.string)
+        state.findIndex = updated.firstIndex(where: { $0.location >= caret }) ?? 0
+        if updated.indices.contains(state.findIndex) {
+            selectMatch(updated[state.findIndex])
+        }
+    }
+
+    private func replaceAllMatches() {
+        guard let textView = activeTextView else { return }
+        let ranges = NoteSearch.ranges(of: state.findQuery, in: textView.string)
+        guard !ranges.isEmpty else { return }
+        // One whole-document edit, so ⌘Z puts the note back in a single step.
+        let whole = NSRange(location: 0, length: (textView.string as NSString).length)
+        let updated = NoteSearch.replacingAll(in: textView.string, ranges: ranges, with: state.replaceQuery)
+        guard textView.shouldChangeText(in: whole, replacementString: updated) else { return }
+        textView.textStorage?.replaceCharacters(in: whole, with: updated)
+        textView.didChangeText()
+        state.findIndex = 0
+        store.triggerControlHaptic(.alignment)
+    }
+
+    private func closeFindBar() {
+        state.isFinding = false
+        state.findIndex = 0
+    }
+
+    private func openFind(scope: NoteFindScope) {
+        withAnimation(PurahMotionPolicy.confirm) {
+            state.findScope = scope
+            state.isFinding = true
+        }
+        state.findIndex = 0
+        if scope == .current { selectCurrentMatch() }
+        store.triggerControlHaptic(.alignment)
+    }
+
+    /// What an AI action writes in place of `source`, and where the caret sits
+    /// inside it, so the answer ends up selected.
+    nonisolated static func noteAIEdit(_ answer: String, transform: Bool, source: String) -> (text: String, caret: Int) {
+        transform ? (answer, 0) : (source + "\n\n" + answer, (source as NSString).length + 2)
+    }
+
     // MARK: - Native Live Markdown Canvas
     private var documentCanvasView: some View {
         ZStack(alignment: .topLeading) {
@@ -1091,6 +1178,10 @@ public struct QuickNoteDrawerView: View {
                 },
                 onTextViewCreated: { textView in
                     self.activeTextView = textView
+                    // The header's assistant menu has no view hierarchy
+                    // connection to the editor; it reaches it through state.
+                    state.activeTextView = textView
+                    textView.onFindRequested = { openFind(scope: .current) }
                 }
             )
 
@@ -1137,6 +1228,13 @@ public struct QuickNoteDrawerView: View {
                 .keyboardShortcut("i", modifiers: .command)
             Button("") { wrapSelection(prefix: "`", suffix: "`") }
                 .keyboardShortcut("k", modifiers: .command)
+            // The editor claims ⌘F itself (see `NotesMarkdownEditorView`); these
+            // cover the drawer when focus is on a toolbar control instead, and
+            // give "all notes" the shortcut it never had.
+            Button("") { openFind(scope: .current) }
+                .keyboardShortcut("f", modifiers: .command)
+            Button("") { openFind(scope: .all) }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -1155,177 +1253,30 @@ public struct QuickNoteDrawerView: View {
         }
     }
 
-    // MARK: - Navigation Toolbar (Strictly Bounded Single Row)
-    private var navigationToolbar: some View {
-        HStack(spacing: 4) {
-            // Folder Picker Menu
-            Menu {
-                ForEach(state.availableFolders, id: \.self) { folder in
-                    Button {
-                        state.selectFolder(folder)
-                        state.save()
-                    } label: {
-                        HStack {
-                            Text(folder)
-                            if state.selectedFolder == folder {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 2.5) {
-                    Image(systemName: "folder.fill")
-                        .font(.system(size: 8))
-                    Text(state.selectedFolder)
-                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 6))
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .frame(maxWidth: 72, alignment: .leading)
-                .background(Color.primary.opacity(0.06))
-                .cornerRadius(4)
-                .foregroundColor(.primary)
-            }
-            .menuStyle(.borderlessButton)
-
-            // Note Selector Menu
-            Menu {
-                ForEach(state.documentsInCurrentFolder) { doc in
-                    Button {
-                        state.selectedNoteId = doc.id
-                        state.save()
-                    } label: {
-                        HStack {
-                            if doc.isFavorite {
-                                Image(systemName: "star.fill")
-                            }
-                            Text(doc.title)
-                            if doc.id == state.selectedNoteId {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-                Divider()
-                Button {
-                    _ = state.createNote(folder: state.selectedFolder)
-                    activeTextView?.setSelectedRange(NSRange(location: 0, length: 0))
-                    activeTextView?.window?.makeFirstResponder(activeTextView)
-                    store.triggerControlHaptic(.alignment)
-                } label: {
-                    Label("New Note in \(state.selectedFolder)", systemImage: "plus")
-                }
-            } label: {
-                HStack(spacing: 2.5) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 8))
-                    Text(state.currentDocument?.title ?? "Untitled")
-                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 6))
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .frame(maxWidth: 110, alignment: .leading)
-                .background(Color.primary.opacity(0.06))
-                .cornerRadius(4)
-                .foregroundColor(noteColor)
-            }
-            .menuStyle(.borderlessButton)
-
-            // New Note Button
-            Button {
-                _ = state.createNote(folder: state.selectedFolder)
-                activeTextView?.setSelectedRange(NSRange(location: 0, length: 0))
-                activeTextView?.window?.makeFirstResponder(activeTextView)
-                store.triggerControlHaptic(.alignment)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .padding(2.5)
-                    .background(Color.primary.opacity(0.05))
-                    .cornerRadius(3)
-            }
-            .buttonStyle(.plain)
-            .help("help.newNote".localized)
-            .accessibilityLabel("help.newNote".localized)
-
-            Spacer(minLength: 4)
-
-            // Cross-Folder Search Filter Toggle
-            Button {
-                withAnimation(PurahMotionPolicy.confirm) {
-                    isSearchingNotes.toggle()
-                    if !isSearchingNotes {
-                        searchQuery = ""
-                    }
-                }
-                store.triggerControlHaptic(.alignment)
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 9.5, weight: isSearchingNotes ? .bold : .regular))
-                    .foregroundColor(isSearchingNotes ? noteColor : .secondary)
-                    .padding(2)
-                    .background(isSearchingNotes ? noteColor.opacity(0.14) : Color.clear)
-                    .cornerRadius(3)
-            }
-            .buttonStyle(.plain)
-            .help("help.searchAllNotes".localized)
-            .accessibilityLabel("help.searchAllNotes".localized)
-
-            // Markdown Tips icon: triggers popover immediately on mouse hover or click
-            Button {
-                isShowingTips.toggle()
-            } label: {
-                Image(systemName: "questionmark.circle")
-                    .font(.system(size: 10))
-                    .foregroundColor(isShowingTips ? noteColor : .secondary)
-                    .padding(2)
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                isShowingTips = hovering
-            }
-            .popover(isPresented: $isShowingTips, arrowEdge: .bottom) {
-                MarkdownTipsPopoverView()
-            }
-
-            // Star (Favorite) button
-            if let doc = state.currentDocument {
-                Button {
-                    state.toggleFavorite(id: doc.id)
-                    store.triggerControlHaptic(.alignment)
-                } label: {
-                    Image(systemName: doc.isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 10))
-                        .foregroundColor(doc.isFavorite ? Color(hex: "#FF9F0A") : .secondary.opacity(0.8))
-                        .padding(2)
-                }
-                .buttonStyle(.plain)
-                .help(doc.isFavorite ? "Unstar note" : "Star note")
-                .accessibilityLabel(doc.isFavorite ? "Unstar note" : "Star note")
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
     // MARK: - Bottom Status Bar
     private var bottomStatusBar: some View {
         HStack(spacing: 6) {
+            // The count used to sit on the right, after the action buttons,
+            // which is where the eye looks last. It belongs with the other
+            // fact about the note on screen.
+            Text("\(NoteText.wordCount(in: currentText))w · \(currentText.count)c")
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                .foregroundColor(noteColor.opacity(0.9))
+
             HStack(spacing: 4) {
-                Circle()
-                    .fill(noteColor.opacity(0.85))
-                    .frame(width: 4.5, height: 4.5)
-                Text(String(format: "notes.savedTime".localized, state.noteContent.lastModified.formatted(date: .omitted, time: .shortened)))
-                    .font(.system(size: 8, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.7))
+                if let noteAIHint = state.noteAIHint {
+                    Text(noteAIHint)
+                        .font(.system(size: 8, design: .rounded))
+                        .foregroundColor(.orange.opacity(0.9))
+                        .lineLimit(1)
+                } else {
+                    Circle()
+                        .fill(noteColor.opacity(0.85))
+                        .frame(width: 4.5, height: 4.5)
+                    Text(String(format: "notes.savedTime".localized, state.noteContent.lastModified.formatted(date: .omitted, time: .shortened)))
+                        .font(.system(size: 8, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
             }
 
             Spacer()
@@ -1397,47 +1348,39 @@ public struct QuickNoteDrawerView: View {
             .help("help.copyNote".localized)
             .accessibilityLabel("help.copyNote".localized)
 
-            Text("\(wordCount)w · \(currentText.count)c")
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .foregroundColor(noteColor.opacity(0.9))
+            // Markdown syntax is reference material, so it belongs with the
+            // other reference in the drawer — its footer, not its header.
+            // The popover opens upward, into the card, rather than escaping
+            // off the bottom of the screen.
+            PurahHeaderButton(
+                systemImage: "questionmark.circle",
+                help: "notes.tips.title".localized,
+                tint: noteColor,
+                isActive: isShowingTips
+            ) {
+                isShowingTips.toggle()
+            }
+            .popover(isPresented: $isShowingTips, arrowEdge: .top) {
+                MarkdownTipsPopoverView()
+            }
         }
         .padding(.horizontal, 2)
     }
 
     private func exportCurrentNote() {
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.showsHiddenFiles = false
-        savePanel.level = .modalPanel
-        let rawTitle = state.currentDocument?.title ?? "Untitled"
-        let sanitized = rawTitle
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let fileName = (sanitized.isEmpty ? "Note" : sanitized) + ".md"
-        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
-        if let mdType = UTType(filenameExtension: "md") {
-            savePanel.allowedContentTypes = [mdType, .plainText]
-        } else {
-            savePanel.allowedContentTypes = [.plainText]
-        }
+        guard PurahExportPathManager.exportMarkdown(
+            currentText,
+            suggestedTitle: state.currentDocument?.title ?? "Untitled",
+            fallbackName: "Note"
+        ) != nil else { return }
 
-        let response = savePanel.runModal()
-        if response == .OK, let url = savePanel.url {
-            PurahExportPathManager.updateLastDirectory(from: url)
-            do {
-                try currentText.write(to: url, atomically: true, encoding: .utf8)
-                store.triggerControlHaptic(.alignment)
-                withAnimation(PurahMotionPolicy.confirm) {
-                    isExported = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    withAnimation {
-                        isExported = false
-                    }
-                }
-            } catch {
-                DiagnosticLogger.shared.error("Notes", "Failed to export note: \(error.localizedDescription)")
+        store.triggerControlHaptic(.alignment)
+        withAnimation(PurahMotionPolicy.confirm) {
+            isExported = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation {
+                isExported = false
             }
         }
     }

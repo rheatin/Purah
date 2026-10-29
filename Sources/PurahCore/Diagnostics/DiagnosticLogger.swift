@@ -52,9 +52,6 @@ public final class DiagnosticLogger: Sendable {
     public var mainThreadStallsCount: Int {
         stats.withLock { $0.stalls }
     }
-    public var maxStallDurationMs: Double {
-        stats.withLock { $0.maxStallMs }
-    }
 
     public init() {
         self.storage = OSAllocatedUnfairLock(initialState: [])
@@ -163,11 +160,17 @@ public final class DiagnosticLogger: Sendable {
         report += "Network: ↓ \(String(format: "%.1f", vitals.networkDownSpeed / 1024)) KB/s · ↑ \(String(format: "%.1f", vitals.networkUpSpeed / 1024)) KB/s\n\n"
 
         // 4. Scripts Runway
+        //
+        // Names and shapes only. This report is meant to be pasted into an
+        // issue, and a script is the one setting likely to hold a token
+        // (`curl -H "Authorization: Bearer …"`); quoting it turns a bug report
+        // into a leak.
         let runway = ScriptRunwayService.shared
         report += "-- [SCRIPT RUNWAY ACTIONS] --\n"
         report += "Action Count: \(runway.actions.count)\n"
         for (idx, a) in runway.actions.enumerated() {
-            report += "[\(idx + 1)] \(a.name) (\(a.commandType.rawValue.uppercased())): \(a.scriptContent)\n"
+            let lineCount = a.scriptContent.components(separatedBy: .newlines).count
+            report += "[\(idx + 1)] \(a.name) (\(a.commandType.rawValue.uppercased())), \(lineCount) line(s), body withheld\n"
         }
         if let lastOutput = runway.lastOutput {
             report += "Last Output: \(lastOutput)\n"

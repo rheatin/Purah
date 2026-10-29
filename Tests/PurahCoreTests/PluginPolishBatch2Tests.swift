@@ -141,11 +141,11 @@ struct PluginPolishBatch2Tests {
         #expect(state.autoPrune == true)
 
         // Create one favorite note and one non-favorite note
-        let note1 = state.createNote(title: "Important Architecture", folder: "General", content: "Key design decisions")
+        let note1 = state.createNote(title: "Important Architecture", tag: "General", content: "Key design decisions")
         state.toggleFavorite(id: note1.id)
         #expect(state.documents.first(where: { $0.id == note1.id })?.isFavorite == true)
 
-        let note2 = state.createNote(title: "Temporary Scratch", folder: "General", content: "Quick draft")
+        let note2 = state.createNote(title: "Temporary Scratch", tag: "General", content: "Quick draft")
         #expect(state.documents.first(where: { $0.id == note2.id })?.isFavorite == false)
 
         // Clear non-favorite notes

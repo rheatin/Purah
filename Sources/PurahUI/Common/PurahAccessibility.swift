@@ -19,16 +19,4 @@ public extension View {
     func purahRowAccessibility(_ title: String, detail: String? = nil) -> some View {
         accessibilityLabel(PurahA11y.rowLabel(title, detail: detail))
     }
-
-    /// Marks a view as a single VoiceOver element with a button trait.
-    ///
-    /// Use on a tap target that draws itself (an `HStack` of icon and text)
-    /// rather than a `Button`, so the glyph and the word are not announced as
-    /// two separate elements.
-    func purahButtonAccessibility(_ label: String, hint: String? = nil, isSelected: Bool = false) -> some View {
-        accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityLabel(label)
-            .accessibilityHint(hint ?? "")
-    }
 }

@@ -120,10 +120,7 @@ public struct AppUpdateDialogView: View {
                         }
 
                         ScrollView {
-                            Text(release.releaseNotes)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(.primary.opacity(0.9))
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            UpdateNotesView(markdown: release.releaseNotes)
                                 .padding(8)
                         }
                         .frame(height: 120)
@@ -225,7 +222,9 @@ public struct AppUpdateDialogView: View {
                 default:
                     Button("updater.button.check".localized) {
                         Task {
-                            await updater.checkForUpdates()
+                            // The person pressed the button: never rate-limit
+                            // them to the quarter-hour floor.
+                            await updater.checkForUpdates(force: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -248,8 +247,61 @@ public struct AppUpdateDialogView: View {
             // one is in flight, so whichever arrives first wins and the
             // dialog never sits on a check that nobody started.
             if case .idle = updater.state {
-                await updater.checkForUpdates()
+                await updater.checkForUpdates(force: true)
             }
         }
+    }
+}
+
+/// Release notes as the format `release.sh` publishes them: an H1 title, `##`
+/// sections and `*` bullets.
+///
+/// `Text(AttributedString(markdown:))` is the obvious one-liner and it does not
+/// work here: with `.full` every block collapses into one paragraph (SwiftUI's
+/// `Text` ignores presentation intents), and with the inline syntax the `#` and
+/// `*` markers stay on screen as literal characters.
+private struct UpdateNotesView: View {
+    let markdown: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(markdown.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, raw in
+                row(for: raw)
+            }
+        }
+        .foregroundColor(.primary.opacity(0.9))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func row(for raw: String) -> some View {
+        let line = raw.trimmingCharacters(in: .whitespaces)
+        if line.isEmpty {
+            Color.clear.frame(height: 3)
+        } else if let title = line.droppingPrefix("# ") {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .padding(.bottom, 2)
+        } else if let heading = line.droppingPrefix("## ") ?? line.droppingPrefix("### ") {
+            Text(heading)
+                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                .padding(.top, 3)
+        } else if let bullet = line.droppingPrefix("* ") ?? line.droppingPrefix("- ") {
+            HStack(alignment: .top, spacing: 5) {
+                Text("•")
+                Text(bullet)
+            }
+            .font(.system(size: 10.5, design: .monospaced))
+            .padding(.leading, 4)
+        } else {
+            Text(line)
+                .font(.system(size: 10.5, design: .monospaced))
+        }
+    }
+}
+
+private extension String {
+    func droppingPrefix(_ prefix: String) -> String? {
+        hasPrefix(prefix) ? String(dropFirst(prefix.count)) : nil
     }
 }

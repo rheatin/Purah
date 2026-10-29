@@ -366,19 +366,6 @@ public struct AIRolePreset: Identifiable, Codable, Equatable, Sendable {
         }
     }
 
-    @MainActor
-    public var localizedVerb: String {
-        switch id {
-        case "translate": return "ai.verb.translate".localized
-        case "polish": return "ai.verb.polish".localized
-        case "grammar": return "ai.verb.grammar".localized
-        case "summarize": return "ai.verb.summarize".localized
-        case "explain": return "ai.verb.explain".localized
-        case "ask": return "ai.verb.ask".localized
-        default: return "ai.verb.translate".localized
-        }
-    }
-
     public static func from(action: AIQuickActionType, isEnabled: Bool = true) -> AIRolePreset {
         let hex: String = {
             switch action {

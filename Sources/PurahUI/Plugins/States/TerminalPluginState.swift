@@ -13,16 +13,6 @@ public final class TerminalPluginState: Sendable {
     public let storage: any PurahPluginStorage
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
 
-    public var terminalFontFamily: String {
-        get { fontFamily }
-        set { fontFamily = newValue }
-    }
-
-    public var terminalFontSize: Double {
-        get { fontSize }
-        set { fontSize = newValue }
-    }
-
     public var shellName: String {
         TerminalManager.shared.shellName
     }
@@ -31,11 +21,15 @@ public final class TerminalPluginState: Sendable {
         TerminalManager.shared.isProcessRunning
     }
 
+    /// The size a fresh install starts at, and what the header's font menu
+    /// resets to. Was written out twice; a reset button makes it three.
+    public static let defaultFontSize: Double = 11.5
+
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "terminal")) {
         self.storage = storage
         self.fontFamily = storage.string(forKey: "fontFamily") ?? "Auto (Nerd Font)"
         let savedSize = storage.double(forKey: "fontSize")
-        self.fontSize = savedSize > 0 ? savedSize : 11.5
+        self.fontSize = savedSize > 0 ? savedSize : Self.defaultFontSize
     }
 
     public func load() {

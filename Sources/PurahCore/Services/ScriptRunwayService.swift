@@ -67,6 +67,17 @@ public final class ScriptRunwayService {
     @ObservationIgnored private var activeProcess: Process? = nil
     @ObservationIgnored private var wasStoppedByUser: Bool = false
 
+    /// Identifies the run that is allowed to write to `liveStreamingOutput`.
+    ///
+    /// Stopping a script and immediately starting another one used to let the
+    /// first one's output — which keeps arriving until its command actually
+    /// exits — land in the second one's panel.
+    @ObservationIgnored private var currentRunID: Int = 0
+
+    /// How long a script may run before it is terminated.
+    ///
+    /// shortcut: 15s for every action, long scripts need a per-action field
+    nonisolated static let executionTimeout: TimeInterval = 15
     public init() {
         self.actions = Self.defaultActions()
         loadActions()
@@ -123,12 +134,42 @@ public final class ScriptRunwayService {
 
     public func stopRunningScript() {
         wasStoppedByUser = true
-        activeProcess?.terminate()
+        // The shell is not the command. `zsh -c 'a; b'` forks, and a SIGTERM
+        // to zsh leaves the running command behind — so "Stop" used to report
+        // success while the script kept going. Kill the whole tree.
+        if let process = activeProcess, process.isRunning {
+            Self.terminateTree(rootedAt: process.processIdentifier)
+        }
         activeProcess = nil
         isRunning = false
         lastOutput = "⏹ Stopped by user"
         liveStreamingOutput = "⏹ Stopped by user"
         SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+    }
+
+    /// Sends SIGTERM to a process and everything it started, children first.
+    nonisolated static func terminateTree(rootedAt pid: pid_t) {
+        for child in descendantPIDs(of: pid).reversed() {
+            kill(child, SIGTERM)
+        }
+        kill(pid, SIGTERM)
+    }
+
+    nonisolated static func descendantPIDs(of pid: pid_t) -> [pid_t] {
+        var result: [pid_t] = []
+        var pending: [pid_t] = [pid]
+        while let parent = pending.popLast() {
+            var buffer = [pid_t](repeating: 0, count: 256)
+            let count = buffer.withUnsafeMutableBytes { raw in
+                proc_listchildpids(parent, raw.baseAddress, Int32(raw.count))
+            }
+            guard count > 0 else { continue }
+            for child in buffer.prefix(Int(count)) where child > 0 {
+                result.append(child)
+                pending.append(child)
+            }
+        }
+        return result
     }
 
     public func executeAction(
@@ -140,19 +181,25 @@ public final class ScriptRunwayService {
         lastExecutedActionId = action.id
         liveStreamingOutput = ""
 
+        currentRunID += 1
+        let runID = currentRunID
+
         defer {
-            activeProcess = nil
-            isRunning = false
+            // A superseded run must not clear the state of the one now running.
+            if runID == currentRunID {
+                activeProcess = nil
+                isRunning = false
+            }
         }
 
         let result: (success: Bool, message: String)
         switch action.commandType {
         case .shell:
-            result = await runShell(command: action.scriptContent, onStreamUpdate: onStreamUpdate)
+            result = await runShell(command: action.scriptContent, runID: runID, onStreamUpdate: onStreamUpdate)
         case .appleScript:
             result = await runAppleScript(script: action.scriptContent, onStreamUpdate: onStreamUpdate)
         case .shortcut:
-            result = await runShortcut(name: action.scriptContent, onStreamUpdate: onStreamUpdate)
+            result = await runShortcut(name: action.scriptContent, runID: runID, onStreamUpdate: onStreamUpdate)
         }
 
         if wasStoppedByUser {
@@ -171,6 +218,7 @@ public final class ScriptRunwayService {
         command: String,
         executable: String = "/bin/zsh",
         argv: [String]? = nil,
+        runID: Int,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
         DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command: \(command.prefix(40))...")
@@ -189,18 +237,40 @@ public final class ScriptRunwayService {
         final class StreamAccumulator: @unchecked Sendable {
             private let lock = NSLock()
             private var buffer = Data()
+            private var lastEmit = Date.distantPast
+
+            /// Only the tail is ever shown or returned, so an old script that
+            /// prints megabytes must not keep all of them in memory.
+            private static let window = 64 * 1024
+            private static let emitInterval: TimeInterval = 0.1
 
             func append(_ data: Data) -> String {
                 lock.lock()
                 defer { lock.unlock() }
                 buffer.append(data)
-                return String(data: buffer, encoding: .utf8) ?? ""
+                if buffer.count > Self.window {
+                    buffer.removeFirst(buffer.count - Self.window)
+                }
+                // Lossy on purpose: one invalid byte (a script that cats a
+                // binary) made the strict decoder return "" forever after.
+                return String(decoding: buffer, as: UTF8.self)
+            }
+
+            /// True at most ten times a second, so a chatty script cannot turn
+            /// every chunk into a main-actor hop.
+            func shouldEmit() -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                let now = Date()
+                guard now.timeIntervalSince(lastEmit) >= Self.emitInterval else { return false }
+                lastEmit = now
+                return true
             }
 
             func fullText() -> String {
                 lock.lock()
                 defer { lock.unlock() }
-                return String(data: buffer, encoding: .utf8) ?? ""
+                return String(decoding: buffer, as: UTF8.self)
             }
         }
 
@@ -212,10 +282,15 @@ public final class ScriptRunwayService {
                 return
             }
             let fullString = accumulator.append(chunk)
+            guard accumulator.shouldEmit() else { return }
             let tail = ScriptRunwayService.tailNonEmptyLines(from: fullString, maxLines: 4)
             guard !tail.isEmpty else { return }
             Task { @MainActor [weak self] in
-                guard let self = self, !self.wasStoppedByUser else { return }
+                // Output from a run that has been superseded or stopped belongs
+                // to nobody's panel.
+                guard let self = self,
+                      runID == self.currentRunID,
+                      !self.wasStoppedByUser else { return }
                 self.liveStreamingOutput = tail
                 self.lastOutput = tail
                 onStreamUpdate?(tail)
@@ -226,7 +301,6 @@ public final class ScriptRunwayService {
             do {
                 try task.run()
 
-                // 15-second non-blocking timeout guard
                 let didTimeout = await withTaskGroup(of: Bool.self) { group in
                     group.addTask {
                         await withCheckedContinuation { continuation in
@@ -253,9 +327,10 @@ public final class ScriptRunwayService {
                         return false
                     }
                     group.addTask {
-                        try? await Task.sleep(nanoseconds: 15_000_000_000)
+                        try? await Task.sleep(for: .seconds(ScriptRunwayService.executionTimeout))
                         if task.isRunning {
-                            task.terminate()
+                            // Same reason as Stop: the shell is not the command.
+                            ScriptRunwayService.terminateTree(rootedAt: task.processIdentifier)
                             return true
                         }
                         return false
@@ -273,8 +348,8 @@ public final class ScriptRunwayService {
                 }
 
                 if didTimeout {
-                    DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after 15s: \(command.prefix(40))")
-                    return (false, "Execution timed out after 15s")
+                    DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after \(Int(ScriptRunwayService.executionTimeout))s: \(command.prefix(40))")
+                    return (false, "Execution timed out after \(Int(ScriptRunwayService.executionTimeout))s")
                 }
 
                 let rawOutput = accumulator.fullText()
@@ -320,6 +395,7 @@ public final class ScriptRunwayService {
 
     private func runShortcut(
         name: String,
+        runID: Int,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
         // Straight to `shortcuts` with the name as one argument: no shell, so
@@ -328,6 +404,7 @@ public final class ScriptRunwayService {
             command: "/usr/bin/shortcuts run \(name)",
             executable: "/usr/bin/shortcuts",
             argv: ["run", name],
+            runID: runID,
             onStreamUpdate: onStreamUpdate
         )
     }

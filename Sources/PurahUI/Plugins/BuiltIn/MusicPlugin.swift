@@ -100,15 +100,7 @@ public struct MusicPlugin: PurahPodPlugin {
         let bundleId = state.track.sourceBundleId
         let displaySource = Self.normalizedSourceDisplayName(sourceApp: source, bundleId: bundleId)
         guard !displaySource.isEmpty else { return nil }
-        return AnyView(
-            Text(displaySource)
-                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                .foregroundColor(context.accentColor)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1.5)
-                .background(context.accentColor.opacity(0.12))
-                .cornerRadius(4)
-        )
+        return AnyView(PurahHeaderBadge(displaySource, tint: context.accentColor))
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {

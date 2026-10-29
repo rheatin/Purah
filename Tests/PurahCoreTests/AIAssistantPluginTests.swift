@@ -341,9 +341,11 @@ struct AIAssistantPluginTests {
         #expect(state.sessions.count >= 1)
         #expect(state.activeSession != nil)
 
-        // Session creation
+        // "+" replaces the untouched placeholder rather than stacking another
+        // identical "New Chat · 0 messages" row on top of it.
+        let placeholderCount = state.sessions.count
         state.createNewSession()
-        #expect(state.sessions.count >= 2)
+        #expect(state.sessions.count == placeholderCount)
         let newSessionId = state.activeSessionId
 
         // Star / Favorite toggle
@@ -354,6 +356,56 @@ struct AIAssistantPluginTests {
         // Delete session
         state.deleteSession(id: newSessionId)
         #expect(!state.sessions.contains(where: { $0.id == newSessionId }))
+    }
+
+    @Test("New Chat does not pile up, and never takes a real conversation with it")
+    @MainActor
+    func testNewChatDoesNotPileUp() {
+        let isolated = UserDefaults(suiteName: "test_ai_new_chat_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_ai_new_chat_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test", customStorage: fileStorage)
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+
+        // A conversation with a message in it is not a placeholder.
+        var conversation = state.sessions[0]
+        conversation.messages = [AIChatMessage(role: .user, content: "hello")]
+        repo.update(conversation)
+        state.sessions = repo.items
+
+        for _ in 0..<5 {
+            state.createNewSession()
+        }
+
+        #expect(state.sessions.filter { $0.messages.isEmpty }.count == 1)
+        #expect(state.sessions.count == 2)
+        #expect(state.sessions.contains { $0.id == conversation.id })
+
+        // The placeholder is named like one, so the history list can say what
+        // it is instead of showing four identical untitled rows.
+        #expect(state.activeSession?.title == AIAssistantPluginState.defaultSessionTitle)
+
+        // A history that already holds a stack — from a build that added a
+        // session on every tap — collapses without touching the conversation.
+        for _ in 0..<3 {
+            repo.insert(AIChatSession(
+                id: UUID().uuidString,
+                title: AIAssistantPluginState.defaultSessionTitle,
+                messages: [],
+                createdAt: Date(),
+                updatedAt: Date(),
+                isFavorite: false,
+                providerKind: state.selectedProvider
+            ))
+        }
+        state.sessions = repo.items
+        #expect(state.sessions.filter { $0.messages.isEmpty }.count == 4)
+
+        state.collapseUnusedPlaceholders()
+        #expect(state.sessions.filter { $0.messages.isEmpty }.count == 1)
+        #expect(state.sessions.contains { $0.id == conversation.id })
     }
 
     @Test("The header pill names the provider the next message will use, not the one that wrote the last answer")
@@ -2337,7 +2389,15 @@ struct AIAssistantPluginTests {
         let storage = ScopedPluginStorage(pluginId: "test_ai_session_reset_\(UUID().uuidString)")
         let state = AIAssistantPluginState(storage: storage)
         state.createNewSession()
-        let session1Id = state.activeSessionId
+
+        // Two sessions to switch between. The first needs a message: an
+        // untouched "New Chat" is a placeholder, and "+" replaces rather than
+        // stacking it, so it would not survive the second create.
+        var session1 = state.activeSession!
+        session1.messages = [AIChatMessage(role: .user, content: "first")]
+        state.repository.update(session1)
+        state.sessions = state.repository.items
+        let session1Id = session1.id
 
         state.createNewSession()
 

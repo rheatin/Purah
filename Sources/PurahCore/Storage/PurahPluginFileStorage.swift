@@ -70,7 +70,14 @@ public struct PurahPluginFileStorage: Sendable {
 
     /// Recursively computes total disk size of the plugin sandbox directory in bytes.
     public func computeDiskUsageBytes() -> Int64 {
-        guard let enumerator = FileManager.default.enumerator(at: rootDirectory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        size(of: rootDirectory)
+    }
+
+    /// Bytes held by one directory, recursively. The diagnostics page asks for
+    /// `data/` and `cache/` separately, because "this can be cleared freely" and
+    /// "this is the user's notes" must never be shown as one number.
+    public func size(of directory: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
         var total: Int64 = 0
         // The enumerator already prefetched the size; asking the file system
         // again for each one doubled the syscalls on this path.
@@ -83,21 +90,63 @@ public struct PurahPluginFileStorage: Sendable {
         return total
     }
 
-    /// Current disk usage in bytes.
-    public var diskUsageBytes: Int64 {
-        computeDiskUsageBytes()
+    public var dataUsageBytes: Int64 { size(of: dataDirectory) }
+    public var cacheUsageBytes: Int64 { size(of: cacheDirectory) }
+
+    /// Empties `cache/` only. Nothing here is the person's content: it is
+    /// regenerable, which is exactly what makes it safe to offer as one click.
+    public func clearCache() {
+        let fm = FileManager.default
+        let contents = (try? fm.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)) ?? []
+        for url in contents {
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    /// Empties `data/`. This is the notes, the clipboard history, the stash —
+    /// destructive, and never reachable without a confirmation.
+    public func clearData() {
+        let fm = FileManager.default
+        let contents = (try? fm.contentsOfDirectory(at: dataDirectory, includingPropertiesForKeys: nil)) ?? []
+        for url in contents {
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    /// Contents of `data/index.json`, or nil when it is missing or unreadable.
+    ///
+    /// The notes and shelf collections both keep their list there; one reader
+    /// and one writer mean a change to the file name or encoding cannot land in
+    /// only half the app.
+    public func loadIndex<T: Decodable>(_ type: [T].Type = [T].self) -> [T]? {
+        let url = dataDirectory.appendingPathComponent("index.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([T].self, from: data)
+    }
+
+    public func saveIndex<T: Encodable>(_ items: [T]) {
+        let url = dataDirectory.appendingPathComponent("index.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        guard let data = try? encoder.encode(items) else { return }
+        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
     }
 
     /// Human-readable formatted string of the current disk usage.
     public var diskUsageFormatted: String {
-        let size = computeDiskUsageBytes()
+        Self.format(computeDiskUsageBytes())
+    }
+
+    /// One spelling of a byte count for the whole app: KB below a megabyte,
+    /// and never "0 KB" for an empty directory.
+    public static func format(_ size: Int64) -> String {
+        guard size > 0 else { return "0 KB" }
         let mb = Double(size) / (1024.0 * 1024.0)
         if mb >= 1.0 {
             return String(format: "%.1f MB", mb)
-        } else {
-            let kb = max(size / 1024, 1)
-            return "\(kb) KB"
         }
+        return "\(max(size / 1024, 1)) KB"
     }
 
     /// Reveals the plugin sandbox directory in macOS Finder.

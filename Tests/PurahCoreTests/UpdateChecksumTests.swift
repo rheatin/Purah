@@ -182,16 +182,11 @@ struct UpdateChecksumTests {
         let hex = String(repeating: "de", count: 32)
         let json = """
         {
-          "tag_name": "v9.9.9",
-          "body": "notes",
-          "html_url": "https://github.com/rheatin/Purah/releases/tag/v9.9.9",
-          "assets": [
-            {
-              "name": "Purah-v9.9.9-macOS.zip",
-              "browser_download_url": "https://example.com/Purah-v9.9.9-macOS.zip",
-              "digest": "sha256:\(hex)"
-            }
-          ]
+          "version": "9.9.9",
+          "releaseDate": "2026-01-01T00:00:00Z",
+          "releaseNotes": "notes",
+          "downloadURL": "https://example.com/Purah-v9.9.9-macOS.zip",
+          "sha256": "\(hex)"
         }
         """
         let updater = AppUpdaterManager(
@@ -207,21 +202,16 @@ struct UpdateChecksumTests {
         #expect(release.normalizedSHA256 == hex)
     }
 
-    @Test("A non-sha256 digest is ignored rather than compared as hex")
+    @Test("A malformed digest is ignored rather than compared as hex")
     @MainActor
     func testNonSHA256DigestIgnored() async throws {
         let json = """
         {
-          "tag_name": "v9.9.9",
-          "body": "notes",
-          "html_url": "https://example.com/tag",
-          "assets": [
-            {
-              "name": "Purah-v9.9.9-macOS.zip",
-              "browser_download_url": "https://example.com/Purah-v9.9.9-macOS.zip",
-              "digest": "sha512:abcdef"
-            }
-          ]
+          "version": "9.9.9",
+          "releaseDate": "2026-01-01T00:00:00Z",
+          "releaseNotes": "notes",
+          "downloadURL": "https://example.com/Purah-v9.9.9-macOS.zip",
+          "sha256": "abcdef"
         }
         """
         let updater = AppUpdaterManager(
@@ -242,15 +232,10 @@ struct UpdateChecksumTests {
     func testMissingDigestStillReported() async throws {
         let json = """
         {
-          "tag_name": "v9.9.9",
-          "body": "notes",
-          "html_url": "https://example.com/tag",
-          "assets": [
-            {
-              "name": "Purah-v9.9.9-macOS.zip",
-              "browser_download_url": "https://example.com/Purah-v9.9.9-macOS.zip"
-            }
-          ]
+          "version": "9.9.9",
+          "releaseDate": "2026-01-01T00:00:00Z",
+          "releaseNotes": "notes",
+          "downloadURL": "https://example.com/Purah-v9.9.9-macOS.zip"
         }
         """
         let updater = AppUpdaterManager(

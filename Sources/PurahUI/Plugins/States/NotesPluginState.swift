@@ -10,13 +10,31 @@ import PurahCore
 public final class NotesPluginState: Sendable {
     public var noteContent: NoteContent
     public var documents: [NoteDocument]
-    public var availableFolders: [String]
-    public var selectedFolder: String
+    public var availableTags: [NoteTag]
     public var selectedNoteId: String?
     public var isPreviewMode: Bool
     public var retentionPeriod: PurahRetentionPeriod
     public var diskQuota: PurahDiskQuota
     public var autoPrune: Bool
+
+    // MARK: - Live editor state
+    //
+    // The header's search button toggles a bar the drawer renders, and the
+    // drawer is rebuilt every time it opens, so these cannot live in either
+    // view alone.
+
+    public var isFinding: Bool = false
+    public var findScope: NoteFindScope = .current
+    public var findQuery: String = ""
+    public var replaceQuery: String = ""
+    public var showsReplace: Bool = false
+    public var findIndex: Int = 0
+    public var isNoteAITransforming: Bool = false
+    public var noteAIHint: String?
+
+    /// The editor currently on screen. The AI transform runs from the header
+    /// button, whose view has no way to reach the drawer's own view state.
+    @ObservationIgnored public weak var activeTextView: PurahNotesNSTextView?
     public let storage: any PurahPluginStorage
     public let fileStorage: PurahPluginFileStorage
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -46,15 +64,12 @@ public final class NotesPluginState: Sendable {
         if let id = selectedNoteId, let matched = documents.first(where: { $0.id == id }) {
             return matched
         }
-        let folderDocs = documentsInCurrentFolder
-        return folderDocs.first ?? documents.first
+        return documents.first
     }
 
-    public var documentsInCurrentFolder: [NoteDocument] {
-        if selectedFolder == "All" {
-            return documents
-        }
-        return documents.filter { $0.folder == selectedFolder }
+    /// The tag a note carries, if that tag still exists.
+    public func tag(named name: String) -> NoteTag? {
+        availableTags.first { $0.name == name }
     }
 
     public func searchNotes(query: String) -> [NoteDocument] {
@@ -65,7 +80,7 @@ public final class NotesPluginState: Sendable {
         return documents.filter { doc in
             doc.title.localizedCaseInsensitiveContains(trimmed) ||
             doc.content.localizedCaseInsensitiveContains(trimmed) ||
-            doc.folder.localizedCaseInsensitiveContains(trimmed)
+            doc.tag.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -76,9 +91,7 @@ public final class NotesPluginState: Sendable {
         self.storage = storage
         self.fileStorage = fileStorage
 
-        let loadedFolders = storage.codable(forKey: "availableFolders", as: [String].self) ?? ["General", "Work", "Ideas", "Snippets"]
-        self.availableFolders = loadedFolders
-        self.selectedFolder = storage.string(forKey: "selectedFolder") ?? "General"
+        self.availableTags = storage.codable(forKey: "availableTags", as: [NoteTag].self) ?? Self.defaultTags
         self.isPreviewMode = storage.string(forKey: "isPreviewMode") != nil ? storage.bool(forKey: "isPreviewMode") : true
         self.retentionPeriod = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) ?? .forever
         self.diskQuota = storage.codable(forKey: "diskQuota", as: PurahDiskQuota.self) ?? .mb100
@@ -98,18 +111,12 @@ public final class NotesPluginState: Sendable {
         self.noteContent = legacyContent
 
         // Load multi-document collection from disk index.json
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        var loadedDocs: [NoteDocument] = []
-        if let data = try? Data(contentsOf: indexURL),
-           let decoded = try? JSONDecoder().decode([NoteDocument].self, from: data) {
-            loadedDocs = decoded
-        }
+        var loadedDocs: [NoteDocument] = fileStorage.loadIndex([NoteDocument].self) ?? []
 
         if loadedDocs.isEmpty {
             let initialDoc = NoteDocument(
                 id: "initial-scratchpad",
                 title: "Quick Scratchpad",
-                folder: "General",
                 content: legacyContent.text,
                 timestamp: legacyContent.lastModified,
                 isFavorite: false
@@ -125,9 +132,7 @@ public final class NotesPluginState: Sendable {
         if let saved = storage.codable(forKey: "noteContent", as: NoteContent.self) {
             self.noteContent = saved
         }
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        if let data = try? Data(contentsOf: indexURL),
-           let decoded = try? JSONDecoder().decode([NoteDocument].self, from: data) {
+        if let decoded = fileStorage.loadIndex([NoteDocument].self) {
             self.documents = decoded
         }
         if let savedRetention = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) {
@@ -166,34 +171,40 @@ public final class NotesPluginState: Sendable {
 
     private func writeToDisk() {
         storage.setCodable(noteContent, forKey: "noteContent")
-        storage.setCodable(availableFolders, forKey: "availableFolders")
-        storage.set(selectedFolder, forKey: "selectedFolder")
+        storage.setCodable(availableTags, forKey: "availableTags")
         storage.set(isPreviewMode, forKey: "isPreviewMode")
         storage.setCodable(retentionPeriod, forKey: "retentionPeriod")
         storage.setCodable(diskQuota, forKey: "diskQuota")
         storage.set(autoPrune, forKey: "autoPrune")
 
         // 1. Atomic index.json
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(documents) {
-            try? data.write(to: indexURL, options: .atomic)
-        }
+        fileStorage.saveIndex(documents)
 
-        // 2. Physical Markdown files organized by folder
-        for folder in availableFolders {
-            let folderDir = fileStorage.dataDirectory.appendingPathComponent(folder, isDirectory: true)
-            try? FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
+        // 2. One Markdown file per note, grouped into a directory per tag
+        for tag in availableTags {
+            let dir = fileStorage.dataDirectory.appendingPathComponent(tag.name, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
 
         for doc in documents {
-            let folderDir = fileStorage.dataDirectory.appendingPathComponent(doc.folder, isDirectory: true)
-            try? FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
-            let safeTitle = doc.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-            let fileURL = folderDir.appendingPathComponent("\(safeTitle).md")
-            try? doc.content.data(using: .utf8)?.write(to: fileURL, options: .atomic)
+            let dir = directory(for: doc)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? doc.content.data(using: .utf8)?.write(to: fileURL(for: doc), options: .atomic)
         }
+    }
+
+    /// Untagged notes live at the root of `data/`; a tag is a subdirectory, so
+    /// the Markdown tree still reads like a folder of notes in Finder.
+    private func directory(for doc: NoteDocument) -> URL {
+        doc.tag.isEmpty
+            ? fileStorage.dataDirectory
+            : fileStorage.dataDirectory.appendingPathComponent(doc.tag, isDirectory: true)
+    }
+
+    private func fileURL(for doc: NoteDocument) -> URL {
+        directory(for: doc).appendingPathComponent(
+            PurahExportPathManager.markdownFileName(doc.title, fallback: doc.id)
+        )
     }
 
     public func updateText(_ newText: String) {
@@ -226,19 +237,17 @@ public final class NotesPluginState: Sendable {
         }
     }
 
-    public func createNote(title: String? = nil, folder: String? = nil, content: String = "") -> NoteDocument {
-        let targetFolder = folder ?? (selectedFolder == "All" ? "General" : selectedFolder)
+    public func createNote(title: String? = nil, tag: String = "", content: String = "") -> NoteDocument {
         let docTitle = title ?? NoteDocument.deriveTitle(from: content, fallback: "New Note")
         let doc = NoteDocument(
             title: docTitle,
-            folder: targetFolder,
+            tag: tag,
             content: content,
             timestamp: Date(),
             isFavorite: false
         )
         documents.insert(doc, at: 0)
         selectedNoteId = doc.id
-        selectedFolder = targetFolder
         noteContent.text = content
         noteContent.lastModified = doc.timestamp
         isPreviewMode = !content.isEmpty
@@ -255,12 +264,10 @@ public final class NotesPluginState: Sendable {
         let removed = documents.remove(at: idx)
 
         // Remove disk file if it exists
-        let safeTitle = removed.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-        let fileURL = fileStorage.dataDirectory.appendingPathComponent(removed.folder).appendingPathComponent("\(safeTitle).md")
-        try? FileManager.default.removeItem(at: fileURL)
+        try? FileManager.default.removeItem(at: fileURL(for: removed))
 
         if selectedNoteId == id {
-            selectedNoteId = documentsInCurrentFolder.first?.id ?? documents.first?.id
+            selectedNoteId = documents.first?.id
         }
 
         if let current = currentDocument {
@@ -282,37 +289,51 @@ public final class NotesPluginState: Sendable {
         saveToDisk()
     }
 
-    public func addFolder(_ folder: String) {
-        let trimmed = folder.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !availableFolders.contains(trimmed) else { return }
-        availableFolders.append(trimmed)
-        let folderDir = fileStorage.dataDirectory.appendingPathComponent(trimmed, isDirectory: true)
-        try? FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
+    // MARK: - Tags
+
+    /// The palette tags are drawn from. A tag's colour is its identity in the
+    /// drawer — the dot is the only thing shown — so these have to stay
+    /// distinguishable from each other and from the pod's own yellow.
+    public static let tagPalette: [String] = [
+        "#8E8E93", "#0A84FF", "#30D158", "#FF9F0A",
+        "#FF375F", "#BF5AF2", "#64D2FF", "#FFD60A"
+    ]
+
+    public static let defaultTags: [NoteTag] = [
+        NoteTag(name: "General", colorHex: "#8E8E93"),
+        NoteTag(name: "Work", colorHex: "#0A84FF"),
+        NoteTag(name: "Ideas", colorHex: "#FFD60A"),
+        NoteTag(name: "Snippets", colorHex: "#BF5AF2")
+    ]
+
+    @discardableResult
+    public func addTag(name: String, colorHex: String) -> NoteTag? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !availableTags.contains(where: { $0.name == trimmed }) else { return nil }
+        let tag = NoteTag(name: trimmed, colorHex: colorHex)
+        availableTags.append(tag)
+        saveToDisk()
+        return tag
+    }
+
+    /// Removing a tag never removes a note: its notes simply become untagged.
+    public func deleteTag(name: String) {
+        guard let idx = availableTags.firstIndex(where: { $0.name == name }) else { return }
+        availableTags.remove(at: idx)
+        for i in documents.indices where documents[i].tag == name {
+            documents[i].tag = ""
+        }
         saveToDisk()
     }
 
-    public func deleteFolder(_ folder: String) {
-        guard folder != "General", let idx = availableFolders.firstIndex(of: folder) else { return }
-        availableFolders.remove(at: idx)
-
-        // Relocate notes in deleted folder to General
-        for i in documents.indices where documents[i].folder == folder {
-            documents[i].folder = "General"
-        }
-
-        if selectedFolder == folder {
-            selectedFolder = "General"
-        }
-
+    public func setTag(_ name: String?, for noteId: String) {
+        guard let idx = documents.firstIndex(where: { $0.id == noteId }) else { return }
+        documents[idx].tag = name ?? ""
         saveToDisk()
     }
 
-    public func selectFolder(_ folder: String) {
-        self.selectedFolder = folder
-        if let firstInFolder = documentsInCurrentFolder.first {
-            self.selectedNoteId = firstInFolder.id
-        }
-        saveToDisk()
+    public func tagCount(_ name: String) -> Int {
+        documents.filter { $0.tag == name }.count
     }
 
     public func clear() {
@@ -333,16 +354,13 @@ public final class NotesPluginState: Sendable {
     public func clearNonFavoriteNotes() {
         let nonFavorites = documents.filter { !$0.isFavorite }
         for doc in nonFavorites {
-            let safeTitle = doc.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-            let fileURL = fileStorage.dataDirectory.appendingPathComponent(doc.folder).appendingPathComponent("\(safeTitle).md")
-            try? FileManager.default.removeItem(at: fileURL)
+            try? FileManager.default.removeItem(at: fileURL(for: doc))
         }
         documents.removeAll { !$0.isFavorite }
         if documents.isEmpty {
             let scratchpad = NoteDocument(
                 id: "initial-scratchpad",
                 title: "Quick Scratchpad",
-                folder: "General",
                 content: "",
                 timestamp: Date(),
                 isFavorite: false
@@ -368,7 +386,7 @@ public final class NotesPluginState: Sendable {
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
         if !store._quickNote.text.isEmpty && self.documents.isEmpty {
-            _ = createNote(title: "Quick Scratchpad", folder: "General", content: store._quickNote.text)
+            _ = createNote(title: "Quick Scratchpad", content: store._quickNote.text)
         }
     }
 

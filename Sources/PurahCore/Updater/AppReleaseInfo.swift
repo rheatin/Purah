@@ -36,6 +36,19 @@ public struct AppReleaseInfo: Codable, Sendable, Equatable {
         self.sha256 = sha256.map { $0.lowercased() }
     }
 
+    /// A manifest missing `isMandatory` or `releaseDate` is still a release we
+    /// can compare and offer; failing the whole check over a cosmetic field
+    /// would turn a working update into an error dialog.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(String.self, forKey: .version)
+        releaseDate = try container.decodeIfPresent(Date.self, forKey: .releaseDate) ?? Date()
+        releaseNotes = try container.decodeIfPresent(String.self, forKey: .releaseNotes) ?? ""
+        downloadURL = try container.decode(URL.self, forKey: .downloadURL)
+        isMandatory = try container.decodeIfPresent(Bool.self, forKey: .isMandatory) ?? false
+        sha256 = try container.decodeIfPresent(String.self, forKey: .sha256)?.lowercased()
+    }
+
     /// A digest we can compare against: 64 hex characters, nothing else.
     public var normalizedSHA256: String? {
         guard let sha256 else { return nil }

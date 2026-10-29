@@ -105,6 +105,27 @@ struct AppUpdaterTests {
         #expect(reported.version == "9.9.9")
     }
 
+    @Test("Auto-check is on unless the user turned it off")
+    func testAutoCheckPreference() throws {
+        let suite = "updater_auto_\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let updater = AppUpdaterManager(currentVersion: "2.0.0", defaults: defaults)
+        // Nothing written yet: a fresh install has to check on its own, or the
+        // switch would silently mean "never".
+        #expect(updater.isAutoCheckEnabled)
+
+        updater.isAutoCheckEnabled = false
+        #expect(!updater.isAutoCheckEnabled)
+        #expect(defaults.object(forKey: AppUpdaterManager.autoCheckDefaultsKey) as? Bool == false)
+
+        // The settings toggle binds straight to this key, so it has to survive
+        // a reload of the manager rather than living in memory.
+        let reloaded = AppUpdaterManager(currentVersion: "2.0.0", defaults: defaults)
+        #expect(!reloaded.isAutoCheckEnabled)
+    }
+
     @Test("A release with no digest is still offered as a manual download")
     func testReleaseWithoutDigestIsManual() async throws {
         // This is now the one thing that makes an update uninstallable: with

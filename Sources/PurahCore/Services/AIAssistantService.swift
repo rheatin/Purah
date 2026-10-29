@@ -1034,7 +1034,7 @@ public final class AIAssistantService {
                     "matcher": "*",
                     "hooks": [[
                         "type": "http",
-                        "url": "http://127.0.0.1:\(port)/permission",
+                        "url": "http://127.0.0.1:\(port)\(bridge.permissionPath)",
                         // Fail closed: a timeout must deny, never approve.
                         "timeout": 30,
                         "onFailure": "block"

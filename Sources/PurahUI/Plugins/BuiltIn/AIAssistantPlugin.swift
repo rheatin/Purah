@@ -103,22 +103,12 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                     }
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: attribution.icon)
-                        .font(.system(size: 8))
-                    Text(attribution.label)
-                        .font(.system(size: 8, weight: .semibold, design: .rounded))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 112, alignment: .leading)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 6))
-                }
-                .foregroundColor(context.accentColor)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(context.accentColor.opacity(0.12))
-                .cornerRadius(4)
+                PurahHeaderMenuLabel(
+                    text: attribution.label,
+                    icon: attribution.icon,
+                    tint: context.accentColor,
+                    maxTextWidth: 112
+                )
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -177,48 +167,40 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            HStack(spacing: 5) {
-                // History Toggle Button
-                Button {
+        let isFavorite = state.activeSession?.isFavorite == true
+        return AnyView(
+            PurahHeaderGroup {
+                PurahHeaderButton(
+                    systemImage: "clock.arrow.circlepath",
+                    help: "help.chatHistory".localized,
+                    tint: context.accentColor,
+                    isActive: state.isShowingHistoryPanel
+                ) {
                     withAnimation(PurahMotionPolicy.surfaceSoft) {
                         state.isShowingHistoryPanel.toggle()
                     }
-                } label: {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(state.isShowingHistoryPanel ? context.accentColor : .secondary)
-                        .frame(width: 20, height: 20)
                 }
-                .buttonStyle(.tactile)
-                .help("help.chatHistory".localized)
-                .accessibilityLabel("help.chatHistory".localized)
 
-                // Favorite Toggle
-                Button {
+                PurahHeaderButton(
+                    systemImage: isFavorite ? "star.fill" : "star",
+                    help: "help.favoriteSession".localized,
+                    tint: Color(hex: "#FF9F0A"),
+                    isActive: isFavorite
+                ) {
                     state.toggleFavoriteSession(id: state.activeSessionId)
-                } label: {
-                    Image(systemName: (state.activeSession?.isFavorite == true) ? "star.fill" : "star")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor((state.activeSession?.isFavorite == true) ? .yellow : .secondary)
-                        .frame(width: 20, height: 20)
                 }
-                .buttonStyle(.tactile)
-                .help("help.favoriteSession".localized)
-                .accessibilityLabel("help.favoriteSession".localized)
 
-                // New Chat
-                Button {
+                // `square.and.pencil` is the compose glyph every Mac app uses;
+                // `plus.bubble` reads as "add a chat bubble" and optically
+                // outweighed the other two.
+                PurahHeaderButton(
+                    systemImage: "square.and.pencil",
+                    help: "help.newChat".localized,
+                    tint: context.accentColor,
+                    isEmphasized: true
+                ) {
                     state.createNewSession()
-                } label: {
-                    Image(systemName: "plus.bubble")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(context.accentColor)
-                        .frame(width: 20, height: 20)
                 }
-                .buttonStyle(.tactile)
-                .help("help.newChat".localized)
-                .accessibilityLabel("help.newChat".localized)
             }
         )
     }
@@ -1046,13 +1028,21 @@ public struct AIAssistantPluginSettingsView: View {
     @ViewBuilder
     private func secretSourcesHint(forKey key: String) -> some View {
         let environmentName = FileSecretStore.environmentName(forKey: key)
+        let isOverridden = ProcessInfo.processInfo.environment[environmentName]?
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         let path = FileSecretStore.defaultFileURL().path
             .replacingOccurrences(of: NSHomeDirectory(), with: "~")
 
         VStack(alignment: .leading, spacing: 2) {
             Text(String(format: "ai.settings.secretStoredIn".localized, path))
-            Text(String(format: "ai.settings.secretOverridden".localized, environmentName))
-                .textSelection(.enabled)
+            // "Overridden by" is only true when the variable exists. Printed
+            // unconditionally it read as "the key in this field is ignored",
+            // which is the opposite of what the field does.
+            Text(String(
+                format: (isOverridden ? "ai.settings.secretOverridden" : "ai.settings.secretOverrideAvailable").localized,
+                environmentName
+            ))
+            .textSelection(.enabled)
         }
         .font(.system(size: 9.5))
         .foregroundColor(.secondary)

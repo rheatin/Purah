@@ -359,13 +359,6 @@ public struct CalendarPluginSettingsView: View {
         self.init(state: pluginState, store: store)
     }
 
-    private func iconForStrategy(_ strategy: CalendarOverflowStrategy) -> String {
-        switch strategy {
-        case .smartFold: return "rectangle.stack.fill"
-        case .continuousStream: return "scroll.fill"
-        }
-    }
-
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // 0. Sample Calendar Notice (if not connected)

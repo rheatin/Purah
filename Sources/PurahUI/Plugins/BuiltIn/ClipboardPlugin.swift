@@ -144,33 +144,26 @@ public struct ClipboardPlugin: PurahPodPlugin {
 
     // 3. Header Accessory & Trailing Tools (Directly integrated into Card Header Row 1)
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            Text("\(state.items.count)")
-                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                .foregroundColor(Color(hex: "#FF9F0A"))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1.5)
-                .background(Color(hex: "#FF9F0A").opacity(0.18))
-                .cornerRadius(4)
-        )
+        AnyView(PurahHeaderBadge("\(state.items.count)", tint: Color(hex: "#FF9F0A")))
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        if !state.items.isEmpty {
-            return AnyView(
-                PurahClearButton(
-                    title: "Clear",
-                    icon: "trash",
-                    isCompact: true,
-                    helpText: "Clear unpinned clipboard history (keeps starred items)"
+        guard !state.items.isEmpty else { return nil }
+        return AnyView(
+            PurahHeaderGroup {
+                ClipboardSearchButton(state: state, accentColor: Color(hex: "#FF9F0A"))
+
+                PurahHeaderButton(
+                    systemImage: "trash",
+                    help: "Clear unpinned clipboard history (keeps starred items)",
+                    role: .destructive
                 ) {
                     state.clearHistory(keepFavorites: true)
                     context.performHaptic(.levelChange)
                     context.showToast("Cleared unstarred clipboard items", "trash")
                 }
-            )
-        }
-        return nil
+            }
+        )
     }
 
     // 4. Stepped Items for SteppedRailContainerView
@@ -536,29 +529,8 @@ private extension ClipboardItem {
 }
 
 public struct ClipboardFullDrawerView: View {
-    public enum ClipboardCategoryFilter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case favorite = "Starred"
-        case text = "Text"
-        case color = "Color"
-        case image = "Image"
-
-        public var id: String { rawValue }
-        public var iconName: String {
-            switch self {
-            case .all: return "square.grid.2x2"
-            case .favorite: return "star.fill"
-            case .text: return "doc.text"
-            case .color: return "paintpalette"
-            case .image: return "photo"
-            }
-        }
-    }
-
     public let state: ClipboardPluginState
     public let context: PurahPluginContext
-    @State private var searchText: String = ""
-    @State private var selectedFilter: ClipboardCategoryFilter = .all
     @State private var hoveredItemId: String? = nil
     @State private var draggedItem: ClipboardItem? = nil
     @State private var dropTargetId: String? = nil
@@ -571,41 +543,6 @@ public struct ClipboardFullDrawerView: View {
         context.slotHeight < 220.0
     }
 
-    private var filteredItems: [ClipboardItem] {
-        var baseItems = state.items
-        switch selectedFilter {
-        case .all:
-            break
-        case .favorite:
-            baseItems = baseItems.filter(\.isFavorite)
-        case .text:
-            baseItems = baseItems.filter {
-                if case .text = $0.type { return true }
-                return false
-            }
-        case .color:
-            baseItems = baseItems.filter {
-                if case .color = $0.type { return true }
-                return false
-            }
-        case .image:
-            baseItems = baseItems.filter {
-                if case .image = $0.type { return true }
-                return false
-            }
-        }
-
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return baseItems }
-
-        return baseItems.compactMap { item -> (item: ClipboardItem, score: Int)? in
-            let match = FuzzySearchEngine.match(query: query, in: item.searchableContent)
-            guard match.matched else { return nil }
-            return (item, match.score)
-        }
-        .sorted { $0.score > $1.score }
-        .map(\.item)
-    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: isCompact ? 4 : 8) {
@@ -625,9 +562,7 @@ public struct ClipboardFullDrawerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                searchHeaderView
-
-                let itemsToDisplay = filteredItems
+                let itemsToDisplay = state.filteredItems
                 if itemsToDisplay.isEmpty {
                     emptySearchView
                 } else {
@@ -655,162 +590,17 @@ public struct ClipboardFullDrawerView: View {
     }
 
     @ViewBuilder
-    private var searchHeaderView: some View {
-        if isCompact {
-            // Ultra-Compact Single-Row Header (Height: ~22pt)
-            HStack(spacing: 5) {
-                HStack(spacing: 5) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 9.5))
-                        .foregroundColor(palette.primaryAccent)
-
-                    TextField("Search...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 10.5, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                    if !searchText.isEmpty {
-                        Text("\(filteredItems.count)")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 3.5)
-                            .padding(.vertical, 1)
-                            .background(Color.primary.opacity(0.08))
-                            .foregroundColor(.secondary)
-                            .cornerRadius(3)
-
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3.5)
-                .background(palette.surfaceBackground)
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(palette.borderColor.opacity(0.3), lineWidth: 1)
-                )
-
-                // Inline Compact Category Menu Picker
-                Menu {
-                    ForEach(ClipboardCategoryFilter.allCases) { filter in
-                        Button {
-                            selectedFilter = filter
-                        } label: {
-                            Label(filter.rawValue, systemImage: filter.iconName)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 2.5) {
-                        Image(systemName: selectedFilter.iconName)
-                            .font(.system(size: 8))
-                        Text(selectedFilter.rawValue)
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 6.5))
-                    }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 4)
-                    .background(selectedFilter == .all ? Color.primary.opacity(0.05) : palette.primaryAccent.opacity(0.18))
-                    .foregroundColor(selectedFilter == .all ? .secondary : palette.primaryAccent)
-                    .cornerRadius(5)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-            }
-        } else {
-            VStack(spacing: 6) {
-                // Search Input Row
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundColor(palette.primaryAccent)
-
-                    TextField("Search clips, colors, hex...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                    if !searchText.isEmpty {
-                        // Match Count Badge
-                        Text("\(filteredItems.count)/\(state.items.count)")
-                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(Color.primary.opacity(0.08))
-                            .foregroundColor(.secondary)
-                            .cornerRadius(3)
-
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(palette.surfaceBackground)
-                .cornerRadius(7)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7)
-                        .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
-                )
-
-                // Category Filter Pills
-                HStack(spacing: 4) {
-                    ForEach(ClipboardCategoryFilter.allCases) { filter in
-                        Button {
-                            withAnimation(PurahMotionPolicy.microLight) {
-                                selectedFilter = filter
-                            }
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: filter.iconName)
-                                    .font(.system(size: 8.5))
-                                Text(filter.rawValue)
-                                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                            }
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(selectedFilter == filter ? palette.primaryAccent.opacity(0.2) : Color.primary.opacity(0.04))
-                            .foregroundColor(selectedFilter == filter ? palette.primaryAccent : .secondary)
-                            .cornerRadius(5)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .stroke(selectedFilter == filter ? palette.primaryAccent.opacity(0.4) : Color.clear, lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
     private var emptySearchView: some View {
         VStack(spacing: isCompact ? 4 : 8) {
             Spacer()
             Image(systemName: "magnifyingglass")
                 .font(.system(size: isCompact ? 18 : 26))
                 .foregroundColor(.secondary.opacity(0.6))
-            Text(String(format: "clipboard.noResults".localized, searchText))
+            Text(String(format: "clipboard.noResults".localized, state.searchText))
                 .font(.system(size: isCompact ? 10.5 : 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.secondary)
             Button {
-                searchText = ""
-                selectedFilter = .all
+                state.clearFilters()
             } label: {
                 Text("clipboard.clearFilters".localized)
                     .font(.system(size: isCompact ? 9 : 10, weight: .medium))
@@ -916,6 +706,7 @@ public struct ClipboardFullDrawerView: View {
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.tactile)
+                        .help("clipboard.copyHex".localized)
                     }
                 }
 
@@ -1076,7 +867,7 @@ public struct ClipboardFullDrawerView: View {
             }
         }
         .onDrag {
-            if searchText.isEmpty {
+            if state.searchText.isEmpty {
                 draggedItem = item
             }
             return makeDragProvider(for: item)
@@ -1105,6 +896,15 @@ public struct ClipboardFullDrawerView: View {
             Button("Copy to Clipboard") {
                 state.copyItem(item)
                 context.showToast("Copied to Clipboard", nil)
+            }
+            if case .text(let text) = item.type {
+                Button("Save to Quick Notes") {
+                    guard let notes = PluginRegistry.shared.plugin(for: "notes") as? QuickNotesPlugin else {
+                        return
+                    }
+                    _ = notes.state.createNote(content: text)
+                    context.showToast("Saved to Quick Notes", nil)
+                }
             }
             if let snippet = item.swiftUIColorSnippet {
                 Button("Copy as SwiftUI Code (\(snippet))") {
@@ -1271,3 +1071,121 @@ public struct ClipboardPluginSettingsView: View {
     }
 }
 
+
+// MARK: - Header Search
+
+/// The clipboard's magnifier. Search used to be a full-width row inside the
+/// drawer — 30pt of a 150pt card, always visible, used some of the time. It
+/// opens from the header instead, next to the delete button, and the drawer
+/// gets its height back.
+struct ClipboardSearchButton: View {
+    let state: ClipboardPluginState
+    let accentColor: Color
+
+    @State private var isShowingSearch = false
+
+    var body: some View {
+        PurahHeaderButton(
+            systemImage: "magnifyingglass",
+            help: "Search clips, colors, hex…",
+            tint: accentColor,
+            isActive: isShowingSearch || state.isFiltering
+        ) {
+            isShowingSearch.toggle()
+        }
+        .popover(isPresented: $isShowingSearch, arrowEdge: .bottom) {
+            ClipboardSearchPanel(state: state, accentColor: accentColor)
+        }
+    }
+}
+
+private struct ClipboardSearchPanel: View {
+    @Bindable var state: ClipboardPluginState
+    let accentColor: Color
+
+    @FocusState private var isQueryFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(accentColor)
+
+                TextField("Search clips, colors, hex...", text: $state.searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11.5, design: .rounded))
+                    .focused($isQueryFocused)
+
+                if !state.searchText.isEmpty {
+                    Button {
+                        state.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
+
+            HStack(spacing: 4) {
+                ForEach(ClipboardCategoryFilter.allCases) { filter in
+                    Button {
+                        withAnimation(PurahMotionPolicy.microLight) {
+                            state.selectedFilter = filter
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: filter.iconName)
+                                .font(.system(size: 8.5))
+                            Text(filter.rawValue)
+                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(state.selectedFilter == filter
+                                      ? accentColor.opacity(0.2)
+                                      : Color.primary.opacity(0.04))
+                        )
+                        .foregroundColor(state.selectedFilter == filter ? accentColor : .secondary)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 6) {
+                Text("\(state.filteredItems.count)/\(state.items.count)")
+                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+
+                Spacer(minLength: 0)
+
+                if state.isFiltering {
+                    Button {
+                        state.clearFilters()
+                    } label: {
+                        Text("clipboard.clearFilters".localized)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(accentColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(10)
+        .frame(width: 300)
+        .onAppear { isQueryFocused = true }
+    }
+}

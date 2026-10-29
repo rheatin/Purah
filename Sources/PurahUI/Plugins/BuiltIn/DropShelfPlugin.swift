@@ -41,6 +41,17 @@ public struct DropShelfPlugin: PurahPodPlugin {
         AnyView(DropShelfDrawerView(state: state, store: context.store))
     }
 
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        let text = state.selectedFileIds.isEmpty
+            ? "\(state.files.count)"
+            : "\(state.selectedFileIds.count)/\(state.files.count)"
+        return AnyView(PurahHeaderBadge(text, tint: context.accentColor))
+    }
+
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        AnyView(ShelfHeaderTools(state: state, context: context))
+    }
+
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(ShelfPluginSettingsView(state: state, store: store))
     }
@@ -138,6 +149,56 @@ public struct DropShelfPlugin: PurahPodPlugin {
             }
         }
         return true
+    }
+}
+
+// MARK: - Header tools
+
+/// Zip, select-all and clear used to be a second row of text chips inside the
+/// drawer, on top of the file list. They are three verbs, so they are three
+/// icons in the one row that already holds every other verb.
+struct ShelfHeaderTools: View {
+    let state: ShelfPluginState
+    let context: PurahPluginContext
+
+    private var allSelected: Bool {
+        !state.files.isEmpty && state.selectedFileIds.count == state.files.count
+    }
+
+    var body: some View {
+        PurahHeaderGroup {
+            PurahHeaderButton(systemImage: "archivebox", help: "dropshelf.zipHelp".localized) {
+                if let zipItem = state.compressFilesToZip() {
+                    context.store._shelfFiles = state.files
+                    context.performHaptic(.levelChange)
+                    context.showToast("Created \(zipItem.name)", "archivebox.fill")
+                }
+            }
+
+            PurahHeaderButton(
+                systemImage: allSelected ? "checkmark.circle.fill" : "checkmark.circle",
+                help: allSelected ? "dropshelf.deselectAll".localized : "dropshelf.selectAll".localized,
+                tint: context.accentColor,
+                isActive: allSelected
+            ) {
+                if allSelected {
+                    state.clearSelection()
+                } else {
+                    state.selectAll()
+                }
+                context.performHaptic(.alignment)
+            }
+
+            PurahHeaderButton(
+                systemImage: "trash",
+                help: "dropshelf.clearAll".localized,
+                role: .destructive
+            ) {
+                state.clear()
+                context.store._shelfFiles = state.files
+                context.performHaptic(.levelChange)
+            }
+        }
     }
 }
 

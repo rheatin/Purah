@@ -365,25 +365,27 @@ public struct AmbientRailStripView: View {
                     accessory
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
-                if let trailing = plugin.makeHeaderTrailingView(context: context) {
-                    trailing
+                // Every drawer's controls — whatever the plugin contributes,
+                // then the host's own gear and pin — sit on one faint plate.
+                // It reads as a single control surface instead of loose glyphs
+                // floating at the card's edge.
+                PurahHeaderGroup(showsSurface: true) {
+                    if let trailing = plugin.makeHeaderTrailingView(context: context) {
+                        trailing
+                        PurahHeaderDivider()
+                    }
+
+                    PurahHeaderButton(
+                        systemImage: "gearshape",
+                        help: String(format: "help.openSettingsNamed".localized, plugin.manifest.displayName)
+                    ) {
+                        store.openPluginSettings(id: pod.id)
+                    }
+
+                    pinButton(id: pod.id, isPinned: isPinned, color: color)
                 }
-
-                Button {
-                    store.openPluginSettings(id: pod.id)
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.tactile)
-                .help(String(format: "help.openSettingsNamed".localized, plugin.manifest.displayName))
-                .accessibilityLabel(String(format: "help.openSettingsNamed".localized, plugin.manifest.displayName))
-
-                pinButton(id: pod.id, isPinned: isPinned, color: color)
             }
             plugin.makeDrawerView(context: context)
         }
@@ -439,7 +441,7 @@ public struct AmbientRailStripView: View {
     }
 
     private func pinButton(id: String, isPinned: Bool, color: Color) -> some View {
-        PurahPinButton(isPinned: isPinned, tintColor: color) {
+        PurahPinButton(isPinned: isPinned, tintColor: color, showsDisc: false) {
             store.togglePinItem(id: id)
         }
     }
@@ -578,6 +580,7 @@ public struct RailPagePortalView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help("help.switchRailPage".localized)
         .opacity(visible ? 1.0 : 0.0)
         .offset(x: visible ? 0 : (edge == .left ? -16 : 16))
         .animation(PurahMotionPolicy.micro, value: visible)

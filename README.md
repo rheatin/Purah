@@ -63,7 +63,7 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 | **Hardware Vitals** | `waveform.path.ecg` | Deep Darwin/IOKit telemetry across a unified 2x2 overview grid (CPU User/Sys/LoadAvg/Thermal, GPU, RAM App/Wired/Compressed/Swap, Battery Health/Cycles), full-width Network I/O card, Disk R/W throughput, and full Process Inspector. |
 | **Drop Shelf** | `tray.fill` | Desktop staging shelf with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, and pinned interactive floating sidecar preview (`👁`). |
 | **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, pinned interactive floating sidecar preview (`👁`), color preview, image caching, and fuzzy search. |
-| **Quick Notes** | `note.text` | Typora-style live Markdown & resizable tables, cross-folder instant search, image paste, and 1-click `.md` export. |
+| **Quick Notes** | `note.text` | Typora-style live Markdown & resizable tables, one-tag filing and instant search, image paste, and 1-click `.md` export. |
 | **Terminal** | `apple.terminal.fill` | Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with 1-click `cd` to active Finder folder, Starship & Nerd Font glyph support, and natural-language commands (`??`) that write the shell command for you. |
 | **Music Waveform** | `waveform` | Apple Music playback controller with dynamic visualizer and fluid scrub bar. |
 | **Calendar Timeline** | `calendar` | Day agenda timeline with meeting link detection (`Zoom`, `Meet`, `Teams`). |
@@ -151,6 +151,8 @@ open build/Purah.app
 ```
 
 Every release publishes its SHA-256 beside the DMG; check it with `shasum -a 256`.
+
+**Using a model server on your own network?** The first time Purah reaches an address like `192.168.x.x` or `*.local`, macOS asks for Local Network access — allow it. If the AI drawer reports that it cannot connect, check **System Settings → Privacy & Security → Local Network** and turn Purah on there; a rebuild changes the app's signature, so the switch can be off again after an update.
 
 ---
 

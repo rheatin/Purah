@@ -19,11 +19,6 @@ public final class ShelfPluginState: Sendable {
     public var autoRemoveOnDrag: Bool
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
-    public var shelfFiles: [ShelfFileItem] {
-        get { files }
-        set { files = newValue }
-    }
-
     public var selectedFiles: [ShelfFileItem] {
         files.filter { selectedFileIds.contains($0.id) }
     }
@@ -101,9 +96,7 @@ public final class ShelfPluginState: Sendable {
         self.autoPrune = storage.string(forKey: "autoPrune") != nil ? storage.bool(forKey: "autoPrune") : true
         self.autoRemoveOnDrag = storage.string(forKey: "autoRemoveOnDrag") != nil ? storage.bool(forKey: "autoRemoveOnDrag") : true
 
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        if let data = try? Data(contentsOf: indexURL),
-           let decoded = try? JSONDecoder().decode([ShelfFileItem].self, from: data) {
+        if let decoded = fileStorage.loadIndex([ShelfFileItem].self) {
             self.files = decoded
         } else if let saved = storage.codable(forKey: "stashedFiles", as: [ShelfFileItem].self) {
             self.files = saved
@@ -113,9 +106,7 @@ public final class ShelfPluginState: Sendable {
     }
 
     public func load() {
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        if let data = try? Data(contentsOf: indexURL),
-           let decoded = try? JSONDecoder().decode([ShelfFileItem].self, from: data) {
+        if let decoded = fileStorage.loadIndex([ShelfFileItem].self) {
             self.files = decoded
         } else if let saved = storage.codable(forKey: "stashedFiles", as: [ShelfFileItem].self) {
             self.files = saved
@@ -141,13 +132,7 @@ public final class ShelfPluginState: Sendable {
         storage.set(autoPrune, forKey: "autoPrune")
         storage.set(autoRemoveOnDrag, forKey: "autoRemoveOnDrag")
 
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(files) {
-            try? FileManager.default.createDirectory(at: fileStorage.dataDirectory, withIntermediateDirectories: true)
-            try? data.write(to: indexURL, options: .atomic)
-        }
+        fileStorage.saveIndex(files)
     }
 
     public func addFile(url: URL) {

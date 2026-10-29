@@ -10,10 +10,8 @@ public struct MusicDrawerView: View {
 
     @State private var isBackwardHovered: Bool = false
     @State private var isForwardHovered: Bool = false
-    @State private var isPlayPauseHovered: Bool = false
     @State private var isScrubbing: Bool = false
     @State private var scrubbedProgress: Double = 0.0
-    @State private var isShowingLyrics: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {
@@ -130,6 +128,7 @@ public struct MusicDrawerView: View {
                                 .frame(width: 20, height: 20)
                         }
                         .buttonStyle(.plain)
+                        .help("music.previous".localized)
 
                         Button {
                             state.togglePlayPause(store: store)
@@ -145,6 +144,7 @@ public struct MusicDrawerView: View {
                             }
                         }
                         .buttonStyle(HeroPlayPauseButtonStyle())
+                        .help("music.playPause".localized)
 
                         Button {
                             state.nextTrack(store: store)
@@ -155,6 +155,7 @@ public struct MusicDrawerView: View {
                                 .frame(width: 20, height: 20)
                         }
                         .buttonStyle(.plain)
+                        .help("music.next".localized)
                     }
                 }
 
@@ -216,6 +217,7 @@ public struct MusicDrawerView: View {
                                 .frame(width: 20, height: 20)
                         }
                         .buttonStyle(.plain)
+                        .help("music.previous".localized)
 
                         Button {
                             state.togglePlayPause(store: store)
@@ -231,6 +233,7 @@ public struct MusicDrawerView: View {
                             }
                         }
                         .buttonStyle(HeroPlayPauseButtonStyle())
+                        .help("music.playPause".localized)
 
                         Button {
                             state.nextTrack(store: store)
@@ -241,6 +244,7 @@ public struct MusicDrawerView: View {
                                 .frame(width: 20, height: 20)
                         }
                         .buttonStyle(.plain)
+                        .help("music.next".localized)
                     }
                 }
 
@@ -388,6 +392,7 @@ public struct MusicDrawerView: View {
                         )
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -4))
+                .help("music.previous".localized)
                 .onHover { isBackwardHovered = $0 }
 
                 Button {
@@ -406,6 +411,7 @@ public struct MusicDrawerView: View {
                     .frame(width: 32, height: 32)
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
+                .help("music.playPause".localized)
 
                 Button {
                     state.nextTrack(store: store)
@@ -420,6 +426,7 @@ public struct MusicDrawerView: View {
                         )
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 4))
+                .help("music.next".localized)
                 .onHover { isForwardHovered = $0 }
             }
             .frame(maxWidth: .infinity)
@@ -549,6 +556,7 @@ public struct MusicDrawerView: View {
                         .frame(width: 32, height: 28)
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
+                .help("music.previous".localized)
 
                 Button {
                     state.togglePlayPause(store: store)
@@ -566,6 +574,7 @@ public struct MusicDrawerView: View {
                     .frame(width: 40, height: 40)
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
+                .help("music.playPause".localized)
 
                 Button {
                     state.nextTrack(store: store)
@@ -576,6 +585,7 @@ public struct MusicDrawerView: View {
                         .frame(width: 32, height: 28)
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 5))
+                .help("music.next".localized)
             }
             .frame(maxWidth: .infinity)
         }
@@ -1263,22 +1273,14 @@ public struct AudioOutputDevicePickerView: View {
             }
         } label: {
             let current = deviceManager.activeDevice
-            HStack(spacing: 3) {
-                Image(systemName: current?.systemIcon ?? "speaker.wave.2.fill")
-                    .font(.system(size: 8, weight: .bold))
-                Text(shortDeviceLabel(for: current?.name ?? "Output"))
-                    .font(.system(size: 8, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 5.5, weight: .bold))
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .background(Color.secondary.opacity(0.14))
-            .foregroundColor(.primary.opacity(0.85))
-            .cornerRadius(4)
+            PurahHeaderMenuLabel(
+                text: shortDeviceLabel(for: current?.name ?? "Output"),
+                icon: current?.systemIcon ?? "speaker.wave.2.fill",
+                maxTextWidth: 96
+            )
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
         .help("help.switchAudioOutput".localized)
         .accessibilityLabel("help.switchAudioOutput".localized)

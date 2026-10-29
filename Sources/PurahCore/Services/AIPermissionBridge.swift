@@ -46,6 +46,22 @@ public final class AIPermissionBridge: @unchecked Sendable {
     private let lock = NSLock()
     /// Requests awaiting a human answer, keyed by request id.
     private var waiting: [String: Waiter] = [:]
+    /// Per-launch secret carried by the hook URL.
+    private var pathToken: String = ""
+
+    /// The path the CLI's hook must POST to.
+    ///
+    /// The listener is on loopback and has no other authentication, so without
+    /// a secret segment any local process — or a web page issuing a `no-cors`
+    /// POST to a guessed port — could make Purah prompt the user to approve a
+    /// command nobody ran. The terminal bridge has carried a token all along;
+    /// this one is the same idea in the URL.
+    public var permissionPath: String {
+        lock.lock()
+        defer { lock.unlock() }
+        if pathToken.isEmpty { pathToken = LoopbackBridgeToken.make() }
+        return "/permission/\(pathToken)"
+    }
 
     /// What the person decided, in the terms the hook speaks.
     public enum Decision: Sendable, Equatable {
@@ -159,6 +175,11 @@ public final class AIPermissionBridge: @unchecked Sendable {
         let http = HTTPConnection(connection: connection, queue: queue)
         http.receive { [weak self] body in
             guard let self, let body else {
+                http.respond(decision: .deny, suggestions: nil)
+                return
+            }
+            guard http.path == self.permissionPath else {
+                DiagnosticLogger.shared.warn("AI", "Permission bridge rejected a request on an unknown path")
                 http.respond(decision: .deny, suggestions: nil)
                 return
             }
@@ -280,6 +301,9 @@ private final class HTTPConnection: @unchecked Sendable {
     private var didFinish = false
     private let lock = NSLock()
 
+    /// The request target, e.g. `/permission/<token>`.
+    private(set) var path: String = ""
+
     init(connection: NWConnection, queue: DispatchQueue) {
         self.connection = connection
         self.queue = queue
@@ -326,6 +350,12 @@ private final class HTTPConnection: @unchecked Sendable {
         guard let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else { return nil }
         let headerData = buffer[buffer.startIndex..<headerEnd.lowerBound]
         guard let headers = String(data: headerData, encoding: .utf8) else { return nil }
+
+        if path.isEmpty,
+           let requestLine = headers.split(separator: "\r\n").first?.split(separator: " "),
+           requestLine.count >= 2 {
+            path = String(requestLine[1])
+        }
 
         var contentLength = 0
         for line in headers.split(separator: "\r\n") {

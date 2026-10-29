@@ -237,84 +237,6 @@ public struct DropShelfDrawerView: View {
                 .frame(width: 0, height: 0)
                 .opacity(0)
 
-                // Top Selection & ZIP Mini-Toolbar
-                HStack(spacing: 6) {
-                    Text(
-                        state.selectedFileIds.isEmpty
-                            ? String(format: "dropshelf.itemsStashed".localized, state.files.count)
-                            : String(format: "dropshelf.selectedCount".localized, state.selectedFileIds.count, state.files.count)
-                    )
-                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                    .foregroundColor(state.selectedFileIds.isEmpty ? .secondary : shelfColor)
-
-                    Spacer()
-
-                    Button {
-                        if let zipItem = state.compressFilesToZip() {
-                            store._shelfFiles = state.files
-                            store.triggerControlHaptic(.levelChange)
-                            store.onCapacityWarningToast?("Created \(zipItem.name)")
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "archivebox.fill")
-                                .font(.system(size: 8.5, weight: .bold))
-                            Text("ZIP")
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(shelfColor)
-                        )
-                        .foregroundColor(shelfColor.highContrastInk)
-                    }
-                    .buttonStyle(.tactile)
-                    .help("dropshelf.zipHelp".localized)
-                    .accessibilityLabel("dropshelf.zipHelp".localized)
-
-                    let allSelected = !state.files.isEmpty && state.selectedFileIds.count == state.files.count
-                    Button {
-                        if allSelected {
-                            state.clearSelection()
-                        } else {
-                            state.selectAll()
-                        }
-                        store.triggerControlHaptic(.alignment)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: allSelected ? "xmark.circle" : "checkmark.circle.fill")
-                                .font(.system(size: 8.5, weight: .bold))
-                            Text(allSelected ? "dropshelf.deselectAll".localized : "dropshelf.selectAll".localized)
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(allSelected ? shelfColor.opacity(0.22) : Color.primary.opacity(0.08))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .stroke(allSelected ? shelfColor.opacity(0.55) : Color.primary.opacity(0.10), lineWidth: 0.6)
-                        )
-                        .foregroundColor(allSelected ? shelfColor : .primary.opacity(0.85))
-                    }
-                    .buttonStyle(.tactile)
-
-                    PurahClearButton(
-                        title: "dropshelf.clearAll".localized,
-                        icon: "trash",
-                        isCompact: true,
-                        helpText: "dropshelf.clearAll".localized
-                    ) {
-                        state.clear()
-                        store._shelfFiles = state.files
-                        store.triggerControlHaptic(.levelChange)
-                    }
-                }
-
                 // File List with Automatic Direct Left-Click Drag Marquee Selection
                 let shelfEdge = store.pods.first(where: { $0.id == "shelf" })?.edge ?? .left
                 PurahScrollableBody {
@@ -429,7 +351,10 @@ public struct DropShelfDrawerView: View {
                     )
                 )
 
-                // Dedicated Batch Drag Handle Capsule
+                // One footer row, two jobs: drag everything out on the left,
+                // send it on the right. It doubles as the drawer's two drop
+                // zones — the list above stashes, this row AirDrops — and the
+                // row that is not the current target gets out of the way.
                 HStack(spacing: 6) {
                     BatchShelfDragPillView(
                         state: state,
@@ -437,41 +362,41 @@ public struct DropShelfDrawerView: View {
                         shelfColor: shelfColor,
                         palette: palette
                     )
-                }
 
-                // Dedicated Instant AirDrop Bar
-                HStack(spacing: 8) {
-                    Image(systemName: "airplayaudio")
-                        .font(.system(size: 18))
-                        .fontWeight(.semibold)
-                        .foregroundColor(isAirDropTargeted ? .cyan : .blue)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(isAirDropTargeted ? "dropshelf.releaseToAirDrop".localized : "dropshelf.dragHereToAirDrop".localized)
-                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                            .foregroundColor(isAirDropTargeted ? .cyan : (palette.style == .native ? .primary : .white))
-                        Text(String(format: "dropshelf.orTapToAirDropAll".localized, state.filesForBatchExport().count))
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 12.5))
-                        .foregroundColor(Color.blue.opacity(0.8))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.06))
-                .cornerRadius(9)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .stroke(
-                            isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
-                            style: StrokeStyle(lineWidth: 1.4, dash: [4, 4])
+                    Button {
+                        let urls = state.filesForBatchExport().map { Self.ensureDragURL(for: $0) }
+                        DropShelfDrawerView.shareViaAirDrop(urls: urls)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isAirDropTargeted ? "paperplane.fill" : "paperplane")
+                                .font(.system(size: 9.5, weight: .semibold))
+                            Text("dropshelf.airDrop".localized)
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        }
+                        .padding(.horizontal, 8)
+                        .frame(height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isAirDropTargeted ? Color.blue.opacity(0.22) : Color.primary.opacity(0.06))
                         )
-                )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(
+                                    isAirDropTargeted ? Color.cyan : Color.clear,
+                                    style: StrokeStyle(lineWidth: 1.2, dash: [3, 3])
+                                )
+                        )
+                        .foregroundColor(isAirDropTargeted ? .cyan : .primary.opacity(0.85))
+                    }
+                    .buttonStyle(.tactile)
+                    .help("dropshelf.airDropHelp".localized)
+                    .accessibilityLabel("dropshelf.airDropHelp".localized)
+                    .disabled(state.filesForBatchExport().isEmpty)
+                }
+                // Drops land anywhere on this row: aiming at a 60pt button
+                // while dragging is a precision task nobody asked for.
+                .frame(maxWidth: .infinity)
+                .frame(height: 26)
                 .contentShape(Rectangle())
                 .onDrop(
                     of: [.fileURL, .url],
@@ -481,10 +406,9 @@ public struct DropShelfDrawerView: View {
                         store: store
                     )
                 )
-                .onTapGesture {
-                    let urls = state.filesForBatchExport().map { Self.ensureDragURL(for: $0) }
-                    DropShelfDrawerView.shareViaAirDrop(urls: urls)
-                }
+                .opacity(isStashTargeted ? 0.4 : 1)
+                .animation(PurahMotionPolicy.surface, value: isStashTargeted)
+                .animation(PurahMotionPolicy.surface, value: isAirDropTargeted)
             }
         }
         .onDisappear {
@@ -506,22 +430,6 @@ public struct DropShelfDrawerView: View {
             panel.delegate = controller
             panel.reloadData()
             panel.makeKeyAndOrderFront(nil)
-        }
-    }
-
-    private func exportFilesToFolderDialog() {
-        let itemsToExport = state.filesForBatchExport()
-        guard !itemsToExport.isEmpty else { return }
-
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "dropshelf.exportToFolder".localized
-
-        if panel.runModal() == .OK, let folderURL = panel.url {
-            _ = Self.exportFiles(itemsToExport, toFolder: folderURL, state: state, store: store)
         }
     }
 
@@ -1363,6 +1271,7 @@ public struct ShelfFileRowView: View {
                     .foregroundColor(isSelected ? shelfColor : .secondary.opacity(isHovered ? 0.85 : 0.45))
             }
             .buttonStyle(.plain)
+            .help("shelf.selectFile".localized)
 
             // File Icon/Thumbnail + File Name/Size pill scoped strictly to the left side
             HStack(spacing: 8) {

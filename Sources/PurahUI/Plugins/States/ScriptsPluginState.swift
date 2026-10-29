@@ -18,7 +18,6 @@ public final class ScriptsPluginState: Sendable {
     public var lastExecutedActionId: String?
     public let storage: any PurahPluginStorage
 
-    @ObservationIgnored private var activeProcess: Process? = nil
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var enabledActions: [ScriptActionItem] {
@@ -26,11 +25,6 @@ public final class ScriptsPluginState: Sendable {
             return actions
         }
         return actions.filter { enabledActionIds.contains($0.id) }
-    }
-
-    public var isScriptsDecomposed: Bool {
-        get { isDecomposed }
-        set { isDecomposed = newValue }
     }
 
     public var scriptsEnabledActionIds: [String] {
@@ -122,8 +116,6 @@ public final class ScriptsPluginState: Sendable {
     }
 
     public func stopRunningScript() {
-        activeProcess?.terminate()
-        activeProcess = nil
         ScriptRunwayService.shared.stopRunningScript()
         isRunning = false
         lastOutput = "⏹ Stopped by user"

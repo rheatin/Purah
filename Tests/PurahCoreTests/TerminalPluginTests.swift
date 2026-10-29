@@ -341,6 +341,37 @@ struct TerminalPluginTests {
         #expect(state.liveStreamingOutput == "⏹ Stopped by user")
     }
 
+    @Test("Stop kills the command itself, not just the shell that started it")
+    @MainActor
+    func testStopKillsTheRunningCommand() async {
+        // `sleep 8; echo late` makes zsh fork. A SIGTERM aimed at zsh alone
+        // leaves `sleep` running and, because that process still holds the
+        // output pipe, the run only ends when the sleep does — the old
+        // behaviour, where "Stop" reported success and nothing stopped.
+        let runway = ScriptRunwayService()
+        let action = ScriptActionItem(
+            id: "stop-kills-\(UUID().uuidString)",
+            name: "Slow",
+            systemIcon: "hourglass",
+            commandType: .shell,
+            scriptContent: "sleep 8; echo late",
+            description: "Runs long enough to be stopped",
+            showNotification: false
+        )
+
+        let run = Task { await runway.executeAction(action) }
+        try? await Task.sleep(for: .milliseconds(700))
+        #expect(runway.isRunning)
+
+        let stoppedAt = Date()
+        runway.stopRunningScript()
+        let result = await run.value
+        let elapsed = Date().timeIntervalSince(stoppedAt)
+
+        #expect(result.message.contains("Stopped"))
+        #expect(elapsed < 4.0, "Stop took \(elapsed)s: the child process survived the shell")
+    }
+
     @Test("TodoPlugin assigns overdue (#FF453A) and due-today (#FF9F0A) chromatic tints and setDueDate")
     @MainActor
     func testTodoUrgencyChromaticTintsAndSetDueDate() {
@@ -392,9 +423,9 @@ struct TerminalPluginTests {
         #expect(todoState.todos.first(where: { $0.id == addedId })?.dueDate == nil)
     }
 
-    @Test("NotesPluginState cross-folder search filtering and Music preferred height 295pt")
+    @Test("NotesPluginState cross-tag search filtering and Music preferred height 295pt")
     @MainActor
-    func testNotesCrossFolderSearchAndMusicHeight() {
+    func testNotesCrossTagSearchAndMusicHeight() {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah_notes_search_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -403,12 +434,12 @@ struct TerminalPluginTests {
         let fileStorage = PurahPluginFileStorage(pluginId: "test-notes-search", customBaseDirectory: tempDir)
         let state = NotesPluginState(storage: storage, fileStorage: fileStorage)
 
-        _ = state.createNote(title: "Kubernetes Deploy", folder: "Work", content: "kubectl apply -f cluster.yaml")
-        _ = state.createNote(title: "Grocery List", folder: "General", content: "Matcha green tea and oat milk")
+        _ = state.createNote(title: "Kubernetes Deploy", tag: "Work", content: "kubectl apply -f cluster.yaml")
+        _ = state.createNote(title: "Grocery List", tag: "General", content: "Matcha green tea and oat milk")
 
         let k8sMatches = state.searchNotes(query: "kubectl")
         #expect(k8sMatches.count == 1)
-        #expect(k8sMatches.first?.folder == "Work")
+        #expect(k8sMatches.first?.tag == "Work")
 
         let matchaMatches = state.searchNotes(query: "matcha")
         #expect(matchaMatches.count == 1)

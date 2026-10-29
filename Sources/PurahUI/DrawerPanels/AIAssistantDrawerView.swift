@@ -790,6 +790,7 @@ public struct AISessionHistoryManagerView: View {
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .help("help.clearSearch".localized)
                     }
                 }
                 .padding(.horizontal, 6)
@@ -912,6 +913,7 @@ public struct AISessionHistoryManagerView: View {
                         .foregroundColor(.green)
                 }
                 .buttonStyle(.plain)
+                .help("help.confirmRename".localized)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
@@ -1023,31 +1025,14 @@ public struct AISessionHistoryManagerView: View {
     }
 
     private func exportSession(_ session: AIChatSession) {
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.showsHiddenFiles = false
-        savePanel.level = .modalPanel
-        let rawTitle = session.title
-        let sanitized = rawTitle
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let fileName = (sanitized.isEmpty ? "ChatSession" : sanitized) + ".md"
-        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
-        if let mdType = UTType(filenameExtension: "md") {
-            savePanel.allowedContentTypes = [mdType, .plainText]
-        } else {
-            savePanel.allowedContentTypes = [.plainText]
-        }
+        guard let url = PurahExportPathManager.exportMarkdown(
+            state.exportSessionMarkdown(session: session),
+            suggestedTitle: session.title,
+            fallbackName: "ChatSession"
+        ) else { return }
 
-        let response = savePanel.runModal()
-        if response == .OK, let url = savePanel.url {
-            PurahExportPathManager.updateLastDirectory(from: url)
-            let mdContent = state.exportSessionMarkdown(session: session)
-            try? mdContent.write(to: url, atomically: true, encoding: .utf8)
-            store.onCapacityWarningToast?("📤 Exported to \(url.lastPathComponent)")
-            SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-        }
+        store.onCapacityWarningToast?("📤 Exported to \(url.lastPathComponent)")
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
     }
 
     /// `<time> · <n> messages · <models>` — the models are the distinct ones

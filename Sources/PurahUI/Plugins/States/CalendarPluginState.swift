@@ -63,11 +63,6 @@ public final class CalendarPluginState: Sendable {
     /// async EventKit path and made the rebuild assertions timing-dependent).
     @ObservationIgnored private let permissionStatus: @MainActor () -> AccessStatus
 
-    public var calendarEvents: [CalendarEventItem] {
-        get { events }
-        set { events = newValue }
-    }
-
     public var calendarScope: CalendarTimeScope {
         get { scope }
         set { scope = newValue }

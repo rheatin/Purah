@@ -91,6 +91,9 @@ public struct DiagnosticReportView: View {
                     )
                 }
 
+                // Per-plugin disk usage: what is safe to clear, and what is not
+                PluginStorageInspectorView()
+
                 // Recent Logs Console
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

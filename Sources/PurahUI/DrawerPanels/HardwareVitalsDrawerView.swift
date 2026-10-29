@@ -407,6 +407,7 @@ public struct HardwareVitalsDrawerView: View {
                     .cornerRadius(3.5)
             }
             .buttonStyle(.plain)
+            .help("help.refresh".localized)
         }
         .padding(.horizontal, 1)
     }

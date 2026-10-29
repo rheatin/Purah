@@ -35,13 +35,10 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            Text(String(format: "runway.actionCount".localized, state.actions.count))
-                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                .foregroundColor(context.accentColor)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(context.accentColor.opacity(0.16))
-                .cornerRadius(3)
+            PurahHeaderBadge(
+                String(format: "runway.actionCount".localized, state.actions.count),
+                tint: context.accentColor
+            )
         )
     }
 
@@ -807,6 +804,7 @@ public struct ScriptsPluginSettingsView: View {
                                             .frame(width: 20, height: 20)
                                     }
                                     .buttonStyle(.plain)
+                                    .help("runway.editAction".localized)
 
                                     Button {
                                         withAnimation {
@@ -824,6 +822,7 @@ public struct ScriptsPluginSettingsView: View {
                                             .frame(width: 20, height: 20)
                                     }
                                     .buttonStyle(.plain)
+                                    .help("runway.deleteAction".localized)
                                 }
                                 .padding(8)
 

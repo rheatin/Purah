@@ -29,9 +29,6 @@ public enum CrashReporter {
         private let lock = NSLock()
         private var value: Bool
         init(_ initial: Bool) { value = initial }
-        var isSet: Bool {
-            lock.lock(); defer { lock.unlock() }; return value
-        }
         /// Returns false if it was already set, so installation stays idempotent.
         func setOnce() -> Bool {
             lock.lock(); defer { lock.unlock() }

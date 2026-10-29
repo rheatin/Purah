@@ -10,6 +10,9 @@ public struct GeneralSettingsView: View {
     @State private var showingResetAlert = false
     @State private var statusMessage: String?
     @State private var isErrorMessage = false
+    /// Bound straight to the updater's key so the toggle and the launch check
+    /// can never disagree about whether auto-checking is on.
+    @AppStorage(AppUpdaterManager.autoCheckDefaultsKey) private var autoCheckUpdates = true
 
     private var theme: ThemeManager {
         ThemeManager.shared
@@ -145,6 +148,25 @@ public struct GeneralSettingsView: View {
                                 .cornerRadius(7)
                             }
                             .buttonStyle(.tactile)
+                        }
+
+                        Divider()
+
+                        // Update Check
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("general.startup.autoUpdate.title".localized)
+                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                Text("general.startup.autoUpdate.subtitle".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $autoCheckUpdates)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
+                                .purahRowAccessibility("general.startup.autoUpdate.title".localized, detail: "general.startup.autoUpdate.subtitle".localized)
                         }
                     }
                 }

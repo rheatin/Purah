@@ -145,6 +145,7 @@ public struct PluginMarketplaceView: View {
                                     .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
+                            .help("help.clearSearch".localized)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -343,6 +344,7 @@ public struct PluginMarketplaceView: View {
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .help("help.dismiss".localized)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)

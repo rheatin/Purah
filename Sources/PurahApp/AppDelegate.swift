@@ -140,6 +140,20 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
+        // Silent auto-check, unless the user turned it off in Settings. Waits
+        // long enough that onboarding and the rail windows are settled, and
+        // only surfaces anything when a newer release actually exists.
+        if AppUpdaterManager.shared.isAutoCheckEnabled && !PurahWorkspaceStore.isTestingEnvironment {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+                Task { @MainActor in
+                    await AppUpdaterManager.shared.checkForUpdates()
+                    if case .updateAvailable = AppUpdaterManager.shared.state {
+                        self?.presentUpdaterWindow()
+                    }
+                }
+            }
+        }
+
         DiagnosticLogger.shared.info("Lifecycle", "Application launch completed successfully")
 
         if !store.hasCompletedOnboarding && !PurahWorkspaceStore.isTestingEnvironment {
@@ -306,6 +320,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     }
 
     @objc private func openUpdater() {
+        presentUpdaterWindow()
+        Task {
+            await AppUpdaterManager.shared.checkForUpdates(force: true)
+        }
+    }
+
+    private func presentUpdaterWindow() {
         if updaterWindow == nil {
             let updateView = AppUpdateDialogView(updater: AppUpdaterManager.shared) { [weak self] in
                 self?.updaterWindow?.close()
@@ -325,9 +346,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         updaterWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        Task {
-            await AppUpdaterManager.shared.checkForUpdates()
-        }
     }
 
     @objc private func autoLayout() {
