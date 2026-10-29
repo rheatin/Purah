@@ -72,13 +72,6 @@ public final class SystemAudioLiveMonitor: @unchecked Sendable {
         return _beatPulse
     }
 
-    /// Real-time root-mean-square loudness (0.0 .. 1.0)
-    public var currentRMS: Float {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        return _rms
-    }
-
     private init() {
         lock.initialize(to: os_unfair_lock())
         lifecycleLock.initialize(to: os_unfair_lock())

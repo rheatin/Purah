@@ -75,24 +75,14 @@ public struct ThemePalette: Sendable {
 
 public extension Color {
     init(hex: String) {
-        let clean = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: clean).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch clean.count {
-        case 6:
-            (r, g, b, a) = (int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF, 255)
-        case 8:
-            (r, g, b, a) = (int >> 24 & 0xFF, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (r, g, b, a) = (0, 245, 212, 255)
-        }
+        let components = HexColor.parse(hex)
+            ?? HexColor.Components(red: 0, green: 245.0 / 255.0, blue: 212.0 / 255.0, alpha: 1.0)
         self.init(
             .sRGB,
-            red: Double(r) / 255.0,
-            green: Double(g) / 255.0,
-            blue: Double(b) / 255.0,
-            opacity: Double(a) / 255.0
+            red: components.red,
+            green: components.green,
+            blue: components.blue,
+            opacity: components.alpha
         )
     }
 

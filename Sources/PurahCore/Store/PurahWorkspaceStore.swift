@@ -1528,10 +1528,6 @@ public final class PurahWorkspaceStore {
         edgeTriggerSensitivity == .custom ? (customInitialDwellMs / 1000.0) : edgeTriggerSensitivity.initialDwellSeconds
     }
 
-    public var activeDeepEdgeDwellSeconds: Double {
-        edgeTriggerSensitivity == .custom ? min(customInitialDwellMs / 2000.0, 0.12) : edgeTriggerSensitivity.deepEdgeDwellSeconds
-    }
-
     public var activeExitGraceSeconds: Double {
         edgeTriggerSensitivity == .custom ? (customExitGraceMs / 1000.0) : edgeTriggerSensitivity.exitGraceDurationSeconds
     }
@@ -3980,15 +3976,6 @@ public final class PurahWorkspaceStore {
             self.isRehearsingBreathingInSculptor = false
             self.invalidateLayoutCache()
             self.onWindowsRebuildNeeded?()
-        }
-    }
-
-    private func setPod(id: String, edge: MountEdge, zone: ZoneType, weight: Double, isEnabled: Bool = true) {
-        if let idx = pods.firstIndex(where: { $0.id == id }) {
-            pods[idx].edge = edge
-            pods[idx].preferredZone = zone
-            pods[idx].ergonomicWeight = weight
-            pods[idx].isEnabled = isEnabled
         }
     }
 

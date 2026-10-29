@@ -11,7 +11,7 @@ public final class SystemClipboardSyncService {
     public static let shared = SystemClipboardSyncService()
 
     @ObservationIgnored private var _historyLoaded: Bool = false
-    @ObservationIgnored private var _history: [ClipboardItem] = []
+    private var _history: [ClipboardItem] = []
 
     public var history: [ClipboardItem] {
         get {
@@ -90,12 +90,30 @@ public final class SystemClipboardSyncService {
     public func loadFromDiskIfNeeded() {
         guard !_historyLoaded else { return }
         _historyLoaded = true
-        loadFromDisk()
+        // First access happens while the drawer is drawing its first frame;
+        // decoding the whole history there was a visible hitch. Read and decode
+        // off-main, then publish.
+        let url = metadataURL
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let outcome = Self.readHistory(at: url)
+            await self?.apply(outcome)
+        }
     }
 
     public func loadFromDisk() {
-        guard let data = try? Data(contentsOf: metadataURL) else { return }
-        guard let savedItems = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+        apply(Self.readHistory(at: metadataURL))
+    }
+
+    nonisolated private static func readHistory(at url: URL) -> (items: [ClipboardItem]?, isUnreadable: Bool) {
+        guard let data = try? Data(contentsOf: url) else { return (nil, false) }
+        guard let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+            return (nil, true)
+        }
+        return (items, false)
+    }
+
+    private func apply(_ outcome: (items: [ClipboardItem]?, isUnreadable: Bool)) {
+        guard !outcome.isUnreadable else {
             // Keep the unreadable file instead of letting the next save write
             // an empty history over it: one added field, or one launch of an
             // older build, must not cost the user their whole clipboard.
@@ -109,7 +127,8 @@ public final class SystemClipboardSyncService {
             )
             return
         }
-        self._history = savedItems
+        guard let items = outcome.items else { return }
+        self._history = items
     }
 
     private func saveToDisk() {
@@ -535,41 +554,18 @@ public final class SystemClipboardSyncService {
 
     public func processColor(string: String) -> ClipboardItem? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // 1. Hex Pattern (#RGB, #RRGGBB, #RRGGBBAA, or bare hex)
-        let hexRegex = try? NSRegularExpression(pattern: "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
         let range = NSRange(location: 0, length: trimmed.utf16.count)
 
-        if hexRegex?.firstMatch(in: trimmed, range: range) != nil {
-            let clean = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
-            var hexVal: UInt64 = 0
-            if Scanner(string: clean).scanHexInt64(&hexVal) {
-                var r: Double = 0
-                var g: Double = 0
-                var b: Double = 0
-                var a: Double = 1.0
-
-                switch clean.count {
-                case 3:
-                    r = Double((hexVal >> 8) & 0xF) / 15.0
-                    g = Double((hexVal >> 4) & 0xF) / 15.0
-                    b = Double(hexVal & 0xF) / 15.0
-                case 6:
-                    r = Double((hexVal >> 16) & 0xFF) / 255.0
-                    g = Double((hexVal >> 8) & 0xFF) / 255.0
-                    b = Double(hexVal & 0xFF) / 255.0
-                case 8:
-                    r = Double((hexVal >> 24) & 0xFF) / 255.0
-                    g = Double((hexVal >> 16) & 0xFF) / 255.0
-                    b = Double((hexVal >> 8) & 0xFF) / 255.0
-                    a = Double(hexVal & 0xFF) / 255.0
-                default:
-                    return nil
-                }
-
-                let standardHex = "#" + clean.uppercased()
-                return ClipboardItem(type: .color(hex: standardHex, red: r, green: g, blue: b, alpha: a))
-            }
+        // 1. Hex Pattern (#RGB, #RRGGBB, #RRGGBBAA, or bare hex)
+        if let digits = HexColor.digits(trimmed), let components = HexColor.parse(trimmed) {
+            let standardHex = "#" + digits.uppercased()
+            return ClipboardItem(type: .color(
+                hex: standardHex,
+                red: components.red,
+                green: components.green,
+                blue: components.blue,
+                alpha: components.alpha
+            ))
         }
 
         // 2. rgb(r, g, b) or rgba(r, g, b, a) Pattern

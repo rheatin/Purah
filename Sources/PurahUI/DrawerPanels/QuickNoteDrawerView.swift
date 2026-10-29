@@ -968,12 +968,6 @@ public struct QuickNoteDrawerView: View {
         state.currentDocument?.content ?? state.noteContent.text
     }
 
-    private var wordCount: Int {
-        let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return 0 }
-        return text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
-    }
-
     public init(state: NotesPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
@@ -1631,7 +1625,7 @@ public struct QuickNoteDrawerView: View {
             .help("help.copyNote".localized)
             .accessibilityLabel("help.copyNote".localized)
 
-            Text("\(wordCount)w · \(currentText.count)c")
+            Text("\(NoteText.wordCount(in: currentText))w · \(currentText.count)c")
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
                 .foregroundColor(noteColor.opacity(0.9))
         }
@@ -1639,39 +1633,19 @@ public struct QuickNoteDrawerView: View {
     }
 
     private func exportCurrentNote() {
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.showsHiddenFiles = false
-        savePanel.level = .modalPanel
-        let rawTitle = state.currentDocument?.title ?? "Untitled"
-        let sanitized = rawTitle
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let fileName = (sanitized.isEmpty ? "Note" : sanitized) + ".md"
-        PurahExportPathManager.configureSavePanel(savePanel, suggestedFileName: fileName)
-        if let mdType = UTType(filenameExtension: "md") {
-            savePanel.allowedContentTypes = [mdType, .plainText]
-        } else {
-            savePanel.allowedContentTypes = [.plainText]
-        }
+        guard PurahExportPathManager.exportMarkdown(
+            currentText,
+            suggestedTitle: state.currentDocument?.title ?? "Untitled",
+            fallbackName: "Note"
+        ) != nil else { return }
 
-        let response = savePanel.runModal()
-        if response == .OK, let url = savePanel.url {
-            PurahExportPathManager.updateLastDirectory(from: url)
-            do {
-                try currentText.write(to: url, atomically: true, encoding: .utf8)
-                store.triggerControlHaptic(.alignment)
-                withAnimation(PurahMotionPolicy.confirm) {
-                    isExported = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    withAnimation {
-                        isExported = false
-                    }
-                }
-            } catch {
-                DiagnosticLogger.shared.error("Notes", "Failed to export note: \(error.localizedDescription)")
+        store.triggerControlHaptic(.alignment)
+        withAnimation(PurahMotionPolicy.confirm) {
+            isExported = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation {
+                isExported = false
             }
         }
     }

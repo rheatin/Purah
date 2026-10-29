@@ -138,10 +138,6 @@ public final class AmbientRailWindow: NSPanel {
         return super.performKeyEquivalent(with: event)
     }
 
-    public func updateWidth() {
-        updateFrame(display: true)
-    }
-
     public func relocate(to screen: NSScreen) {
         self.targetScreen = screen
         updateFrame(display: true)

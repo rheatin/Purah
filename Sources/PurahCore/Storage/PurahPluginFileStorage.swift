@@ -83,9 +83,24 @@ public struct PurahPluginFileStorage: Sendable {
         return total
     }
 
-    /// Current disk usage in bytes.
-    public var diskUsageBytes: Int64 {
-        computeDiskUsageBytes()
+    /// Contents of `data/index.json`, or nil when it is missing or unreadable.
+    ///
+    /// The notes and shelf collections both keep their list there; one reader
+    /// and one writer mean a change to the file name or encoding cannot land in
+    /// only half the app.
+    public func loadIndex<T: Decodable>(_ type: [T].Type = [T].self) -> [T]? {
+        let url = dataDirectory.appendingPathComponent("index.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([T].self, from: data)
+    }
+
+    public func saveIndex<T: Encodable>(_ items: [T]) {
+        let url = dataDirectory.appendingPathComponent("index.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted]
+        guard let data = try? encoder.encode(items) else { return }
+        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
     }
 
     /// Human-readable formatted string of the current disk usage.

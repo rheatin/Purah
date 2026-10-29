@@ -98,23 +98,3 @@ public enum PurahMotionPolicy {
         return .animation(minimumInterval: minimumInterval, paused: reduceMotion)
     }
 }
-
-// MARK: - View helper
-
-public extension View {
-    /// Runs `body` only when ambient animation is allowed; otherwise renders
-    /// `staticBody`. Keeps the reduce-motion branch next to the animation it
-    /// disables instead of scattering `if !reduceMotion` through the tree.
-    @ViewBuilder
-    func ambientMotion<Animated: View, Static: View>(
-        reduceMotion: Bool,
-        @ViewBuilder animated body: () -> Animated,
-        @ViewBuilder otherwise staticBody: () -> Static
-    ) -> some View {
-        if PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) {
-            body()
-        } else {
-            staticBody()
-        }
-    }
-}

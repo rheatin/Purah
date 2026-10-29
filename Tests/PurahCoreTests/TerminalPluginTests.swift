@@ -341,6 +341,37 @@ struct TerminalPluginTests {
         #expect(state.liveStreamingOutput == "⏹ Stopped by user")
     }
 
+    @Test("Stop kills the command itself, not just the shell that started it")
+    @MainActor
+    func testStopKillsTheRunningCommand() async {
+        // `sleep 8; echo late` makes zsh fork. A SIGTERM aimed at zsh alone
+        // leaves `sleep` running and, because that process still holds the
+        // output pipe, the run only ends when the sleep does — the old
+        // behaviour, where "Stop" reported success and nothing stopped.
+        let runway = ScriptRunwayService()
+        let action = ScriptActionItem(
+            id: "stop-kills-\(UUID().uuidString)",
+            name: "Slow",
+            systemIcon: "hourglass",
+            commandType: .shell,
+            scriptContent: "sleep 8; echo late",
+            description: "Runs long enough to be stopped",
+            showNotification: false
+        )
+
+        let run = Task { await runway.executeAction(action) }
+        try? await Task.sleep(for: .milliseconds(700))
+        #expect(runway.isRunning)
+
+        let stoppedAt = Date()
+        runway.stopRunningScript()
+        let result = await run.value
+        let elapsed = Date().timeIntervalSince(stoppedAt)
+
+        #expect(result.message.contains("Stopped"))
+        #expect(elapsed < 4.0, "Stop took \(elapsed)s: the child process survived the shell")
+    }
+
     @Test("TodoPlugin assigns overdue (#FF453A) and due-today (#FF9F0A) chromatic tints and setDueDate")
     @MainActor
     func testTodoUrgencyChromaticTintsAndSetDueDate() {

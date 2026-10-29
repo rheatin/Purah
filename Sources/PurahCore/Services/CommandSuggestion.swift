@@ -7,8 +7,6 @@ public enum CommandRisk: String, Sendable, CaseIterable {
     case safe
     case caution
     case dangerous
-
-    public var isAlarming: Bool { self == .dangerous }
 }
 
 /// One command the assistant proposed for a plain-language request.

@@ -18,14 +18,6 @@ public enum ZoneType: String, Codable, Sendable, CaseIterable, Comparable {
         lhs.rank < rhs.rank
     }
 
-    public var normalizedRange: ClosedRange<Double> {
-        switch self {
-        case .glance: return 0.0...0.20
-        case .goldenAction: return 0.20...0.75
-        case .quickFlick: return 0.75...1.00
-        }
-    }
-
     public var defaultLocalizedKey: String {
         switch self {
         case .glance: return "zone.glance"

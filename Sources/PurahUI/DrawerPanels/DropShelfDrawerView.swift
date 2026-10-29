@@ -509,22 +509,6 @@ public struct DropShelfDrawerView: View {
         }
     }
 
-    private func exportFilesToFolderDialog() {
-        let itemsToExport = state.filesForBatchExport()
-        guard !itemsToExport.isEmpty else { return }
-
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "dropshelf.exportToFolder".localized
-
-        if panel.runModal() == .OK, let folderURL = panel.url {
-            _ = Self.exportFiles(itemsToExport, toFolder: folderURL, state: state, store: store)
-        }
-    }
-
     @discardableResult
     public static func exportFiles(
         _ items: [ShelfFileItem],

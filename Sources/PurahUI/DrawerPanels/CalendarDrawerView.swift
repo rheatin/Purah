@@ -845,13 +845,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
         store.isUsingRealCalendar && PermissionManager.shared.calendarStatus == .authorized
     }
 
-    /// Lands the viewport on the nearest upcoming event — the overview
-    /// continues the rail's flow, so "what's next" is on screen at open.
-    private func anchorOverviewViewport() {
-        let batches = orderedBatches
-        overviewAnchorID = batches.upcoming.first?.id ?? batches.ended.first?.id
-    }
-
     @ViewBuilder
     private func agendaRow(event: CalendarEventItem, podColor: Color) -> some View {
         let isPast = event.isPast

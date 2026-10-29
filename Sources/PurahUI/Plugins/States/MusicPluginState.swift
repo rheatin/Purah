@@ -17,11 +17,6 @@ public final class MusicPluginState: Sendable {
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
-    public var musicTrack: MusicTrackInfo {
-        get { track }
-        set { track = newValue }
-    }
-
     public var isMusicWaveformAnimationEnabled: Bool {
         get { isWaveformAnimationEnabled }
         set { isWaveformAnimationEnabled = newValue }

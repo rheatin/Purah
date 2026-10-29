@@ -13,16 +13,6 @@ public final class TerminalPluginState: Sendable {
     public let storage: any PurahPluginStorage
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
 
-    public var terminalFontFamily: String {
-        get { fontFamily }
-        set { fontFamily = newValue }
-    }
-
-    public var terminalFontSize: Double {
-        get { fontSize }
-        set { fontSize = newValue }
-    }
-
     public var shellName: String {
         TerminalManager.shared.shellName
     }

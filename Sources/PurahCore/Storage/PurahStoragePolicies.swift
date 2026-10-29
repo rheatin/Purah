@@ -15,8 +15,6 @@ public enum PurahRetentionPeriod: String, CaseIterable, Identifiable, Codable, S
     public static var days7: PurahRetentionPeriod { .sevenDays }
     public static var forever: PurahRetentionPeriod { .never }
 
-    public var timeInterval: TimeInterval? { expirationSeconds }
-
     public var id: String { rawValue }
 
     public var displayName: String {

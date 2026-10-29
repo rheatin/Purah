@@ -266,9 +266,5 @@ public final class PluginMarketManager: Sendable {
 
     public func savePersistentState() {
         userDefaults.set(Array(installedPluginIds), forKey: userDefaultsKey)
-        if let store {
-            let enabled = Array(store.pods.filter(\.isEnabled).map(\.id))
-            UserDefaults.standard.setValue(enabled, forKey: "purah.market.enabledPluginIds")
-        }
     }
 }

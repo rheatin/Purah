@@ -9,15 +9,6 @@ public enum EdgeTriggerSensitivity: String, CaseIterable, Codable, Sendable, Ide
 
     public var id: String { rawValue }
 
-    public var shortName: String {
-        switch self {
-        case .agile: return "Agile"
-        case .balanced: return "Balanced"
-        case .cautious: return "Deliberate"
-        case .custom: return "Custom"
-        }
-    }
-
     @MainActor
     public var localizedShortName: String {
         switch self {

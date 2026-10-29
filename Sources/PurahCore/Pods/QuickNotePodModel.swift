@@ -14,6 +14,18 @@ public struct NoteContent: Codable, Sendable, Equatable {
     }
 }
 
+// MARK: - Text metrics
+
+/// The one word counter. The drawer's footer and the document model both show
+/// it, and two copies drift the moment one is changed.
+public enum NoteText {
+    public static func wordCount(in text: String) -> Int {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return 0 }
+        return trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+    }
+}
+
 /// Rich Markdown document managed by Quick Notes with folder organization and star protection.
 public struct NoteDocument: Identifiable, Codable, Sendable, Equatable, PurahStorableItem {
     public let id: String
@@ -66,9 +78,7 @@ public struct NoteDocument: Identifiable, Codable, Sendable, Equatable, PurahSto
 
     /// Word count of the document content
     public var wordCount: Int {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return 0 }
-        return trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+        NoteText.wordCount(in: content)
     }
 
     /// Character count of the document content

@@ -10,10 +10,8 @@ public struct MusicDrawerView: View {
 
     @State private var isBackwardHovered: Bool = false
     @State private var isForwardHovered: Bool = false
-    @State private var isPlayPauseHovered: Bool = false
     @State private var isScrubbing: Bool = false
     @State private var scrubbedProgress: Double = 0.0
-    @State private var isShowingLyrics: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: ThemePalette {

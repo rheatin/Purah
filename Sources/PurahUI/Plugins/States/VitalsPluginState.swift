@@ -29,16 +29,6 @@ public final class VitalsPluginState: Sendable {
     public var networkUpHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.networkUpHistory }
     public var diskHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.diskHistory }
 
-    public var isVitalsDecomposed: Bool {
-        get { isDecomposed }
-        set { isDecomposed = newValue }
-    }
-
-    public var vitalsEnabledMetrics: [VitalsMetricType] {
-        get { enabledMetrics }
-        set { enabledMetrics = newValue }
-    }
-
     /// The on-rail chip count is bounded to 2…4.
     ///
     /// The floor is ergonomic: a single 56pt telemetry chip on the bezel is not
@@ -55,11 +45,6 @@ public final class VitalsPluginState: Sendable {
         let clamped = min(max(count, Self.railMetricRange.lowerBound), Self.railMetricRange.upperBound)
         maxRailMetrics = clamped
         storage.set(clamped, forKey: "maxRailMetrics")
-    }
-
-    public var vitalsThresholds: VitalsColorThresholds {
-        get { thresholds }
-        set { thresholds = newValue }
     }
 
     public init(storage: (any PurahPluginStorage)? = nil) {

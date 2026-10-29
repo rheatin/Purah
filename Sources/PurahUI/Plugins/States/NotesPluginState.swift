@@ -98,12 +98,7 @@ public final class NotesPluginState: Sendable {
         self.noteContent = legacyContent
 
         // Load multi-document collection from disk index.json
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        var loadedDocs: [NoteDocument] = []
-        if let data = try? Data(contentsOf: indexURL),
-           let decoded = try? JSONDecoder().decode([NoteDocument].self, from: data) {
-            loadedDocs = decoded
-        }
+        var loadedDocs: [NoteDocument] = fileStorage.loadIndex([NoteDocument].self) ?? []
 
         if loadedDocs.isEmpty {
             let initialDoc = NoteDocument(
@@ -125,9 +120,7 @@ public final class NotesPluginState: Sendable {
         if let saved = storage.codable(forKey: "noteContent", as: NoteContent.self) {
             self.noteContent = saved
         }
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        if let data = try? Data(contentsOf: indexURL),
-           let decoded = try? JSONDecoder().decode([NoteDocument].self, from: data) {
+        if let decoded = fileStorage.loadIndex([NoteDocument].self) {
             self.documents = decoded
         }
         if let savedRetention = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) {
@@ -174,12 +167,7 @@ public final class NotesPluginState: Sendable {
         storage.set(autoPrune, forKey: "autoPrune")
 
         // 1. Atomic index.json
-        let indexURL = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(documents) {
-            try? data.write(to: indexURL, options: .atomic)
-        }
+        fileStorage.saveIndex(documents)
 
         // 2. Physical Markdown files organized by folder
         for folder in availableFolders {
@@ -190,8 +178,8 @@ public final class NotesPluginState: Sendable {
         for doc in documents {
             let folderDir = fileStorage.dataDirectory.appendingPathComponent(doc.folder, isDirectory: true)
             try? FileManager.default.createDirectory(at: folderDir, withIntermediateDirectories: true)
-            let safeTitle = doc.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-            let fileURL = folderDir.appendingPathComponent("\(safeTitle).md")
+            let safeTitle = PurahExportPathManager.markdownFileName(doc.title, fallback: doc.id)
+            let fileURL = folderDir.appendingPathComponent(safeTitle)
             try? doc.content.data(using: .utf8)?.write(to: fileURL, options: .atomic)
         }
     }
@@ -255,8 +243,8 @@ public final class NotesPluginState: Sendable {
         let removed = documents.remove(at: idx)
 
         // Remove disk file if it exists
-        let safeTitle = removed.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-        let fileURL = fileStorage.dataDirectory.appendingPathComponent(removed.folder).appendingPathComponent("\(safeTitle).md")
+        let safeTitle = PurahExportPathManager.markdownFileName(removed.title, fallback: removed.id)
+        let fileURL = fileStorage.dataDirectory.appendingPathComponent(removed.folder).appendingPathComponent(safeTitle)
         try? FileManager.default.removeItem(at: fileURL)
 
         if selectedNoteId == id {
@@ -333,8 +321,8 @@ public final class NotesPluginState: Sendable {
     public func clearNonFavoriteNotes() {
         let nonFavorites = documents.filter { !$0.isFavorite }
         for doc in nonFavorites {
-            let safeTitle = doc.title.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-            let fileURL = fileStorage.dataDirectory.appendingPathComponent(doc.folder).appendingPathComponent("\(safeTitle).md")
+            let safeTitle = PurahExportPathManager.markdownFileName(doc.title, fallback: doc.id)
+            let fileURL = fileStorage.dataDirectory.appendingPathComponent(doc.folder).appendingPathComponent(safeTitle)
             try? FileManager.default.removeItem(at: fileURL)
         }
         documents.removeAll { !$0.isFavorite }

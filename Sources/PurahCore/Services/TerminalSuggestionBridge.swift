@@ -52,7 +52,7 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         }
         lock.unlock()
 
-        let token = Self.makeToken()
+        let token = LoopbackBridgeToken.make()
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
         parameters.requiredInterfaceType = .loopback
@@ -106,15 +106,6 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         endpoint = nil
         isListening = false
         lock.unlock()
-    }
-
-    /// A per-launch bearer token, so only the shell Purah started can call the
-    /// listener. `SystemRandomNumberGenerator` is the platform CSPRNG.
-    private static func makeToken() -> String {
-        var generator = SystemRandomNumberGenerator()
-        return (0..<24)
-            .map { _ in String(format: "%02x", UInt8.random(in: 0...255, using: &generator)) }
-            .joined()
     }
 
     // MARK: - Requests

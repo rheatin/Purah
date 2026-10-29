@@ -17,7 +17,7 @@ struct AIPermissionBridgeLoopbackTests {
         bridge.waitUntilListening()
 
         // A sandboxed test host may forbid binding. Skip rather than fail.
-        guard bridge.isListening, let port = bridge.port else {
+        guard bridge.isListening, bridge.port != nil else {
             Issue.record("bridge did not start listening; test would be vacuous")
             return
         }
@@ -31,7 +31,7 @@ struct AIPermissionBridgeLoopbackTests {
         let response = Self.post("""
         {"hook_event_name":"PermissionRequest","tool_name":"Bash",\
         "tool_input":{"command":"touch /tmp/out.txt","description":"Create out.txt"}}
-        """, to: port)
+        """, to: bridge)
 
         let requests = seen.withLock { $0 }
         #expect(requests.count == 1)
@@ -48,7 +48,7 @@ struct AIPermissionBridgeLoopbackTests {
         bridge.start()
         defer { bridge.stop() }
         bridge.waitUntilListening()
-        guard bridge.isListening, let port = bridge.port else {
+        guard bridge.isListening, bridge.port != nil else {
             Issue.record("bridge did not start listening; test would be vacuous")
             return
         }
@@ -63,7 +63,7 @@ struct AIPermissionBridgeLoopbackTests {
         // decision the user never made.
         let response = Self.post("""
         {"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"true"}}
-        """, to: port)
+        """, to: bridge)
 
         #expect(counter.withLock { $0 } == 0, "Only PermissionRequest is answerable")
         #expect(response.contains("\"behavior\":\"deny\""))
@@ -75,7 +75,7 @@ struct AIPermissionBridgeLoopbackTests {
         bridge.start()
         defer { bridge.stop() }
         bridge.waitUntilListening()
-        guard bridge.isListening, let port = bridge.port else {
+        guard bridge.isListening, bridge.port != nil else {
             Issue.record("bridge did not start listening; test would be vacuous")
             return
         }
@@ -91,7 +91,7 @@ struct AIPermissionBridgeLoopbackTests {
         "tool_input":{"command":"touch a"}, \
         "permission_suggestions":[{"type":"addDirectories",\
         "directories":["/tmp/project"],"destination":"session"}]}
-        """, to: port)
+        """, to: bridge)
 
         let request = try #require(captured.withLock { $0 })
         #expect(request.suggestionsDescription == "/tmp/project")
@@ -101,8 +101,37 @@ struct AIPermissionBridgeLoopbackTests {
         #expect(response.replacingOccurrences(of: "\\/", with: "/").contains("/tmp/project"))
     }
 
-    private static func post(_ body: String, to port: UInt16) -> String {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/permission") else { return "" }
+    @Test("A request on the wrong path is denied without ever prompting")
+    func testUnknownPathDenied() throws {
+        let bridge = AIPermissionBridge()
+        bridge.start()
+        defer { bridge.stop() }
+        bridge.waitUntilListening()
+        guard bridge.isListening, bridge.port != nil else {
+            Issue.record("bridge did not start listening; test would be vacuous")
+            return
+        }
+
+        let counter = Locked(0)
+        bridge.onRequest = { request in
+            counter.withLock { $0 += 1 }
+            bridge.resolve(request.id, decision: .allow)
+        }
+
+        // Without the per-launch path segment any local process could pop an
+        // approval dialog for a command Purah never ran.
+        let response = Self.post("""
+        {"hook_event_name":"PermissionRequest","tool_name":"Bash",\
+        "tool_input":{"command":"rm -rf ~"}}
+        """, to: bridge, path: "/permission")
+
+        #expect(counter.withLock { $0 } == 0, "An unauthenticated request must not reach the UI")
+        #expect(response.contains("\"behavior\":\"deny\""))
+    }
+
+    private static func post(_ body: String, to bridge: AIPermissionBridge, path: String? = nil) -> String {
+        guard let port = bridge.port,
+              let url = URL(string: "http://127.0.0.1:\(port)\(path ?? bridge.permissionPath)") else { return "" }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = Data(body.utf8)

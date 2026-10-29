@@ -3,9 +3,11 @@ import SwiftUI
 import PurahCore
 
 public enum PurahTelemetryMetricResolver: Sendable {
-    public static let healthyGreen = Color(red: 0.0, green: 0.90, blue: 0.60)
-    public static let warningYellow = Color(red: 1.0, green: 0.72, blue: 0.15)
-    public static let dangerRed = Color(red: 1.0, green: 0.28, blue: 0.38)
+    // One definition of the brand palette: these are the plugin-facing names
+    // for the same three colours `VitalsColorResolver` uses on the rail.
+    public static let healthyGreen = VitalsColorResolver.healthyGreen
+    public static let warningYellow = VitalsColorResolver.warningYellow
+    public static let dangerRed = VitalsColorResolver.dangerRed
 
     public static func color(for level: TelemetryStatusLevel, normalColor: Color? = nil) -> Color {
         switch level {
