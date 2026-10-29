@@ -1106,6 +1106,15 @@ public struct ClipboardFullDrawerView: View {
                 state.copyItem(item)
                 context.showToast("Copied to Clipboard", nil)
             }
+            if case .text(let text) = item.type {
+                Button("Save to Quick Notes") {
+                    guard let notes = PluginRegistry.shared.plugin(for: "notes") as? QuickNotesPlugin else {
+                        return
+                    }
+                    _ = notes.state.createNote(content: text)
+                    context.showToast("Saved to Quick Notes", nil)
+                }
+            }
             if let snippet = item.swiftUIColorSnippet {
                 Button("Copy as SwiftUI Code (\(snippet))") {
                     NSPasteboard.general.clearContents()

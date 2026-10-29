@@ -152,6 +152,8 @@ open build/Purah.app
 
 Every release publishes its SHA-256 beside the DMG; check it with `shasum -a 256`.
 
+**Using a model server on your own network?** The first time Purah reaches an address like `192.168.x.x` or `*.local`, macOS asks for Local Network access — allow it. If the AI drawer reports that it cannot connect, check **System Settings → Privacy & Security → Local Network** and turn Purah on there; a rebuild changes the app's signature, so the switch can be off again after an update.
+
 ---
 
 ### 🛠 Building & Verification

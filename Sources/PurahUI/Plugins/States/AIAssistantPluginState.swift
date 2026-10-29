@@ -1262,7 +1262,7 @@ public final class AIAssistantPluginState: Sendable {
             save()
             fetchModelsStatusMessage = "Found \(models.count) models"
         } catch {
-            fetchModelsStatusMessage = "Failed: \(error.localizedDescription)"
+            fetchModelsStatusMessage = "Failed: \(AINetworkDiagnosis.message(for: error))"
         }
         isFetchingModels = false
     }
@@ -1650,10 +1650,11 @@ public final class AIAssistantPluginState: Sendable {
         }
         if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }),
            let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == assistantMsgId }) {
+            let diagnosis = AINetworkDiagnosis.message(for: error)
             if sessions[sIdx].messages[aIdx].content.isEmpty {
-                sessions[sIdx].messages[aIdx].content = "⚠️ \(error.localizedDescription)"
+                sessions[sIdx].messages[aIdx].content = "⚠️ \(diagnosis)"
             } else {
-                sessions[sIdx].messages[aIdx].content += "\n\n⚠️ \(error.localizedDescription)"
+                sessions[sIdx].messages[aIdx].content += "\n\n⚠️ \(diagnosis)"
             }
         }
     }

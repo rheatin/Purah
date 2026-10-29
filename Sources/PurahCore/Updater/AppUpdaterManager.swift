@@ -241,6 +241,19 @@ public final class AppUpdaterManager {
     public var state: UpdateCheckState = .idle
     public var lastCheckDate: Date?
     private let manifestProvider: (any UpdateManifestProviding)?
+    private let defaults: UserDefaults
+
+    /// Whether Purah looks for a new release on its own shortly after launch.
+    ///
+    /// On by default: an app that never mentions updates is an app people run
+    /// a year out of date. The launch check is silent — it opens the dialog
+    /// only when there is something to install.
+    public static let autoCheckDefaultsKey = "purah.updater.autoCheck"
+
+    public var isAutoCheckEnabled: Bool {
+        get { defaults.object(forKey: Self.autoCheckDefaultsKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.autoCheckDefaultsKey) }
+    }
 
     /// The bundle being replaced, and the team allowed to replace it.
     ///
@@ -298,13 +311,15 @@ public final class AppUpdaterManager {
         manifestProvider: (any UpdateManifestProviding)? = nil,
         bundleURL: URL = Bundle.main.bundleURL,
         expectedTeamIdentifier: String? = nil,
-        openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
+        openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
+        defaults: UserDefaults = .standard
     ) {
         self.currentVersion = currentVersion
         self.manifestProvider = manifestProvider
         self.bundleURL = bundleURL
         self.explicitTeamIdentifier = expectedTeamIdentifier
         self.openURL = openURL
+        self.defaults = defaults
     }
 
     public func isNewer(release: AppReleaseInfo) -> Bool {

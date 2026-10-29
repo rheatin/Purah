@@ -22,6 +22,8 @@
 	<string>Purah needs full calendar access to display your daily schedule and timeline on edge rails.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Purah needs calendar access to display your daily schedule and timeline on edge rails.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Purah connects to AI servers and model endpoints running on your local network, such as a self-hosted gateway or Ollama.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Purah uses audio capture to display real-time music rhythm visualizers on the edge rails.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>

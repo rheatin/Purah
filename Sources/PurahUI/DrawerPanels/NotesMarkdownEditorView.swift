@@ -15,6 +15,8 @@ import PurahCore
 @MainActor
 public final class PurahNotesNSTextView: NSTextView {
     public var customTableColumnRatios: [Int: [CGFloat]] = [:]
+    /// ⌘F. The find bar lives in SwiftUI, so the text view can only ask for it.
+    public var onFindRequested: (() -> Void)?
     private var hoveredTableDivider: (tableIndex: Int, dividerIndex: Int)? = nil
     private var activeTableResizeDrag: (tableIndex: Int, dividerIndex: Int, startMouseX: CGFloat, initialRatios: [CGFloat], tableWidth: CGFloat)? = nil
     private var dividerTrackingArea: NSTrackingArea?
@@ -630,6 +632,12 @@ public final class PurahNotesNSTextView: NSTextView {
                     return true
                 } else if chars == "k" {
                     wrapSelectedText(prefix: "`", suffix: "`")
+                    return true
+                } else if chars == "f" {
+                    // Hand it to the drawer's own find bar. AppKit's find bar
+                    // paints over the text with no background of its own.
+                    guard let onFindRequested else { return false }
+                    onFindRequested()
                     return true
                 }
             }

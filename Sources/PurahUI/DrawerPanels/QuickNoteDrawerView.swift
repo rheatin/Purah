@@ -946,6 +946,16 @@ public struct QuickNoteDrawerView: View {
     @State private var isSearchingNotes: Bool = false
     @State private var searchQuery: String = ""
 
+    // Find & replace (in this note, not across notes)
+    @State private var isFinding: Bool = false
+    @State private var findQuery: String = ""
+    @State private var replaceQuery: String = ""
+    @State private var showsReplace: Bool = false
+    @State private var findIndex: Int = 0
+
+    @State private var isNoteAITransforming = false
+    @State private var noteAIHint: String? = nil
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -978,6 +988,10 @@ public struct QuickNoteDrawerView: View {
         VStack(alignment: .leading, spacing: 5) {
             // 1. Clean Single-Row Navigation Toolbar: Folder, Note, New, Search, Tips, Star
             navigationToolbar
+
+            if isFinding {
+                findBar
+            }
 
             if isSearchingNotes {
                 crossFolderSearchOverlay
@@ -1080,6 +1094,167 @@ public struct QuickNoteDrawerView: View {
         .transition(.opacity)
     }
 
+    // MARK: - Find & Replace
+    private var findBar: some View {
+        let ranges = findRanges
+        return NotesFindBarView(
+            query: $findQuery,
+            replacement: $replaceQuery,
+            showsReplace: $showsReplace,
+            matchCount: ranges.count,
+            currentMatch: ranges.isEmpty ? 0 : min(findIndex, ranges.count - 1) + 1,
+            accentColor: noteColor,
+            onPrevious: { stepFind(-1) },
+            onNext: { stepFind(1) },
+            onReplace: { replaceCurrentMatch() },
+            onReplaceAll: { replaceAllMatches() },
+            onClose: { closeFindBar() }
+        )
+        .onChange(of: findQuery) { _, _ in
+            findIndex = 0
+            selectCurrentMatch()
+        }
+        .transition(.opacity)
+    }
+
+    private var findableText: String {
+        activeTextView?.string ?? currentText
+    }
+
+    private var findRanges: [NSRange] {
+        NoteSearch.ranges(of: findQuery, in: findableText)
+    }
+
+    private func selectCurrentMatch() {
+        let ranges = findRanges
+        guard ranges.indices.contains(findIndex) else { return }
+        selectMatch(ranges[findIndex])
+    }
+
+    private func selectMatch(_ range: NSRange) {
+        activeTextView?.setSelectedRange(range)
+        activeTextView?.scrollRangeToVisible(range)
+    }
+
+    private func stepFind(_ delta: Int) {
+        let ranges = findRanges
+        guard !ranges.isEmpty else { return }
+        findIndex = (findIndex + delta + ranges.count) % ranges.count
+        selectMatch(ranges[findIndex])
+    }
+
+    private func replaceCurrentMatch() {
+        let ranges = findRanges
+        guard ranges.indices.contains(findIndex), let textView = activeTextView else { return }
+        let range = ranges[findIndex]
+        guard textView.shouldChangeText(in: range, replacementString: replaceQuery) else { return }
+        textView.textStorage?.replaceCharacters(in: range, with: replaceQuery)
+        textView.didChangeText()
+
+        // Keep going from where the replacement ended, wrapping to the top.
+        let caret = range.location + (replaceQuery as NSString).length
+        let updated = NoteSearch.ranges(of: findQuery, in: textView.string)
+        findIndex = updated.firstIndex(where: { $0.location >= caret }) ?? 0
+        if updated.indices.contains(findIndex) {
+            selectMatch(updated[findIndex])
+        }
+    }
+
+    private func replaceAllMatches() {
+        guard let textView = activeTextView else { return }
+        let ranges = NoteSearch.ranges(of: findQuery, in: textView.string)
+        guard !ranges.isEmpty else { return }
+        // One whole-document edit, so ⌘Z puts the note back in a single step.
+        let whole = NSRange(location: 0, length: (textView.string as NSString).length)
+        let updated = NoteSearch.replacingAll(in: textView.string, ranges: ranges, with: replaceQuery)
+        guard textView.shouldChangeText(in: whole, replacementString: updated) else { return }
+        textView.textStorage?.replaceCharacters(in: whole, with: updated)
+        textView.didChangeText()
+        findIndex = 0
+        store.triggerControlHaptic(.alignment)
+    }
+
+    private func closeFindBar() {
+        isFinding = false
+        findIndex = 0
+    }
+
+    // MARK: - Selection → Assistant
+    private static let noteAIActions: [AIQuickActionType] = [.polish, .fixGrammar, .summarize, .translate]
+
+    /// `ai.verb.*` is the vocabulary the AI drawer already speaks; only the
+    /// case differs because a menu item starts a line. Lowercasing is a no-op
+    /// in the CJK tables.
+    private static func noteAIVerb(_ action: AIQuickActionType) -> String {
+        ("ai.verb." + action.rawValue).localized.capitalized
+    }
+
+    private func runNoteAI(_ action: AIQuickActionType) {
+        guard let textView = activeTextView, !isNoteAITransforming else { return }
+        let range = textView.selectedRange()
+        let source = range.length > 0 ? (textView.string as NSString).substring(with: range) : ""
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showNoteAIHint("notes.ai.selectFirst".localized)
+            return
+        }
+
+        isNoteAITransforming = true
+        let system = action.buildSystemPrompt()
+        Task { @MainActor in
+            defer { isNoteAITransforming = false }
+            do {
+                let answer = try await PurahAIService.ask(source, system: system)
+                applyNoteAIAnswer(answer, transform: action.isTransform,
+                                  replacing: range, source: source, in: textView)
+            } catch {
+                showNoteAIHint(error.localizedDescription)
+            }
+        }
+    }
+
+    private func applyNoteAIAnswer(
+        _ answer: String,
+        transform: Bool,
+        replacing range: NSRange,
+        source: String,
+        in textView: PurahNotesNSTextView
+    ) {
+        // The note can be edited, or another note opened, while the request is
+        // in flight. Writing to the old range then would overwrite whatever
+        // text moved into it.
+        let current = textView.string as NSString
+        guard range.location + range.length <= current.length,
+              current.substring(with: range) == source else {
+            showNoteAIHint("notes.ai.noteChanged".localized)
+            return
+        }
+
+        // A rewrite replaces the selection; a summary would have nothing to
+        // say in its place, so it lands underneath and the selection stays.
+        let edit = Self.noteAIEdit(answer, transform: transform, source: source)
+        guard textView.shouldChangeText(in: range, replacementString: edit.text) else { return }
+        textView.textStorage?.replaceCharacters(in: range, with: edit.text)
+        textView.didChangeText()
+
+        textView.setSelectedRange(NSRange(location: range.location + edit.caret, length: (answer as NSString).length))
+        textView.scrollRangeToVisible(textView.selectedRange())
+        textView.window?.makeFirstResponder(textView)
+        store.triggerControlHaptic(.alignment)
+    }
+
+    /// What an AI action writes in place of `source`, and where the caret sits
+    /// inside it, so the answer ends up selected.
+    static func noteAIEdit(_ answer: String, transform: Bool, source: String) -> (text: String, caret: Int) {
+        transform ? (answer, 0) : (source + "\n\n" + answer, (source as NSString).length + 2)
+    }
+
+    private func showNoteAIHint(_ text: String) {
+        noteAIHint = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            if noteAIHint == text { noteAIHint = nil }
+        }
+    }
+
     // MARK: - Native Live Markdown Canvas
     private var documentCanvasView: some View {
         ZStack(alignment: .topLeading) {
@@ -1091,6 +1266,7 @@ public struct QuickNoteDrawerView: View {
                 },
                 onTextViewCreated: { textView in
                     self.activeTextView = textView
+                    textView.onFindRequested = { isFinding = true }
                 }
             )
 
@@ -1280,6 +1456,57 @@ public struct QuickNoteDrawerView: View {
             .help("help.searchAllNotes".localized)
             .accessibilityLabel("help.searchAllNotes".localized)
 
+            // Find & Replace inside this note. Distinct icon from the
+            // cross-folder search above, which searches other notes.
+            Button {
+                if isFinding {
+                    closeFindBar()
+                } else {
+                    isFinding = true
+                }
+                store.triggerControlHaptic(.alignment)
+            } label: {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(isFinding ? noteColor : .secondary)
+                    .padding(2)
+            }
+            .buttonStyle(.plain)
+            .help("notes.findReplace".localized)
+            .accessibilityLabel("notes.findReplace".localized)
+
+            // Selection → assistant. Same verbs and system prompts as the AI
+            // drawer's quick actions, so a sentence polished here reads the
+            // same as one polished there.
+            Menu {
+                ForEach(Self.noteAIActions) { action in
+                    Button {
+                        runNoteAI(action)
+                    } label: {
+                        Label(Self.noteAIVerb(action), systemImage: action.systemIcon)
+                    }
+                }
+            } label: {
+                if isNoteAITransforming {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.55)
+                        .frame(width: 10, height: 10)
+                        .padding(2)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.secondary)
+                        .padding(2)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(isNoteAITransforming)
+            .help("notes.ai.transform".localized)
+            .accessibilityLabel("notes.ai.transform".localized)
+
             // Markdown Tips icon: triggers popover immediately on mouse hover or click
             Button {
                 isShowingTips.toggle()
@@ -1320,12 +1547,19 @@ public struct QuickNoteDrawerView: View {
     private var bottomStatusBar: some View {
         HStack(spacing: 6) {
             HStack(spacing: 4) {
-                Circle()
-                    .fill(noteColor.opacity(0.85))
-                    .frame(width: 4.5, height: 4.5)
-                Text(String(format: "notes.savedTime".localized, state.noteContent.lastModified.formatted(date: .omitted, time: .shortened)))
-                    .font(.system(size: 8, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.7))
+                if let noteAIHint {
+                    Text(noteAIHint)
+                        .font(.system(size: 8, design: .rounded))
+                        .foregroundColor(.orange.opacity(0.9))
+                        .lineLimit(1)
+                } else {
+                    Circle()
+                        .fill(noteColor.opacity(0.85))
+                        .frame(width: 4.5, height: 4.5)
+                    Text(String(format: "notes.savedTime".localized, state.noteContent.lastModified.formatted(date: .omitted, time: .shortened)))
+                        .font(.system(size: 8, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
             }
 
             Spacer()

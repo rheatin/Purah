@@ -1046,13 +1046,21 @@ public struct AIAssistantPluginSettingsView: View {
     @ViewBuilder
     private func secretSourcesHint(forKey key: String) -> some View {
         let environmentName = FileSecretStore.environmentName(forKey: key)
+        let isOverridden = ProcessInfo.processInfo.environment[environmentName]?
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         let path = FileSecretStore.defaultFileURL().path
             .replacingOccurrences(of: NSHomeDirectory(), with: "~")
 
         VStack(alignment: .leading, spacing: 2) {
             Text(String(format: "ai.settings.secretStoredIn".localized, path))
-            Text(String(format: "ai.settings.secretOverridden".localized, environmentName))
-                .textSelection(.enabled)
+            // "Overridden by" is only true when the variable exists. Printed
+            // unconditionally it read as "the key in this field is ignored",
+            // which is the opposite of what the field does.
+            Text(String(
+                format: (isOverridden ? "ai.settings.secretOverridden" : "ai.settings.secretOverrideAvailable").localized,
+                environmentName
+            ))
+            .textSelection(.enabled)
         }
         .font(.system(size: 9.5))
         .foregroundColor(.secondary)

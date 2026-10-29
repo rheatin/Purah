@@ -1342,59 +1342,20 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
             } else {
-                VStack(spacing: 12) {
-                    Spacer(minLength: 8)
-
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(roleColor)
-                            .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+                // This composition has an intrinsic floor of ~130pt: two 8pt
+                // spacers, a progress row, a two-line caption and the stop
+                // pill. The drawer body of a minimum-height pod is ~218pt and
+                // the Edit Source card takes 118 of it, so the full stack did
+                // not fit — the parent `VStack` centred the overflow and the
+                // host card clipped it, cutting "Edit Source → Done" off the
+                // top and the action bar off the bottom. Below the threshold
+                // the same facts are told in one row, which always fits.
+                GeometryReader { generatingGeo in
+                    if generatingGeo.size.height >= 132 {
+                        generatingFullLayout
+                    } else {
+                        generatingCompactLayout
                     }
-
-                    VStack(spacing: 3) {
-                        Text("ai.drawer.waitingForModel".localized)
-                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.90))
-
-                        let activeSubtitle: String = (state.selectedProvider == .localCLI)
-                            ? state.activeCLIExecutable.displayName
-                            : state.selectedProvider.title
-
-                        Text(activeSubtitle)
-                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.55))
-                    }
-
-                    Button {
-                        state.stopStreaming()
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 8.5, weight: .bold))
-                            Text("ai.drawer.stopGeneration".localized)
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                        }
-                        .foregroundColor(Color(hex: "#FCA5A5"))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4.5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color(hex: "#EF4444").opacity(0.20))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color(hex: "#EF4444").opacity(0.50), lineWidth: 0.9)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help("help.stopGenerationEsc".localized)
-                    .accessibilityLabel("help.stopGenerationEsc".localized)
-
-                    Spacer(minLength: 8)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
@@ -1408,6 +1369,92 @@ public struct AIAssistantRoleWorkbenchView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The full "waiting" composition, for a card with room to spare.
+    private var generatingFullLayout: some View {
+        VStack(spacing: 12) {
+            Spacer(minLength: 8)
+
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(roleColor)
+                    .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+            }
+
+            VStack(spacing: 3) {
+                Text("ai.drawer.waitingForModel".localized)
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.90))
+
+                Text(generatingSubtitle)
+                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .foregroundColor(Color.white.opacity(0.55))
+            }
+
+            stopGenerationButton
+
+            Spacer(minLength: 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Same two facts in a single row: this is the variant that survives a card
+    /// too short for the full composition.
+    private var generatingCompactLayout: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.mini)
+
+            Text("ai.drawer.waitingForModel".localized)
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .foregroundColor(Color.white.opacity(0.85))
+                .lineLimit(1)
+
+            Spacer(minLength: 2)
+
+            stopGenerationButton
+        }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var generatingSubtitle: String {
+        state.selectedProvider == .localCLI
+            ? state.activeCLIExecutable.displayName
+            : state.selectedProvider.title
+    }
+
+    private var stopGenerationButton: some View {
+        Button {
+            state.stopStreaming()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 8.5, weight: .bold))
+                Text("ai.drawer.stopGeneration".localized)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .foregroundColor(Color(hex: "#FCA5A5"))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4.5)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(hex: "#EF4444").opacity(0.20))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color(hex: "#EF4444").opacity(0.50), lineWidth: 0.9)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("help.stopGenerationEsc".localized)
+        .accessibilityLabel("help.stopGenerationEsc".localized)
     }
 
     // MARK: - Collapsible Reasoning View
