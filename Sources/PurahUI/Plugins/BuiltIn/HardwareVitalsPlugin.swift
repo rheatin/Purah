@@ -35,13 +35,10 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            Text(String(format: "vitals.barCpu".localized, Int(state.metrics.cpuUsage * 100)))
-                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                .foregroundColor(context.accentColor)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(context.accentColor.opacity(0.16))
-                .cornerRadius(3)
+            PurahHeaderBadge(
+                String(format: "vitals.barCpu".localized, Int(state.metrics.cpuUsage * 100)),
+                tint: context.accentColor
+            )
         )
     }
 

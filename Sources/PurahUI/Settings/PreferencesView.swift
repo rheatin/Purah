@@ -106,6 +106,10 @@ public struct PreferencesView: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(isSelected ? palette.borderColor : Color.clear, lineWidth: 1)
                         )
+                        // Without this the button only answers clicks on the
+                        // glyphs: the gap between the icon and the word, and
+                        // the padding around both, fell straight through.
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.tactile)
                 }

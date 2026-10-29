@@ -18,14 +18,14 @@ struct QuickNotesTests {
         let doc = NoteDocument(
             id: "test-note-1",
             title: title,
-            folder: "Work",
+            tag: "Work",
             content: md,
             isFavorite: false
         )
 
         #expect(doc.wordCount == 11)
         #expect(doc.characterCount == md.count)
-        #expect(doc.folder == "Work")
+        #expect(doc.tag == "Work")
         #expect(!doc.isFavorite)
     }
 
@@ -42,29 +42,29 @@ struct QuickNotesTests {
         #expect(strippedTitle == "Testing persiste")
     }
 
-    @Test("NotesPluginState manages folders, notes, and syncs physical markdown files")
+    @Test("NotesPluginState manages tags, notes, and syncs physical markdown files")
     func testNotesPluginStateLifecycle() {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah_notes_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        let storage = ScopedPluginStorage(pluginId: "test-notes-state")
+        let storage = ScopedPluginStorage(pluginId: "test-notes-state-\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "test-notes", customBaseDirectory: tempDir)
         let state = NotesPluginState(storage: storage, fileStorage: fileStorage)
 
-        #expect(state.availableFolders.contains("General"))
-        #expect(state.availableFolders.contains("Work"))
+        #expect(state.availableTags.contains { $0.name == "General" })
+        #expect(state.availableTags.contains { $0.name == "Work" })
 
-        // 1. Add and select folder
-        state.addFolder("Sprint")
-        #expect(state.availableFolders.contains("Sprint"))
-        state.selectFolder("Sprint")
-        #expect(state.selectedFolder == "Sprint")
+        // 1. Add a tag
+        state.addTag(name: "Sprint", colorHex: "#0A84FF")
+        #expect(state.availableTags.contains { $0.name == "Sprint" })
+        // A duplicate name is refused, not merged.
+        #expect(state.addTag(name: "Sprint", colorHex: "#FF9F0A") == nil)
 
-        // 2. Create note in folder
+        // 2. Create a note under it
         let note = state.createNote(
             title: "Task Checklist",
-            folder: "Sprint",
+            tag: "Sprint",
             content: "# Task Checklist\n- [ ] Fix memory leaks\n- [ ] Add unit tests"
         )
         #expect(state.documents.contains { $0.id == note.id })
@@ -88,14 +88,46 @@ struct QuickNotesTests {
         state.toggleFavorite(id: note.id)
         #expect(state.currentDocument?.isFavorite == false)
 
-        // 5. Delete folder relocates notes to General
-        state.deleteFolder("Sprint")
-        #expect(!state.availableFolders.contains("Sprint"))
-        #expect(state.documents.first(where: { $0.id == note.id })?.folder == "General")
+        // 5. Re-tagging replaces the old tag: one note, one tag
+        state.setTag("Work", for: note.id)
+        #expect(state.documents.first(where: { $0.id == note.id })?.tag == "Work")
 
-        // 6. Delete note
+        // 6. Deleting a tag keeps the note and clears its label
+        state.deleteTag(name: "Work")
+        #expect(!state.availableTags.contains { $0.name == "Work" })
+        #expect(state.documents.first(where: { $0.id == note.id })?.tag == "")
+
+        // 7. Delete note
         state.deleteNote(id: note.id)
         #expect(!state.documents.contains { $0.id == note.id })
+    }
+
+    @Test("An untagged note is written at the root of data/")
+    func testUntaggedNoteFilePath() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_notes_untagged_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = ScopedPluginStorage(pluginId: "test-notes-untagged-\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "test-notes-untagged", customBaseDirectory: tempDir)
+        let state = NotesPluginState(storage: storage, fileStorage: fileStorage)
+
+        let note = state.createNote(title: "Loose", content: "hello")
+        #expect(note.tag.isEmpty)
+        #expect(FileManager.default.fileExists(
+            atPath: fileStorage.dataDirectory.appendingPathComponent("Loose.md").path
+        ))
+    }
+
+    @Test("A note written before tags existed still decodes, untagged")
+    func testLegacyNoteWithoutTagDecodes() throws {
+        let json = """
+        [{"id":"n1","title":"Old","folder":"Work","content":"hi","timestamp":0,"isFavorite":false}]
+        """
+        let docs = try JSONDecoder().decode([NoteDocument].self, from: Data(json.utf8))
+        #expect(docs.count == 1)
+        #expect(docs[0].tag == "")
+        #expect(docs[0].content == "hi")
     }
 
     @Test("QuickNotesMarkdownHelper applyLineReturn handles smart list continuation and empty prefix clearing")

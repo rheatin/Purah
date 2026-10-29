@@ -2,6 +2,31 @@
 import SwiftUI
 import AppKit
 
+/// What a search looks at. One bar, two scopes: "find my text" is one idea,
+/// and where to look is a parameter of it. Two separate buttons — a magnifier
+/// for every note and another for this one — read as two different features
+/// when they are the same question asked of different places.
+public enum NoteFindScope: String, CaseIterable {
+    case current
+    case all
+
+    @MainActor
+    var label: String {
+        switch self {
+        case .current: return "notes.find.scope.current".localized
+        case .all: return "notes.find.scope.all".localized
+        }
+    }
+
+    @MainActor
+    var placeholder: String {
+        switch self {
+        case .current: return "notes.find.placeholder".localized
+        case .all: return "notes.find.allPlaceholder".localized
+        }
+    }
+}
+
 /// Find/replace inside the open note.
 ///
 /// AppKit's `usesFindBar` was tried first and dropped: it draws its own bar
@@ -43,6 +68,8 @@ struct NotesFindBarView: View {
     @Binding var query: String
     @Binding var replacement: String
     @Binding var showsReplace: Bool
+    let scope: NoteFindScope
+    let onScopeChange: (NoteFindScope) -> Void
     let matchCount: Int
     /// 1-based position of the selected match, or 0 when there is none.
     let currentMatch: Int
@@ -57,7 +84,12 @@ struct NotesFindBarView: View {
 
     private var countLabel: String {
         guard !query.isEmpty else { return "" }
-        return "\(currentMatch)/\(matchCount)"
+        switch scope {
+        case .current: return "\(currentMatch)/\(matchCount)"
+        // Across notes there is no "current" match to step to: the count is
+        // how many notes matched.
+        case .all: return "\(matchCount)"
+        }
     }
 
     var body: some View {
@@ -67,7 +99,7 @@ struct NotesFindBarView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(accentColor)
 
-                TextField("notes.find.placeholder".localized, text: $query)
+                TextField(scope.placeholder, text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 10, design: .rounded))
                     .focused($isQueryFocused)
@@ -79,20 +111,26 @@ struct NotesFindBarView: View {
                         .layoutPriority(1)
                 }
 
-                iconButton("chevron.up", help: "notes.find.previous", action: onPrevious)
-                iconButton("chevron.down", help: "notes.find.next", action: onNext)
-                iconButton(
-                    "arrow.left.arrow.right",
-                    help: "notes.find.replace",
-                    isActive: showsReplace
-                ) {
-                    withAnimation(PurahMotionPolicy.microLight) { showsReplace.toggle() }
+                if scope == .current {
+                    iconButton("chevron.up", help: "notes.find.previous", action: onPrevious)
+                    iconButton("chevron.down", help: "notes.find.next", action: onNext)
+                    iconButton(
+                        "arrow.left.arrow.right",
+                        help: "notes.find.replace",
+                        isActive: showsReplace
+                    ) {
+                        withAnimation(PurahMotionPolicy.microLight) { showsReplace.toggle() }
+                    }
                 }
                 iconButton("xmark", help: "notes.find.close", action: onClose)
             }
 
-            if showsReplace {
-                HStack(spacing: 5) {
+            HStack(spacing: 6) {
+                scopePicker
+
+                // Replacing across notes would write to every file the query
+                // hits. "All notes" is a navigator, not an editor.
+                if scope == .current && showsReplace {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: 8))
                         .foregroundColor(.secondary)
@@ -113,6 +151,8 @@ struct NotesFindBarView: View {
                         .foregroundColor(accentColor)
                         .disabled(matchCount == 0)
                 }
+
+                Spacer(minLength: 0)
             }
         }
         .padding(6)
@@ -125,6 +165,34 @@ struct NotesFindBarView: View {
         )
         .onAppear { isQueryFocused = true }
         .onExitCommand { onClose() }
+    }
+
+    private var scopePicker: some View {
+        HStack(spacing: 1) {
+            ForEach(NoteFindScope.allCases, id: \.self) { candidate in
+                Button {
+                    onScopeChange(candidate)
+                } label: {
+                    Text(candidate.label)
+                        .font(.system(size: 8, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(scope == candidate ? accentColor.opacity(0.18) : Color.clear)
+                        )
+                        .foregroundColor(scope == candidate ? accentColor : .secondary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(scope == candidate ? [.isSelected] : [])
+            }
+        }
+        .padding(1)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        )
     }
 
     private func iconButton(

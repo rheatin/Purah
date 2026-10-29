@@ -63,7 +63,7 @@ Purah 纯粹驻留后台运行，不占据 Dock 栏，不抢夺输入焦点，�
 | **硬件脉搏** | `waveform.path.ecg` | 深度 Darwin / IOKit 硬件遥测，提供统一 2x2 概览网格（CPU 用户态/系统态/负载/温度、显卡、内存应用/联动/压缩/交换、电池健康度与循环）、全宽网络 I/O 卡片、磁盘读写吞吐及完整进程检查器 (Process Inspector)。 |
 | **临时收纳架** | `tray.fill` | 访达文件随手拖拽暂存，支持框选多选 (Rubber-band)、批量拖拽出轨、一键 ZIP 打包与隔空投送 (AirDrop)，以及固定交互式悬浮边车预览 (`👁`)。 |
 | **智能剪贴板** | `doc.on.clipboard.fill` | 零内存常驻历史管理器，支持框选多选、批量拖拽、一键 ZIP 打包与 AirDrop、固定交互式悬浮边车预览 (`👁`)、颜色预览、图片快照与模糊快筛。 |
-| **即时便签** | `note.text` | Typora 式即时渲染 Markdown 编辑器，支持可调列宽表格、跨文件夹即时快搜、图片就地粘贴与一键导出 `.md`。 |
+| **即时便签** | `note.text` | Typora 式即时渲染 Markdown 编辑器，支持可调列宽表格、单标签归档与即时快搜、图片就地粘贴与一键导出 `.md`。 |
 | **交互终端** | `apple.terminal.fill` | 基于 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) 打造的多标签页常驻后台终端，支持一键 `cd` 至当前访达目录、Starship / Nerd Font 与即时字体调节，并内置自然语言命令 (`??`)，用一句话写出你想要的命令。 |
 | **音乐律动** | `waveform` | Apple Music 播放控制与实时流体音频波形，支持平滑进度拖拽。 |
 | **日程时间轴** | `calendar` | 当日日程纵览，自动提取会议链接（Zoom、腾讯会议、Google Meet 等）。 |

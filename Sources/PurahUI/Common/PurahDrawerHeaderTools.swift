@@ -26,19 +26,9 @@ public struct PurahDrawerHeaderTools: View {
     }
 
     public var body: some View {
-        HStack(spacing: 4) {
-            Button(action: onSettings) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.secondary)
-                    // Icon-only buttons have no text for VoiceOver to read.
-                    .accessibilityHidden(true)
-            }
-            .buttonStyle(.tactile)
-            .accessibilityLabel(settingsHelp)
-            .help(settingsHelp)
-
-            PurahPinButton(isPinned: isPinned, tintColor: tintColor, action: onTogglePin)
+        PurahHeaderGroup(showsSurface: true) {
+            PurahHeaderButton(systemImage: "gearshape", help: settingsHelp, action: onSettings)
+            PurahPinButton(isPinned: isPinned, tintColor: tintColor, showsDisc: false, action: onTogglePin)
         }
     }
 }

@@ -1018,6 +1018,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .frame(width: 14, height: 22)
                         }
                         .buttonStyle(.plain)
+                        .help("ai.previousStep".localized)
                         .disabled(state.effectiveStepIndex <= 0)
 
                         Text("\(state.effectiveStepIndex + 1)/\(state.totalStepsCount)")
@@ -1035,6 +1036,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .frame(width: 14, height: 22)
                         }
                         .buttonStyle(.plain)
+                        .help("ai.nextStep".localized)
                         .disabled(state.effectiveStepIndex >= state.totalStepsCount - 1)
                     }
                     .padding(.horizontal, 4)
@@ -1702,6 +1704,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .help("ai.saveToNotes".localized)
                 .frame(width: 24, height: 24)
                 .onHover { isHovering in
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -1746,6 +1749,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .help("ai.retry".localized)
                 .frame(width: 24, height: 24)
                 .onHover { isHovering in
                     withAnimation(.easeInOut(duration: 0.15)) {

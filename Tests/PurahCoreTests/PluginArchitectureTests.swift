@@ -549,7 +549,7 @@ struct PluginArchitectureTests {
         // 1. Verify plugins autonomously declare their intended width
         #expect(music.adaptiveDrawerWidth(store: store) == 360.0)
         #expect(shelf.adaptiveDrawerWidth(store: store) == 360.0)
-        #expect(notes.adaptiveDrawerWidth(store: store) == 320.0)
+        #expect(notes.adaptiveDrawerWidth(store: store) == 400.0)
         #expect(clipboard.adaptiveDrawerWidth(store: store) == 380.0)
         #expect(terminal.adaptiveDrawerWidth(store: store) == 520.0)
 

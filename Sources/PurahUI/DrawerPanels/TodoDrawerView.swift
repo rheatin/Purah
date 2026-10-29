@@ -35,6 +35,7 @@ struct TodoOverviewRow: View {
                     .font(.system(size: 14))
             }
             .buttonStyle(.tactile)
+            .help("todo.toggleDone".localized)
 
             VStack(alignment: .leading, spacing: 2) {
                 TextField("", text: Binding(
@@ -108,6 +109,7 @@ struct TodoOverviewRow: View {
                     .foregroundColor(.gray.opacity(0.4))
             }
             .buttonStyle(.tactile)
+            .help("todo.delete".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)

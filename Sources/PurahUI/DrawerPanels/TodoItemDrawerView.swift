@@ -83,6 +83,7 @@ public struct TodoItemDrawerView: View {
                     .font(.system(size: 13))
             }
             .buttonStyle(.plain)
+            .help("todo.toggleDone".localized)
 
             VStack(alignment: .leading, spacing: 1) {
                 TextField("", text: Binding(

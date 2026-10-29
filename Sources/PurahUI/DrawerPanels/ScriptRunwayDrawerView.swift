@@ -171,6 +171,7 @@ public struct ScriptRunwayDrawerView: View {
                             .foregroundColor(.secondary.opacity(0.5))
                     }
                     .buttonStyle(.plain)
+                    .help("runway.clearOutput".localized)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)

@@ -914,10 +914,28 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     // MARK: - Session Management & Retention
+
+    /// A session nobody has written to yet. It is a placeholder for "the next
+    /// conversation", not a conversation, so at most one may exist.
+    public func isUnusedPlaceholder(_ session: AIChatSession) -> Bool {
+        session.messages.isEmpty
+            && !session.isFavorite
+            && (session.title == Self.defaultSessionTitle || session.title.isEmpty)
+    }
+
+    public static let defaultSessionTitle = "New Chat"
+
     public func createNewSession() {
+        // Every tap of "+" used to insert another session, so the history
+        // filled with identical "New Chat · 0 消息" rows that nothing could
+        // tell apart. Replacing the untouched placeholder keeps one.
+        for session in sessions where isUnusedPlaceholder(session) {
+            repository.remove(id: session.id)
+        }
+
         let newSession = AIChatSession(
             id: UUID().uuidString,
-            title: "New Chat",
+            title: Self.defaultSessionTitle,
             messages: [],
             createdAt: Date(),
             updatedAt: Date(),
@@ -980,6 +998,24 @@ public final class AIAssistantPluginState: Sendable {
                 createNewSession()
             }
         }
+        collapseUnusedPlaceholders()
+    }
+
+    /// Keeps one "New Chat" placeholder and removes the rest.
+    ///
+    /// Earlier builds added a session on every tap of "+", so a history can
+    /// already hold a stack of identical empty rows — fixing only the button
+    /// would leave them there forever. A conversation is never touched.
+    public func collapseUnusedPlaceholders() {
+        let placeholders = sessions.filter(isUnusedPlaceholder)
+        guard placeholders.count > 1 else { return }
+        let keep = placeholders.contains(where: { $0.id == activeSessionId })
+            ? activeSessionId
+            : placeholders[0].id
+        for session in placeholders where session.id != keep {
+            repository.remove(id: session.id)
+        }
+        self.sessions = repository.items
     }
 
     public func clearUnstarredSessions() {

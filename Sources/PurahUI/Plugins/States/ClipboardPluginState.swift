@@ -5,6 +5,26 @@ import Foundation
 import Observation
 import PurahCore
 
+public enum ClipboardCategoryFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case favorite = "Starred"
+    case text = "Text"
+    case color = "Color"
+    case image = "Image"
+
+    public var id: String { rawValue }
+
+    public var iconName: String {
+        switch self {
+        case .all: return "square.grid.2x2"
+        case .favorite: return "star.fill"
+        case .text: return "doc.text"
+        case .color: return "paintpalette"
+        case .image: return "photo"
+        }
+    }
+}
+
 @Observable
 @MainActor
 public final class ClipboardPluginState: Sendable {
@@ -14,8 +34,50 @@ public final class ClipboardPluginState: Sendable {
     public var diskQuota: ClipboardDiskQuota
     public var autoPruneOnQuota: Bool
     public var items: [ClipboardItem]
+    /// Search and filter live here, not in the drawer: the header's magnifier
+    /// opens them in a popover and the list below is the same list.
+    public var searchText: String = ""
+    public var selectedFilter: ClipboardCategoryFilter = .all
     public let storage: any PurahPluginStorage
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+
+    /// Whether a query or a category is narrowing the list, so the header can
+    /// show that the drawer is not showing everything.
+    public var isFiltering: Bool {
+        selectedFilter != .all || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public var filteredItems: [ClipboardItem] {
+        var baseItems = items
+        switch selectedFilter {
+        case .all:
+            break
+        case .favorite:
+            baseItems = baseItems.filter(\.isFavorite)
+        case .text:
+            baseItems = baseItems.filter { if case .text = $0.type { return true }; return false }
+        case .color:
+            baseItems = baseItems.filter { if case .color = $0.type { return true }; return false }
+        case .image:
+            baseItems = baseItems.filter { if case .image = $0.type { return true }; return false }
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return baseItems }
+
+        return baseItems.compactMap { item -> (item: ClipboardItem, score: Int)? in
+            let match = FuzzySearchEngine.match(query: query, in: item.searchableContent)
+            guard match.matched else { return nil }
+            return (item, match.score)
+        }
+        .sorted { $0.score > $1.score }
+        .map(\.item)
+    }
+
+    public func clearFilters() {
+        searchText = ""
+        selectedFilter = .all
+    }
 
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "clipboard")) {
         self.storage = storage

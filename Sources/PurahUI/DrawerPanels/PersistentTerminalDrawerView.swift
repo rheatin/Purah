@@ -165,80 +165,77 @@ public struct TerminalHeaderAccessoryView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 3) {
+        PurahHeaderGroup {
             if manager.tabs.isEmpty {
-                HStack(spacing: 3) {
-                    Circle()
-                        .fill(manager.isProcessRunning ? Color.green : Color.red)
-                        .frame(width: 4.5, height: 4.5)
-                    Text("\(manager.shellName) 1")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                PurahHeaderChip(tint: color, isSelected: true) {
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(manager.isProcessRunning ? Color.green : Color.red)
+                            .frame(width: 4.5, height: 4.5)
+                        Text("\(manager.shellName) 1")
+                            .font(.system(size: PurahHeaderMetrics.pillFontSize, weight: .bold, design: .monospaced))
+                    }
                 }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1.5)
-                .background(color.opacity(0.18))
-                .foregroundColor(color)
-                .cornerRadius(4)
             } else {
                 ForEach(manager.tabs) { tab in
                     let isActive = (tab.id == manager.activeTabId)
-                    HStack(spacing: 3) {
-                        Button {
-                            manager.selectTab(id: tab.id)
-                            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-                        } label: {
-                            HStack(spacing: 3) {
-                                if isActive {
-                                    Circle()
-                                        .fill((tab.isRunning || manager.isProcessRunning) ? Color.green : Color.red)
-                                        .frame(width: 4.5, height: 4.5)
-                                }
-                                Text(tab.title)
-                                    .font(.system(size: 8, weight: isActive ? .bold : .medium, design: .monospaced))
-                                    .lineLimit(1)
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        if manager.tabs.count > 1 {
+                    PurahHeaderChip(tint: color, isSelected: isActive) {
+                        HStack(spacing: 3) {
                             Button {
-                                manager.closeTab(id: tab.id)
-                                SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+                                manager.selectTab(id: tab.id)
+                                SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
                             } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 6.5, weight: .bold))
-                                    .foregroundColor(isActive ? color.opacity(0.85) : .secondary.opacity(0.75))
+                                HStack(spacing: 3) {
+                                    if isActive {
+                                        Circle()
+                                            .fill((tab.isRunning || manager.isProcessRunning) ? Color.green : Color.red)
+                                            .frame(width: 4.5, height: 4.5)
+                                    }
+                                    Text(tab.title)
+                                        .font(.system(size: PurahHeaderMetrics.pillFontSize,
+                                                      weight: isActive ? .bold : .medium,
+                                                      design: .monospaced))
+                                        .lineLimit(1)
+                                }
+                                .foregroundColor(isActive ? color : .secondary)
+                                // The gap between the dot and the title is
+                                // part of the target, not dead space.
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .help("help.closeTab".localized)
-                            .accessibilityLabel("help.closeTab".localized)
+
+                            if manager.tabs.count > 1 {
+                                Button {
+                                    manager.closeTab(id: tab.id)
+                                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 6.5, weight: .bold))
+                                        .foregroundColor(isActive ? color.opacity(0.85) : .secondary.opacity(0.75))
+                                        // A 6.5pt glyph is not a click target.
+                                        .frame(width: 10, height: 12)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .help("help.closeTab".localized)
+                                .accessibilityLabel("help.closeTab".localized)
+                            }
                         }
                     }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(isActive ? color.opacity(0.20) : Color.primary.opacity(0.06))
-                    .foregroundColor(isActive ? color : .secondary)
-                    .cornerRadius(4)
                 }
             }
 
             if manager.tabs.count < TerminalManager.maxTabsCount {
-                Button {
+                PurahHeaderButton(
+                    systemImage: "plus",
+                    help: "help.newTerminalTab".localized,
+                    tint: color,
+                    isEmphasized: true
+                ) {
                     manager.createNewTab()
                     manager.startShellProcess()
                     SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 7.5, weight: .bold))
-                        .foregroundColor(color)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(color.opacity(0.14))
-                        .cornerRadius(3.5)
                 }
-                .buttonStyle(.plain)
-                .help("help.newTerminalTab".localized)
-                .accessibilityLabel("help.newTerminalTab".localized)
             }
         }
     }
@@ -256,101 +253,108 @@ public struct TerminalHeaderTrailingToolbarView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 4) {
-            // cd Finder quick jump button
-            Button {
+        PurahHeaderGroup {
+            PurahHeaderButton(systemImage: "folder.badge.gearshape", help: "help.cdToFinder".localized) {
                 _ = manager.cdToFrontmostFinderDirectory()
                 SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
                 manager.focusTerminal()
-            } label: {
-                HStack(spacing: 2.5) {
-                    Image(systemName: "folder.badge.gearshape")
-                        .font(.system(size: 7.5, weight: .semibold))
-                    Text("cd Finder")
-                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                }
-                .padding(.horizontal, 4.5)
-                .padding(.vertical, 1.5)
-                .background(Color.secondary.opacity(0.14))
-                .foregroundColor(.primary.opacity(0.85))
-                .cornerRadius(3.5)
-            }
-            .buttonStyle(.plain)
-            .help("help.cdToFinder".localized)
-            .accessibilityLabel("help.cdToFinder".localized)
-
-            // Font size quick adjuster
-            HStack(spacing: 2) {
-                Button {
-                    if state.fontSize > 9.0 {
-                        state.fontSize -= 0.5
-                        state.save()
-                    }
-                } label: {
-                    Text("A-")
-                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.12))
-                        .cornerRadius(3)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    if state.fontSize < 22.0 {
-                        state.fontSize += 0.5
-                        state.save()
-                    }
-                } label: {
-                    Text("A+")
-                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.12))
-                        .cornerRadius(3)
-                }
-                .buttonStyle(.plain)
             }
 
-            // Quick Terminal Action Buttons
-            Button {
-                manager.sendInterrupt()
-            } label: {
-                Text("^C")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1.5)
-                    .background(Color.secondary.opacity(0.15))
-                    .cornerRadius(3)
-            }
-            .buttonStyle(.plain)
-            .help("help.sendSIGINT".localized)
-            .accessibilityLabel("help.sendSIGINT".localized)
+            TerminalFontSizeButton(state: state)
 
-            PurahClearButton(
-                title: nil,
-                icon: "trash",
-                isCompact: true,
-                helpText: "Clear terminal output (⌘K)"
-            ) {
-                state.clearActiveTab()
-                store.triggerControlHaptic(.alignment)
-            }
-
-            Button {
+            PurahHeaderButton(systemImage: "arrow.clockwise", help: "help.restartShellSession".localized) {
                 manager.restartShell(
                     fontFamily: state.fontFamily,
                     fontSize: CGFloat(state.fontSize),
                     palette: palette
                 )
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 8.5))
-                    .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
-            .help("help.restartShellSession".localized)
-            .accessibilityLabel("help.restartShellSession".localized)
         }
+    }
+}
+
+// MARK: - Header Font Size
+
+/// A dragged slider, not "smaller / larger / reset" in a menu.
+///
+/// Choosing a size from three discrete steps means guessing and re-opening the
+/// menu; the terminal behind the popover resizes as the slider moves, so the
+/// control shows its own answer.
+///
+/// Neutral colours, like the buttons beside it: a size that differs from the
+/// default is not a state worth flagging, and an accent-tinted glyph in the
+/// header reads as a warning.
+struct TerminalFontSizeButton: View {
+    let state: TerminalPluginState
+
+    @State private var isShowing = false
+
+    var body: some View {
+        PurahHeaderButton(
+            systemImage: "textformat.size",
+            help: "terminal.fontSize".localized
+        ) {
+            isShowing.toggle()
+        }
+        .popover(isPresented: $isShowing, arrowEdge: .bottom) {
+            TerminalFontSizePanel(state: state)
+        }
+    }
+}
+
+private struct TerminalFontSizePanel: View {
+    @Bindable var state: TerminalPluginState
+
+    private var isDefault: Bool {
+        state.fontSize == TerminalPluginState.defaultFontSize
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("terminal.fontSize".localized)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
+
+                Spacer(minLength: 0)
+
+                Text(String(format: "%.1f pt", state.fontSize))
+                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .contentTransition(.numericText())
+            }
+
+            HStack(spacing: 7) {
+                Text("A")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.7))
+
+                Slider(value: $state.fontSize, in: 9...22, step: 0.5)
+                .controlSize(.small)
+                .accessibilityLabel("terminal.fontSize".localized)
+                .accessibilityValue(String(format: "%.1f pt", state.fontSize))
+
+                Text("A")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
+
+            HStack(spacing: 6) {
+                Spacer(minLength: 0)
+                Button {
+                    state.fontSize = TerminalPluginState.defaultFontSize
+                    state.save()
+                } label: {
+                    Text("terminal.fontReset".localized)
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(isDefault ? .secondary.opacity(0.45) : .secondary)
+                .disabled(isDefault)
+            }
+        }
+        .padding(12)
+        .frame(width: 224)
+        .onDisappear { state.save() }
     }
 }

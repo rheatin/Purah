@@ -44,7 +44,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     // 7. Native Context Menu Actions
     func contextMenuActions(subItemId: String?, context: PurahPluginContext) -> [PurahMenuAction]
 
-    // 8. Custom Header Slots (Accessories next to title & Trailing tools before settings/pin)
+    // 8. Custom Header Slots (accessories next to title & trailing tools before settings/pin)
     @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
     @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
 

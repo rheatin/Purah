@@ -790,6 +790,7 @@ public struct AISessionHistoryManagerView: View {
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .help("help.clearSearch".localized)
                     }
                 }
                 .padding(.horizontal, 6)
@@ -912,6 +913,7 @@ public struct AISessionHistoryManagerView: View {
                         .foregroundColor(.green)
                 }
                 .buttonStyle(.plain)
+                .help("help.confirmRename".localized)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
