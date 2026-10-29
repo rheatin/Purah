@@ -222,7 +222,9 @@ public struct AppUpdateDialogView: View {
                 default:
                     Button("updater.button.check".localized) {
                         Task {
-                            await updater.checkForUpdates()
+                            // The person pressed the button: never rate-limit
+                            // them to the quarter-hour floor.
+                            await updater.checkForUpdates(force: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -245,7 +247,7 @@ public struct AppUpdateDialogView: View {
             // one is in flight, so whichever arrives first wins and the
             // dialog never sits on a check that nobody started.
             if case .idle = updater.state {
-                await updater.checkForUpdates()
+                await updater.checkForUpdates(force: true)
             }
         }
     }

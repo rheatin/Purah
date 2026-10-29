@@ -164,9 +164,17 @@ public protocol UpdateManifestProviding: Sendable {
     func fetchLatestRelease() async throws -> (data: Data, statusCode: Int)
 }
 
-/// Production provider: GitHub Releases API over `URLSession`.
-public struct GitHubReleaseProvider: UpdateManifestProviding {
-    public static let endpoint = URL(string: "https://api.github.com/repos/rheatin/Purah/releases/latest")!
+/// Production provider: the release's own `release-info.json` asset.
+///
+/// Not `api.github.com`. The REST API is unauthenticated in this app, so every
+/// check joins one bucket of 60 requests per hour per IP address — shared with
+/// anything else on that network that talks to GitHub anonymously. When the
+/// bucket is empty GitHub answers 403 and the app could only repeat the number
+/// back. `releases/latest/download/<asset>` is a redirect to the release CDN:
+/// no quota, cacheable, and it hands over exactly the fields below without
+/// having to pick a `.dmg` out of an assets array.
+public struct ReleaseManifestProvider: UpdateManifestProviding {
+    public static let endpoint = URL(string: "https://github.com/rheatin/Purah/releases/latest/download/release-info.json")!
     public let currentVersion: String
     public let session: URLSession
 
@@ -177,7 +185,6 @@ public struct GitHubReleaseProvider: UpdateManifestProviding {
 
     public func fetchLatestRelease() async throws -> (data: Data, statusCode: Int) {
         var request = URLRequest(url: Self.endpoint)
-        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10.0
         let (data, response) = try await session.data(for: request)
@@ -249,6 +256,10 @@ public final class AppUpdaterManager {
     /// a year out of date. The launch check is silent — it opens the dialog
     /// only when there is something to install.
     public static let autoCheckDefaultsKey = "purah.updater.autoCheck"
+
+    /// How often a check that was not explicitly requested may ask again.
+    /// Opening the update dialog repeatedly is not asking a new question.
+    public static let minimumCheckInterval: TimeInterval = 15 * 60
 
     public var isAutoCheckEnabled: Bool {
         get { defaults.object(forKey: Self.autoCheckDefaultsKey) as? Bool ?? true }
@@ -330,12 +341,22 @@ public final class AppUpdaterManager {
         return current < remote
     }
 
-    public func checkForUpdates(simulatedRelease: AppReleaseInfo? = nil) async {
+    public func checkForUpdates(force: Bool = false, simulatedRelease: AppReleaseInfo? = nil) async {
         // Two entry points ask at once — the menu item and the dialog's own
         // `.task` — and the bottom button used to start a third. A second
         // request while one is in flight raced the first for `state`, so the
         // dialog could settle on whichever happened to finish last.
         guard state != .checking else { return }
+
+        // The same question twice in a quarter of an hour has the same answer.
+        // Ask GitHub every time the dialog opens and the update check becomes
+        // the busiest thing the app does; an explicit "check again" forces it.
+        if !force, simulatedRelease == nil,
+           let last = lastCheckDate,
+           Date().timeIntervalSince(last) < Self.minimumCheckInterval {
+            return
+        }
+
         state = .checking
         lastCheckDate = Date()
 
@@ -344,71 +365,41 @@ public final class AppUpdaterManager {
             return
         }
 
-        // Real GitHub Releases API query
-        let provider = manifestProvider ?? GitHubReleaseProvider(currentVersion: currentVersion)
+        let provider = manifestProvider ?? ReleaseManifestProvider(currentVersion: currentVersion)
 
         do {
             let (data, statusCode) = try await provider.fetchLatestRelease()
 
             guard statusCode == 200 else {
                 if statusCode == 404 {
-                    // No releases published yet on repository
+                    // Nothing published yet — or a release older than the
+                    // manifest. Either way there is nothing to install.
                     state = .upToDate(currentVersion: currentVersion)
                     return
                 }
-                state = .failed(error: "HTTP error \(statusCode)")
+                // 403/429 used to surface as "HTTP error 403", which tells the
+                // person nothing they can act on. Say what happened instead.
+                state = .failed(
+                    error: statusCode == 403 || statusCode == 429
+                        ? "GitHub is limiting update checks right now. Try again in a little while."
+                        : "Update check failed (HTTP \(statusCode))."
+                )
                 return
             }
 
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String else {
-                state = .failed(error: "Invalid release manifest")
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            guard let release = try? decoder.decode(AppReleaseInfo.self, from: data) else {
+                state = .failed(error: "The release manifest could not be read.")
                 return
             }
-
-            let remoteVersion = tagName.trimmingCharacters(in: CharacterSet(charactersIn: "vV "))
-            let bodyText = (json["body"] as? String) ?? "Maintenance and ergonomic improvements."
-            let htmlUrlString = (json["html_url"] as? String) ?? "https://github.com/rheatin/Purah/releases"
-
-            // Look for downloadable .zip or .dmg asset
-            guard let fallbackURL = URL(string: htmlUrlString) ?? URL(string: "https://github.com/rheatin/Purah/releases") else {
-                state = .failed(error: "Invalid release URL")
-                return
-            }
-            var downloadURL = fallbackURL
-            var digest: String?
-            if let assets = json["assets"] as? [[String: Any]] {
-                for asset in assets {
-                    if let name = asset["name"] as? String,
-                       (name.hasSuffix(".zip") || name.hasSuffix(".dmg")),
-                       let browserURL = asset["browser_download_url"] as? String,
-                       let u = URL(string: browserURL) {
-                        downloadURL = u
-                        // GitHub reports `sha256:<hex>` for every uploaded
-                        // asset. Prefer it, and strip the algorithm prefix.
-                        if let raw = asset["digest"] as? String {
-                            let parts = raw.split(separator: ":", maxSplits: 1)
-                            if parts.count == 2, parts[0].lowercased() == "sha256" {
-                                digest = String(parts[1])
-                            }
-                        }
-                        break
-                    }
-                }
-            }
-
-            let release = AppReleaseInfo(
-                version: remoteVersion,
-                releaseDate: Date(),
-                releaseNotes: bodyText,
-                downloadURL: downloadURL,
-                sha256: digest
-            )
 
             state = availability(of: release)
         } catch {
-            // When running offline or inside a restricted network sandbox, gracefully fallback to up-to-date
-            state = .upToDate(currentVersion: currentVersion)
+            // Not the same thing as "you are up to date". The launch check
+            // stays silent because it only presents for a real update; a
+            // manual check says it could not reach GitHub.
+            state = .failed(error: "Could not reach GitHub. Check your connection and try again.")
         }
     }
 

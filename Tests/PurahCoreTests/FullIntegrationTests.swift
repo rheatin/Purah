@@ -49,7 +49,14 @@ struct FullIntegrationTests {
         // correctly offer a manual download instead of an in-place update.
         let provider = StubUpdateProvider(
             statusCode: 200,
-            json: #"{"tag_name": "v\#(PurahCore.version)", "body": "no change"}"#
+            json: """
+            {
+              "version": "\(PurahCore.version)",
+              "releaseDate": "2026-01-01T00:00:00Z",
+              "releaseNotes": "no change",
+              "downloadURL": "https://example.com/Purah.zip"
+            }
+            """
         )
         let updater = AppUpdaterManager(
             currentVersion: PurahCore.version,

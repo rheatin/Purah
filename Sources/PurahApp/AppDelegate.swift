@@ -322,7 +322,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     @objc private func openUpdater() {
         presentUpdaterWindow()
         Task {
-            await AppUpdaterManager.shared.checkForUpdates()
+            await AppUpdaterManager.shared.checkForUpdates(force: true)
         }
     }
 
