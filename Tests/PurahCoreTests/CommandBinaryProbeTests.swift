@@ -8,11 +8,15 @@ struct CommandBinaryProbeTests {
 
     private let emptyPath = "/nonexistent-bin"
 
-    @Test("A path Apple deleted is reported instead of being suggested")
-    func catchesDeletedApplePath() {
-        // The exact answer that motivated this: an `airport` binary that has
-        // not existed since macOS 14.4, printed as if it would work.
-        let command = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I"
+    @Test("An absolute path that does not exist is reported instead of being suggested")
+    func catchesMissingAbsolutePath() {
+        // The case that motivated this was the `airport` binary Apple deleted
+        // in macOS 14.4, printed as if it would work. Asserting against that
+        // exact path made the test depend on how new the machine is: GitHub's
+        // runner still ships it, so the probe correctly found it and the suite
+        // went red on every push to main. The behaviour is stated with a path
+        // no macOS has.
+        let command = "/nonexistent-bin/apple-binary -I"
         #expect(CommandBinaryProbe.missingBinary(in: command, pathList: emptyPath) == command.split(separator: " ")[0].description)
     }
 
