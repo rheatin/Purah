@@ -26,6 +26,7 @@ public enum PluginFootprintCategory: String, Codable, Sendable, CaseIterable {
 public enum PluginPermission: String, Codable, Sendable, CaseIterable {
     case calendar = "Calendar"
     case reminders = "Reminders"
+    case microphone = "Microphone"
     case appleMusic = "Apple Music"
     case shellExecution = "Shell Execution"
     case machTelemetry = "Mach Telemetry"
@@ -36,6 +37,7 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
         switch self {
         case .calendar: return "calendar"
         case .reminders: return "checklist"
+        case .microphone: return "mic.fill"
         case .appleMusic: return "music.note"
         case .shellExecution: return "terminal.fill"
         case .machTelemetry: return "waveform.path.ecg"
@@ -50,6 +52,8 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
             return "Reads system events, meetings, and schedules."
         case .reminders:
             return "Reads and synchronizes reminders and task items."
+        case .microphone:
+            return "Records audio from the microphone."
         case .appleMusic:
             return "Observes music playback state and track metadata."
         case .shellExecution:
@@ -70,6 +74,8 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
             return "If denied, Calendar cannot load upcoming events or meetings into your timeline, and one-tap meeting join links will be disabled."
         case .reminders:
             return "If denied, Reminders cannot sync tasks into edge chips, and ticking completed items will not reflect in Apple Reminders."
+        case .microphone:
+            return "If denied, plugins that record audio cannot capture sound and fall back to text input."
         case .appleMusic:
             return "If denied, track metadata, album artwork, and real-time audio wave meters will remain unavailable."
         case .shellExecution:
@@ -85,7 +91,7 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
 
     public var isTCCRestricted: Bool {
         switch self {
-        case .calendar, .reminders, .fileSystem:
+        case .calendar, .reminders, .microphone, .fileSystem:
             return true
         case .appleMusic, .shellExecution, .machTelemetry, .pasteboard:
             return false
@@ -96,6 +102,7 @@ public enum PluginPermission: String, Codable, Sendable, CaseIterable {
         switch self {
         case .calendar: return "Privacy_Calendars"
         case .reminders: return "Privacy_Reminders"
+        case .microphone: return "Privacy_Microphone"
         case .fileSystem: return "Privacy_FilesAndFolders"
         default: return nil
         }
@@ -117,6 +124,16 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     public var defaultDrawerWidth: Double
     public var category: PluginFootprintCategory
     public var permissions: [PluginPermission]
+
+    /// Permission names this build does not know, kept instead of discarded.
+    ///
+    /// A plugin authored against a newer Purah may declare a capability this
+    /// binary has never heard of. Decoding the array strictly made that one
+    /// string fail the *whole* manifest, so the plugin would not load at all
+    /// and the reason was invisible. The host cannot grant an unknown
+    /// capability — every one needs its own system API — but it can say so,
+    /// and the settings matrix shows these by name.
+    public var unsupportedPermissions: [String]
     public var website: String?
     public var tags: [String]
     public var isCommunity: Bool
@@ -158,6 +175,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         defaultDrawerWidth: Double = 260.0,
         category: PluginFootprintCategory = .lightweight,
         permissions: [PluginPermission] = [],
+        unsupportedPermissions: [String] = [],
         website: String? = nil,
         tags: [String] = [],
         isCommunity: Bool = false,
@@ -181,6 +199,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         self.defaultDrawerWidth = defaultDrawerWidth
         self.category = category
         self.permissions = permissions
+        self.unsupportedPermissions = unsupportedPermissions
         self.website = website
         self.tags = tags
         self.isCommunity = isCommunity
@@ -221,7 +240,16 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         } else {
             category = .lightweight
         }
-        permissions = try container.decodeIfPresent([PluginPermission].self, forKey: .permissions) ?? []
+        // Read as strings so one unknown name cannot fail the manifest.
+        let declaredPermissions = try container.decodeIfPresent([String].self, forKey: .permissions) ?? []
+        let knownPermissions = declaredPermissions.compactMap { raw in
+            PluginPermission(rawValue: raw)
+                ?? PluginPermission.allCases.first { $0.rawValue.localizedCaseInsensitiveCompare(raw) == .orderedSame }
+        }
+        permissions = knownPermissions
+        unsupportedPermissions = declaredPermissions.filter { raw in
+            !knownPermissions.contains { $0.rawValue.localizedCaseInsensitiveCompare(raw) == .orderedSame }
+        }
         website = try container.decodeIfPresent(String.self, forKey: .website)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         isCommunity = try container.decodeIfPresent(Bool.self, forKey: .isCommunity) ?? false
@@ -247,7 +275,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         try container.encode(defaultColorHex, forKey: .defaultColorHex)
         try container.encode(defaultDrawerWidth, forKey: .defaultDrawerWidth)
         try container.encode(category, forKey: .category)
-        try container.encode(permissions, forKey: .permissions)
+        try container.encode(permissions.map(\.rawValue) + unsupportedPermissions, forKey: .permissions)
         try container.encodeIfPresent(website, forKey: .website)
         try container.encode(tags, forKey: .tags)
         try container.encode(isCommunity, forKey: .isCommunity)

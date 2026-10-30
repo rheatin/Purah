@@ -109,6 +109,11 @@ public struct PurahABIContextPayload: Codable, Sendable {
     public let primaryAccentHex: String
     public let borderColorHex: String
 
+    /// Which of the permissions this plugin declared are actually granted.
+    /// A dylib plugin has no other way to learn this: it cannot read TCC, and
+    /// the host is the only party that may raise the prompt.
+    public let grantedPermissions: [String]
+
     public init(
         pluginId: String,
         edge: String,
@@ -124,7 +129,8 @@ public struct PurahABIContextPayload: Codable, Sendable {
         isDecomposed: Bool = false,
         paletteStyle: String = "native",
         primaryAccentHex: String = "#00D1FF",
-        borderColorHex: String = "#888888"
+        borderColorHex: String = "#888888",
+        grantedPermissions: [String] = []
     ) {
         self.pluginId = pluginId
         self.edge = edge
@@ -141,6 +147,7 @@ public struct PurahABIContextPayload: Codable, Sendable {
         self.paletteStyle = paletteStyle
         self.primaryAccentHex = primaryAccentHex
         self.borderColorHex = borderColorHex
+        self.grantedPermissions = grantedPermissions
     }
 
     /// Pre-encoded form for `updateNSView`, which has no `withCString` scope.
@@ -178,8 +185,17 @@ public struct PurahABIContextPayload: Codable, Sendable {
             isDecomposed: context.store.isPodDecomposed(context.pod.id),
             paletteStyle: context.palette.style.rawValue,
             primaryAccentHex: context.palette.primaryAccent.toHex() ?? "#00D1FF",
-            borderColorHex: context.palette.borderColor.toHex() ?? "#888888"
+            borderColorHex: context.palette.borderColor.toHex() ?? "#888888",
+            grantedPermissions: Self.resolvedGrantedPermissions(pluginId: context.pod.id)
         )
+    }
+
+    /// The host answers this, never the plugin: a dylib cannot read TCC.
+    @MainActor
+    private static func resolvedGrantedPermissions(pluginId: String) -> [String] {
+        (PluginRegistry.shared.manifest(for: pluginId)?.permissions ?? [])
+            .filter { PermissionManager.shared.status(for: $0).isGranted }
+            .map(\.rawValue)
     }
 
     @MainActor
@@ -205,7 +221,8 @@ public struct PurahABIContextPayload: Codable, Sendable {
             isDecomposed: store.isPodDecomposed(pluginId),
             paletteStyle: palette.style.rawValue,
             primaryAccentHex: palette.primaryAccent.toHex() ?? "#00D1FF",
-            borderColorHex: palette.borderColor.toHex() ?? "#888888"
+            borderColorHex: palette.borderColor.toHex() ?? "#888888",
+            grantedPermissions: resolvedGrantedPermissions(pluginId: pluginId)
         )
     }
 

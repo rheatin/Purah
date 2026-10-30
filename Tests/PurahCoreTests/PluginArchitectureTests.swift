@@ -1586,5 +1586,62 @@ struct PluginArchitectureTests {
         #expect(!store.canEnableSubItem(for: "vitals"), "A 4-of-4 rail must refuse a fifth metric")
     }
 
+    /// The host raises every TCC prompt, so the context is the only door a
+    /// plugin has. An undeclared capability must close at that door: returning
+    /// true would mean the plugin asked for something it never announced, and
+    /// a system sheet would be the first anyone heard of it.
+    @Test("requestCapability refuses what the manifest did not declare")
+    func testRequestCapabilityUndeclared() async {
+        let store = PurahWorkspaceStore()
+        let pod = SlotPod(
+            id: "test-pod",
+            name: "Test Pod",
+            systemIcon: "bolt",
+            edge: .left,
+            range: .init(start: 0.1, length: 0.2),
+            ambientStyle: .ghostDot,
+            preferredZone: .glance,
+            ergonomicWeight: 30.0
+        )
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 180.0,
+            drawerWidth: 280.0,
+            isExpanded: false,
+            isPinned: false,
+            accentColor: .cyan,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        // Undeclared: refused before any system prompt is considered.
+        #expect(await context.requestCapability(.microphone) == false)
+
+        // Declared and ambient: granted without a prompt.
+        if let vitalsPod = store.pods.first(where: { $0.id == "vitals" }) {
+            let vitals = PurahPluginContext(
+                pod: vitalsPod,
+                edge: .left,
+                railWidth: 8.0,
+                slotHeight: 180.0,
+                drawerWidth: 260.0,
+                isExpanded: false,
+                isPinned: false,
+                accentColor: .green,
+                palette: ThemeManager.shared.palette,
+                store: store,
+                requestExpand: {},
+                requestDismiss: {},
+                togglePin: {}
+            )
+            #expect(await vitals.requestCapability(.machTelemetry) == true)
+            #expect(await vitals.requestCapability(.microphone) == false)
+        }
+    }
 
 }

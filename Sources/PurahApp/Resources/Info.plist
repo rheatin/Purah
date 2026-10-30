@@ -27,7 +27,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Purah connects to AI servers and model endpoints running on your local network, such as a self-hosted gateway or Ollama.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Purah uses audio capture to display real-time music rhythm visualizers on the edge rails.</string>
+	<string>Purah asks for microphone access only when a plugin needs to record audio.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Purah needs full reminders access to synchronize your tasks with ambient edge gauges.</string>
 	<key>NSRemindersUsageDescription</key>

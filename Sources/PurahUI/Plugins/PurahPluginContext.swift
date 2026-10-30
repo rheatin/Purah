@@ -109,6 +109,28 @@ public struct PurahPluginContext: Sendable {
         (try? enforceCapability(permission)) != nil
     }
 
+    /// Ask the host to raise the system prompt for a capability the plugin
+    /// declared in its manifest.
+    ///
+    /// Plugins cannot prompt for themselves: macOS attributes every TCC grant
+    /// to the app, so a "Microphone" sheet from a dylib is still Purah's sheet.
+    /// Routing the request through the host is what lets it check the
+    /// declaration first — an undeclared capability returns `false` and never
+    /// prompts, so a plugin cannot talk someone into granting access it never
+    /// announced. Call this at the moment of use, not at mount.
+    public func requestCapability(_ permission: PluginPermission) async -> Bool {
+        let declared = PluginRegistry.shared.manifest(for: pod.id)?.permissions ?? []
+        guard declared.contains(permission) else {
+            DiagnosticLogger.shared.log(
+                level: .warning,
+                category: "permissions",
+                message: "\(pod.id) requested \(permission.rawValue) without declaring it in its manifest."
+            )
+            return false
+        }
+        return await PermissionManager.shared.requestAccess(for: permission)
+    }
+
     public init(
         pod: SlotPod,
         edge: MountEdge,
