@@ -88,6 +88,82 @@ public final class SystemCalendarSyncService {
         }
     }
 
+    /// Destinations Save can offer, with the system default first.
+    ///
+    /// The default is what a draft with no named calendar has always gone into,
+    /// and that is not always the calendar the person expects — the card shows
+    /// this list precisely so the target is never a surprise after the fact.
+    public func writableContainerTitles() -> [String] {
+        guard PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event)).isGranted else {
+            return []
+        }
+        let store = writableStore()
+        let names = store.calendars(for: .event)
+            .filter(\.allowsContentModifications)
+            .map(\.title)
+            .sorted()
+        guard let fallback = store.defaultCalendarForNewEvents?.title, names.contains(fallback) else {
+            return names
+        }
+        return [fallback] + names.filter { $0 != fallback }
+    }
+
+    /// Writes one event. The pod refreshes itself from `EKEventStoreChanged`,
+    /// which `save(commit:)` posts, so nothing here touches `boundStore`.
+    ///
+    /// A named calendar that cannot be written to is an error, never a silent
+    /// fallback to the default: saving a work meeting into a personal calendar
+    /// is not what the person asked for, and they would find out weeks later.
+    @discardableResult
+    public func createEvent(
+        title: String,
+        start: Date,
+        end: Date? = nil,
+        allDay: Bool = false,
+        notes: String? = nil,
+        calendarTitle: String? = nil
+    ) throws -> String {
+        guard PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event)).isGranted else {
+            throw AIActionWriteError.accessDenied
+        }
+
+        let store = writableStore()
+        let event = EKEvent(eventStore: store)
+        event.title = title
+        event.startDate = start
+        event.endDate = end ?? start.addingTimeInterval(allDay ? 86_400 : 3600)
+        event.isAllDay = allDay
+        event.notes = notes
+
+        let calendars = store.calendars(for: .event).filter(\.allowsContentModifications)
+        if let calendarTitle, !calendarTitle.isEmpty {
+            let match = calendars.first {
+                $0.title.compare(calendarTitle, options: .caseInsensitive) == .orderedSame
+            }
+            guard let match else { throw AIActionWriteError.noWritableContainer(calendarTitle) }
+            event.calendar = match
+        } else {
+            guard let fallback = store.defaultCalendarForNewEvents ?? calendars.first else {
+                throw AIActionWriteError.noWritableContainer(nil)
+            }
+            event.calendar = fallback
+        }
+
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+        } catch {
+            throw AIActionWriteError.saveFailed(error.localizedDescription)
+        }
+        return event.eventIdentifier ?? ""
+    }
+
+    private func writableStore() -> EKEventStore {
+        if let eventStore { return eventStore }
+        let store = EKEventStore()
+        eventStore = store
+        return store
+    }
+
     nonisolated public static func processEvents(_ events: [EKEvent]) -> [CalendarEventItem] {
         let mapped = events.map { ekEvent in
             var extractedURL = ekEvent.url

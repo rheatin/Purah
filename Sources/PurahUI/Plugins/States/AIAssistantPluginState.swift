@@ -246,6 +246,15 @@ public final class AIAssistantPluginState: Sendable {
 
     // MARK: - Live Chat & Streaming State
     public var sessions: [AIChatSession] = []
+    /// Answers whose calendar/reminder draft has already been written, keyed by
+    /// message id so the card can stop offering Save.
+    ///
+    /// Held in memory only: the draft itself is re-read from the message text,
+    /// and persisting a "saved" flag would have to survive an item the person
+    /// deleted in Calendar — the card would then lie about where the item is.
+    /// A relaunch offers Save again, which is the honest state of a memory that
+    /// did not persist.
+    public var savedActionDraftIDs: Set<UUID> = []
     public var activeSessionId: String = "" {
         didSet {
             viewingStepIndex = nil
@@ -1488,6 +1497,16 @@ public final class AIAssistantPluginState: Sendable {
                 3. Preserve all original layout, spacing, and casing where intentional.
                 """
             }
+        }
+
+        // Ask mode is the one place a draft is proposed: it is the only role
+        // whose instructions read as "do something", so the envelope rides
+        // along there and nowhere else. Transform roles must return only the
+        // text they were given.
+        if customSystemPrompt == nil, effectiveRoleId == AIQuickActionType.ask.id {
+            effectivePromptOverride = [effectivePromptOverride, AIActionDraftParser.instructions()]
+                .compactMap { $0 }
+                .joined(separator: "\n\n")
         }
 
         let userMessageContent: String

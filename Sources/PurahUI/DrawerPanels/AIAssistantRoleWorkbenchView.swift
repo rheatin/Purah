@@ -95,7 +95,23 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     private var latestResult: String {
-        lastAssistantMsg?.content ?? ""
+        guard let content = lastAssistantMsg?.content else { return "" }
+        // The ```purah-action block is a proposal for the card below, not part
+        // of the answer: showing (and copying) the raw JSON was half of what
+        // made the old answer look like it had done nothing.
+        return content.contains(AIActionDraftParser.actionFenceTag)
+            ? AIActionDraftParser.strippingActionBlock(from: content)
+            : content
+    }
+
+    /// The draft this answer proposes, parsed from the message text rather than
+    /// stored, so it is the same value after a relaunch and cannot drift from
+    /// what the person is reading.
+    private var pendingDraft: AIActionDraft? {
+        guard let msg = lastAssistantMsg, msg.role == .assistant,
+              msg.content.contains(AIActionDraftParser.actionFenceTag)
+        else { return nil }
+        return AIActionDraftParser.extract(from: msg.content)
     }
 
     private var isRoleStreaming: Bool {
@@ -720,7 +736,18 @@ public struct AIAssistantRoleWorkbenchView: View {
                     }
                 )
 
-            // 3. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
+            // 3. The one-row confirmation for anything the answer proposed to write
+            if let draft = pendingDraft, let messageId = lastAssistantMsg?.id {
+                AIActionDraftCard(
+                    draft: draft,
+                    accentColor: roleColor,
+                    isSaved: state.savedActionDraftIDs.contains(messageId)
+                ) { container in
+                    saveDraft(draft, container: container, messageID: messageId)
+                }
+            }
+
+            // 4. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
         }
     }
@@ -1881,6 +1908,45 @@ public struct AIAssistantRoleWorkbenchView: View {
     private func showToast(_ message: String, icon: String? = nil) {
         let text = (icon != nil) ? "\(icon!) \(message)" : message
         store.onCapacityWarningToast?(text)
+    }
+
+    /// Writes the draft, or returns the reason it could not be written.
+    ///
+    /// Nothing is written on the model's word alone: Save is the only call
+    /// site, and a failure comes back to the card instead of being folded into
+    /// a friendly toast — "added" for something that was not added is exactly
+    /// the bug this path exists to fix.
+    private func saveDraft(_ draft: AIActionDraft, container: String?, messageID: UUID) -> String? {
+        do {
+            switch draft.kind {
+            case .event:
+                guard let start = draft.start else {
+                    return AIActionWriteError.noWritableContainer(nil).localizedDescription
+                }
+                try SystemCalendarSyncService.shared.createEvent(
+                    title: draft.title,
+                    start: start,
+                    end: draft.resolvedEnd,
+                    allDay: draft.allDay,
+                    notes: draft.notes,
+                    calendarTitle: container
+                )
+            case .task:
+                try SystemRemindersSyncService.shared.createReminder(
+                    title: draft.title,
+                    dueDate: draft.start,
+                    notes: draft.notes,
+                    listTitle: container
+                )
+            }
+        } catch {
+            return error.localizedDescription
+        }
+
+        state.savedActionDraftIDs.insert(messageID)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+        showToast("ai.draft.saved".localized, icon: "checkmark.circle.fill")
+        return nil
     }
 
     private func replaceSelection() {

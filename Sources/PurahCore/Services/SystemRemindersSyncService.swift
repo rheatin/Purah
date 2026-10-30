@@ -154,6 +154,63 @@ public final class SystemRemindersSyncService {
         }
     }
 
+    /// Destinations Save can offer, with the system default list first.
+    public func writableContainerTitles() -> [String] {
+        guard permissionStatus().isGranted else { return [] }
+        let names = eventStore.calendars(for: .reminder).map(\.title).sorted()
+        guard let fallback = eventStore.defaultCalendarForNewReminders()?.title, names.contains(fallback) else {
+            return names
+        }
+        return [fallback] + names.filter { $0 != fallback }
+    }
+
+    /// Writes one reminder. `TodoPluginState` refreshes itself from
+    /// `EKEventStoreChanged`, which `save(commit:)` posts.
+    ///
+    /// Unlike `addReminder`, a failure is thrown rather than swallowed into a
+    /// local-only item: the caller is showing a confirmation card, and telling
+    /// the person "saved" about something that went nowhere is the bug this
+    /// whole path exists to fix.
+    @discardableResult
+    public func createReminder(
+        title: String,
+        dueDate: Date? = nil,
+        notes: String? = nil,
+        listTitle: String? = nil
+    ) throws -> String {
+        guard permissionStatus().isGranted else { throw AIActionWriteError.accessDenied }
+
+        let lists = eventStore.calendars(for: .reminder)
+        let target: EKCalendar?
+        if let listTitle, !listTitle.isEmpty {
+            target = lists.first {
+                $0.title.compare(listTitle, options: .caseInsensitive) == .orderedSame
+            }
+            guard target != nil else { throw AIActionWriteError.noWritableContainer(listTitle) }
+        } else {
+            target = eventStore.defaultCalendarForNewReminders() ?? lists.first
+            guard target != nil else { throw AIActionWriteError.noWritableContainer(nil) }
+        }
+
+        let reminder = EKReminder(eventStore: eventStore)
+        reminder.title = title
+        reminder.notes = notes
+        reminder.calendar = target
+        if let dueDate {
+            reminder.dueDateComponents = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute],
+                from: dueDate
+            )
+        }
+
+        do {
+            try eventStore.save(reminder, commit: true)
+        } catch {
+            throw AIActionWriteError.saveFailed(error.localizedDescription)
+        }
+        return reminder.calendarItemIdentifier
+    }
+
     /// Toggles completion in the real Reminders store.
     ///
     /// Returns whether a real reminder was updated. That answer matters to the
