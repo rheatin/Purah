@@ -389,7 +389,7 @@ public struct LiveRailSculptorDockView: View {
 
                 Spacer()
 
-                if store.onboardingStep != .antiTouchCalibration {
+                if store.onboardingStep != .permissions {
                     Button {
                         withAnimation(PurahMotionPolicy.surface) {
                             store.skipCurrentOnboardingStep()
@@ -524,6 +524,7 @@ public struct LiveRailSculptorDockView: View {
             case .pageDemo: pageDemoStepBody
             case .breathingDemo: breathingDemoStepBody
             case .antiTouchCalibration: antiTouchCalibrationStepBody
+            case .permissions: permissionsStepBody
             }
         }
         .padding(.horizontal, 10)
@@ -882,6 +883,125 @@ public struct LiveRailSculptorDockView: View {
                     onboardingGateTelemetryMeter
                 }
             }
+        }
+    }
+
+    // MARK: Step 7 — Connect what Purah can see
+
+    /// One panel for every system permission an installed plugin asks for.
+    ///
+    /// Each row is its own click, because each one raises its own macOS sheet
+    /// and a single "allow everything" button would put a wall of prompts behind
+    /// one tap. Skipping costs exactly the features listed here and nothing
+    /// else — the affected pods go on to show their own "Connect" affordance.
+    private var permissionsStepBody: some View {
+        let rows = PermissionInventory.promptable()
+
+        return VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("onboarding.step7.title".localized)
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("onboarding.step7.subtitle".localized)
+                    .font(.system(size: 9.5, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            missionBox(isCompleted: true) {
+                if rows.isEmpty {
+                    missionCheckItem(isDone: true, text: "onboarding.step7.none".localized)
+                } else {
+                    VStack(spacing: 4) {
+                        ForEach(rows) { group in
+                            permissionRow(group)
+                        }
+                    }
+                }
+            }
+        }
+        .task {
+            PermissionManager.shared.refreshStatuses()
+        }
+    }
+
+    @ViewBuilder
+    private func permissionRow(_ group: PermissionGroup) -> some View {
+        let status = PermissionManager.shared.status(for: group.permission)
+
+        HStack(spacing: 7) {
+            Image(systemName: group.permission.icon)
+                .font(.system(size: 11))
+                .foregroundColor(palette.primaryAccent)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(group.permission.rawValue)
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("permissions.requestedBy".localized + " " + group.pluginNames)
+                    .font(.system(size: 8.5))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+
+            if status == .authorized {
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 9.5))
+                    Text("permissions.row.granted".localized)
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.green)
+            } else if status == .denied || status == .restricted {
+                Button {
+                    if let anchor = group.permission.privacySettingsAnchor {
+                        PermissionManager.shared.openSystemSettings(for: anchor)
+                    }
+                } label: {
+                    Text("permissions.row.openSettings".localized)
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.orange.opacity(0.14))
+                        .cornerRadius(5)
+                }
+                .buttonStyle(.tactile)
+                .help("permissions.row.openSettings".localized)
+            } else {
+                Button {
+                    store.triggerControlHaptic(.levelChange)
+                    Task { await grant(group.permission) }
+                } label: {
+                    Text("permissions.row.grant".localized)
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(palette.primaryAccent)
+                        .cornerRadius(5)
+                }
+                .buttonStyle(.tactile)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(6)
+    }
+
+    private func grant(_ permission: PluginPermission) async {
+        guard await PermissionManager.shared.requestAccess(for: permission) else { return }
+        switch permission {
+        case .calendar:
+            SystemCalendarSyncService.shared.syncEvents(into: store)
+        case .reminders:
+            await SystemRemindersSyncService.shared.syncReminders(into: store)
+        default:
+            break
         }
     }
 

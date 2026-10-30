@@ -90,11 +90,17 @@ public struct DropShelfDrawerView: View {
 
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
-    @State private var isStashTargeted: Bool = false
-    @State private var isAirDropTargeted: Bool = false
+    /// Which half of the card the drag is currently over. Both highlights are
+    /// derived from this one value so the split can never show two winners.
+    @State private var activeDropZone: ShelfDropZone? = nil
+    @State private var dropSessionConcluded: Bool = false
+    @State private var cardHeight: CGFloat = 200
     @State private var marqueeStartPoint: CGPoint? = nil
     @State private var marqueeCurrentPoint: CGPoint? = nil
     @State private var rowFrames: [String: CGRect] = [:]
+
+    private var isStashTargeted: Bool { activeDropZone == .stash }
+    private var isAirDropTargeted: Bool { activeDropZone == .airDrop }
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -177,14 +183,6 @@ public struct DropShelfDrawerView: View {
                                 )
                         )
                         .contentShape(Rectangle())
-                        .onDrop(
-                            of: Self.supportedStashDropTypes,
-                            delegate: ShelfStashDropDelegate(
-                                isTargeted: $isStashTargeted,
-                                state: state,
-                                store: store
-                            )
-                        )
 
                         // Zone 2: Instant AirDrop Target
                         VStack(spacing: isCompact ? 3 : 6) {
@@ -215,14 +213,6 @@ public struct DropShelfDrawerView: View {
                                 )
                         )
                         .contentShape(Rectangle())
-                        .onDrop(
-                            of: [.fileURL, .url],
-                            delegate: ShelfAirDropDelegate(
-                                isTargeted: $isAirDropTargeted,
-                                state: state,
-                                store: store
-                            )
-                        )
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -342,14 +332,6 @@ public struct DropShelfDrawerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
                 .coordinateSpace(name: "dropShelfList")
-                .onDrop(
-                    of: Self.supportedStashDropTypes,
-                    delegate: ShelfStashDropDelegate(
-                        isTargeted: $isStashTargeted,
-                        state: state,
-                        store: store
-                    )
-                )
 
                 // One footer row, two jobs: drag everything out on the left,
                 // send it on the right. It doubles as the drawer's two drop
@@ -398,22 +380,88 @@ public struct DropShelfDrawerView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 26)
                 .contentShape(Rectangle())
-                .onDrop(
-                    of: [.fileURL, .url],
-                    delegate: ShelfAirDropDelegate(
-                        isTargeted: $isAirDropTargeted,
-                        state: state,
-                        store: store
-                    )
-                )
                 .opacity(isStashTargeted ? 0.4 : 1)
                 .animation(PurahMotionPolicy.surface, value: isStashTargeted)
                 .animation(PurahMotionPolicy.surface, value: isAirDropTargeted)
             }
         }
+        .overlay {
+            // Decoration only — the drop target is the card itself, so this can
+            // never steal the drag session from the view that decides routing.
+            if let zone = activeDropZone {
+                splitDropOverlay(activeZone: zone)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(
+            of: Self.supportedStashDropTypes,
+            delegate: ShelfSplitDropDelegate(
+                state: state,
+                store: store,
+                cardHeight: cardHeight,
+                activeZone: $activeDropZone,
+                dropSessionConcluded: $dropSessionConcluded
+            )
+        )
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { cardHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, height in cardHeight = height }
+            }
+        )
         .onDisappear {
             ClipboardHoverPreviewController.shared.forceHide()
         }
+    }
+
+    // MARK: - Transient Stash / AirDrop Split
+
+    /// Shown only while a drag hovers the card: the whole drawer becomes two
+    /// half-height targets so neither needs to be aimed at, and the file list
+    /// comes back untouched the moment the drag leaves or lands.
+    @ViewBuilder
+    private func splitDropOverlay(activeZone: ShelfDropZone) -> some View {
+        VStack(spacing: 8) {
+            dropZoneBox(
+                isTargeted: activeZone == .stash,
+                icon: "tray.and.arrow.down.fill",
+                titleKey: "dropshelf.dropToStash",
+                tint: shelfColor
+            )
+            dropZoneBox(
+                isTargeted: activeZone == .airDrop,
+                icon: "paperplane.fill",
+                titleKey: "dropshelf.dropToAirDrop",
+                tint: Color.blue
+            )
+        }
+        .padding(6)
+        .background(Color.black.opacity(0.60))
+        .cornerRadius(10)
+        .animation(PurahMotionPolicy.surface, value: activeZone)
+    }
+
+    @ViewBuilder
+    private func dropZoneBox(isTargeted: Bool, icon: String, titleKey: String, tint: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isTargeted ? tint.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4]))
+                .foregroundColor(isTargeted ? tint : Color.white.opacity(0.35))
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
+                Text(titleKey.localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @MainActor
@@ -706,6 +754,100 @@ public struct ShelfStashDropDelegate: DropDelegate {
             }
         }
         return true
+    }
+}
+
+// MARK: - Whole-Card Split Drop Target
+
+/// Which half of the shelf card a drag is over.
+public enum ShelfDropZone: Sendable {
+    case stash
+    case airDrop
+}
+
+/// One drop target for the whole shelf card.
+///
+/// The drawer splits into Stash (top) and AirDrop (bottom) while a drag hovers
+/// it, and which half receives the payload is decided from the pointer's
+/// vertical position inside `performDrop`. The halves are decoration only: they
+/// register no drop targets of their own, because nested `.onDrop` views compete
+/// for the same drag session and cancel each other out — the reason the drop
+/// zones previously worked on an empty shelf and then vanished behind a 26pt
+/// footer row once a single file was stashed.
+public struct ShelfSplitDropDelegate: DropDelegate {
+    public let state: ShelfPluginState
+    public let store: PurahWorkspaceStore
+    public let cardHeight: CGFloat
+    @Binding public var activeZone: ShelfDropZone?
+    /// Set once `performDrop` runs; AppKit still delivers a trailing
+    /// `dropUpdated` afterwards, which would otherwise re-arm the overlay on top
+    /// of the content that just landed.
+    @Binding public var dropSessionConcluded: Bool
+
+    public init(
+        state: ShelfPluginState,
+        store: PurahWorkspaceStore,
+        cardHeight: CGFloat,
+        activeZone: Binding<ShelfDropZone?>,
+        dropSessionConcluded: Binding<Bool>
+    ) {
+        self.state = state
+        self.store = store
+        self.cardHeight = cardHeight
+        self._activeZone = activeZone
+        self._dropSessionConcluded = dropSessionConcluded
+    }
+
+    public func validateDrop(info: DropInfo) -> Bool {
+        stashDelegate.validateDrop(info: info)
+    }
+
+    public func dropEntered(info: DropInfo) {
+        dropSessionConcluded = false
+        updateTarget(for: info)
+    }
+
+    public func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard !dropSessionConcluded else { return DropProposal(operation: .copy) }
+        updateTarget(for: info)
+        return DropProposal(operation: .copy)
+    }
+
+    public func dropExited(info: DropInfo) {
+        activeZone = nil
+    }
+
+    private func updateTarget(for info: DropInfo) {
+        let next = resolveTarget(at: info.location.y)
+        if activeZone != next { activeZone = next }
+    }
+
+    private func resolveTarget(at y: CGFloat) -> ShelfDropZone {
+        Self.zone(at: y, cardHeight: cardHeight)
+    }
+
+    /// Top half stashes, bottom half AirDrops. An exactly-centred pointer goes
+    /// to AirDrop, so the lower target's edge is inclusive.
+    public static func zone(at y: CGFloat, cardHeight: CGFloat) -> ShelfDropZone {
+        y < max(cardHeight, 1.0) * 0.5 ? .stash : .airDrop
+    }
+
+    private var stashDelegate: ShelfStashDropDelegate {
+        ShelfStashDropDelegate(isTargeted: .constant(false), state: state, store: store)
+    }
+
+    private var airDropDelegate: ShelfAirDropDelegate {
+        ShelfAirDropDelegate(isTargeted: .constant(false), state: state, store: store)
+    }
+
+    public func performDrop(info: DropInfo) -> Bool {
+        let zone = resolveTarget(at: info.location.y)
+        dropSessionConcluded = true
+        activeZone = nil
+        switch zone {
+        case .stash: return stashDelegate.performDrop(info: info)
+        case .airDrop: return airDropDelegate.performDrop(info: info)
+        }
     }
 }
 

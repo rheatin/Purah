@@ -160,6 +160,13 @@ public struct TodoDrawerView: View {
         palette.podColor(for: "todo") // Amber gold for reminders
     }
 
+    /// Reminders access is a system permission, not a setting. Without it the
+    /// drawer has nothing to show, which is not the same thing as having
+    /// nothing to do.
+    private var remindersConnected: Bool {
+        PermissionManager.shared.remindersStatus == .authorized
+    }
+
     /// Todo ids already rendered as rail chips — the "+N" drawer excludes them
     /// so it continues the rail's list instead of repeating it.
     private let excludeIDs: Set<String>
@@ -180,17 +187,56 @@ public struct TodoDrawerView: View {
             if state.todos.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
-                    Image(systemName: "checkmark.circle.badge.questionmark")
+                    Image(systemName: remindersConnected ? "checkmark.circle.badge.questionmark" : "bell.slash")
                         .font(.system(size: 26))
                         .foregroundColor(palette.borderColor)
 
-                    Text("todo.empty.title".localized)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    if remindersConnected {
+                        Text("todo.empty.title".localized)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                    Text("todo.empty.subtitle".localized)
-                        .font(.system(size: 10))
-                        .foregroundColor(.gray)
+                        Text("todo.empty.subtitle".localized)
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray)
+                    } else {
+                        // "Nothing to do" and "Purah cannot see your reminders"
+                        // looked identical here. The second is something the
+                        // person can fix in one click, so it gets its own face.
+                        Text("todo.permission.title".localized)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                        Text("todo.permission.subtitle".localized)
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
+
+                        Button {
+                            Task {
+                                if await PermissionManager.shared.requestRemindersAccess() {
+                                    await SystemRemindersSyncService.shared.syncReminders(into: store)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 3.5) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text("todo.permission.connect".localized)
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                            }
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.orange.opacity(0.14)))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
+                            )
+                        }
+                        .buttonStyle(.tactile)
+                    }
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

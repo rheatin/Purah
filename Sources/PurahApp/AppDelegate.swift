@@ -128,7 +128,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
-        // A previous launch may have quit to install an update and failed. The
+        // A previous run may have quit to install an update and failed. The
         // install script recorded why; say it once instead of leaving the user
         // to wonder why the app vanished and came back as the same version.
         if let installFailure = UpdateInstallMarker.readAndClear() {
@@ -137,6 +137,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
                 TransientHUDController.shared.showWarning(
                     message: String(format: "updater.installFailed".localized, installFailure)
                 )
+            }
+        }
+
+        // A run that never reached `applicationWillTerminate` left its marker
+        // behind: a crash, a force quit, or a power loss. There is no crash
+        // reporter, so this sentence — and the diagnostic log it points at —
+        // is the whole signal that something went wrong.
+        let previousRunEndedAbruptly = LaunchHealthMarker.noteLaunch()
+        if previousRunEndedAbruptly {
+            DiagnosticLogger.shared.warn("Lifecycle", "Previous run ended without a clean exit.")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                TransientHUDController.shared.showWarning(message: "lifecycle.uncleanExit".localized)
             }
         }
 
@@ -369,5 +381,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         SystemAudioLiveMonitor.shared.stop()
         HardwareVitalsService.shared.saveHistoryToDisk()
         store.savePersistentState()
+        LaunchHealthMarker.noteCleanExit()
     }
 }

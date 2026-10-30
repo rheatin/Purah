@@ -127,11 +127,19 @@ Purah is designed to stay completely out of your way until intentionally summone
 
 **Requires macOS 14 or later.** The on-device AI features need macOS 26.
 
-**1. The installer (recommended)**
+**1. Homebrew (recommended)**
+
+```bash
+brew install --cask rheatin/tap/purah
+```
+
+That taps [homebrew-tap](https://github.com/rheatin/homebrew-tap) and installs Purah, cleaning up the quarantine flag macOS attaches to downloads on the way (see the note below). Upgrade with `brew upgrade --cask purah`, or let Purah's own updater do it.
+
+**2. The installer**
 
 Download the DMG from [Releases](https://github.com/rheatin/Purah/releases/latest), open it, and double-click **Install Purah.command**. It copies Purah into Applications, clears the download flag macOS attaches to anything fetched from the internet, and launches it. The script is plain, commented bash — read it first if you like; it changes nothing inside the app.
 
-**2. If you moved the app into Applications yourself**
+**3. If you moved the app into Applications yourself**
 
 macOS refuses to open apps it cannot verify. Purah is free and MIT-licensed, and it is **ad-hoc signed**: there is no $99/year Apple Developer account behind it, so Gatekeeper has no publisher to check.
 
@@ -140,7 +148,7 @@ macOS refuses to open apps it cannot verify. Purah is free and MIT-licensed, and
 
 The right-click trick no longer exists on macOS 15 and later; Apple removed that menu item.
 
-**3. Build it yourself**
+**4. Build it yourself**
 
 If you would rather not trust a binary, the source is the same code that produced it:
 
@@ -175,30 +183,10 @@ swift build -c release --disable-sandbox
 
 #### Releasing
 
-```bash
-./build.sh --configuration release      # build/Purah.app
-PURAH_SIGN_IDENTITY="Developer ID Application: …" \
-PURAH_NOTARY_PROFILE="purah-notary" \
-  ./release.sh --publish                # bump, build, sign, notarize, publish
-```
-
-`release.sh --publish` refuses to run unless the tree is clean, the branch is
-`main`, and local `main` contains `origin/main` — a release tagged from an
-unmerged branch ships assets that do not match the commit its tag points at.
-
-The DMG carries `Install Purah.command` and `Read Me.txt` from `packaging/`.
-The script is what makes an ad-hoc build openable: it copies the app into
-Applications and clears the quarantine flag, and it says so in the file where
-anyone can read it before running it.
-
-Signing is optional but decides what the in-app updater can do:
-
-| Build | Self-update | Why |
-|---|---|---|
-| Developer ID + notarized | Installs in place and relaunches | The download's Team ID and Gatekeeper verdict can both be checked |
-| Developer ID only | Installs in place | The download is matched against the published SHA-256; the publisher is known, the app is not notarized |
-| Ad-hoc / unsigned | Installs in place; the dialog says the publisher cannot be proven | There is no Team ID to compare, so the SHA-256 is the whole guarantee |
-
+`./release.sh --publish` bumps, builds, signs and publishes. The runbook, the
+Homebrew tap and the signing trade-offs are in
+[docs/OWNER_ACTIONS.md](docs/OWNER_ACTIONS.md) — notes for whoever ships Purah,
+not for people installing it.
 
 ---
 
