@@ -63,11 +63,19 @@ public enum CommandRiskClassifier {
             .lowercased()
             .replacingOccurrences(of: "\t", with: " ")
 
+        // Quoted text is not syntax: `grep -E "sh|bash" file` pipes nothing,
+        // and `echo "rm -rf /"` deletes nothing. Everything below judges the
+        // unquoted text only.
+        let unquoted = Self.strippingQuotes(normalised)
+
         // Anything piped into an interpreter is dangerous whatever it fetched:
-        // the person cannot read what is about to run. Quoted text is skipped
-        // first — `grep -E "sh|bash" file` pipes nothing.
-        if Self.strippingQuotes(normalised)
-            .range(of: #"\|\s*(sudo\s+)?(sh|bash|zsh)\b"#, options: .regularExpression) != nil {
+        // the person cannot read what is about to run. The interpreter is
+        // reached through a path more often than by bare name (`| /bin/sh`,
+        // `| env bash`), so an optional directory prefix is allowed.
+        if unquoted.range(
+            of: #"\|\s*(sudo\s+)?(env\s+)?([^\s|;&]*/)?(sh|bash|zsh)\b"#,
+            options: .regularExpression
+        ) != nil {
             return .dangerous
         }
         if dangerousSubstrings.contains(where: { normalised.contains($0) }) {
@@ -77,7 +85,7 @@ public enum CommandRiskClassifier {
         var sawCaution = false
         // `;`, `&&`, `||` and `|` each start a new command, and each has to be
         // judged on its own: the first word is the only one that is a verb.
-        for segment in normalised.split(whereSeparator: { ";|&\n()".contains($0) }) {
+        for segment in unquoted.split(whereSeparator: { ";|&\n()".contains($0) }) {
             let words = segment.split(separator: " ").map(String.init)
             let arguments = words.drop { $0.contains("=") }
             guard let head = arguments.first else { continue }
@@ -89,7 +97,9 @@ public enum CommandRiskClassifier {
             if cautionCommands.contains(head) { sawCaution = true }
         }
 
-        if normalised.contains("--force") || normalised.contains(" -rf") {
+        // Unquoted, for the same reason the segments are: a commit message
+        // that mentions `-rf` is not a recursive delete.
+        if unquoted.contains("--force") || unquoted.contains(" -rf") {
             sawCaution = true
         }
         return sawCaution ? .caution : .safe

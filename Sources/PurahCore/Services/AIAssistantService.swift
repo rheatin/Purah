@@ -1276,10 +1276,42 @@ public final class AIAssistantService {
     /// Argument shapes for the diagnostic log: flags survive, long values are
     /// replaced by their length. Prompts and chat history routinely exceed the
     /// whole log, and a diagnostics report gets pasted into issues.
+    ///
+    /// A length cap alone only caught the credentials people were lucky enough
+    /// to pass as a long prompt. `--api-key sk-…` is short and went in verbatim,
+    /// so the value of a credential-shaped flag is redacted instead — and a
+    /// numeric one is kept, because `--max-tokens 4096` is diagnostics, not a
+    /// secret.
     nonisolated static func describeArguments(_ arguments: [String]) -> String {
-        arguments.map { arg in
-            arg.count > 80 ? "<\(arg.count) chars>" : arg
+        var redactNext = false
+        return arguments.map { arg -> String in
+            if redactNext {
+                redactNext = false
+                return arg.allSatisfy(\.isNumber) ? arg : "<redacted>"
+            }
+            let lowered = arg.lowercased()
+            if let equals = arg.firstIndex(of: "="), arg.hasPrefix("-") {
+                return looksLikeCredentialFlag(String(arg[..<equals]))
+                    ? "\(arg[..<equals])=<redacted>"
+                    : truncatedArgument(arg)
+            }
+            if arg.hasPrefix("-") {
+                redactNext = looksLikeCredentialFlag(lowered)
+                return truncatedArgument(arg)
+            }
+            return looksLikeCredentialFlag(lowered) ? "<redacted>" : truncatedArgument(arg)
         }.joined(separator: " ")
+    }
+
+    private nonisolated static func truncatedArgument(_ arg: String) -> String {
+        arg.count > 80 ? "<\(arg.count) chars>" : arg
+    }
+
+    nonisolated static func looksLikeCredentialFlag(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        let fragments = ["key", "token", "secret", "password", "credential", "authorization", "bearer"]
+        return fragments.contains { lowered.contains($0) }
+            || lowered.hasPrefix("sk-")
     }
 
     private final class SafeTextBuffer: @unchecked Sendable {
