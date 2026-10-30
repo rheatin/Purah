@@ -437,29 +437,26 @@ public struct DropShelfDrawerView: View {
             )
         }
         .padding(6)
-        .background(palette.style == .native ? Color.white.opacity(0.72) : Color.black.opacity(0.60))
+        .background(Color.black.opacity(0.60))
         .cornerRadius(10)
         .animation(PurahMotionPolicy.surface, value: activeZone)
     }
 
     @ViewBuilder
     private func dropZoneBox(isTargeted: Bool, icon: String, titleKey: String, tint: Color) -> some View {
-        let isNative = palette.style == .native
-        let restingFill = isNative ? Color.primary.opacity(0.05) : Color.black.opacity(0.55)
-        let restingInk = isNative ? Color.primary.opacity(0.85) : Color.white.opacity(0.85)
         ZStack {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isTargeted ? tint.opacity(0.28) : restingFill)
+                .fill(isTargeted ? tint.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4]))
-                .foregroundColor(isTargeted ? tint : restingInk.opacity(0.4))
+                .foregroundColor(isTargeted ? tint : Color.white.opacity(0.35))
             VStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(isTargeted ? tint : restingInk)
+                    .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
                 Text(titleKey.localized)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(isNative ? Color.primary : .white)
+                    .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
             }
