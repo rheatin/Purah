@@ -127,6 +127,32 @@ public enum ZshSuggestionIntegration {
       typeset -g __purah_last_status=0
       typeset -g __purah_last_command=""
 
+      # The last few `??` exchanges, one per line: description, command, and the
+      # grey explanation. The shell owns this rather than Purah because a
+      # suggestion belongs to the terminal it was asked in — a second tab asks
+      # its own questions and must not inherit them.
+      typeset -ga __purah_turns=()
+      typeset -g __purah_turns_max=3
+
+      __purah_history() {
+        print -r -- "${(F)__purah_turns}"
+      }
+
+      __purah_remember() {
+        # Tabs separate the fields on the wire, so none may survive inside one.
+        # Everything is clipped: this rides along with every later request.
+        local d="$1" c="$2" e="$3"
+        d="${d[1,300]}"
+        c="${c[1,300]}"
+        e="${e[1,300]}"
+        __purah_turns+=("${d//$'\\t'/ }"$'\\t'"${c//$'\\t'/ }"$'\\t'"${e//$'\\t'/ }")
+        if (( ${#__purah_turns} > __purah_turns_max )); then
+          # `(@)` keeps the elements separate; without it the slice collapses
+          # into one scalar joined by spaces and the history becomes one turn.
+          __purah_turns=("${(@)__purah_turns[-$__purah_turns_max,-1]}")
+        fi
+      }
+
       # precmd keeps the last exit status and command line for `???`.
       __purah_precmd() {
         __purah_last_status=$?
@@ -148,6 +174,11 @@ public enum ZshSuggestionIntegration {
         print -P "%F{213}%B⚡ Purah 正在思考…%b%f"
 
         # `Expect:` suppresses curl's 100-continue wait on larger bodies.
+        #
+        # `aliases` is what makes the answer usable here rather than merely
+        # correct: this shell shadows `find` with `fd`, and their options are
+        # not the same. `history` is the last few `??` exchanges, so a follow-up
+        # can be a follow-up.
         response=$(/usr/bin/curl -sS -m 120 -H "Expect:" \\
           -H "Authorization: Bearer $PURAH_BRIDGE_TOKEN" \\
           --data-urlencode "mode=$mode" \\
@@ -156,6 +187,8 @@ public enum ZshSuggestionIntegration {
           --data-urlencode "last=$__purah_last_command" \\
           --data-urlencode "status=$__purah_last_status" \\
           --data-urlencode "path=$PATH" \\
+          --data-urlencode "aliases=$(alias -L 2>/dev/null | head -n 60)" \\
+          --data-urlencode "history=$(__purah_history)" \\
           "http://127.0.0.1:$PURAH_AI_PORT/v1/suggest" 2>&1)
 
         # Drop the banner line so the answer takes its place.
@@ -195,6 +228,11 @@ public enum ZshSuggestionIntegration {
         elif [[ -n "$explanation" ]]; then
           print -P "%F{240}$explanation%f"
         fi
+
+        # Recorded before the command is put on the line: the grey explanation
+        # below is the one thing a later `???` cannot reconstruct, and it is
+        # exactly what was offered.
+        __purah_remember "$description" "$command" "$explanation"
 
         print -z -- "$command"
       }

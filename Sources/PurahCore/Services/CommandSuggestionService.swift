@@ -53,7 +53,9 @@ public final class CommandSuggestionService {
         workingDirectory: String,
         lastCommand: String? = nil,
         lastExitStatus: Int32? = nil,
-        pathList: String? = nil
+        pathList: String? = nil,
+        history: String? = nil,
+        aliases: String? = nil
     ) async throws -> CommandSuggestion {
         let request = String(description.prefix(Self.maximumDescriptionLength))
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -65,17 +67,16 @@ public final class CommandSuggestionService {
 
         func ask(correction: String?) async throws -> CommandSuggestion {
             let answer = try await assistant.streamChat(
-                messages: [AIChatMessage(
-                    role: .user,
-                    content: CommandSuggestionPrompt.userPrompt(
-                        mode: mode,
-                        description: request,
-                        workingDirectory: workingDirectory,
-                        lastCommand: lastCommand,
-                        lastExitStatus: lastExitStatus,
-                        correction: correction
-                    )
-                )],
+                messages: Self.conversation(
+                    mode: mode,
+                    request: request,
+                    workingDirectory: workingDirectory,
+                    lastCommand: lastCommand,
+                    lastExitStatus: lastExitStatus,
+                    correction: correction,
+                    history: history,
+                    aliases: aliases
+                ),
                 provider: settings.provider,
                 cliExecutable: settings.cli,
                 customCLIPath: settings.customCLIPath,
@@ -110,6 +111,41 @@ public final class CommandSuggestionService {
             so the command would stop with "command not found". Propose a different command that \
             achieves the same thing using a tool that ships with macOS.
             """)
+    }
+
+    /// Earlier `??` exchanges as real messages, then the request as it stands now.
+    ///
+    /// Sent as a conversation rather than folded into the prompt so a model that
+    /// wants to answer "same as before, but quieter" can see what "before" was.
+    /// The correction turn re-uses the same history — it is the same question.
+    static func conversation(
+        mode: CommandSuggestionMode,
+        request: String,
+        workingDirectory: String,
+        lastCommand: String?,
+        lastExitStatus: Int32?,
+        correction: String?,
+        history: String?,
+        aliases: String?
+    ) -> [AIChatMessage] {
+        var messages: [AIChatMessage] = []
+        for turn in CommandSuggestionTurn.parse(history) {
+            messages.append(AIChatMessage(role: .user, content: turn.description))
+            messages.append(AIChatMessage(role: .assistant, content: turn.answer))
+        }
+        messages.append(AIChatMessage(
+            role: .user,
+            content: CommandSuggestionPrompt.userPrompt(
+                mode: mode,
+                description: request,
+                workingDirectory: workingDirectory,
+                lastCommand: lastCommand,
+                lastExitStatus: lastExitStatus,
+                correction: correction,
+                aliases: aliases
+            )
+        ))
+        return messages
     }
 
     /// The `PATH` the shell will use. A GUI app inherits a four-entry launchd

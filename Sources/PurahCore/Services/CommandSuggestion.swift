@@ -129,6 +129,10 @@ public enum CommandSuggestionPrompt {
         Rules:
         - "command" is exactly one line. Chain steps with && rather than separate lines.
         - Use macOS/BSD syntax: sed -i '', stat -f, date -v, xargs -0, no --color=auto.
+        - The request lists this shell's aliases. When one shadows a name the person \
+        would type, answer with the alias and the options of the tool it points at, \
+        not the options of the binary it replaces: `fd` takes -S/-H/-e where `find` \
+        takes -size/-name/-iname, and the person will run what you write.
         - Never use sudo, never delete anything outside the working directory, never \
         pipe a download into a shell. If the request genuinely needs one of those, \
         return a command that prints what the person should run instead.
@@ -150,17 +154,51 @@ public enum CommandSuggestionPrompt {
         return "macOS \(version.majorVersion).\(version.minorVersion)"
     }
 
+    /// Longest alias list forwarded. `alias -L` is capped in the shell too; this
+    /// is the app-side ceiling for a shell that is not ours.
+    public static let maximumAliasesLength = 4_000
+
+    /// Line-shaped credential patterns in an alias, dropped rather than sent.
+    ///
+    /// An alias is the person's own shell configuration, and some of them carry
+    /// a token (`alias gh='GH_TOKEN=… gh'`). This text leaves the machine to
+    /// whichever provider is configured, so the cheap guard stays.
+    private static let credentialMarkers = [
+        "token", "secret", "password", "passwd", "api_key", "api-key", "apikey", "bearer"
+    ]
+
+    public static func sanitizedAliases(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let kept = raw
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .filter { line in
+                let lowered = line.lowercased()
+                return !credentialMarkers.contains { lowered.contains($0) }
+            }
+        guard !kept.isEmpty else { return nil }
+        let joined = kept.joined(separator: "\n")
+        return joined.count > maximumAliasesLength
+            ? String(joined.prefix(maximumAliasesLength))
+            : joined
+    }
+
     /// The request as the model sees it: what the person asked, where they are,
-    /// and — for `???` — what just failed.
+    /// which aliases their shell actually uses, and — for `???` — what just failed.
     public static func userPrompt(
         mode: CommandSuggestionMode,
         description: String,
         workingDirectory: String,
         lastCommand: String?,
         lastExitStatus: Int32?,
-        correction: String? = nil
+        correction: String? = nil,
+        aliases: String? = nil
     ) -> String {
         var lines = ["Working directory: \(workingDirectory)"]
+        if let aliasBlock = sanitizedAliases(aliases) {
+            lines.append("")
+            lines.append("Shell aliases (they shadow the binary of the same name):")
+            lines.append(aliasBlock)
+        }
         switch mode {
         case .suggest:
             lines.append("")
@@ -198,6 +236,55 @@ public enum CommandSuggestionPrompt {
 public enum CommandSuggestionMode: String, Sendable {
     case suggest
     case explain
+}
+
+/// One earlier `??` exchange, as the shell remembers it.
+///
+/// `??` used to be stateless: the third question in a row knew nothing about the
+/// first two, so "same thing but quieter" or "that failed" had no referent. The
+/// shell keeps the last few turns and sends them with every request — they
+/// belong to the terminal they were asked in, not to the app, and a second tab
+/// must not inherit them.
+public struct CommandSuggestionTurn: Sendable, Equatable {
+    public static let maximumTurns = 3
+
+    /// What the person asked.
+    public let description: String
+    /// The command that was put on the input line.
+    public let command: String
+    /// The sentence printed in grey under it.
+    public let explanation: String
+
+    public init(description: String, command: String, explanation: String = "") {
+        self.description = description
+        self.command = command
+        self.explanation = explanation
+    }
+
+    /// Turns are newline-separated; each turn is tab-separated
+    /// (`description`, `command`, `explanation`).
+    public static func parse(_ field: String?, limit: Int = maximumTurns) -> [CommandSuggestionTurn] {
+        guard let field, !field.isEmpty else { return [] }
+        let turns: [CommandSuggestionTurn] = field.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 2, !parts[0].isEmpty else { return nil }
+            return CommandSuggestionTurn(
+                description: parts[0],
+                command: parts[1],
+                explanation: parts.count > 2 ? parts[2] : ""
+            )
+        }
+        return Array(turns.suffix(max(limit, 0)))
+    }
+
+    /// The assistant side of the exchange, in the reply format it was asked for.
+    public var answer: String {
+        var payload: [String: String] = ["command": command]
+        if !explanation.isEmpty { payload["explanation"] = explanation }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else { return command }
+        return text
+    }
 }
 
 public enum CommandSuggestionParser {

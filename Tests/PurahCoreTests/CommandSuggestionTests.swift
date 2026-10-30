@@ -303,3 +303,183 @@ struct ZshSuggestionIntegrationTests {
         #expect(!zshrc.contains("用一句话描述"))
     }
 }
+
+@Suite("`??` Context Tests")
+@MainActor
+struct CommandSuggestionContextTests {
+
+    @Test("Earlier turns are read back as a conversation, newest last")
+    func parsesHistory() {
+        let field = "list big files\tdu -sh * | sort -h\n"
+            + "same but only in Downloads\tdu -sh ~/Downloads/* | sort -h\thides sizes under 1M"
+        let turns = CommandSuggestionTurn.parse(field)
+        #expect(turns.count == 2)
+        #expect(turns[1].description == "same but only in Downloads")
+        #expect(turns[1].command == "du -sh ~/Downloads/* | sort -h")
+        #expect(turns[1].explanation == "hides sizes under 1M")
+    }
+
+    @Test("A malformed turn is dropped rather than becoming half a question")
+    func dropsMalformedTurns() {
+        #expect(CommandSuggestionTurn.parse(nil).isEmpty)
+        #expect(CommandSuggestionTurn.parse("").isEmpty)
+        #expect(CommandSuggestionTurn.parse("no tabs here").isEmpty)
+        #expect(CommandSuggestionTurn.parse("\tfd -S +1000M").isEmpty, "a turn without a description is not a question")
+    }
+
+    @Test("The shell keeps three turns, and Purah keeps the newest three")
+    func capsHistory() {
+        let field = (1...6).map { "q\($0)\tc\($0)" }.joined(separator: "\n")
+        let turns = CommandSuggestionTurn.parse(field)
+        #expect(turns.map(\.description) == ["q4", "q5", "q6"])
+    }
+
+    @Test("History reaches the model as user/assistant pairs, then the request")
+    func buildsConversation() {
+        let messages = CommandSuggestionService.conversation(
+            mode: .suggest,
+            request: "same but quieter",
+            workingDirectory: "/tmp",
+            lastCommand: nil,
+            lastExitStatus: nil,
+            correction: nil,
+            history: "find big files\tfd -S +1000M",
+            aliases: "alias find='fd'"
+        )
+        #expect(messages.map(\.role) == [.user, .assistant, .user])
+        #expect(messages[0].content == "find big files")
+        #expect(messages[1].content.contains("fd -S +1000M"))
+        #expect(messages[2].content.contains("same but quieter"))
+        #expect(messages[2].content.contains("alias find='fd'"))
+    }
+
+    @Test("The shell's aliases are stated as authoritative, and credentials are dropped")
+    func sendsAliases() {
+        let prompt = CommandSuggestionPrompt.userPrompt(
+            mode: .suggest,
+            description: "files over 1G",
+            workingDirectory: "/tmp",
+            lastCommand: nil,
+            lastExitStatus: nil,
+            aliases: "alias find='fd'\nalias gh='GH_TOKEN=abc gh'\nalias ll='ls -lah'"
+        )
+        #expect(prompt.contains("alias find='fd'"))
+        #expect(prompt.contains("alias ll='ls -lah'"))
+        // The alias list leaves the machine to whichever provider is configured.
+        #expect(!prompt.contains("GH_TOKEN"))
+    }
+
+    @Test("No aliases and no history leaves the prompt exactly as it was")
+    func noContextNoNoise() {
+        let prompt = CommandSuggestionPrompt.userPrompt(
+            mode: .suggest,
+            description: "list files",
+            workingDirectory: "/tmp",
+            lastCommand: nil,
+            lastExitStatus: nil
+        )
+        #expect(!prompt.contains("Shell aliases"))
+        #expect(CommandSuggestionService.conversation(
+            mode: .suggest, request: "list files", workingDirectory: "/tmp",
+            lastCommand: nil, lastExitStatus: nil, correction: nil,
+            history: nil, aliases: nil
+        ).count == 1)
+    }
+
+    @Test("The generated .zshrc parses as zsh")
+    func generatedZshrcParses() throws {
+        // The hooks are a script written by a string: a Swift-side syntax slip
+        // would only surface in a person's terminal, on their prompt line.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-zshrc-\(UUID().uuidString).zsh")
+        try ZshSuggestionIntegration.zshrc.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-n", url.path]
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+    }
+}
+
+@Suite("`??` Shell History Helpers")
+struct ZshSuggestionHistoryTests {
+
+    /// Runs the generated `.zshrc` in a real zsh and returns its stdout.
+    private func runInZsh(_ script: String) throws -> String {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-zdotdir-\(UUID().uuidString)", isDirectory: true)
+        let real = root.appendingPathComponent("real", isDirectory: true)
+        let managed = root.appendingPathComponent("managed", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: managed, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try ZshSuggestionIntegration.zshrc.write(
+            to: managed.appendingPathComponent(".zshrc"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["ZDOTDIR"] = managed.path
+        environment["PURAH_REAL_ZDOTDIR"] = real.path
+        environment["PURAH_AI_PORT"] = "1"
+        environment["PURAH_BRIDGE_TOKEN"] = "test"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-i", "-c", script]
+        process.environment = environment
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        try process.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    @Test("The shell records turns and sends them newline-separated, tab-separated")
+    func remembersTurns() throws {
+        let output = try runInZsh("""
+        __purah_remember "big files" "fd -S +1000M" "Searches the whole filesystem."
+        __purah_remember "same but here" "fd -S +1000M ."
+        __purah_history
+        """)
+        let lines = output.split(separator: "\n").map(String.init)
+        #expect(lines == [
+            "big files\tfd -S +1000M\tSearches the whole filesystem.",
+            "same but here\tfd -S +1000M .\t",
+        ])
+    }
+
+    @Test("The shell keeps only the newest three turns")
+    func capsTurns() throws {
+        let output = try runInZsh("""
+        __purah_remember q1 c1
+        __purah_remember q2 c2
+        __purah_remember q3 c3
+        __purah_remember q4 c4
+        __purah_history
+        """)
+        let lines = output.split(separator: "\n").map { String($0.prefix(2)) }
+        #expect(lines == ["q2", "q3", "q4"])
+    }
+
+    @Test("A tab inside a field cannot split it")
+    func tabsAreScrubbed() throws {
+        let output = try runInZsh("""
+        __purah_remember $'a\\tb' c
+        __purah_history
+        """)
+        let fields = output.split(separator: "\n").first.map {
+            $0.split(separator: "\t", omittingEmptySubsequences: false)
+        }
+        #expect(fields?.count == 3, "the description's own tab must not add a field")
+        #expect(fields?.first.map(String.init) == "a b")
+    }
+}

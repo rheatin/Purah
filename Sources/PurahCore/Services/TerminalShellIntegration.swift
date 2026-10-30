@@ -34,7 +34,11 @@ public enum TerminalShellIntegration {
                     lastExitStatus: Int32(form["status"] ?? ""),
                     // The shell's PATH, not the app's: it is the one the
                     // command will run under when Return is pressed.
-                    pathList: form["path"]
+                    pathList: form["path"],
+                    // Its aliases too — `find` is `fd` in this shell, and the
+                    // flags are not the same — plus the last few exchanges.
+                    history: form["history"],
+                    aliases: form["aliases"]
                 )
             }
         }
