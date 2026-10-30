@@ -249,7 +249,10 @@ private final class SuggestionHTTP: @unchecked Sendable {
         }
 
         let contentLength = Int(headers["content-length"] ?? "0") ?? 0
-        guard contentLength <= TerminalSuggestionBridge.maximumRequestBytes else { return nil }
+        // A negative length traps in `prefix(_:)`, and this runs before the
+        // bearer check: one local process sending `Content-Length: -1` used to
+        // take the whole app down.
+        guard contentLength >= 0, contentLength <= TerminalSuggestionBridge.maximumRequestBytes else { return nil }
         let body = buffer[headerEnd.upperBound...]
         guard body.count >= contentLength else { return nil }
 
