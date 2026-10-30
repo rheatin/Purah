@@ -439,6 +439,7 @@ Copy `PurahExternalPluginSDK.swift` next to your sources and export these
 | `purahOnRailBarTapWithContext` | optional | `(contextJSON, subItemId) -> Int32`. Non-zero means the plugin handled the tap and the host must not add its default haptic + expansion |
 | `purahUpdateContext` | optional | `(viewPtr, contextJSON)` — pushes a new payload into a view you already created |
 | `purahOnPollingTick` | optional | `(contextJSON)` — called on the host's timer. Pair it with a manifest `pollingInterval` |
+| `purahHandleAIResponse` | optional | `(requestId, answer, error)` — the host delivers an `askAI` result here |
 
 **Stepped mode.** Export `purahSteppedItemsJSON` and the pod gains per-sub-item
 chips on the rail, exactly like Calendar or Todo. Each entry is
@@ -503,6 +504,18 @@ export `purahOnPollingTick`; the host runs the timer. Never start your own
 recurring timer: the host stops ticks when the pod is disabled, unmounted, or
 the rails are frozen, and a private timer would keep running through all three.
 Keep the tick short — do heavy work on your own queue.
+
+**Borrowing the AI Assistant.** Declare `"usesAI": true` in the manifest, then
+call `PurahHostBridge.shared.askAI(pluginId:requestId:prompt:system:privacy:)`
+and export `purahHandleAIResponse` to receive the answer. The callback is always
+`(requestId, answer, error)` with exactly one of the last two non-nil; the C
+strings live only for the call, so copy anything you keep. `privacy:
+"localOnly"` means the text must not leave the Mac — if the person's configured
+provider cannot honour that, the request is **refused** rather than quietly
+routed to a remote model. The provider, credentials and model are whatever the
+person set up; a plugin cannot route around them. A plugin that did not declare
+`usesAI` gets an error reply instead of an answer, so it cannot spend the
+person's API credits unannounced.
 
 **Rail taps.** `purahOnRailBarTapWithContext` tells you which chip was clicked.
 Return non-zero to say you handled it; the host then skips its default haptic

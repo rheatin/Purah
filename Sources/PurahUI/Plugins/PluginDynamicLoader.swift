@@ -317,6 +317,11 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
     /// `purahOnPollingTick(contextJSON)` — the host owns the timer.
     private let onPollingTickFn: (@convention(c) (UnsafePointer<CChar>) -> Void)?
 
+    /// `purahHandleAIResponse(requestId, answer, error)` — how an answer to an
+    /// `askAI` bridge call gets back into the plugin. Answers are asynchronous,
+    /// and the bridge itself is fire-and-forget, so this is the return leg.
+    private let aiResponseFn: (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void)?
+
     /// Fallback when the plugin declares no stepped policy. Matches the host's
     /// standard composite policy so an ABI plugin without one behaves exactly
     /// like a plugin that never opted into stepped mode.
@@ -346,6 +351,7 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
         updateViewFn: (@convention(c) (UnsafeMutableRawPointer, UnsafePointer<CChar>) -> Void)? = nil,
         onRailTapWithContextFn: (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32)? = nil,
         onPollingTickFn: (@convention(c) (UnsafePointer<CChar>) -> Void)? = nil,
+        aiResponseFn: (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void)? = nil,
         declaredDecomposedPolicy: PurahDecomposedPolicy? = nil
     ) {
         self.manifest = manifest
@@ -371,7 +377,22 @@ public final class DynamicABIPodPlugin: PurahPodPlugin {
         self.updateViewFn = updateViewFn
         self.onRailTapWithContextFn = onRailTapWithContextFn
         self.onPollingTickFn = onPollingTickFn
+        self.aiResponseFn = aiResponseFn
         self.declaredDecomposedPolicy = declaredDecomposedPolicy
+    }
+
+    /// Hands one answer back to the plugin that asked. Called on the main
+    /// actor; the C strings only live for the duration of the call, which is
+    /// the plugin's job to copy before returning.
+    func deliverAIResponse(requestId: String, answer: String?, error: String?) {
+        guard let fn = aiResponseFn else { return }
+        requestId.withCString { id in
+            if let answer {
+                answer.withCString { fn(id, $0, nil) }
+            } else {
+                (error ?? "The AI Assistant returned no answer.").withCString { fn(id, nil, $0) }
+            }
+        }
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
@@ -871,8 +892,52 @@ public final class PluginDynamicLoader {
             // switch the Sculptor dock offers. The host owns persistence.
             let wantsChips = (payload == "true" || payload == "1")
             store.togglePodDecomposedIfNeeded(podId: pluginId, decomposed: wantsChips)
+        case "askAI":
+            answerAIRequest(pluginId: pluginId, payload: payload)
         default:
             break
+        }
+    }
+
+    /// One `askAI` bridge call in, one `purahHandleAIResponse` call out.
+    ///
+    /// The manifest is the only gate: a plugin that did not declare
+    /// `"usesAI": true` gets an error reply, not an answer, so third-party
+    /// code cannot spend the person's API credits unannounced. The person's
+    /// own provider, credentials and on-device preference still decide where
+    /// the text goes — a plugin cannot route around them through this seam.
+    private func answerAIRequest(pluginId: String, payload: String?) {
+        guard let payload,
+              let data = payload.data(using: .utf8),
+              let request = try? JSONDecoder().decode(PurahABIAIRequest.self, from: data),
+              !request.id.isEmpty,
+              let plugin = PluginRegistry.shared.plugin(for: pluginId) as? DynamicABIPodPlugin
+        else { return }
+
+        guard plugin.manifest.usesAI else {
+            plugin.deliverAIResponse(
+                requestId: request.id,
+                answer: nil,
+                error: "\(plugin.manifest.displayName) did not declare AI use in its manifest."
+            )
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let answer = try await PurahAIService.ask(
+                    request.prompt,
+                    system: request.system,
+                    privacy: request.privacyMode
+                )
+                plugin.deliverAIResponse(requestId: request.id, answer: answer, error: nil)
+            } catch {
+                plugin.deliverAIResponse(
+                    requestId: request.id,
+                    answer: nil,
+                    error: error.localizedDescription
+                )
+            }
         }
     }
 
@@ -991,6 +1056,9 @@ public final class PluginDynamicLoader {
             let tapWithContextFn = dlsym(handle, "purahOnRailBarTapWithContext").map { unsafeBitCast($0, to: TapWithContextFunc.self) }
             let pollingFn = dlsym(handle, "purahOnPollingTick").map { unsafeBitCast($0, to: PollingFunc.self) }
 
+            typealias AIResponseFunc = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
+            let aiResponseFn = dlsym(handle, "purahHandleAIResponse").map { unsafeBitCast($0, to: AIResponseFunc.self) }
+
             // The policy is static, so resolve it once at load rather than
             // calling into the plugin on every layout pass.
             let declaredPolicy: PurahDecomposedPolicy? = policyFn.flatMap { fn in
@@ -1025,6 +1093,7 @@ public final class PluginDynamicLoader {
                 updateViewFn: updateViewFn,
                 onRailTapWithContextFn: tapWithContextFn,
                 onPollingTickFn: pollingFn,
+                aiResponseFn: aiResponseFn,
                 declaredDecomposedPolicy: declaredPolicy
             )
 

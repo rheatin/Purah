@@ -160,6 +160,15 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     /// the ticks — a plugin must never start its own recurring timer.
     public var pollingInterval: Double?
 
+    /// Whether the plugin may ask the AI Assistant for text.
+    ///
+    /// Off by default: an undeclared plugin gets an error reply instead of an
+    /// answer, so a third-party pod cannot spend the person's API credits on
+    /// its own initiative. Declaring it does not route around the person's
+    /// provider or credentials — `PurahAIService` still answers with whatever
+    /// they configured.
+    public var usesAI: Bool
+
     public init(
         id: String,
         displayName: String,
@@ -183,7 +192,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         minimumDrawerHeight: Double? = nil,
         preferredDrawerHeight: Double? = nil,
         defaultDecomposed: Bool? = nil,
-        pollingInterval: Double? = nil
+        pollingInterval: Double? = nil,
+        usesAI: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -208,6 +218,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         self.preferredDrawerHeight = preferredDrawerHeight
         self.defaultDecomposed = defaultDecomposed
         self.pollingInterval = pollingInterval
+        self.usesAI = usesAI
     }
 
     enum CodingKeys: String, CodingKey {
@@ -216,6 +227,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         case defaultDrawerWidth
         case category, permissions, website, tags, isCommunity, downloadUrl
         case minimumDrawerHeight, preferredDrawerHeight, defaultDecomposed, pollingInterval
+        case usesAI
     }
 
     public init(from decoder: Decoder) throws {
@@ -258,6 +270,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         preferredDrawerHeight = try container.decodeIfPresent(Double.self, forKey: .preferredDrawerHeight)
         defaultDecomposed = try container.decodeIfPresent(Bool.self, forKey: .defaultDecomposed)
         pollingInterval = try container.decodeIfPresent(Double.self, forKey: .pollingInterval)
+        usesAI = try container.decodeIfPresent(Bool.self, forKey: .usesAI) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -284,6 +297,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         try container.encodeIfPresent(preferredDrawerHeight, forKey: .preferredDrawerHeight)
         try container.encodeIfPresent(defaultDecomposed, forKey: .defaultDecomposed)
         try container.encodeIfPresent(pollingInterval, forKey: .pollingInterval)
+        try container.encode(usesAI, forKey: .usesAI)
     }
 
     public func makeDefaultSlotPod(range: NormalizedRange? = nil, isEnabled: Bool = true) -> SlotPod {

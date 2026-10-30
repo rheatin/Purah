@@ -133,6 +133,32 @@ public final class PurahHostBridge {
         invoke(pluginId: pluginId, action: "setDecomposed", payload: isDecomposed ? "true" : "false")
     }
 
+    /// Ask the AI Assistant for text.
+    ///
+    /// Requires `"usesAI": true` in the manifest, and the plugin must export
+    /// `purahHandleAIResponse(requestId, answer, error)` — the bridge is
+    /// fire-and-forget, so that export is the return leg. `privacy:
+    /// "localOnly"` refuses rather than downgrade when the person's provider
+    /// cannot answer on device.
+    public func askAI(
+        pluginId: String,
+        requestId: String,
+        prompt: String,
+        system: String? = nil,
+        privacy: String = "remote"
+    ) {
+        struct Request: Encodable {
+            let id: String
+            let prompt: String
+            let system: String?
+            let privacy: String
+        }
+        let request = Request(id: requestId, prompt: prompt, system: system, privacy: privacy)
+        guard let data = try? JSONEncoder().encode(request),
+              let json = String(data: data, encoding: .utf8) else { return }
+        invoke(pluginId: pluginId, action: "askAI", payload: json)
+    }
+
     private func invoke(pluginId: String, action: String, payload: String?) {
         guard let callback else { return }
         pluginId.withCString { pId in

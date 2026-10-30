@@ -571,6 +571,7 @@ let package = Package(
 | `purahOnRailBarTapWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32` | 可选 | `(上下文 JSON, 子项 id)` 点击回调；返回非零表示插件已自行处理，宿主不再追加触觉反馈与展开 |
 | `purahUpdateContext` | `(UnsafeMutableRawPointer, UnsafePointer<CChar>) -> Void` | 可选 | 向已创建的视图推送新上下文；首个参数即工厂返回的指针 |
 | `purahOnPollingTick` | `(UnsafePointer<CChar>) -> Void` | 可选 | 宿主定时器回调，需配合清单 `pollingInterval` 使用 |
+| `purahHandleAIResponse` | `(UnsafePointer<CChar>, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void` | 可选 | `(请求 id, 回答, 错误)` — 宿主把 `askAI` 的结果回填给插件 |
 
 **分档 (Stepped) 模式**：导出 `purahSteppedItemsJSON` 后，该插件便与 Calendar / Todo 一样在轨条上获得逐子项芯片。数组元素形如
 `{ id, title, subtitle?, systemIcon?, badge?, state?, gaugeRatio?, gaugeStyle?, tintColorHex?, isPinned? }`；
@@ -594,6 +595,8 @@ let package = Package(
 **实时上下文刷新**：导出 `purahUpdateContext` 后，宿主在抽屉展开、Pod 被 pin、宽高变化时都会调用它。未导出则该工厂只运行一次，视图此后无法感知宿主状态。
 
 **宿主代管轮询**：在清单声明 `pollingInterval`（秒）并导出 `purahOnPollingTick`，定时器由宿主持有。**切勿自行启动周期性定时器**——宿主在 Pod 被禁用、卸载或轨条冻结时会停止 tick，私有定时器会绕过这三重保证。tick 内必须快速返回，耗时工作放到自己的队列。
+
+**借用 AI Assistant**：清单声明 `"usesAI": true` 后，插件用 `PurahHostBridge.shared.askAI(pluginId:requestId:prompt:system:privacy:)` 发一次请求，并导出 `purahHandleAIResponse` 接收回答。回调固定三个参数 `(请求 id, 回答, 错误)`，`回答` 与 `错误` 恰有一个非空；C 字符串只在调用期间有效，需要保留时必须自行拷贝。`privacy` 传 `"localOnly"` 表示这段文字不得离开本机——用户配置的 Provider 做不到时请求会被**拒绝**，而不是悄悄改走远端。Provider、凭据、模型全部来自用户自己的设置，插件无法绕过。未在清单声明 `usesAI` 的插件会收到错误回复，不会静默消费用户的 API 额度。
 
 **上下文载荷**：`purahCreate*WithContext` 传递 `pluginId`、`edge`、`railWidth`、`slotHeight`、`drawerWidth`、`isExpanded`、`isPinned`、`isDark`、`accentColorHex`、`storageDirectoryPath`、`visibleSubItemIds`、`isDecomposed`、`paletteStyle`、`primaryAccentHex`、`borderColorHex`。其中 `visibleSubItemIds` 是当前已在轨条上显示的芯片 id，`+N more` 概览必须排除它们；`paletteStyle` / `primaryAccentHex` / `borderColorHex` 让抽屉跟随当前主题，而不只是深浅色。
 
