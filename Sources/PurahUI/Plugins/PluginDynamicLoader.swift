@@ -884,8 +884,17 @@ public final class PluginDynamicLoader {
         }
 
         // Trust gate before executing any code from the image: a plugin runs
-        // in-process with full user privileges, so an unsigned or tampered
-        // dylib must never reach dlopen.
+        // in-process with full user privileges, so a corrupted dylib must
+        // never reach dlopen.
+        //
+        // shortcut: this proves the seal is intact and that the signer is
+        // *some* valid authority — not that it is one we trust. A locally
+        // built plugin is ad-hoc signed (that is what `Dev: Load Package...`
+        // produces), so pinning a Team ID here would reject the feature's only
+        // real use. The check is also TOCTOU: the path can be replaced between
+        // this call and `dlopen`. Upgrade when plugins are distributed rather
+        // than built by their author: pin a Team ID, or copy the dylib into a
+        // directory this process owns and load from there.
         try verifySignature(of: dylibURL)
 
         guard let handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL) else {

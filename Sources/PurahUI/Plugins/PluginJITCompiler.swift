@@ -25,6 +25,11 @@ public final class PluginJITCompiler {
         process.executableURL = executableURL
         process.arguments = arguments
         process.currentDirectoryURL = currentDirectoryURL
+        // The manifest and any build-tool plugins run inside `swift build`, so
+        // they see this environment. The app's own secrets — the terminal
+        // bridge token, the rendered-secrets file path — have no business in a
+        // third-party package's build.
+        process.environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("PURAH_") }
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -109,10 +114,13 @@ public final class PluginJITCompiler {
 
         let buildResult = try await Self.runProcessOffMainThread(
             executableURL: Self.swiftExecutableURL(),
+            // SwiftPM's own sandbox stays on. It costs a legitimate plugin
+            // nothing (a plain dynamic library builds inside it) and it is the
+            // only thing standing between a package's manifest or prebuild
+            // plugin and this user's files.
             arguments: [
                 "build",
-                "-c", configuration,
-                "--disable-sandbox"
+                "-c", configuration
             ],
             currentDirectoryURL: packageDir
         )
@@ -127,7 +135,6 @@ public final class PluginJITCompiler {
             arguments: [
                 "build",
                 "-c", configuration,
-                "--disable-sandbox",
                 "--show-bin-path"
             ],
             currentDirectoryURL: packageDir
