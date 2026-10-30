@@ -359,8 +359,18 @@ public final class HardwareVitalsService {
             while !Task.isCancelled {
                 guard let self = self else { break }
                 self.saveThrottleCounter += 1
-                self.refreshMetrics(includeProcesses: self.isDrawerVisible && (self.saveThrottleCounter % 3 == 0))
-                if self.saveThrottleCounter >= 60 {
+                // GPU is read from the whole IOAccelerator property dictionary and
+                // is by far the most expensive probe here. It feeds a colour
+                // signal, not a clock, so once every five ticks is plenty unless
+                // someone is actually looking at the drawer.
+                self.refreshMetrics(
+                    includeProcesses: self.isDrawerVisible && (self.saveThrottleCounter % 3 == 0),
+                    includeGPU: self.isDrawerVisible || self.saveThrottleCounter % 5 == 0
+                )
+                // The history is redrawn from memory; the file is a crash
+                // recovery copy, and ten minutes of it is ~150MB a day instead
+                // of ~1.4GB. `stopMonitoring` still writes on quit.
+                if self.saveThrottleCounter >= 600 {
                     self.saveThrottleCounter = 0
                     self.saveHistoryToDisk()
                 }
@@ -375,10 +385,10 @@ public final class HardwareVitalsService {
         saveHistoryToDisk()
     }
 
-    public func refreshMetrics(includeProcesses: Bool = true) {
+    public func refreshMetrics(includeProcesses: Bool = true, includeGPU: Bool = true) {
         let cpuBreakdown = readCPUBreakdown()
         let loads = readLoadAverages()
-        let gpu = readGPUUsage()
+        let gpu = includeGPU ? readGPUUsage() : metrics.gpuUsage
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
         let diskIO = readDiskIOThroughput()
