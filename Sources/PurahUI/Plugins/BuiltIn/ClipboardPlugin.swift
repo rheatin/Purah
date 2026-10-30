@@ -97,6 +97,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
         state.save()
+        if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
     }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
@@ -981,6 +982,7 @@ public struct ClipboardPluginSettingsView: View {
                             set: {
                                 state.isDecomposed = $0
                                 state.save()
+                                if $0 { store.ensurePodFitsDecomposedChips(podId: "clipboard") }
                             }
                         ))
                         .toggleStyle(.switch)

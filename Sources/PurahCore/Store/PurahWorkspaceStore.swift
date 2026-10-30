@@ -1760,11 +1760,37 @@ public final class PurahWorkspaceStore {
         return 120.0
     }
 
+    /// The floor a pod is held at while the sculptor is open, or while it is
+    /// sitting below its own minimum after being shortened on purpose.
+    ///
+    /// A shortened decomposed pod is a deliberate choice ("I only need a short
+    /// one"), so it is not inflated back to its chips' height — but it keeps
+    /// room for one whole chip plus half of the next, because a rail slot
+    /// shorter than a chip cannot be grabbed at all.
     public func standaloneMinimumRailHeight(for podId: String) -> Double {
         if isPodDecomposed(podId), let provider = capabilityProvider(for: podId) {
             return max(Double(provider.decomposedPolicy(store: self).minChipHeight) * 1.5, 72.0)
         }
         return Double(minimumDrawerHeight(for: podId))
+    }
+
+    /// Turns a mode change into the room that mode needs.
+    ///
+    /// Decomposition is not a veil over the same pod: five roles need five
+    /// chips, and a pod left at a single chip's height renders exactly one of
+    /// them, whatever the "max on rail" setting says. Switching the mode on
+    /// therefore resizes the pod once, the way a drag would — after that, the
+    /// sculpted length is the truth again.
+    public func ensurePodFitsDecomposedChips(podId: String) {
+        guard isPodDecomposed(podId),
+              let pod = pods.first(where: { $0.id == podId }) else { return }
+        let screenH = max(Double(availableScreenHeight(for: pod.edge)), 600.0)
+        let needed = Double(minimumDrawerHeight(for: podId)) / screenH
+        guard pod.range.length < needed - 0.001 else { return }
+        updatePodRange(
+            id: podId,
+            newRange: NormalizedRange(start: pod.range.start, length: needed)
+        )
     }
 
     public func preferredDrawerHeight(for podId: String) -> CGFloat {
@@ -2177,6 +2203,34 @@ public final class PurahWorkspaceStore {
         return subSpans
     }
 
+    /// Hands the slack of a rail with room to spare to the pods, in proportion
+    /// to the length each was sculpted at.
+    ///
+    /// Proportion, not an equal share: a person who sculpted one panel short
+    /// wants it short. The cap is the largest span a pod can still use — a
+    /// decomposed pod with a single chip cannot fill more than one chip, and
+    /// stretching it further would leave the chip floating at the top of a
+    /// bar-sized pod.
+    private func growClustersProportionally(
+        _ spans: [Double],
+        maxVisuals: [Double],
+        target: Double,
+        frozen: [Bool]
+    ) -> [Double] {
+        let sum = spans.reduce(0.0, +)
+        guard target > sum + 0.01, sum > 0 else { return spans }
+        let growable = spans.indices.filter { !frozen[$0] && maxVisuals[$0] > spans[$0] + 0.01 }
+        guard !growable.isEmpty else { return spans }
+        let slack = target - sum
+        let weightSum = max(growable.reduce(0.0) { $0 + max(spans[$1], 1.0) }, 0.0001)
+        var grown = spans
+        for idx in growable {
+            let share = slack * max(spans[idx], 1.0) / weightSum
+            grown[idx] += min(share, max(maxVisuals[idx] - spans[idx], 0.0))
+        }
+        return grown
+    }
+
     public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
         lastKnownTotalHeight[edge] = totalHeight
         let now = Date().timeIntervalSinceReferenceDate
@@ -2546,8 +2600,32 @@ public final class PurahWorkspaceStore {
                     let scale = netAvailable / sumStandard
                     clusterSpans = standardSpans.map { $0 * scale }
                 }
-            }
-            if sumStandard > netAvailable {
+                var curY = safeTop
+                for cIdx in 0..<clusters.count {
+                    clusterStartYs[cIdx] = curY
+                    curY += clusterSpans[cIdx] + clusterGap
+                }
+            } else if clusters.count > 1 && !isSculptingRails {
+                // Room to spare: every stretch the pods do not occupy was dead
+                // rail — a split-up, fragmented edge, whether the gap sat
+                // between two pods or above the first one. Hand all of it to
+                // the pods in proportion to the length each was sculpted at,
+                // so a panel shaped short stays the short one rather than
+                // becoming an equal share.
+                clusterSpans = growClustersProportionally(
+                    standardSpans,
+                    maxVisuals: clusterMaxVisuals,
+                    target: max(safeBottom - safeTop - totalClusterGaps, sumStandard),
+                    // A pod shortened on purpose is a decision, not slack: it
+                    // keeps the length it was given while its neighbours take
+                    // the room it does not want.
+                    frozen: clusters.map { cluster in
+                        guard cluster.count == 1 else { return false }
+                        let pod = cluster[0]
+                        return pod.minLength <= 0.06
+                            && pod.range.length * totalHeight < Double(minimumDrawerHeight(for: pod.id)) - 1.0
+                    }
+                )
                 var curY = safeTop
                 for cIdx in 0..<clusters.count {
                     clusterStartYs[cIdx] = curY

@@ -289,6 +289,10 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
         state.save()
+        // Five roles need five chips. Switching the mode on resizes the pod
+        // once so the chips are actually on the rail; after that the sculpted
+        // length is the truth again.
+        if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
     }
 
     public var subItemCount: Int {
@@ -1331,6 +1335,7 @@ public struct AIAssistantPluginSettingsView: View {
                             store.savePersistentState()
                             store.invalidateLayoutCache()
                             store.onWindowsRebuildNeeded?()
+                            if $0 { store.ensurePodFitsDecomposedChips(podId: "ai") }
                         }
                     ))
                     .toggleStyle(.switch)
@@ -1368,6 +1373,7 @@ public struct AIAssistantPluginSettingsView: View {
                                     store.savePersistentState()
                                     store.invalidateLayoutCache()
                                     store.onWindowsRebuildNeeded?()
+                                    store.ensurePodFitsDecomposedChips(podId: "ai")
                                 }
                             ),
                             in: 2.0...6.0,
@@ -1468,6 +1474,9 @@ public struct AIAssistantPluginSettingsView: View {
                         var updated = role
                         updated.isEnabled = isChecked
                         state.updateRole(updated)
+                        // Each enabled role is a chip on the rail; the pod has
+                        // to be tall enough for the new one.
+                        if isChecked { store.ensurePodFitsDecomposedChips(podId: "ai") }
                     }
                 ))
                 .labelsHidden()

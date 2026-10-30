@@ -103,6 +103,7 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
+        if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {

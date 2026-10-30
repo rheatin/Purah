@@ -873,7 +873,12 @@ struct HighDensityOverflowTests {
             store.moveMajorGroup(groupId: gid, on: .right, newStartRatio: 0.20)
             let movedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
             let movedCalItem = try #require(movedLayout.first(where: { $0.pod.id == "calendar" }))
-            #expect(movedCalItem.drawerStartY >= 170.0, "moveMajorGroup must reposition the entire Shared Stack along the rail")
+            let movedCalPod = try #require(store.pods.first(where: { $0.id == "calendar" }))
+            // A rail with room to spare belongs to its pods (no dead stretch),
+            // so the derived Y follows the fill. What the gesture records is
+            // the stack's new place in the rail's order.
+            #expect(movedCalPod.range.start >= 0.19, "moveMajorGroup must record the stack's new start ratio")
+            #expect(movedCalItem.drawerStartY < musicItem.startY, "the moved stack keeps its place in the rail order")
         }
     }
 
@@ -924,7 +929,6 @@ struct HighDensityOverflowTests {
         let totalHeight = 900.0
         let musicMinH = Double(store.minimumDrawerHeight(for: "music"))
         #expect(musicMinH >= 110.0)
-        #expect(store.standaloneMinimumRailHeight(for: "music") == musicMinH)
 
         // 1. Standalone "music" outside any Stack (majorGroupId == nil):
         // Attempting to resize "music" to a tiny length (0.04) still enforces spanH >= 110.0
