@@ -418,6 +418,10 @@ public final class LocalizationManager {
 
             // Todo & Calendar
             "todo.empty.title": "No pending tasks",
+            "todo.permission.title": "Reminders aren't connected",
+            "todo.permission.subtitle": "macOS has not let Purah read your reminders, so there is nothing to show here.",
+            "todo.permission.connect": "Connect Reminders",
+            "lifecycle.uncleanExit": "Purah closed unexpectedly last time. Settings → Diagnostics has the log.",
             "todo.overview.title": "Reminders",
             "todo.overview.completed": "Completed",
             "todo.overview.openApp": "Open Reminders",
@@ -1318,6 +1322,10 @@ public final class LocalizationManager {
 
             // 待办与日历
             "todo.empty.title": "无待办事项",
+            "todo.permission.title": "未连接提醒事项",
+            "todo.permission.subtitle": "macOS 还没有允许 Purah 读取提醒事项，所以这里没有内容。",
+            "todo.permission.connect": "连接提醒事项",
+            "lifecycle.uncleanExit": "上次 Purah 没有正常退出。诊断日志在 设置 → 诊断。",
             "todo.overview.title": "提醒事项",
             "todo.overview.completed": "已完成",
             "todo.overview.openApp": "打开提醒事项",
@@ -2215,6 +2223,10 @@ public final class LocalizationManager {
             "permissions.ambient.title": "標準環境能力（自動授予）",
             "permissions.unsupported.title": "需要更新 Purah",
             "permissions.unsupported": "%@ 宣告了「%@」，目前版本無法授予。更新 Purah 後即可啟用。",
+            "todo.permission.title": "未連接提醒事項",
+            "todo.permission.subtitle": "macOS 尚未允許 Purah 讀取提醒事項，因此這裡沒有內容。",
+            "todo.permission.connect": "連接提醒事項",
+            "lifecycle.uncleanExit": "上次 Purah 沒有正常結束。診斷日誌在 設定 → 診斷。",
             "permissions.status.title": "隱私授權狀態",
             "permissions.grantAll": "授予全部權限",
             "permissions.status.ready": "就緒",
