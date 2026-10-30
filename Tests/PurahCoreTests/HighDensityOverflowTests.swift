@@ -684,6 +684,13 @@ struct HighDensityOverflowTests {
         let suiteName = "test_subpod_height_stack_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        // The store sizes its rail against the machine's screen, so a CI runner
+        // with no real display (400pt, clamped to 600) laid this out on a
+        // different rail than the 900pt one the arithmetic below describes.
+        // Pin it, then re-seed the floors the initialiser derived from the
+        // real screen.
+        store.overriddenScreenHeight = 900
+        store.autoLayoutAll()
         store.resetMajorGroups(for: .right)
 
         // Stack 3 pods ("calendar", "todo", "music") on the right rail into one shared Major Group
@@ -828,6 +835,10 @@ struct HighDensityOverflowTests {
         let suiteName = "test_water_droplet_detach_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        // Same reason as `testIndividualSubPodHeightInStackAndResize`: the
+        // rail height must come from the test, not from the display.
+        store.overriddenScreenHeight = 900
+        store.autoLayoutAll()
         store.resetMajorGroups(for: .right)
 
         // Stack 3 pods ("calendar", "todo", "music") on the right rail at the top
