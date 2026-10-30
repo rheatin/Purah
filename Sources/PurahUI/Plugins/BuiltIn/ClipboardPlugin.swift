@@ -414,6 +414,9 @@ public struct ClipboardItemDrawerView: View {
             accentColor: itemColor
         )
         .onDrag {
+            // Tells `EdgeMouseMonitor` a Purah drag is in flight: an in-app drag session
+            // delivers no dragged events, so this flag is the only signal the rail has.
+            store.isDraggingFromDrawer = true
             if let item = item {
                 return makeDragProvider(for: item)
             }
@@ -870,6 +873,7 @@ public struct ClipboardFullDrawerView: View {
             if state.searchText.isEmpty {
                 draggedItem = item
             }
+            context.store.isDraggingFromDrawer = true
             return makeDragProvider(for: item)
         }
         .onDrop(
