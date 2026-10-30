@@ -32,7 +32,15 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
     }
 
     public func loadFromDisk() {
-        guard let data = try? Data(contentsOf: indexURL) else { return }
+        // "Missing" and "could not be read" are different answers. Collapsing
+        // them let a transient read failure (a locked volume, a changed
+        // container path) look like an empty collection, and the next insert
+        // wrote the near-empty list over a perfectly good index.
+        guard FileManager.default.fileExists(atPath: indexURL.path) else { return }
+        guard let data = try? Data(contentsOf: indexURL) else {
+            quarantineUnreadableIndex()
+            return
+        }
         guard let decoded = try? JSONDecoder().decode([Item].self, from: data) else {
             quarantineUnreadableIndex()
             return

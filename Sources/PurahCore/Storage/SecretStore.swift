@@ -127,13 +127,34 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
 
     private func loadLocked() -> [String: String] {
         if let cached { return cached }
-        let loaded: [String: String] = {
-            guard let data = try? Data(contentsOf: fileURL) else { return [:] }
-            guard let decoded = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-            return decoded
-        }()
-        cached = loaded
-        return loaded
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            cached = [:]
+            return [:]
+        }
+        guard let data = try? Data(contentsOf: fileURL),
+              let decoded = try? JSONDecoder().decode([String: String].self, from: data) else {
+            // A file that exists but cannot be read is not an empty store.
+            // Caching `[:]` here meant the next save wrote one key over every
+            // other stored credential. Move the bytes aside so they stay
+            // recoverable and this session starts clean.
+            quarantineLocked()
+            cached = [:]
+            return [:]
+        }
+        cached = decoded
+        return decoded
+    }
+
+    private func quarantineLocked() {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backup = fileURL.deletingLastPathComponent()
+            .appendingPathComponent("secrets.corrupt-\(stamp).json")
+        if (try? FileManager.default.moveItem(at: fileURL, to: backup)) != nil {
+            DiagnosticLogger.shared.warn(
+                "Secrets",
+                "secrets.json could not be read; kept as \(backup.lastPathComponent)"
+            )
+        }
     }
 
     private func persistLocked(_ values: [String: String]) {
@@ -180,6 +201,9 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
         guard let legacy = defaults.string(forKey: fullKey), !legacy.isEmpty else { return }
         if store.secret(forKey: key) == nil {
             store.setSecret(legacy, forKey: key)
+            // Only drop the plaintext copy once it reads back from the new
+            // store. Removing it after a failed write loses the only copy.
+            guard store.secret(forKey: key) == legacy else { return }
         }
         defaults.removeObject(forKey: fullKey)
     }

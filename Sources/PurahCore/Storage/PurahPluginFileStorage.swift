@@ -113,15 +113,40 @@ public struct PurahPluginFileStorage: Sendable {
         }
     }
 
-    /// Contents of `data/index.json`, or nil when it is missing or unreadable.
+    /// Contents of `data/index.json`, or nil when it is missing or unusable.
     ///
     /// The notes and shelf collections both keep their list there; one reader
     /// and one writer mean a change to the file name or encoding cannot land in
     /// only half the app.
+    ///
+    /// An index that cannot be decoded is renamed out of the way first. Callers
+    /// treat `nil` as "nothing saved yet" and write their seed collection on
+    /// the next save, so leaving the file in place let one added field — or one
+    /// launch of an older build — replace the whole collection with a single
+    /// starter document. `PurahDiskRepository` already keeps its index this way.
     public func loadIndex<T: Decodable>(_ type: [T].Type = [T].self) -> [T]? {
         let url = dataDirectory.appendingPathComponent("index.json")
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode([T].self, from: data)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard let data = try? Data(contentsOf: url) else {
+            quarantineIndex(url, reason: "could not be read")
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode([T].self, from: data)
+        } catch {
+            quarantineIndex(url, reason: "could not be decoded")
+            return nil
+        }
+    }
+
+    private func quarantineIndex(_ url: URL, reason: String) {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backup = url.deletingLastPathComponent().appendingPathComponent("index.corrupt-\(stamp).json")
+        guard (try? FileManager.default.moveItem(at: url, to: backup)) != nil else { return }
+        DiagnosticLogger.shared.warn(
+            "Storage",
+            "\(url.lastPathComponent) \(reason); kept as \(backup.lastPathComponent)"
+        )
     }
 
     public func saveIndex<T: Encodable>(_ items: [T]) {

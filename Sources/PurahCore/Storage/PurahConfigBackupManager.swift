@@ -89,6 +89,14 @@ public enum PurahConfigBackupManager {
     /// flood `UserDefaults` or stall the main thread.
     public static let maximumImportedSettings = 5_000
 
+    /// Settings a backup may never carry, even though they are not secrets.
+    /// Each decides where credentials, prompts or commands are sent: an import
+    /// that only switches the provider, or only repoints the endpoint, hands
+    /// the person's stored key and prompt to whoever wrote the file.
+    static let nonImportableFragments = [
+        "baseurl", "endpoint", "selectedprovider", "customclipath", "customcliarguments",
+    ]
+
     public static func exportBackupData(
         from store: PurahWorkspaceStore,
         defaults: UserDefaults = .standard,
@@ -161,12 +169,17 @@ public enum PurahConfigBackupManager {
         }
 
         // Only Purah's own namespaced keys, and never credentials: without this
-        // an attacker-supplied file could rewrite `openAIBaseURL` / API keys or
-        // inject arbitrary defaults domains.
+        // an attacker-supplied file could rewrite API keys or inject arbitrary
+        // defaults domains. Refusing the *credential* is not enough on its own
+        // — a file that only repoints `openAIBaseURL` sends the person's own
+        // key to whoever wrote the file, so the settings that decide where a
+        // credential, a prompt or a command goes are refused too.
         let accepted = backup.settings.keys.filter { key in
-            key.hasPrefix("purah.")
+            let lowered = key.lowercased()
+            return key.hasPrefix("purah.")
                 && !key.hasSuffix(".transient")
                 && !key.hasSuffix(".lock")
+                && !Self.nonImportableFragments.contains(where: { lowered.contains($0) })
                 && (allowSecrets || !PurahSecretKeys.isSecret(key))
         }
         let rejected = backup.settings.keys.filter { !accepted.contains($0) }

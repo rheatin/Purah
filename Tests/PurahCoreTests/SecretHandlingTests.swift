@@ -107,9 +107,31 @@ struct SecretHandlingTests {
         try PurahConfigBackupManager.importBackupData(data, into: store, defaults: defaults)
 
         #expect(defaults.string(forKey: "purah.plugin.ai.openAIAPIKey") == nil)
-        // Base URL is not credential-shaped, so it is still allowed — documented
-        // behaviour; the point here is that keys cannot be replaced.
-        #expect(defaults.string(forKey: "purah.plugin.ai.openAIBaseURL") == "https://evil.example.com")
+        // Repointing the endpoint is the other half of the same attack: the key
+        // stays local, but the next request carries it to the imported host.
+        #expect(defaults.string(forKey: "purah.plugin.ai.openAIBaseURL") == "https://api.openai.com/v1")
+    }
+
+    @Test("Import cannot switch the provider or the executable it will run")
+    func testImportRejectsRoutingSettings() throws {
+        let defaults = makeDefaults()
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+
+        let payload = PurahConfigurationBackup(settings: [
+            "purah.plugin.ai.selectedProvider": .string("http_openai"),
+            "purah.plugin.ai.customCLIPath": .string("/tmp/evil"),
+            "purah.plugin.ai.endpointOverride": .string("https://evil.example.com"),
+            "purah.railBarWidth": .double(9.0)
+        ])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(payload)
+        try PurahConfigBackupManager.importBackupData(data, into: store, defaults: defaults)
+
+        #expect(defaults.string(forKey: "purah.plugin.ai.selectedProvider") == nil)
+        #expect(defaults.string(forKey: "purah.plugin.ai.customCLIPath") == nil)
+        #expect(defaults.string(forKey: "purah.plugin.ai.endpointOverride") == nil)
+        #expect(defaults.double(forKey: "purah.railBarWidth") == 9.0, "ordinary settings still import")
     }
 
     @Test("Import rejects a newer schema")
@@ -175,6 +197,40 @@ struct SecretHandlingTests {
 
         #expect(secrets.secret(forKey: "ai.openAIAPIKey") == "sk-current")
         #expect(defaults.string(forKey: "purah.plugin.ai.openAIAPIKey") == nil)
+    }
+
+    @Test("A credential-shaped CLI argument is redacted from the diagnostic log")
+    func testArgumentRedaction() {
+        let described = AIAssistantService.describeArguments([
+            "--model", "claude-sonnet-5-5",
+            "--api-key", "sk-ant-short",
+            "--token=abc123",
+            "--max-tokens", "4096",
+            "--print", String(repeating: "x", count: 200)
+        ])
+        #expect(!described.contains("sk-ant-short"))
+        #expect(!described.contains("abc123"))
+        #expect(described.contains("--model claude-sonnet-5-5"), "ordinary flags stay readable")
+        #expect(described.contains("4096"), "a numeric setting is not a secret")
+        #expect(described.contains("<200 chars>"))
+    }
+
+    @Test("An unreadable secrets file is moved aside, not treated as empty")
+    func testUnreadableSecretFileIsQuarantined() throws {
+        let url = makeSecretFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "{ not json".write(to: url, atomically: true, encoding: .utf8)
+
+        let store = FileSecretStore(fileURL: url, environmentKey: nil)
+        #expect(store.secret(forKey: "ai.openAIAPIKey") == nil)
+        #expect(!FileManager.default.fileExists(atPath: url.path), "the broken file moves out of the way")
+
+        store.setSecret("sk-new", forKey: "ai.openAIAPIKey")
+        #expect(FileSecretStore(fileURL: url, environmentKey: nil).secret(forKey: "ai.openAIAPIKey") == "sk-new")
     }
 
     // MARK: - File secret store
