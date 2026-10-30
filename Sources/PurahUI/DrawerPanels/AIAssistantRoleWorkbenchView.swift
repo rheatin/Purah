@@ -747,6 +747,15 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
             }
 
+            // 3b. The options the answer offered. Choosing one sends it as the
+            // next turn, so answering "which one?" never means retyping it.
+            if !state.isStreaming,
+               let choices = lastAssistantMsg?.choices, !choices.isEmpty {
+                AIChoiceButtonsView(choices: choices, accentColor: roleColor) { choice in
+                    state.refineCurrentOutput(instruction: choice)
+                }
+            }
+
             // 4. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
         }

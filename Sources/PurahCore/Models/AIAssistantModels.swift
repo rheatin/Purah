@@ -597,6 +597,14 @@ public struct AIChatSession: PurahStorableItem, Equatable, Sendable {
     public var isFavorite: Bool
     public var providerKind: AIProviderKind
     public var estimatedByteSize: Int64
+    /// The conversation a CLI agent is keeping for this session.
+    ///
+    /// Purah's own transcript is what the drawer shows; a CLI has a second,
+    /// richer record of the same turns (tool calls, files read, its own
+    /// compaction). Storing its id is what lets the next turn continue that
+    /// record instead of replaying a lossy text copy of it. Absent for HTTP
+    /// providers, which keep nothing, and for sessions that never ran a CLI.
+    public var cliSessionId: String?
 
     public var timestamp: Date { createdAt }
 
@@ -624,7 +632,8 @@ public struct AIChatSession: PurahStorableItem, Equatable, Sendable {
         updatedAt: Date = Date(),
         isFavorite: Bool = false,
         providerKind: AIProviderKind = .appleIntelligence,
-        estimatedByteSize: Int64 = 0
+        estimatedByteSize: Int64 = 0,
+        cliSessionId: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -634,6 +643,7 @@ public struct AIChatSession: PurahStorableItem, Equatable, Sendable {
         self.isFavorite = isFavorite
         self.providerKind = providerKind
         self.estimatedByteSize = estimatedByteSize
+        self.cliSessionId = cliSessionId
     }
 }
 

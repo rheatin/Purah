@@ -12,6 +12,25 @@ public enum AIDropZoneTarget: Sendable {
     case followUp
 }
 
+/// Carries the CLI's session id from the process's reader thread back to the
+/// main actor that owns the session list.
+final class CLIStreamSessionIDBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+
+    func set(_ id: String) {
+        lock.lock()
+        value = id
+        lock.unlock()
+    }
+
+    var current: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 // MARK: - Pending File Permission Request
 public struct PendingFilePermissionRequest: Equatable, Sendable {
     public let paths: [String]
@@ -418,8 +437,12 @@ public final class AIAssistantPluginState: Sendable {
 
         let prevOutput = currentViewedAssistantMessage?.content ?? ""
         let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
-        let refinementPrompt = "Previous output:\n\(prevOutput)\n\nUser refinement instruction: \(trimmed)\n\nPlease output the updated result directly following the instruction."
-        sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
+        // A follow-up is a turn of its own. Wrapping it as "Previous output: …
+        // / User refinement instruction: …" made every question read as an edit
+        // of the answer above it, and it hid a leading `/skill` from the matcher
+        // that requires the prompt to start with "/". The previous answer is
+        // already in the history this turn is sent with.
+        sendPrompt(trimmed, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
     }
 
     // MARK: - Slash Command Autocomplete
@@ -1611,6 +1634,12 @@ public final class AIAssistantPluginState: Sendable {
             }
         }()
 
+        // The CLI's own record of this conversation. Captured on the process's
+        // reader thread and written back when the turn ends: a half-finished
+        // turn must not claim a session it never completed.
+        let sessionIdBox = CLIStreamSessionIDBox()
+        let resumeCLISessionId = sessions[sessionIdx].cliSessionId
+
         currentStreamingTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -1626,6 +1655,8 @@ public final class AIAssistantPluginState: Sendable {
                     systemPromptOverride: effectivePromptOverride,
                     skillDirectories: skillDirectories,
                     mcpConfigPath: AIAssistantService.mcpConfigPath(servers: mcpServers),
+                    resumeCLISessionId: resumeCLISessionId,
+                    onCLISessionId: { sessionIdBox.set($0) },
                     onResolvedModel: { [weak self] resolved in
                         Task { @MainActor [weak self] in
                             guard let self else { return }
@@ -1667,7 +1698,7 @@ public final class AIAssistantPluginState: Sendable {
             }
 
             Task { @MainActor [weak self] in
-                self?.handleStreamingComplete(forSession: targetSessionId)
+                self?.handleStreamingComplete(forSession: targetSessionId, cliSessionId: sessionIdBox.current)
             }
         }
     }
@@ -1719,11 +1750,16 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
-    private func handleStreamingComplete(forSession sessionId: String) {
+    private func handleStreamingComplete(forSession sessionId: String, cliSessionId: String? = nil) {
         isStreaming = false
         activeQuickAction = nil
         currentStreamingTask = nil
         if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }) {
+            // The id the CLI reported this turn becomes the one the next turn
+            // resumes, replacing a stale one when a resume had to fall back.
+            if let cliSessionId, sessions[sIdx].cliSessionId != cliSessionId {
+                sessions[sIdx].cliSessionId = cliSessionId
+            }
             repository.update(sessions[sIdx])
         }
         if let store = boundStore, store.activeDrawerPodId != "ai" {
