@@ -8,36 +8,38 @@ Last reviewed: 2026-10-30 (v0.7.3)
 
 ---
 
-## 1. Publish the Homebrew tap (self-hosted)
+## 1. Homebrew tap (self-hosted) — published
 
 **Decision (2026-10-30): self-hosted tap, no Apple Developer Program.** Purah
 is not notarized, so the official `homebrew/cask` tap will not carry it —
 Homebrew quarantines cask downloads on purpose and removes casks that fail
 Gatekeeper. A personal tap is not audited that way, so it can.
 
-Steps, once:
+Live at [`github.com/rheatin/homebrew-tap`](https://github.com/rheatin/homebrew-tap),
+installed with:
 
-1. Create `github.com/rheatin/homebrew-tap`. The `homebrew-` prefix is required,
-   and the rest becomes the tap's short name — so the tap is `rheatin/tap`.
-   Naming it `homebrew-purah` would make the qualified install read
-   `rheatin/purah/purah`, which is only confusing.
-2. `mkdir -p Casks` inside it.
+```bash
+brew install --cask rheatin/tap/purah
+```
 
-After every release:
+The three parts are `user/tap/cask` — Homebrew's fully qualified form, which
+also taps the repo on the way in, so it is the single command to publish.
+Homebrew 5 asks users to trust a third-party tap first (`brew trust rheatin/tap`),
+and answers that with an error rather than a prompt, so the caveat has to be in
+the README.
 
-3. Copy `dist/purah.rb` (written by `release.sh`) to `Casks/purah.rb` in the tap
-   repo. That file is the only place the version and the SHA-256 are written.
-4. Commit and push. Users then run:
+**Every release:** copy `dist/purah.rb` (written by `release.sh`, with the
+version and ZIP checksum filled in) to `Casks/purah.rb` in the tap repo, commit
+and push. That generated file is the only place those two values are written —
+never hand-edit the tap copy.
 
-   ```bash
-   brew install --cask rheatin/tap/purah
-   ```
+Homebrew 5 rejected three stanzas the first time the cask was installed, so the
+template now uses the current forms and should not drift back:
+`depends_on macos: :sonoma` (not `">= :sonoma"`), no `verified:` on `url`, and
+`postflight_steps do run … end` (not `postflight do system_command … end`). Paths
+inside that block are `{{appdir}}` template tokens, not Ruby `appdir` — the Ruby
+constant does not exist in the steps DSL and fails at cask load.
 
-   The three parts are `user/tap/cask` — Homebrew's fully qualified form, which
-   also taps the repo on the way in, so it is the single command to publish.
-   On a recent Homebrew it asks to trust a third-party tap first
-   (`brew trust rheatin/tap`). Once tapped, `brew install --cask purah` is
-   enough.
 
 5. Once the tap works, add the install line to `README.md` §Install.
 

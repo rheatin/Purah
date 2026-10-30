@@ -461,8 +461,7 @@ cask "purah" do
   version "${VERSION}"
   sha256 "${ZIP_SHA256}"
 
-  url "https://github.com/rheatin/Purah/releases/download/v#{version}/Purah-v#{version}-macOS.zip",
-      verified: "github.com/rheatin/Purah/"
+  url "https://github.com/rheatin/Purah/releases/download/v#{version}/Purah-v#{version}-macOS.zip"
   name "Purah"
   desc "Magnetic edge rails for files, notes, music and scripts"
   homepage "https://github.com/rheatin/Purah/"
@@ -472,7 +471,7 @@ cask "purah" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Purah.app"
 
@@ -481,9 +480,8 @@ cask "purah" do
   # "cannot be opened" — the flag is cleared here, which leaves the app in the
   # same state as one built on this machine. Delete this block the day a
   # Developer ID certificate signs a release.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Purah.app"]
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/Purah.app"]
   end
 
   caveats <<~EOS

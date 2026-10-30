@@ -24,15 +24,16 @@ Last reviewed: 2026-10-30 (v0.7.3)
 
 ## Phase 0 — Blockers. Ship nothing public until these are done
 
-- [ ] **0.1 Distribution without Gatekeeper** — decided 2026-10-30: a
-      self-hosted Homebrew tap instead of the $99 Developer ID.
-      The official `homebrew/cask` tap quarantines downloads and drops casks
-      that fail Gatekeeper, so it cannot carry an unnotarized app; a personal
-      tap can. `release.sh` now writes `dist/purah.rb`, and the install steps
-      are in [`OWNER_ACTIONS.md`](OWNER_ACTIONS.md). Notarization is deferred,
-      not cancelled — it is the only way to stop the wall for people who
-      download the DMG directly, and that is the next Phase 0 blocker once the
-      tap is live.
+- [x] **0.1 Distribution without Gatekeeper** — decided 2026-10-30: a
+      self-hosted Homebrew tap instead of the $99 Developer ID, and it is live:
+      `brew install --cask rheatin/tap/purah`. The official `homebrew/cask` tap
+      quarantines downloads and drops casks that fail Gatekeeper, so it cannot
+      carry an unnotarized app; a personal tap can. `release.sh` writes
+      `dist/purah.rb` on every release and the generated cask is verified to
+      download and checksum-match. Notarization is deferred, not cancelled — it
+      is the only way to stop the wall for people who download the DMG
+      directly, and it stays a Phase 0 item. See
+      [`OWNER_ACTIONS.md`](OWNER_ACTIONS.md).
 - [ ] **0.2 First launch for someone who is not the author** — partial.
       Onboarding teaches the rail model but never explains permissions, and a
       denied pod used to look identical to an empty one. Calendar got an

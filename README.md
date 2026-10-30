@@ -127,11 +127,19 @@ Purah is designed to stay completely out of your way until intentionally summone
 
 **Requires macOS 14 or later.** The on-device AI features need macOS 26.
 
-**1. The installer (recommended)**
+**1. Homebrew (recommended)**
+
+```bash
+brew install --cask rheatin/tap/purah
+```
+
+That taps [homebrew-tap](https://github.com/rheatin/homebrew-tap) and installs Purah, cleaning up the quarantine flag macOS attaches to downloads on the way (see the note below). Upgrade with `brew upgrade --cask purah`, or let Purah's own updater do it.
+
+**2. The installer**
 
 Download the DMG from [Releases](https://github.com/rheatin/Purah/releases/latest), open it, and double-click **Install Purah.command**. It copies Purah into Applications, clears the download flag macOS attaches to anything fetched from the internet, and launches it. The script is plain, commented bash — read it first if you like; it changes nothing inside the app.
 
-**2. If you moved the app into Applications yourself**
+**3. If you moved the app into Applications yourself**
 
 macOS refuses to open apps it cannot verify. Purah is free and MIT-licensed, and it is **ad-hoc signed**: there is no $99/year Apple Developer account behind it, so Gatekeeper has no publisher to check.
 
@@ -140,7 +148,7 @@ macOS refuses to open apps it cannot verify. Purah is free and MIT-licensed, and
 
 The right-click trick no longer exists on macOS 15 and later; Apple removed that menu item.
 
-**3. Build it yourself**
+**4. Build it yourself**
 
 If you would rather not trust a binary, the source is the same code that produced it:
 
