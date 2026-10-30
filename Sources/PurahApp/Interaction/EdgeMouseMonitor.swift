@@ -120,7 +120,7 @@ public final class EdgeMouseMonitor {
         }
         stop()
         isRunning = true
-        observeDrawerDragSessions()
+        armDrawerDragWatch()
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .leftMouseUp, .scrollWheel]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             switch event.type {
@@ -297,7 +297,7 @@ public final class EdgeMouseMonitor {
     // MARK: - Purah-Owned Drag Sessions
 
     private var drawerDragWatchTask: Task<Void, Never>?
-    private var observesDrawerDrags = false
+    private var hasArmedDrawerDragWatch = false
 
     /// Watches the one flag a Purah drag source sets, and polls the cursor while it is set.
     ///
@@ -308,11 +308,21 @@ public final class EdgeMouseMonitor {
     /// that card never became reachable. The cursor position is the one signal still readable,
     /// so it is polled for the length of the drag and nothing longer.
     ///
-    /// `withObservationTracking` fires once per change, so it re-arms itself.
+    /// `start()` can run again after a screen change; only the first call arms, and the chain
+    /// below re-arms itself on every change from then on.
+    private func armDrawerDragWatch() {
+        guard !Self.isTestingEnvironment, !hasArmedDrawerDragWatch else { return }
+        hasArmedDrawerDragWatch = true
+        observeDrawerDragSessions()
+    }
+
+    /// `withObservationTracking` fires once per change, so this **must** re-arm unconditionally.
+    ///
+    /// It used to guard on an "already observing" flag, which the recursive call then hit — so
+    /// the chain died after the first change. The next drag set `isDraggingFromDrawer` with
+    /// nothing watching, and since a SwiftUI `.onDrag` never clears it, the flag stuck true and
+    /// `processMouse` stopped opening any drawer at all, on either rail.
     private func observeDrawerDragSessions() {
-        // `start()` can run again after a screen change; a second chain would double the taps.
-        guard !Self.isTestingEnvironment, !observesDrawerDrags else { return }
-        observesDrawerDrags = true
         withObservationTracking {
             _ = store.isDraggingFromDrawer
         } onChange: { [weak self] in
@@ -634,6 +644,14 @@ public final class EdgeMouseMonitor {
         customVelocity: CGPoint? = nil
     ) {
         guard !isFrozen, !store.isRailsFrozen, (!store.isLiveRailEditingMode || store.isRehearsingBreathingInSculptor) else { return }
+
+        // A drag that ends outside this app's sight leaves `isDraggingFromDrawer` set, and the
+        // guard below then refuses to open a drawer for the rest of the session — both rails
+        // look dead. The mouse button being up is proof the drag is over, whatever the source
+        // reported, so the flag is healed here rather than trusted.
+        if store.isDraggingFromDrawer, NSEvent.pressedMouseButtons & 0x1 == 0 {
+            store.isDraggingFromDrawer = false
+        }
 
         if isRunning {
             if store.edgeTriggerMode == .pushForce {

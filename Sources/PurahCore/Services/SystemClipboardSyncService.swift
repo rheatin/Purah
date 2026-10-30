@@ -412,12 +412,40 @@ public final class SystemClipboardSyncService {
         }
     }
 
+    /// Extensions a Finder copy is read from directly.
+    public static let copiedImageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "gif", "heic", "heif", "tiff", "tif", "webp", "bmp"
+    ]
+
+    /// The picture a Finder copy carries, if it is one.
+    ///
+    /// Finder puts the file's *icon* on the pasteboard as TIFF as well as the file URL, and the
+    /// image branch ran first — so copying a picture stored a 1024pt "PNG file" icon and the
+    /// clipboard showed a blank card for an image that was perfectly readable on disk.
+    public static func copiedImageFileURL(from pasteboard: NSPasteboard) -> URL? {
+        let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        return urls.first {
+            copiedImageExtensions.contains($0.pathExtension.lowercased())
+                && FileManager.default.fileExists(atPath: $0.path)
+        }
+    }
+
     private func processImage(pasteboard: NSPasteboard) -> ClipboardItem? {
+        if let fileURL = Self.copiedImageFileURL(from: pasteboard),
+           let fileData = try? Data(contentsOf: fileURL) {
+            // Transcoded rather than written through: the extension says nothing reliable about
+            // the bytes, and the stored file has to be a real PNG.
+            return processImageData(fileData, isPNG: false)
+        }
         guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) else {
             return nil
         }
         return processImageData(data, isPNG: pasteboard.data(forType: .png) != nil)
     }
+
 
     /// Computes a deterministic SHA256 content hash by rendering the image thumbnail
     /// into a fixed 32x32 RGBA pixel buffer and appending pixel dimensions.
