@@ -451,6 +451,14 @@ public final class TerminalManager: ObservableObject {
         // which case nothing at all is added.
         TerminalShellIntegration.prepare(environment: &env, shellPath: shell)
 
+        // `???` reads the screen, because the shell cannot: zsh has the command
+        // line and the exit status, and the reason it failed was printed to the
+        // terminal. The buffer keeps the scrollback, so a long build log does
+        // not push the error line out of reach.
+        TerminalShellIntegration.terminalTail = { [weak self] in
+            await MainActor.run { self?.terminalBufferText() }
+        }
+
         let envArray = env.map { "\($0.key)=\($0.value)" }
 
         view.startProcess(
@@ -539,8 +547,14 @@ public final class TerminalManager: ObservableObject {
         view.getTerminal().options.scrollback = 2000
     }
 
-    public func markProcessTerminated(for source: TerminalView) {
-        if let idx = tabs.firstIndex(where: { $0.terminalView === source }) {
+    /// The terminal's scrollback as text, newest last. `nil` when no shell has
+    /// been started yet, which is also when there is nothing to explain.
+    private func terminalBufferText() -> String? {
+        guard let data = terminalView?.getTerminal().getBufferAsData() else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    public func markProcessTerminated(for source: TerminalView) {        if let idx = tabs.firstIndex(where: { $0.terminalView === source }) {
             tabs[idx].isRunning = false
             if tabs[idx].id == activeTabId {
                 isProcessRunning = false

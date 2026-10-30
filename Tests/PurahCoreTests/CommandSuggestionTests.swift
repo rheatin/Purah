@@ -192,6 +192,73 @@ struct CommandSuggestionTests {
         #expect(explain.contains("git statu"))
         #expect(explain.contains("127"))
     }
+
+    @Test("??? carries what the screen says went wrong")
+    func explainCarriesTheScreen() {
+        let screen = """
+        sed -i '' 's/a/b/' notes.md
+        sed: illegal option -- i
+        """
+        let explain = CommandSuggestionPrompt.userPrompt(
+            mode: .explain,
+            description: "",
+            workingDirectory: "/tmp",
+            lastCommand: "sed -i '' 's/a/b/' notes.md",
+            lastExitStatus: 1,
+            recentOutput: screen
+        )
+        #expect(explain.contains("What the terminal shows now:"))
+        #expect(explain.contains("sed: illegal option -- i"))
+
+        // A plain `??` is about something new; a screenful of the last failure
+        // would pull the answer toward fixing that instead.
+        let suggest = CommandSuggestionPrompt.userPrompt(
+            mode: .suggest,
+            description: "把 notes.md 里的 a 换成 b",
+            workingDirectory: "/tmp",
+            lastCommand: nil,
+            lastExitStatus: nil,
+            recentOutput: screen
+        )
+        #expect(!suggest.contains("What the terminal shows now:"))
+        #expect(!suggest.contains("illegal option"))
+    }
+
+    @Test("The screen is sent without the shell's chrome or a credential")
+    func screenIsFiltered() {
+        let raw = """
+        make
+        ld: library not found for -lfoo
+        export API_TOKEN=sk-live-1234
+        alias gh='GH_TOKEN=abc gh'
+        ❯ ???
+
+        ⚡ Purah 正在思考…
+        """
+        let kept = CommandSuggestionPrompt.sanitizedRecentOutput(raw)
+        let text = kept ?? ""
+        #expect(text.contains("library not found for -lfoo"))
+        #expect(!text.contains("sk-live-1234"))
+        #expect(!text.contains("abc"))
+        #expect(!text.contains("???"), "the echoed question is not part of the failure")
+        #expect(!text.contains("正在思考"), "the banner is ours, not the command's")
+        #expect(kept?.hasSuffix("ld: library not found for -lfoo") == true, "nothing may trail the error")
+    }
+
+    @Test("Only the last screenful is kept, and only the last 4KB of that")
+    func screenIsCapped() {
+        let wide = (1...200).map { "line \($0)" }.joined(separator: "\n")
+        let kept = CommandSuggestionPrompt.sanitizedRecentOutput(wide) ?? ""
+        #expect(kept.components(separatedBy: "\n").count == CommandSuggestionPrompt.maximumRecentOutputLines)
+        #expect(kept.contains("line 200"), "the newest lines are the ones that matter")
+        #expect(!kept.contains("line 1\n"), "the oldest lines are dropped")
+
+        let long = String(repeating: "x", count: 20_000)
+        #expect(CommandSuggestionPrompt.sanitizedRecentOutput(long)?.count == CommandSuggestionPrompt.maximumRecentOutputLength)
+
+        #expect(CommandSuggestionPrompt.sanitizedRecentOutput(nil) == nil)
+        #expect(CommandSuggestionPrompt.sanitizedRecentOutput("\n\n\n") == nil)
+    }
 }
 
 // The bridge is a singleton with one listener: these tests share it, so they

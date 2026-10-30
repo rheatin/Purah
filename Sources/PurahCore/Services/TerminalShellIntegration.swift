@@ -1,5 +1,6 @@
 // Sources/PurahCore/Services/TerminalShellIntegration.swift
 import Foundation
+import os
 
 /// Everything needed to give a freshly launched shell the `??` hooks.
 ///
@@ -13,6 +14,20 @@ public enum TerminalShellIntegration {
 
     public static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true
+    }
+
+    /// The tail of the terminal as the person sees it. Supplied by the view,
+    /// because only it holds the buffer.
+    ///
+    /// `???` needs this and the shell cannot provide it: zsh knows the command
+    /// line and the exit status, but the reason a command failed is printed to
+    /// the terminal, not returned to the shell. `sed: illegal option -- i` is
+    /// the whole answer, and "exit status 1" is not.
+    private static let tailSlot = OSAllocatedUnfairLock<(@Sendable () async -> String?)?>(initialState: nil)
+
+    public static var terminalTail: (@Sendable () async -> String?)? {
+        get { tailSlot.withLock { $0 } }
+        set { tailSlot.withLock { $0 = newValue } }
     }
 
     /// Installs the files and brings the listener up ahead of time.
@@ -40,7 +55,11 @@ public enum TerminalShellIntegration {
                     history: form["history"],
                     aliases: form["aliases"],
                     // What the machine and this directory actually are.
-                    environment: ShellEnvironmentSnapshot.parse(form)
+                    environment: ShellEnvironmentSnapshot.parse(form),
+                    // What the screen says went wrong. Only for `???`: a plain
+                    // `??` is about something new, and a screenful of previous
+                    // output would pull the answer toward fixing that instead.
+                    recentOutput: mode == .explain ? await terminalTail?() : nil
                 )
             }
         }
