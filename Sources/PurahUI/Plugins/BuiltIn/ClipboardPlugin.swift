@@ -264,6 +264,7 @@ public struct ClipboardItemDrawerView: View {
     public let pluginState: ClipboardPluginState
     public let store: PurahWorkspaceStore
     public let onTogglePin: () -> Void
+    @State private var isHovered: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -354,9 +355,17 @@ public struct ClipboardItemDrawerView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .lineLimit(2)
                             .foregroundColor(palette.style == .native ? .primary : .white)
-                        Text(String(format: "clipboard.hint.text".localized, text.count))
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                        if isHovered, !ClipboardTextFormatter.availableActions(for: text).isEmpty {
+                            ClipboardFormatPills(
+                                text: text,
+                                tint: itemColor,
+                                onToast: { message, icon in store.onToast?(message, icon) }
+                            )
+                        } else {
+                            Text(String(format: "clipboard.hint.text".localized, text.count))
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
             } else {
@@ -433,6 +442,7 @@ public struct ClipboardItemDrawerView: View {
             }
         }
         .onHover { isHovering in
+            isHovered = isHovering
             if let item = item {
                 if isHovering {
                     ClipboardHoverPreviewController.shared.show(
@@ -788,9 +798,21 @@ public struct ClipboardFullDrawerView: View {
 
                         Spacer()
 
-                        Text(isHovered ? "Hover for full text • Tap to copy" : (isCompact ? "Tap to copy" : "Click to copy • Drag snippet"))
-                            .font(.system(size: isCompact ? 8 : 8.5))
-                            .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.7))
+                        // Hover swaps the hint for the conversions this text
+                        // supports. At rest the card stays as it was: an icon
+                        // in the corner crowded three controls over the first
+                        // line, and a glyph alone never said what it did.
+                        if isHovered, !ClipboardTextFormatter.availableActions(for: text).isEmpty {
+                            ClipboardFormatPills(
+                                text: text,
+                                tint: palette.primaryAccent,
+                                onToast: { message, icon in context.showToast(message, icon) }
+                            )
+                        } else {
+                            Text(isHovered ? "Hover for full text • Tap to copy" : (isCompact ? "Tap to copy" : "Click to copy • Drag snippet"))
+                                .font(.system(size: isCompact ? 8 : 8.5))
+                                .foregroundColor(isHovered ? palette.primaryAccent : .secondary.opacity(0.7))
+                        }
                     }
                 }
             }
@@ -1193,5 +1215,79 @@ private struct ClipboardSearchPanel: View {
         .padding(10)
         .frame(width: 300)
         .onAppear { isQueryFocused = true }
+    }
+}
+
+
+// MARK: - Text Conversion Pills
+
+/// The way into `ClipboardTextFormatter`, shown only while the card is hovered.
+///
+/// A permanent glyph was tried twice and failed twice: in the preview's leading
+/// edge it read as a thumbnail and pushed the text inwards, and in the corner
+/// it joined the eye and the star to sit on top of the first line — and a bare
+/// arrow never said what it would do anyway. Here it costs nothing at rest and
+/// names the conversion it offers.
+struct ClipboardFormatPills: View {
+    let text: String
+    var tint: Color = .secondary
+    var onToast: ((String, String?) -> Void)? = nil
+
+    var body: some View {
+        let all = ClipboardTextFormatter.availableActions(for: text)
+        let shown = Array(ClipboardTextFormatter.detectedActions(for: text).prefix(2))
+
+        HStack(spacing: 4) {
+            ForEach(shown, id: \.self) { action in
+                Button {
+                    apply(action)
+                } label: {
+                    Text(action.shortTitle)
+                        .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(tint)
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(tint.opacity(0.14)))
+                        .overlay(Capsule().stroke(tint.opacity(0.35), lineWidth: 0.6))
+                }
+                .buttonStyle(.plain)
+                .help(action.title)
+                .accessibilityLabel(action.title)
+            }
+
+            // The encoders and the YAML/TOML pair do not earn a pill of their
+            // own — they are still one click away.
+            if all.count > shown.count {
+                Menu {
+                    ForEach(all, id: \.self) { action in
+                        Button(action.title) { apply(action) }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 7.5, weight: .semibold))
+                        .foregroundColor(tint)
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(tint.opacity(0.14)))
+                        .overlay(Capsule().stroke(tint.opacity(0.35), lineWidth: 0.6))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("More conversions")
+                .accessibilityLabel("More conversions")
+            }
+        }
+    }
+
+    private func apply(_ action: ClipboardTextFormatter.Action) {
+        guard let output = ClipboardTextFormatter.output(of: action, for: text) else {
+            onToast?("Could not \(action.title.lowercased())", "exclamationmark.triangle")
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
+        onToast?("\(action.title) · copied", nil)
     }
 }
