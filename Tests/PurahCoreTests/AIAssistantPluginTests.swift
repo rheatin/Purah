@@ -865,13 +865,34 @@ struct AIAssistantPluginTests {
         )
         #expect(execPreset == ["exec", "Hello"])
 
-        // 6. Executable is .claude - arguments should not be modified to include 'run'
+        // 6. Executable is .claude - arguments should not be modified to include 'run',
+        // but the output is asked for as stream-json so the session id can be read
+        // (--print refuses that format without --verbose).
         let args5 = AIAssistantService.resolveCLIArguments(
             executable: .claude,
             cliPath: "/usr/local/bin/claude",
             promptText: "Hello Claude"
         )
-        #expect(args5 == ["-p", "Hello Claude"])
+        #expect(args5 == ["--output-format", "stream-json", "--verbose", "-p", "Hello Claude"])
+
+        // A stored session id turns the run into a continuation of that session.
+        let resumed = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/usr/local/bin/claude",
+            promptText: "And now shorter",
+            resumeSessionId: "abc-123"
+        )
+        #expect(resumed == ["--resume", "abc-123", "--output-format", "stream-json", "--verbose", "-p", "And now shorter"])
+
+        // A hand-written template is the user's own invocation; do not edit it.
+        let templated = AIAssistantService.resolveCLIArguments(
+            executable: .claude,
+            cliPath: "/usr/local/bin/claude",
+            customCLIArguments: "--model opus {prompt}",
+            promptText: "Hello",
+            resumeSessionId: "abc-123"
+        )
+        #expect(templated == ["--model", "opus", "Hello"])
     }
 
     @Test("Custom CLI template multi-flag and quoting support")

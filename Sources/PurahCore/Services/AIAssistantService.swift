@@ -445,6 +445,8 @@ public final class AIAssistantService {
         systemPromptOverride: String? = nil,
         skillDirectories: [String] = [],
         mcpConfigPath: String? = nil,
+        resumeCLISessionId: String? = nil,
+        onCLISessionId: (@Sendable (String) -> Void)? = nil,
         onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
@@ -559,6 +561,8 @@ public final class AIAssistantService {
                     systemPromptOverride: systemPromptOverride,
                     skillDirectories: skillDirectories,
                     mcpConfigPath: mcpConfigPath,
+                    resumeSessionId: resumeCLISessionId,
+                    onSessionID: onCLISessionId,
                     onChunk: onChunk
                 )
                 // A CLI agent spawns whatever model its own configuration
@@ -866,55 +870,88 @@ public final class AIAssistantService {
         systemPromptOverride: String?,
         skillDirectories: [String] = [],
         mcpConfigPath: String? = nil,
+        resumeSessionId: String? = nil,
+        onSessionID: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastMsg = messages.last
         // A CLI agent cannot receive image bytes on stdin, so attachments arrive
         // as text: file contents inline, images named rather than silently dropped.
-        var promptText = lastMsg.map { AIAttachmentEncoder.expand($0, modelAcceptsImages: false).text } ?? ""
+        let inputText = lastMsg.map { AIAttachmentEncoder.expand($0, modelAcceptsImages: false).text } ?? ""
         // A CLI turn is a process that knows nothing about the last one, so the
         // turns before it have to travel with the prompt. Without this a
         // follow-up reached the agent as a bare instruction — "make it shorter"
-        // with no idea what "it" was — because only the previous *answer* used
-        // to be folded in by hand.
+        // with no idea what "it" was — because only the previous answer used to
+        // be folded in by hand. It is still a lossy copy of the CLI's own record
+        // (no tool calls, no compaction), which is why resuming is preferred.
         let transcript = Self.cliTranscript(messages.dropLast())
-        if !transcript.isEmpty {
-            promptText = "Conversation so far:\n\(transcript)\n\nUser Input:\n\(promptText)"
-        }
+        let withHistory = transcript.isEmpty
+            ? inputText
+            : "Conversation so far:\n\(transcript)\n\nUser Input:\n\(inputText)"
+        let resumeID = resumeSessionId.flatMap { $0.isEmpty ? nil : $0 }
+
         let effectiveSystemPrompt = systemPromptOverride ?? lastMsg?.systemPromptOverride ?? lastMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
-        if let sys = effectiveSystemPrompt, !sys.isEmpty {
-            promptText = "\(sys)\n\nUser Input:\n\(promptText)"
+
+        func arguments(for body: String, resuming: String?) -> [String] {
+            var text = body
+            if let sys = effectiveSystemPrompt, !sys.isEmpty {
+                text = "\(sys)\n\nUser Input:\n\(text)"
+            }
+            return Self.resolveCLIArguments(
+                executable: executable,
+                cliPath: cliPath,
+                customCLIArguments: customCLIArguments,
+                promptText: text,
+                model: model,
+                additionalDirectories: skillDirectories,
+                permissionSettingsPath: Self.permissionSettingsPath(for: executable),
+                mcpConfigPath: mcpConfigPath,
+                resumeSessionId: resuming
+            )
         }
 
-        let args = Self.resolveCLIArguments(
-            executable: executable,
-            cliPath: cliPath,
-            customCLIArguments: customCLIArguments,
-            promptText: promptText,
-            model: model,
-            additionalDirectories: skillDirectories,
-            permissionSettingsPath: Self.permissionSettingsPath(for: executable),
-            mcpConfigPath: mcpConfigPath
-        )
+        func launch(_ args: [String]) async throws -> String {
+            let filename = (cliPath as NSString).lastPathComponent.lowercased()
+            let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+            let isNDJSON = isOpenCodeFamily || (args.contains("json") || args.contains("--format"))
 
-        let filename = (cliPath as NSString).lastPathComponent.lowercased()
-        let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
-        let isNDJSON = isOpenCodeFamily || (args.contains("json") || args.contains("--format"))
+            // When a run hangs, the first question is always "what did we
+            // actually pass?". Answering that from a diagnostics report beats
+            // asking the user to read their settings back to us.
+            DiagnosticLogger.shared.info(
+                "AI",
+                "CLI launch: \(cliPath) \(Self.describeArguments(args)) (ndjson=\(isNDJSON), skillDirs=\(skillDirectories.count))"
+            )
 
-        // When a run hangs, the first question is always "what did we actually
-        // pass?". Answering it from a diagnostics report beats asking the user
-        // to read their settings back to us.
-        DiagnosticLogger.shared.info(
-            "AI",
-            "CLI launch: \(cliPath) \(Self.describeArguments(args)) (ndjson=\(isNDJSON), skillDirs=\(skillDirectories.count))"
-        )
+            return try await executeCLIProcess(
+                executablePath: cliPath,
+                arguments: args,
+                isNDJSON: isNDJSON,
+                decodeStreamEvents: args.contains("stream-json"),
+                onSessionID: onSessionID,
+                onChunk: onChunk
+            )
+        }
 
-        return try await executeCLIProcess(
-            executablePath: cliPath,
-            arguments: args,
-            isNDJSON: isNDJSON,
-            onChunk: onChunk
-        )
+        guard let resumeID else {
+            return try await launch(arguments(for: withHistory, resuming: nil))
+        }
+
+        do {
+            // The CLI already holds the turns before this one.
+            return try await launch(arguments(for: inputText, resuming: resumeID))
+        } catch {
+            if error is CancellationError { throw error }
+            // The CLI's record can expire or be deleted independently of ours
+            // (a cleaned ~/.claude, a different machine). Replaying the
+            // transcript is lossy, but it is the only other copy, and a dead
+            // session id must not leave the drawer with no answer at all.
+            DiagnosticLogger.shared.warn(
+                "AI",
+                "Resume failed for session \(resumeID); replaying the transcript instead"
+            )
+            return try await launch(arguments(for: withHistory, resuming: nil))
+        }
     }
 
     /// The turns before the current one, flattened for a CLI that starts fresh
@@ -949,7 +986,8 @@ public final class AIAssistantService {
         model: String? = nil,
         additionalDirectories: [String] = [],
         permissionSettingsPath: String? = nil,
-        mcpConfigPath: String? = nil
+        mcpConfigPath: String? = nil,
+        resumeSessionId: String? = nil
     ) -> [String] {
         var args: [String] = []
         let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1026,6 +1064,17 @@ public final class AIAssistantService {
         // hook in the settings file is what turns each gate into a banner.
         if executable == .claude, canRoutePermissions, let permissionSettingsPath {
             args.insert(contentsOf: ["--settings", permissionSettingsPath, "--permission-mode", "manual"], at: 0)
+        }
+
+        // `stream-json` is the only output mode that reports the session id,
+        // and `--print` refuses it without `--verbose`. Resuming then makes the
+        // CLI's own record the conversation, so the prompt no longer has to
+        // carry a lossy text replay of it.
+        if executable == .claude, canRoutePermissions {
+            args.insert(contentsOf: ["--output-format", "stream-json", "--verbose"], at: 0)
+            if let resumeSessionId, !resumeSessionId.isEmpty {
+                args.insert(contentsOf: ["--resume", resumeSessionId], at: 0)
+            }
         }
 
         if executable == .claude, canRoutePermissions, let mcpConfigPath {
@@ -1418,6 +1467,8 @@ public final class AIAssistantService {
         executablePath: String,
         arguments: [String],
         isNDJSON: Bool = false,
+        decodeStreamEvents: Bool = false,
+        onSessionID: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let processBox = SafeProcessBox()
@@ -1497,8 +1548,24 @@ public final class AIAssistantService {
                     try? stdinPipe.fileHandleForReading.close()
                 }
 
+                let emitStreamLine: @Sendable (String) -> Void = { line in
+                    switch AICLIStreamDecoder.decode(line: line) {
+                    case .session(let id): onSessionID?(id)
+                    case .text(let chunk):
+                        buffer.append(chunk)
+                        onChunk?(chunk)
+                    case .finished, .none:
+                        break
+                    }
+                }
+
                 let processChunk: @Sendable (String) -> Void = { text in
-                    if isNDJSON {
+                    if decodeStreamEvents {
+                        lineBuffer.append(text)
+                        for line in lineBuffer.extractLines() {
+                            emitStreamLine(line)
+                        }
+                    } else if isNDJSON {
                         lineBuffer.append(text)
                         let lines = lineBuffer.extractLines()
 
@@ -1554,7 +1621,12 @@ public final class AIAssistantService {
                         errorBuffer.append(remainingErrText)
                     }
 
-                    if isNDJSON {
+                    if decodeStreamEvents {
+                        let leftover = lineBuffer.flushRemaining()
+                        if !leftover.isEmpty {
+                            emitStreamLine(leftover)
+                        }
+                    } else if isNDJSON {
                         let leftover = lineBuffer.flushRemaining()
                         if !leftover.isEmpty {
                             if let parsed = Self.parseNDJSONLine(leftover) {
