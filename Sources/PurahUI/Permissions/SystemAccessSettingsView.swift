@@ -15,24 +15,9 @@ public struct SystemAccessSettingsView: View {
         self.store = store
     }
 
-    private var groupedPermissions: [(permission: PluginPermission, manifests: [PurahPluginManifest])] {
-        let allManifests = PluginRegistry.shared.allCatalogPlugins.map(\.manifest)
-        var map: [PluginPermission: [PurahPluginManifest]] = [:]
-        for manifest in allManifests {
-            for perm in manifest.permissions {
-                map[perm, default: []].append(manifest)
-            }
-        }
-        let sorted = PluginPermission.allCases.sorted { a, b in
-            if a.isTCCRestricted != b.isTCCRestricted {
-                return a.isTCCRestricted && !b.isTCCRestricted
-            }
-            return a.rawValue < b.rawValue
-        }
-        return sorted.compactMap { perm in
-            guard let manifests = map[perm], !manifests.isEmpty else { return nil }
-            return (perm, manifests)
-        }
+    /// Shared with the onboarding permission panel — see `PermissionInventory`.
+    private var groupedPermissions: [PermissionGroup] {
+        PermissionInventory.groups()
     }
 
     public var body: some View {

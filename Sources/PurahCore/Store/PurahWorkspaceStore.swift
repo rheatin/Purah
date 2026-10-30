@@ -31,6 +31,7 @@ public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifia
     case pageDemo = 3           // Step 4: Multi-Page Deck -> +Page & Top/Bottom Portals
     case breathingDemo = 4      // Step 5: Dynamic Breathing -> Compact & In-Place Accordion
     case antiTouchCalibration = 5 // Step 6: Anti-Accidental Touch -> Dwell vs Push Force & Sensitivity
+    case permissions = 6        // Step 7: Connect what Purah can see -> one panel, grant or skip
 
     public var id: Int { rawValue }
 }
@@ -112,6 +113,10 @@ public final class PurahWorkspaceStore {
             return isDynamicBreathingEnabled && onboardingBreathingHoveredPods.count >= 2
         case .antiTouchCalibration:
             return onboardingDidTriggerEdgeDrawer
+        case .permissions:
+            // Nothing to do is a completed mission: the step exists to offer a
+            // choice, not to extract a grant.
+            return true
         }
     }
 
@@ -3740,6 +3745,12 @@ public final class PurahWorkspaceStore {
                 normalizePageRanges(for: .right)
             }
                 isRehearsingBreathingInSculptor = true
+        case .permissions:
+            // The last step asks for macOS permissions, which arrive as a sheet
+            // over whatever has focus. Retract anything open and stop the
+            // breathing rehearsal so the panel is the only thing on screen.
+            dismissActiveDrawer()
+            isRehearsingBreathingInSculptor = false
         }
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()

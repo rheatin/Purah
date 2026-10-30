@@ -34,11 +34,15 @@ Last reviewed: 2026-10-30 (v0.7.3)
       is the only way to stop the wall for people who download the DMG
       directly, and it stays a Phase 0 item. See
       [`OWNER_ACTIONS.md`](OWNER_ACTIONS.md).
-- [ ] **0.2 First launch for someone who is not the author** — partial.
-      Onboarding teaches the rail model but never explains permissions, and a
-      denied pod used to look identical to an empty one. Calendar got an
-      in-place "Connect" affordance; **Todo now does too**. Still missing: a
-      decision on whether a TCC prompt belongs in onboarding at all.
+- [x] **0.2 First launch for someone who is not the author** —
+      a denied pod used to look identical to an empty one; Calendar and Todo now
+      say which it is and offer the grant in place. Decided the open question
+      the same day: onboarding **does** ask, but only at the end, in one panel
+      with one row per permission an installed plugin declares. Each row is its
+      own click, because each one raises its own macOS sheet. Skipping costs
+      exactly those features and nothing else. The panel and the settings
+      matrix read the same `PermissionInventory`, so neither can list a
+      permission the other misses.
 - [x] **0.3 Failure visibility** —
       a failed in-place update is reported at the next launch
       (`UpdateInstallMarker`); an abnormal exit is reported at the next launch
