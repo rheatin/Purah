@@ -234,8 +234,14 @@ public final class EdgeMouseMonitor {
     }
 
     /// Opens the drawer of the drop-capable pod under the cursor during a drag session.
+    ///
+    /// This runs for payloads that came from Purah itself as well. It used to skip
+    /// them (`!store.isDraggingFromDrawer`), which meant a file dragged out of the
+    /// Drop Shelf could only ever come back to the Shelf: every other rail stayed
+    /// shut, so no other pod's drop target was reachable. The pod that already has
+    /// a drawer open is still skipped below, so dragging out of a drawer never
+    /// re-opens the card it came from.
     private func expandDropCapablePodIfNeeded(edge: MountEdge, currentWindowY: CGFloat, totalHeight: Double) {
-        guard !store.isDraggingFromDrawer else { return }
         let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
         guard let matched = layoutItems.first(where: { item in
             let topY = CGFloat(item.startY)
@@ -247,6 +253,14 @@ public final class EdgeMouseMonitor {
               !plugin.supportedDropTypes.isEmpty else { return }
         guard store.activeDrawerPodId != matched.pod.id else { return }
 
+        // One line per drag, so the diagnostics report can answer "did the rail
+        // even see the payload?" — the dialog cannot show that any other way.
+        if store.activeDrawerPodId == nil {
+            DiagnosticLogger.shared.info(
+                "Drag",
+                "Opened \(matched.pod.id) drawer for an incoming drop on the \(edge == .left ? "left" : "right") rail."
+            )
+        }
         activatePodDrawer(candidate: matched.pod, matched: matched, currentWindowY: currentWindowY, edge: edge)
         cancelExitGrace(for: edge)
     }

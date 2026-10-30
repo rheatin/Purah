@@ -6,6 +6,7 @@ import Testing
 /// stashes, bottom half AirDrops. Getting this wrong does not look like a
 /// layout bug — it silently sends someone's file to a nearby device.
 @Suite("Drop Shelf Split Routing Tests")
+@MainActor
 struct ShelfSplitDropTests {
 
     @Test("The top half stashes and the bottom half AirDrops")
