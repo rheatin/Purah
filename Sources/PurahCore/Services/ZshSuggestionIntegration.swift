@@ -176,9 +176,13 @@ public enum ZshSuggestionIntegration {
                     .git .gitignore README.md; do
           [[ -e "$item" ]] && markers+=("$item")
         done
-        # `(N)` keeps a missing glob from becoming an error.
+        # `(N)` is the null glob qualifier: no project here, no error. It has to
+        # be a glob qualifier — `${(N)...}` is parameter expansion, and naming a
+        # pattern inside it (`${(N)./*.xcodeproj}`) is a "bad substitution" that
+        # the whole collector printed on every `??`.
         local -a xcodeProjects
-        xcodeProjects=("${(@)${(N)./*.xcodeproj}[1,2]}")
+        xcodeProjects=(*.xcodeproj(N))
+        xcodeProjects=("${(@)xcodeProjects[1,2]}")
         for item in $xcodeProjects; do
           markers+=("${item:t}")
         done

@@ -302,6 +302,52 @@ struct ZshSuggestionIntegrationTests {
         #expect(!zshrc.contains("POSTDISPLAY"))
         #expect(!zshrc.contains("用一句话描述"))
     }
+
+    @Test("The context collector runs clean in a real zsh")
+    func collectorRunsClean() throws {
+        // `??` used to print `_purah_collect:14: bad substitution` on every
+        // request: the xcode-project line named a glob inside parameter
+        // expansion (`${(N)./*.xcodeproj}`) instead of using the `(N)` glob
+        // qualifier. zsh carried on to the next statement, which is why it read
+        // as harmless — the price was the `.xcodeproj` marker and a line of
+        // shell noise under every question.
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_zsh_collect_\(UUID().uuidString)")
+        let real = tmp.appendingPathComponent("real")
+        let work = tmp.appendingPathComponent("work")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: work.appendingPathComponent("Demo.xcodeproj"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let script = tmp.appendingPathComponent("managed.zshrc")
+        try ZshSuggestionIntegration.zshrc.write(to: script, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", "source \"$PURAH_TEST_ZSHRC\"; __purah_collect; print -r -- \"$__purah_ctx_markers\""]
+        process.currentDirectoryURL = work
+        var env = ProcessInfo.processInfo.environment
+        env["PURAH_TEST_ZSHRC"] = script.path
+        env["PURAH_REAL_ZDOTDIR"] = real.path
+        env["PURAH_AI_PORT"] = "1"
+        env["PURAH_BRIDGE_TOKEN"] = "test"
+        process.environment = env
+
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        try process.run()
+        let outData = out.fileHandleForReading.readDataToEndOfFile()
+        let errData = err.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        let stdout = String(decoding: outData, as: UTF8.self)
+        let stderr = String(decoding: errData, as: UTF8.self)
+        #expect(process.terminationStatus == 0)
+        #expect(stderr.isEmpty, "zsh printed: \(stderr)")
+        #expect(stdout.contains("Demo.xcodeproj"), "the collector must reach its markers, not die on the way")
+    }
 }
 
 @Suite("`??` Context Tests")
