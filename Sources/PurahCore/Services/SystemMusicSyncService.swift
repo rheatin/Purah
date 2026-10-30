@@ -28,6 +28,14 @@ public final class SystemMusicSyncService {
     @ObservationIgnored private var cachedArtworkData: Data?
     @ObservationIgnored private var cachedLyricsKey: String?
     @ObservationIgnored private var cachedLyricsResult: OnlineLyricsResult?
+    /// Tracks whose artwork or lyrics came back empty. Only hits were cached
+    /// before, so an instrumental asked LRCLIB, NetEase, the iTunes search and
+    /// Music.app for lyrics again on every 2s heartbeat — for as long as it
+    /// kept playing. One attempt per track per session is the honest bound.
+    @ObservationIgnored private var attemptedArtworkKeys: Set<String> = []
+    @ObservationIgnored private var attemptedLyricsKeys: Set<String> = []
+    /// Exposed so a test can see that a repeated heartbeat schedules nothing.
+    @ObservationIgnored public private(set) var lyricFetchAttempts: Int = 0
     @ObservationIgnored private var playbackTimer: Timer?
     @ObservationIgnored private var statusHeartbeatTimer: Timer?
 
@@ -83,6 +91,8 @@ public final class SystemMusicSyncService {
         cachedArtworkData = nil
         cachedLyricsKey = nil
         cachedLyricsResult = nil
+        attemptedArtworkKeys.removeAll()
+        attemptedLyricsKeys.removeAll()
     }
 
     public func startListening(into store: PurahWorkspaceStore? = nil) {
@@ -262,7 +272,9 @@ public final class SystemMusicSyncService {
             onTrackChanged?(store._musicTrack)
         }
 
-        if existingArtwork == nil {
+        let artworkKey = "\(title)|\(artist)"
+        if existingArtwork == nil, !attemptedArtworkKeys.contains(artworkKey) {
+            attemptedArtworkKeys.insert(artworkKey)
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
@@ -275,7 +287,11 @@ public final class SystemMusicSyncService {
             }
         }
 
-        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
+        let lyricsKey = "\(title)|\(artist)"
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track",
+           !attemptedLyricsKeys.contains(lyricsKey) {
+            attemptedLyricsKeys.insert(lyricsKey)
+            lyricFetchAttempts += 1
             Task { [weak self, weak store] in
                 if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
@@ -355,7 +371,9 @@ public final class SystemMusicSyncService {
             onTrackChanged?(store._musicTrack)
         }
 
-        if existingArtwork == nil {
+        let artworkKey = "\(title)|\(artist)"
+        if existingArtwork == nil, !attemptedArtworkKeys.contains(artworkKey) {
+            attemptedArtworkKeys.insert(artworkKey)
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
@@ -368,7 +386,11 @@ public final class SystemMusicSyncService {
             }
         }
 
-        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
+        let lyricsKey = "\(title)|\(artist)"
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track",
+           !attemptedLyricsKeys.contains(lyricsKey) {
+            attemptedLyricsKeys.insert(lyricsKey)
+            lyricFetchAttempts += 1
             Task { [weak self, weak store] in
                 if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
@@ -463,7 +485,7 @@ public final class SystemMusicSyncService {
         let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
 
         if let store = store {
-            store._musicTrack = MusicTrackInfo(
+            let next = MusicTrackInfo(
                 title: title,
                 artist: resolvedArtist,
                 album: album,
@@ -480,11 +502,19 @@ public final class SystemMusicSyncService {
                 sourceApp: appName,
                 sourceBundleId: bundleId
             )
-            updatePlaybackTimer(store: store, isPlaying: isPlaying)
-            onTrackChanged?(store._musicTrack)
+            // Reassigning `_musicTrack` invalidates every view that reads it, so
+            // a paused player was repainting the rail on every 2s heartbeat with
+            // identical content. Nothing visible moved means nothing to repaint.
+            if !next.matchesVisibleState(of: store._musicTrack) {
+                store._musicTrack = next
+                updatePlaybackTimer(store: store, isPlaying: isPlaying)
+                onTrackChanged?(store._musicTrack)
+            }
         }
 
-        if existingArtwork == nil {
+        let artworkKey = "\(title)|\(resolvedArtist)"
+        if existingArtwork == nil, !attemptedArtworkKeys.contains(artworkKey) {
+            attemptedArtworkKeys.insert(artworkKey)
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: resolvedArtist, album: album) {
                     await MainActor.run {
@@ -497,7 +527,11 @@ public final class SystemMusicSyncService {
             }
         }
 
-        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track" {
+        let lyricsKey = "\(title)|\(resolvedArtist)"
+        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track",
+           !attemptedLyricsKeys.contains(lyricsKey) {
+            attemptedLyricsKeys.insert(lyricsKey)
+            lyricFetchAttempts += 1
             Task { [weak self, weak store] in
                 if let lyr = await self?.fetchOnlineLyrics(title: title, artist: resolvedArtist) {
                     await MainActor.run {

@@ -350,4 +350,48 @@ struct MusicSyncTests {
         let appleMusicIcon = MusicDrawerView.resolveSourceAppIcon(sourceApp: "Apple Music", bundleId: "com.apple.Music")
         #expect(appleMusicIcon != nil)
     }
+
+    @Test("Visible-state comparison ignores the anchor and waveform, and notices real moves")
+    func testMatchesVisibleState() {
+        let base = MusicTrackInfo(
+            title: "A", artist: "B", album: "C",
+            currentPositionSeconds: 10, durationSeconds: 100, playbackRate: 0
+        )
+
+        var laterAnchor = base
+        laterAnchor.lastUpdated = Date().addingTimeInterval(30)
+        laterAnchor.waveformSamples = [0.9, 0.1]
+        #expect(base.matchesVisibleState(of: laterAnchor))
+
+        var moved = base
+        moved.currentPositionSeconds = 20
+        #expect(!base.matchesVisibleState(of: moved))
+
+        var retitled = base
+        retitled.title = "Different"
+        #expect(!base.matchesVisibleState(of: retitled))
+    }
+
+    @Test("A heartbeat that reports the same paused track does not replace it")
+    func testUnchangedHeartbeatLeavesTrackAlone() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService()
+        let dict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "Quiet Hours",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Nobody",
+            "kMRMediaRemoteNowPlayingInfoAlbum": "Silence",
+            "kMRMediaRemoteNowPlayingInfoDuration": 200.0,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 40.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 0.0,
+            "kMRMediaRemoteNowPlayingInfoIsMusicApp": true
+        ]
+
+        service.processMediaRemoteData(dict: dict, pid: 0, store: store)
+        let anchor = store._musicTrack.lastUpdated
+
+        service.processMediaRemoteData(dict: dict, pid: 0, store: store)
+
+        #expect(store._musicTrack.lastUpdated == anchor, "The second heartbeat wrote the track again")
+        #expect(service.lyricFetchAttempts == 1, "A lyric-less track must not be looked up again every heartbeat")
+    }
 }

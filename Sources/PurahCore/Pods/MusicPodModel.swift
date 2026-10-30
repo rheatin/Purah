@@ -82,6 +82,29 @@ public struct MusicTrackInfo: Codable, Sendable {
         self.sourceBundleId = sourceBundleId
     }
 
+    /// Whether two snapshots would render the same thing.
+    ///
+    /// The 2s heartbeat rebuilds this struct on every poll. Assigning it back
+    /// to the store invalidates every view that reads it, so a paused player
+    /// was repainting the rail twice a second with identical content.
+    /// `lastUpdated` is the time anchor and `waveformSamples` is visual noise,
+    /// so neither counts as a change; `playbackProgress` does, which is what
+    /// keeps a playing track moving.
+    public func matchesVisibleState(of other: MusicTrackInfo) -> Bool {
+        title == other.title
+            && artist == other.artist
+            && album == other.album
+            && isPlaying == other.isPlaying
+            && playbackRate == other.playbackRate
+            && abs(currentPositionSeconds - other.currentPositionSeconds) < 0.5
+            && abs(durationSeconds - other.durationSeconds) < 0.5
+            && artworkData?.count == other.artworkData?.count
+            && lyrics == other.lyrics
+            && syncedLyrics == other.syncedLyrics
+            && sourceApp == other.sourceApp
+            && sourceBundleId == other.sourceBundleId
+    }
+
     public var calculatedCurrentTime: Double {
         if isPlaying && playbackRate > 0 {
             let elapsed = Date().timeIntervalSince(lastUpdated) * playbackRate
