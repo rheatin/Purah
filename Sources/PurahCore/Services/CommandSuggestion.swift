@@ -280,6 +280,40 @@ public enum CommandSuggestionPrompt {
     /// is the app-side ceiling for a shell that is not ours.
     public static let maximumAliasesLength = 4_000
 
+    /// Longest terminal tail forwarded, and how far back it may reach.
+    ///
+    /// The tail exists to say *why* a command failed, and that is almost always
+    /// in the last few lines. A whole screenful of build log costs tokens and
+    /// buries the one line that matters.
+    public static let maximumRecentOutputLength = 4_000
+    public static let maximumRecentOutputLines = 40
+
+    /// The screen, minus what the person never typed and should not be sent.
+    ///
+    /// Three things are dropped: trailing blank lines, the shell's own chrome
+    /// (the echoed `???` line and the "thinking" banner — without this the model
+    /// reads them as part of the failure), and any line that looks like it
+    /// carries a credential, the same guard the aliases get.
+    public static func sanitizedRecentOutput(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        var lines = raw.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        while let last = lines.last {
+            let trimmed = last.trimmingCharacters(in: .whitespaces)
+            let isChrome = trimmed.isEmpty || trimmed.contains("???") || trimmed.contains("正在思考")
+            guard isChrome else { break }
+            lines.removeLast()
+        }
+        let kept = lines
+            .filter { !isCredentialLine($0) }
+            .suffix(maximumRecentOutputLines)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !kept.isEmpty else { return nil }
+        return kept.count > maximumRecentOutputLength
+            ? String(kept.suffix(maximumRecentOutputLength))
+            : kept
+    }
+
     /// Line-shaped credential patterns in an alias, dropped rather than sent.
     ///
     /// An alias is the person's own shell configuration, and some of them carry
@@ -323,7 +357,8 @@ public enum CommandSuggestionPrompt {
         lastExitStatus: Int32?,
         correction: String? = nil,
         aliases: String? = nil,
-        environment: ShellEnvironmentSnapshot? = nil
+        environment: ShellEnvironmentSnapshot? = nil,
+        recentOutput: String? = nil
     ) -> String {
         var lines = ["Working directory: \(workingDirectory)"]
         if let architecture = environment?.architecture, !architecture.isEmpty {
@@ -352,6 +387,14 @@ public enum CommandSuggestionPrompt {
             }
             if let lastExitStatus, lastExitStatus != 0 {
                 lines.append("Previous command exit status: \(lastExitStatus)")
+            }
+            // The status says it failed; the output says why. Without it the
+            // answer is a guess dressed as a diagnosis — `sed: illegal option
+            // -- i` is the whole problem and lives nowhere else.
+            if let tail = sanitizedRecentOutput(recentOutput) {
+                lines.append("")
+                lines.append("What the terminal shows now:")
+                lines.append(tail)
             }
             lines.append("")
             if description.isEmpty {

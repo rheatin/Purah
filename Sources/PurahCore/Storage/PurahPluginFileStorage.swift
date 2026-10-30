@@ -1,6 +1,7 @@
 // Sources/PurahCore/Storage/PurahPluginFileStorage.swift
 import Foundation
 import AppKit
+import os
 
 /// Standardized isolated disk storage sandbox for Purah plugins.
 /// Allocates a dedicated directory in Application Support with separate data and cache subdirectories,
@@ -64,8 +65,22 @@ public struct PurahPluginFileStorage: Sendable {
         self.dataDirectory = root.appendingPathComponent("data", isDirectory: true)
         self.cacheDirectory = root.appendingPathComponent("cache", isDirectory: true)
 
-        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        Self.ensureDirectory(dataDirectory)
+        Self.ensureDirectory(cacheDirectory)
+    }
+
+    /// Directories already created by this process.
+    ///
+    /// Every `PurahPluginContext` builds one of these, and a rail render builds
+    /// several contexts per pod — so the two `mkdir` calls in `init` ran on
+    /// every frame for directories that were made at launch. A profile caught
+    /// them as the only syscalls the render loop contributed.
+    private static let createdDirectories = OSAllocatedUnfairLock<Set<URL>>(initialState: [])
+
+    private static func ensureDirectory(_ url: URL) {
+        guard !createdDirectories.withLock({ $0.contains(url) }) else { return }
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        createdDirectories.withLock { _ = $0.insert(url) }
     }
 
     /// Recursively computes total disk size of the plugin sandbox directory in bytes.

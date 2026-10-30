@@ -89,10 +89,21 @@ public extension Color {
     func toHex() -> String? {
         let nsColor = NSColor(self)
         guard let rgbColor = nsColor.usingColorSpace(.sRGB) else { return nil }
-        let r = Int(round(rgbColor.redComponent * 255))
-        let g = Int(round(rgbColor.greenComponent * 255))
-        let b = Int(round(rgbColor.blueComponent * 255))
-        return String(format: "#%02X%02X%02X", r, g, b)
+        // Clamped: an extended-range colour can push a component past 1.0, and
+        // the table has no entry there.
+        let r = Self.byte(rgbColor.redComponent)
+        let g = Self.byte(rgbColor.greenComponent)
+        let b = Self.byte(rgbColor.blueComponent)
+        // A lookup beats `String(format:)` here: this runs once per rail chip
+        // per render, and the format path builds an NSString through the CF
+        // format parser each time.
+        return "#" + Self.hexBytes[r] + Self.hexBytes[g] + Self.hexBytes[b]
+    }
+
+    private static let hexBytes: [String] = (0...255).map { String(format: "%02X", $0) }
+
+    private static func byte(_ component: CGFloat) -> Int {
+        min(255, max(0, Int((component * 255).rounded())))
     }
 
     /// Returns deep slate-black (#0F111A) for medium/bright accent fills, or crisp white for very dark fills.

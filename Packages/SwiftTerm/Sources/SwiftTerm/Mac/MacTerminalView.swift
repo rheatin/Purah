@@ -74,8 +74,22 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         public init(font baseFont: NSFont, fontSize: CGFloat? = nil) {
             self.normal = baseFont
             self.bold = NSFontManager.shared.convert(baseFont, toHaveTrait: [.boldFontMask])
-            self.italic = NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask])
-            self.boldItalic = NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask, .boldFontMask])
+            self.italic = FontSet.italicized(baseFont)
+            self.boldItalic = FontSet.italicized(self.bold)
+        }
+
+        /// `NSFontManager` hands back the upright font when a family ships no italic
+        /// face — PT Mono and SF Mono both do — so SGR 3 drew as plain text. Shear
+        /// the descriptors that have no real face instead. The matrix has to go in
+        /// through Core Text; `.matrix` on an `NSFontDescriptor` renders glyphs as
+        /// stray dots.
+        static func italicized(_ base: NSFont) -> NSFont {
+            let converted = NSFontManager.shared.convert(base, toHaveTrait: [.italicFontMask])
+            if converted.fontDescriptor.symbolicTraits.contains(.italic) { return converted }
+            var matrix = CGAffineTransform(a: 1, b: 0, c: 0.20, d: 1, tx: 0, ty: 0) // ≈12°
+            return CTFontCreateWithFontDescriptorAndOptions(
+                base.fontDescriptor as CTFontDescriptor, base.pointSize, &matrix, []
+            ) as NSFont
         }
 
         // Expected by the shared rendering code
