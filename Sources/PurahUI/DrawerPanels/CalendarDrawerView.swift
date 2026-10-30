@@ -362,99 +362,108 @@ public struct CalendarDrawerView: View {
         VStack(alignment: .leading, spacing: 8) {
             topSummaryBar()
 
-            VStack(spacing: 8) {
-                Spacer()
-
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 26))
-                    .foregroundColor(palette.borderColor)
-
-                VStack(spacing: 3) {
-                    Text("calendar.empty.title".localized)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                    Text(String(format: "calendar.scopeValue".localized, state.scope.title))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(podColor.opacity(0.85))
+            // A stack's drawer is exactly as tall as the shelf it slid out of,
+            // and on a shared pod that can be shorter than this composition
+            // needs (the footer buttons used to be cut off by the card's
+            // bottom edge). Centred while it fits, scrollable when it does not.
+            GeometryReader { geo in
+                PurahScrollableBody(indicators: .automatic) {
+                    emptyStateContent
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: geo.size.height, alignment: .center)
                 }
-
-                // Inline Scope Selector Pills
-                HStack(spacing: 4) {
-                    ForEach(CalendarTimeScope.allCases) { scopeCase in
-                        let isSelected = state.scope == scopeCase
-                        Button {
-                            withAnimation(PurahMotionPolicy.micro) {
-                                state.scope = scopeCase
-                                state.save()
-                                store.calendarScope = scopeCase
-                                state.syncEvents(into: store)
-                            }
-                        } label: {
-                            Text(scopeCase.title)
-                                .font(.system(size: 9, weight: isSelected ? .bold : .medium, design: .rounded))
-                                .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : Color.white) : Color.gray)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(
-                                    Capsule()
-                                        .fill(isSelected ? podColor.opacity(0.22) : palette.surfaceBackground.opacity(0.6))
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .stroke(isSelected ? podColor.opacity(0.45) : palette.borderColor.opacity(0.3), lineWidth: 0.7)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 2)
-
-                HStack(spacing: 8) {
-                    Button {
-                        openInSystemCalendar()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 9))
-                            Text("calendar.openCalendar".localized)
-                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4.5)
-                        .background(Capsule().fill(palette.surfaceBackground))
-                        .overlay(
-                            Capsule()
-                                .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-
-                    Button {
-                        state.loadSampleEvents(into: store)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 9))
-                            Text("calendar.loadSampleEvents".localized)
-                                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundColor(podColor)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4.5)
-                        .background(Capsule().fill(podColor.opacity(0.12)))
-                        .overlay(
-                            Capsule()
-                                .stroke(podColor.opacity(0.35), lineWidth: 0.8)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                }
-
-                Spacer()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var emptyStateContent: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 26))
+                .foregroundColor(palette.borderColor)
+
+            VStack(spacing: 3) {
+                Text("calendar.empty.title".localized)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                Text(String(format: "calendar.scopeValue".localized, state.scope.title))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(podColor.opacity(0.85))
+            }
+
+            // Inline Scope Selector Pills
+            HStack(spacing: 4) {
+                ForEach(CalendarTimeScope.allCases) { scopeCase in
+                    let isSelected = state.scope == scopeCase
+                    Button {
+                        withAnimation(PurahMotionPolicy.micro) {
+                            state.scope = scopeCase
+                            state.save()
+                            store.calendarScope = scopeCase
+                            state.syncEvents(into: store)
+                        }
+                    } label: {
+                        Text(scopeCase.title)
+                            .font(.system(size: 9, weight: isSelected ? .bold : .medium, design: .rounded))
+                            .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : Color.white) : Color.gray)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? podColor.opacity(0.22) : palette.surfaceBackground.opacity(0.6))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(isSelected ? podColor.opacity(0.45) : palette.borderColor.opacity(0.3), lineWidth: 0.7)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+
+            HStack(spacing: 8) {
+                Button {
+                    openInSystemCalendar()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 9))
+                        Text("calendar.openCalendar".localized)
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
+                    .background(Capsule().fill(palette.surfaceBackground))
+                    .overlay(
+                        Capsule()
+                            .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.tactile)
+
+                Button {
+                    state.loadSampleEvents(into: store)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.system(size: 9))
+                        Text("calendar.loadSampleEvents".localized)
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(podColor)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
+                    .background(Capsule().fill(podColor.opacity(0.12)))
+                    .overlay(
+                        Capsule()
+                            .stroke(podColor.opacity(0.35), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.tactile)
+            }
         }
     }
 

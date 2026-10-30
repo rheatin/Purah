@@ -187,6 +187,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
      - **Row 1 (Header)**: Primary Icon + Name (bold) + Subtype Badge (monospaced) + Standardized Pin Button (`PurahPinButton`).
      - **Row 2 (Body)**: Core content, monospaced command preview, live metric graph, or text preview.
      - **Row 3 (Action)**: Auxiliary status/timestamp + Tactile Primary Action Button.
+   - **Exception — a one-field chip names its role in the placeholder.** A stepped card whose whole body is a prompt box (AI roles: Ask AI, Translate, Polish…) does not spend a title strip on a name the placeholder already says. The strip stays only while the card is showing a result or running (that is where the role's name, reset and stop belong); otherwise the card is one row — `[field] [run] [gear] [pin]` — and the tools sit at the end of that row, the way a reminder's pin rides the end of its title row.
 2. **Rail-Aware Safe Inset Margin (18pt ~ 22pt Floating Edge Inset on Stepped Cards)**:
    - Interactive buttons (Pin, Run, Toggle, Actions) **MUST NEVER hug the outer floating boundary**.
    - Stepped drawer cards enforce an `18pt ~ 22pt` inset padding on the floating edge (`trailing` on Left Rail, `leading` on Right Rail), while composite drawer cards use `8pt` symmetric padding paired with the configurable `+20pt ~ +90pt` horizontal catch corridor (`±6pt` vertical margin) so content area is maximized.

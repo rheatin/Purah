@@ -85,6 +85,9 @@ public struct AIAssistantSteppedDrawerView: View {
         let edge = context.edge
         let roleColor = Color(hex: role.colorHex)
         let barRadius = min(barW / 2, 4)
+        // Waiting for a prompt: the composer is the entire card, and the role
+        // is named by its placeholder rather than by a title strip.
+        let showsComposer = roleOutput.isEmpty && !isRoleRunning
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // 1. In-Rail Indicator Bar with flowing light spot when running
@@ -126,72 +129,78 @@ public struct AIAssistantSteppedDrawerView: View {
             if isExpanded {
                 ZStack {
                     VStack(alignment: .leading, spacing: 4) {
-                    // Minimal Top Header Strip (16pt tall)
-                    HStack(spacing: 5) {
-                        Image(systemName: role.systemIcon)
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundColor(roleColor)
+                    // The role's own name lives in the composer's placeholder,
+                    // so a card that is only waiting for input is one row tall:
+                    // the title strip above it used to take half a chip's
+                    // height to repeat what the placeholder already says.
+                    if !showsComposer {
+                        // Minimal Top Header Strip (16pt tall)
+                        HStack(spacing: 5) {
+                            Image(systemName: role.systemIcon)
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(roleColor)
 
-                        Text(role.title)
-                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .help(steppedAttributionTooltip)
+                            Text(role.title)
+                                .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .help(steppedAttributionTooltip)
 
-                        if role.id == "translate" {
-                            Text("ai.drawer.autoLanguage".localized)
-                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Color.white.opacity(0.60))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.white.opacity(0.08))
-                                .cornerRadius(3)
-                        }
-
-                        Spacer()
-
-                        if !roleOutput.isEmpty || !roleInput.isEmpty {
-                            Button {
-                                resetSteppedState()
-                            } label: {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 8.5))
-                                    .foregroundColor(Color.white.opacity(0.65))
-                                    .frame(width: 16, height: 16)
-                                    .background(Color.white.opacity(0.06))
+                            if role.id == "translate" {
+                                Text("ai.drawer.autoLanguage".localized)
+                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(Color.white.opacity(0.60))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.white.opacity(0.08))
                                     .cornerRadius(3)
                             }
-                            .buttonStyle(.plain)
-                            .help("help.resetSession".localized)
-                            .accessibilityLabel("help.resetSession".localized)
-                        }
 
-                        PurahDrawerHeaderTools(
-                            onSettings: { context.store.openPluginSettings(id: "ai") },
-                            settingsHelp: "Open AI Settings",
-                            isPinned: isPinned,
-                            tintColor: roleColor,
-                            onTogglePin: { context.togglePin(subItemId) }
-                        )
+                            Spacer()
 
-                        if isRoleRunning {
-                            Button {
-                                stopSteppedRun()
-                            } label: {
-                                Image(systemName: "stop.fill")
-                                    .font(.system(size: 8))
-                                    .foregroundColor(Color(hex: "#F87171"))
-                                    .frame(width: 16, height: 16)
-                                    .background(Color(hex: "#EF4444").opacity(0.20))
-                                    .cornerRadius(3)
+                            if !roleOutput.isEmpty || !roleInput.isEmpty {
+                                Button {
+                                    resetSteppedState()
+                                } label: {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.system(size: 8.5))
+                                        .foregroundColor(Color.white.opacity(0.65))
+                                        .frame(width: 16, height: 16)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(3)
+                                }
+                                .buttonStyle(.plain)
+                                .help("help.resetSession".localized)
+                                .accessibilityLabel("help.resetSession".localized)
                             }
-                            .buttonStyle(.plain)
-                            .help("help.stopGeneration".localized)
-                            .accessibilityLabel("help.stopGeneration".localized)
-                        }
 
+                            PurahDrawerHeaderTools(
+                                onSettings: { context.store.openPluginSettings(id: "ai") },
+                                settingsHelp: "Open AI Settings",
+                                isPinned: isPinned,
+                                tintColor: roleColor,
+                                onTogglePin: { context.togglePin(subItemId) }
+                            )
+
+                            if isRoleRunning {
+                                Button {
+                                    stopSteppedRun()
+                                } label: {
+                                    Image(systemName: "stop.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(Color(hex: "#F87171"))
+                                        .frame(width: 16, height: 16)
+                                        .background(Color(hex: "#EF4444").opacity(0.20))
+                                        .cornerRadius(3)
+                                }
+                                .buttonStyle(.plain)
+                                .help("help.stopGeneration".localized)
+                                .accessibilityLabel("help.stopGeneration".localized)
+                            }
+
+                        }
+                        .frame(height: 16)
                     }
-                    .frame(height: 16)
 
                     // Single Unified Body Box
                     ZStack(alignment: .bottomTrailing) {
@@ -265,6 +274,17 @@ public struct AIAssistantSteppedDrawerView: View {
                                 .buttonStyle(.plain)
                                 .help(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
                                 .accessibilityLabel(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
+
+                                // The card's own controls sit at the end of the
+                                // row they belong to, the way a reminder's pin
+                                // rides the end of its title row.
+                                PurahDrawerHeaderTools(
+                                    onSettings: { context.store.openPluginSettings(id: "ai") },
+                                    settingsHelp: "Open AI Settings",
+                                    isPinned: isPinned,
+                                    tintColor: roleColor,
+                                    onTogglePin: { context.togglePin(subItemId) }
+                                )
                             }
                             .padding(.horizontal, 8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
