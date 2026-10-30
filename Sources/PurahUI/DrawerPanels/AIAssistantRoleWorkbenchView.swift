@@ -846,6 +846,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .padding(.horizontal, 2)
                 .padding(.top, 1)
 
+                if let skill = state.activeSkill {
+                    activeSkillCapsule(skill: skill)
+                        .padding(.horizontal, 2)
+                }
+
                 PurahAIComposerEditor(
                     text: $state.currentInputText,
                     fontSize: 11,
@@ -1592,6 +1597,14 @@ public struct AIAssistantRoleWorkbenchView: View {
         if state.isRefiningOutput {
             // Expanded Refine Box (~78pt)
             VStack(alignment: .leading, spacing: 4) {
+                // Without this the menu's only visible effect is the `/token`
+                // vanishing — Tab looked like it did nothing.
+                if let skill = state.activeSkill {
+                    activeSkillCapsule(skill: skill)
+                        .padding(.horizontal, 5)
+                        .padding(.top, 4)
+                }
+
                 // Top row (height: 44pt): Return-to-send composer
                 ZStack(alignment: .topLeading) {
                     PurahAIComposerEditor(
@@ -2007,7 +2020,9 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     private func submitRefinement() {
         let text = state.refineInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !state.isStreaming else { return }
+        // A chosen skill alone is a complete request: the menu strips the
+        // `/trigger` token, so the box reads as empty right after Tab.
+        guard !text.isEmpty || state.activeSkill != nil, !state.isStreaming else { return }
         state.refineInputText = ""
         withAnimation(PurahMotionPolicy.microLight) {
             state.isRefiningOutput = false

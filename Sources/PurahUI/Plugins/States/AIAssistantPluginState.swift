@@ -409,7 +409,9 @@ public final class AIAssistantPluginState: Sendable {
 
     public func refineCurrentOutput(instruction: String) {
         let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        // The skill is the instruction when there is no text left: choosing
+        // one from the menu removes the `/trigger` token from the field.
+        guard !trimmed.isEmpty || activeSkill != nil else { return }
 
         if selectedRole.id == "translate" {
             if !isTranslateRefinementMetaInstruction(trimmed) {
