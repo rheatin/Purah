@@ -2096,6 +2096,24 @@ struct AIAssistantPluginTests {
         #expect(state.selectedRoleId == "translate")
         #expect(state.currentInputText == "")
 
+        // 8. The follow-up bar has the same menu, and the token has to be
+        //    removed from the field it was typed in — a skill chosen there
+        //    must not leave `/wsw` behind in the follow-up text.
+        state.refineInputText = "/wsw"
+        state.checkSlashTrigger(
+            in: state.refineInputText,
+            cursorLocation: state.refineInputText.count,
+            editing: .followUp
+        )
+        guard let skillItem = state.filteredSlashCommands.first(where: { $0.trigger == "write-swift" }) else {
+            Issue.record("Expected write-swift command item")
+            return
+        }
+        state.selectSlashCommand(skillItem)
+        #expect(state.activeSkill?.trigger == "write-swift")
+        #expect(state.refineInputText == "")
+        #expect(state.currentInputText == "", "the composer was not the field being edited")
+
         // 8. Select Skill candidate
         state.currentInputText = "Analyze this /wr"
         state.checkSlashTrigger(in: state.currentInputText, cursorLocation: state.currentInputText.count)

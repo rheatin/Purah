@@ -1550,6 +1550,31 @@ public struct AIAssistantRoleWorkbenchView: View {
                         fontSize: 11,
                         focusRequest: refineFocusRequest,
                         autoFocus: true,
+                        // A follow-up is a real turn, so `/` is a real menu here
+                        // too. Without it a skill could only be invoked by
+                        // typing its exact trigger from memory.
+                        isSlashMenuVisible: state.isSlashMenuVisible,
+                        onSlashKeyNavigate: { delta in
+                            state.moveSlashSelection(delta: delta)
+                            return true
+                        },
+                        onSlashKeyCommit: {
+                            let items = state.filteredSlashCommands
+                            guard state.isSlashMenuVisible, !items.isEmpty else { return false }
+                            let idx = min(max(0, state.selectedSlashIndex), items.count - 1)
+                            withAnimation(PurahMotionPolicy.menuCommit) {
+                                state.selectSlashCommand(items[idx])
+                            }
+                            return true
+                        },
+                        onSlashDismiss: {
+                            withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
+                                state.dismissSlashMenu()
+                            }
+                        },
+                        onTextAndCursorChange: { newText, cursor in
+                            state.checkSlashTrigger(in: newText, cursorLocation: cursor, editing: .followUp)
+                        },
                         // Esc folds the editor back to the 24pt pill; the draft
                         // stays in `refineInputText`, so nothing is lost and a
                         // second Esc closes the drawer as before.
@@ -1636,6 +1661,26 @@ public struct AIAssistantRoleWorkbenchView: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .stroke(roleColor.opacity(0.65), lineWidth: 1.2)
             )
+            .overlay(alignment: .bottomLeading) {
+                if state.isSlashMenuVisible && !state.filteredSlashCommands.isEmpty {
+                    AISlashSuggestionsPopupView(
+                        state: state,
+                        palette: palette,
+                        onSelect: { item in
+                            withAnimation(PurahMotionPolicy.menuCommit) {
+                                state.selectSlashCommand(item)
+                            }
+                        }
+                    )
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 74)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)),
+                        removal: .opacity
+                    ))
+                    .zIndex(100)
+                }
+            }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
         } else {
             // Collapsed Single 24pt Row

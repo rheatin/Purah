@@ -62,6 +62,12 @@ public struct PendingFilePermissionRequest: Equatable, Sendable {
     }
 }
 
+/// The field the slash menu was opened from.
+public enum SlashInputTarget: Sendable {
+    case composer
+    case followUp
+}
+
 @Observable
 @MainActor
 public final class AIAssistantPluginState: Sendable {
@@ -253,6 +259,11 @@ public final class AIAssistantPluginState: Sendable {
     public var focusRequestCounter: Int = 0
     public var isShowingHistoryPanel: Bool = false
     public var viewingStepIndex: Int? = nil
+
+    /// Which field opened the slash menu. The follow-up bar and the composer
+    /// share one menu, and only one of them is on screen at a time, but the
+    /// token has to be removed from the field it was typed in.
+    public internal(set) var slashTarget: SlashInputTarget = .composer
 
     public var selectedRole: AIRolePreset {
         rolePresets.first(where: { $0.id == selectedRoleId }) ?? rolePresets.first ?? AIRolePreset.from(action: .translate)
@@ -563,7 +574,12 @@ public final class AIAssistantPluginState: Sendable {
         self.selectedSlashIndex = 0
     }
 
-    public func checkSlashTrigger(in text: String, cursorLocation: Int) {
+    public func checkSlashTrigger(
+        in text: String,
+        cursorLocation: Int,
+        editing target: SlashInputTarget = .composer
+    ) {
+        slashTarget = target
         let nsText = text as NSString
         let safeLocation = max(0, min(cursorLocation, nsText.length))
 
@@ -633,18 +649,24 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     private func removeSlashTokenFromInput() {
+        switch slashTarget {
+        case .composer: removeSlashToken(from: &currentInputText)
+        case .followUp: removeSlashToken(from: &refineInputText)
+        }
+        slashTokenRange = nil
+    }
+
+    private func removeSlashToken(from text: inout String) {
         if let tokenRange = slashTokenRange,
-           let textRange = Range(tokenRange, in: currentInputText) {
-            currentInputText.removeSubrange(textRange)
-            slashTokenRange = nil
+           let textRange = Range(tokenRange, in: text) {
+            text.removeSubrange(textRange)
             return
         }
 
         let token = "/" + slashQuery
-        if let range = currentInputText.range(of: token, options: .backwards) {
-            currentInputText.removeSubrange(range)
+        if let range = text.range(of: token, options: .backwards) {
+            text.removeSubrange(range)
         }
-        slashTokenRange = nil
     }
 
     // MARK: - Initializer
