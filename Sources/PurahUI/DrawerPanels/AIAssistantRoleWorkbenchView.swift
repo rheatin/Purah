@@ -708,6 +708,11 @@ public struct AIAssistantRoleWorkbenchView: View {
         VStack(alignment: .leading, spacing: 6) {
             // 1. Top 3-in-1 Compact Status Bar (24pt when collapsed, spring-expands to ~96pt when isEditingSource)
             topStatusBar
+                // The `/` menu floats out of this card and down over the answer,
+                // which is a *later* sibling — so it painted on top of the menu
+                // and the panel read as transparent. Lift the card only while
+                // the menu is open.
+                .zIndex(state.isSlashMenuVisible ? 10 : 0)
 
             // 2. Center Main Output Stage (80%+ of vertical height)
             centerOutputStage
@@ -758,6 +763,10 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             // 4. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
+                // Same lift as the source card: the menu floats above this bar
+                // and anything drawn after it would otherwise paint over its
+                // header strip.
+                .zIndex(state.isSlashMenuVisible ? 10 : 0)
         }
     }
 
@@ -846,11 +855,38 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .padding(.horizontal, 2)
                 .padding(.top, 1)
 
+                if let skill = state.activeSkill {
+                    activeSkillCapsule(skill: skill)
+                        .padding(.horizontal, 2)
+                }
+
                 PurahAIComposerEditor(
                     text: $state.currentInputText,
                     fontSize: 11,
                     focusRequest: sourceFocusRequest,
                     autoFocus: true,
+                    isSlashMenuVisible: state.isSlashMenuVisible,
+                    onSlashKeyNavigate: { delta in
+                        state.moveSlashSelection(delta: delta)
+                        return true
+                    },
+                    onSlashKeyCommit: {
+                        let items = state.filteredSlashCommands
+                        guard state.isSlashMenuVisible, !items.isEmpty else { return false }
+                        let idx = min(max(0, state.selectedSlashIndex), items.count - 1)
+                        withAnimation(PurahMotionPolicy.menuCommit) {
+                            state.selectSlashCommand(items[idx])
+                        }
+                        return true
+                    },
+                    onSlashDismiss: {
+                        withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
+                            state.dismissSlashMenu()
+                        }
+                    },
+                    onTextAndCursorChange: { newText, cursor in
+                        state.checkSlashTrigger(in: newText, cursorLocation: cursor)
+                    },
                     onEscape: {
                         withAnimation(PurahMotionPolicy.microLight) {
                             state.isEditingSource = false
@@ -865,6 +901,37 @@ public struct AIAssistantRoleWorkbenchView: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(Color.black.opacity(0.30))
                 )
+                .overlay(alignment: .topLeading) {
+                    // Rewriting the original prompt is where a skill is most
+                    // likely to be reached for, and `/` did nothing here at
+                    // all. It floats below the field so the card keeps its
+                    // height while the menu is open.
+                    if state.isSlashMenuVisible,
+                       state.slashTarget == .composer,
+                       !state.filteredSlashCommands.isEmpty {
+                        AISlashSuggestionsPopupView(
+                            state: state,
+                            palette: palette,
+                            onSelect: { item in
+                                withAnimation(PurahMotionPolicy.menuCommit) {
+                                    state.selectSlashCommand(item)
+                                }
+                            }
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 70)
+                        .padding(.leading, 2)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)),
+                            removal: .opacity
+                        ))
+                        .zIndex(100)
+                    }
+                }
+                // The role pills below this field are a later sibling, so their
+                // row painted over the menu's header strip while the rest of
+                // the panel — which hangs past the card — stayed visible.
+                .zIndex(state.isSlashMenuVisible ? 1 : 0)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
@@ -1543,6 +1610,14 @@ public struct AIAssistantRoleWorkbenchView: View {
         if state.isRefiningOutput {
             // Expanded Refine Box (~78pt)
             VStack(alignment: .leading, spacing: 4) {
+                // Without this the menu's only visible effect is the `/token`
+                // vanishing — Tab looked like it did nothing.
+                if let skill = state.activeSkill {
+                    activeSkillCapsule(skill: skill)
+                        .padding(.horizontal, 5)
+                        .padding(.top, 4)
+                }
+
                 // Top row (height: 44pt): Return-to-send composer
                 ZStack(alignment: .topLeading) {
                     PurahAIComposerEditor(
@@ -1550,6 +1625,31 @@ public struct AIAssistantRoleWorkbenchView: View {
                         fontSize: 11,
                         focusRequest: refineFocusRequest,
                         autoFocus: true,
+                        // A follow-up is a real turn, so `/` is a real menu here
+                        // too. Without it a skill could only be invoked by
+                        // typing its exact trigger from memory.
+                        isSlashMenuVisible: state.isSlashMenuVisible,
+                        onSlashKeyNavigate: { delta in
+                            state.moveSlashSelection(delta: delta)
+                            return true
+                        },
+                        onSlashKeyCommit: {
+                            let items = state.filteredSlashCommands
+                            guard state.isSlashMenuVisible, !items.isEmpty else { return false }
+                            let idx = min(max(0, state.selectedSlashIndex), items.count - 1)
+                            withAnimation(PurahMotionPolicy.menuCommit) {
+                                state.selectSlashCommand(items[idx])
+                            }
+                            return true
+                        },
+                        onSlashDismiss: {
+                            withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
+                                state.dismissSlashMenu()
+                            }
+                        },
+                        onTextAndCursorChange: { newText, cursor in
+                            state.checkSlashTrigger(in: newText, cursorLocation: cursor, editing: .followUp)
+                        },
                         // Esc folds the editor back to the 24pt pill; the draft
                         // stays in `refineInputText`, so nothing is lost and a
                         // second Esc closes the drawer as before.
@@ -1560,7 +1660,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         },
                         onSubmit: submitRefinement
                     )
-                    .frame(height: 44)
+                    .frame(height: 58)
 
                     if state.refineInputText.isEmpty {
                         Text("ai.composer.refinePlaceholder".localized)
@@ -1636,6 +1736,33 @@ public struct AIAssistantRoleWorkbenchView: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .stroke(roleColor.opacity(0.65), lineWidth: 1.2)
             )
+            .overlay(alignment: .bottomLeading) {
+                if state.isSlashMenuVisible,
+                   state.slashTarget == .followUp,
+                   !state.filteredSlashCommands.isEmpty {
+                    AISlashSuggestionsPopupView(
+                        state: state,
+                        palette: palette,
+                        onSelect: { item in
+                            withAnimation(PurahMotionPolicy.menuCommit) {
+                                state.selectSlashCommand(item)
+                            }
+                        }
+                    )
+                    // An overlay is offered the height of what it floats over,
+                    // and here that is an 80pt bar — the list collapsed to
+                    // nothing while the header still drew. Take the height the
+                    // content asks for instead.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 88)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)),
+                        removal: .opacity
+                    ))
+                    .zIndex(100)
+                }
+            }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
         } else {
             // Collapsed Single 24pt Row
@@ -1906,7 +2033,9 @@ public struct AIAssistantRoleWorkbenchView: View {
 
     private func submitRefinement() {
         let text = state.refineInputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !state.isStreaming else { return }
+        // A chosen skill alone is a complete request: the menu strips the
+        // `/trigger` token, so the box reads as empty right after Tab.
+        guard !text.isEmpty || state.activeSkill != nil, !state.isStreaming else { return }
         state.refineInputText = ""
         withAnimation(PurahMotionPolicy.microLight) {
             state.isRefiningOutput = false

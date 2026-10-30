@@ -1348,6 +1348,35 @@ struct AIAssistantPluginTests {
         #expect(followUp?.content.hasPrefix("/grill-me") == true)
     }
 
+    @Test("A skill chosen on its own is a complete follow-up")
+    func testFollowUpWithOnlyASkillSends() {
+        let isolated = UserDefaults(suiteName: "test_ai_followup_skill_only_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_followup_skill_only", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_followup_skill_only_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_followup_skill_only", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_followup_skill_only", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+        state.activeSkill = AILocalSkill(
+            id: "grill-me",
+            name: "grill me",
+            description: "Interview me.",
+            trigger: "grill-me",
+            directoryPath: "/skills/grill-me",
+            promptTemplate: "Ask hard questions.",
+            isEnabled: true,
+            source: .optimus
+        )
+        let before = state.activeSession?.messages.count ?? 0
+
+        // The menu strips `/grill-me` from the box, so this is exactly what
+        // pressing send right after Tab looks like: a skill, no text.
+        state.refineCurrentOutput(instruction: "")
+
+        let after = state.activeSession?.messages.count ?? 0
+        #expect(after > before, "the skill is the instruction; an empty box must not drop it")
+    }
+
     @Test("Model persistence in ScopedPluginStorage and auto-selection of active model")
     func testModelPersistenceAndAutoDiscovery() async {
         let isolated = UserDefaults(suiteName: "test_ai_models_\(UUID().uuidString)")!
@@ -2095,6 +2124,24 @@ struct AIAssistantPluginTests {
         #expect(state.isSlashMenuVisible == false)
         #expect(state.selectedRoleId == "translate")
         #expect(state.currentInputText == "")
+
+        // 8. The follow-up bar has the same menu, and the token has to be
+        //    removed from the field it was typed in — a skill chosen there
+        //    must not leave `/wsw` behind in the follow-up text.
+        state.refineInputText = "/wsw"
+        state.checkSlashTrigger(
+            in: state.refineInputText,
+            cursorLocation: state.refineInputText.count,
+            editing: .followUp
+        )
+        guard let skillItem = state.filteredSlashCommands.first(where: { $0.trigger == "write-swift" }) else {
+            Issue.record("Expected write-swift command item")
+            return
+        }
+        state.selectSlashCommand(skillItem)
+        #expect(state.activeSkill?.trigger == "write-swift")
+        #expect(state.refineInputText == "")
+        #expect(state.currentInputText == "", "the composer was not the field being edited")
 
         // 8. Select Skill candidate
         state.currentInputText = "Analyze this /wr"

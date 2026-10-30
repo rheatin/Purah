@@ -623,11 +623,11 @@ public struct AISlashSuggestionsPopupView: View {
                     .foregroundColor(palette.primaryAccent)
                 Text("ai.drawer.commandsAndSkills".localized)
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.45))
+                    .foregroundColor(Color.white.opacity(0.78))
                 Spacer()
                 Text("ai.drawer.navHint".localized)
                     .font(.system(size: 7.5, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.35))
+                    .foregroundColor(Color.white.opacity(0.55))
             }
             .padding(.horizontal, 10)
             .padding(.top, 7)
@@ -666,10 +666,13 @@ public struct AISlashSuggestionsPopupView: View {
                 }
             }
         }
+        // Solid, not a material. Floated over the source card this menu sits on
+        // top of role pills and an answer body, and 92% + `ultraThinMaterial`
+        // let all of it read through — the panel looked broken rather than
+        // floating.
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(hex: "#10131A").opacity(0.92))
-                .background(.ultraThinMaterial)
+                .fill(Color(hex: "#10131A"))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
