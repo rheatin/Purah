@@ -47,6 +47,93 @@ struct AppUpdaterTests {
         #expect(result == true || result == false)
     }
 
+    // MARK: - The spinner has to end
+    //
+    // `.checking` had no way out. The manifest request carries a 10s idle
+    // timeout, but a stalled connection, a redirect that never resolves, or a
+    // continuation that never reaches the main actor all leave the state at
+    // `.checking` — and the dialog renders *no button* in that state, while
+    // the guard in `checkForUpdates` refuses every later click. The result was
+    // a spinner that only cleared when the orphaned request finally landed,
+    // which read as "close it and reopen and it's suddenly there".
+
+    /// Answers after `delays[n]` seconds on call `n`, so one test can be slow
+    /// and the next instant.
+    private final class SequencedProvider: UpdateManifestProviding, @unchecked Sendable {
+        private let lock = NSLock()
+        private var callCount = 0
+        private let delays: [TimeInterval]
+        private let json: Data
+
+        init(delays: [TimeInterval], json: Data) {
+            self.delays = delays
+            self.json = json
+        }
+
+        func fetchLatestRelease() async throws -> (data: Data, statusCode: Int) {
+            let index = lock.withLock {
+                let current = callCount
+                callCount += 1
+                return current
+            }
+            let delay = index < delays.count ? delays[index] : 0
+            try await Task.sleep(for: .seconds(delay))
+            return (json, 200)
+        }
+    }
+
+    private static func manifestJSON(version: String) -> Data {
+        Data("""
+        {"version":"\(version)","releaseNotes":"Probe","downloadURL":"https://example.com/Purah.zip"}
+        """.utf8)
+    }
+
+    @Test("A check that never reports leaves .checking on the deadline")
+    func testCheckDeadlineEndsSpinning() async throws {
+        let updater = AppUpdaterManager(
+            currentVersion: "2.0.0",
+            manifestProvider: SequencedProvider(delays: [5], json: Self.manifestJSON(version: "2.1.0")),
+            checkDeadline: 0.2
+        )
+
+        _ = Task { await updater.checkForUpdates(force: true) }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(updater.state == .checking)
+
+        try await Task.sleep(for: .milliseconds(600))
+
+        guard case .failed(let message) = updater.state else {
+            Issue.record("expected the watchdog to end .checking, got \(updater.state)")
+            return
+        }
+        #expect(message.lowercased().contains("timed out"))
+    }
+
+    @Test("An answer from a check that was replaced is dropped")
+    func testLateAnswerFromReplacedCheckIsDropped() async throws {
+        // First call stalls past the deadline (so the watchdog ends it and a
+        // second check is allowed), second call answers immediately.
+        let updater = AppUpdaterManager(
+            currentVersion: "2.0.0",
+            manifestProvider: SequencedProvider(delays: [0.5, 0], json: Self.manifestJSON(version: "2.1.0")),
+            checkDeadline: 0.15
+        )
+
+        _ = Task { await updater.checkForUpdates(force: true) }
+        try await Task.sleep(for: .milliseconds(300))
+
+        // The watchdog has freed the state; the person presses the button.
+        await updater.checkForUpdates(force: true)
+        #expect(updater.state != .checking)
+
+        let settled = updater.state
+        try await Task.sleep(for: .milliseconds(500))
+
+        // The first check's reply landed 0.5s in. It asked about a version of
+        // the question nobody is showing any more, so it must not repaint.
+        #expect(updater.state == settled)
+    }
+
     // MARK: - Self-install eligibility
     //
     // The released 0.6.0 compared every download against an expected Team ID

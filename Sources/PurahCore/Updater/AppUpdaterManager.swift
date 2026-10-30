@@ -261,6 +261,24 @@ public final class AppUpdaterManager {
     /// Opening the update dialog repeatedly is not asking a new question.
     public static let minimumCheckInterval: TimeInterval = 15 * 60
 
+    /// How long a check may stay in `.checking` before the dialog gives up.
+    ///
+    /// The manifest request carries a 10s idle timeout, but that only covers
+    /// the request itself: a proxy holding the socket open, a redirect chain
+    /// that never resolves, or a continuation that never reaches the main
+    /// actor all leave `state` at `.checking` with nothing to end it. The
+    /// dialog then shows a spinner with no button at all (the `.checking`
+    /// branch renders no action), and the guard in `checkForUpdates` refuses
+    /// every later click — including the one from reopening the window. The
+    /// spinner only cleared when the orphaned request finally landed, which is
+    /// exactly what "close it and reopen and it's suddenly there" looked like.
+    public let checkDeadline: TimeInterval
+
+    /// Bumped by every check that starts. A watchdog or a late reply from an
+    /// abandoned check compares against it, so neither can overwrite the
+    /// result of a check that replaced it.
+    private var checkGeneration = 0
+
     public var isAutoCheckEnabled: Bool {
         get { defaults.object(forKey: Self.autoCheckDefaultsKey) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Self.autoCheckDefaultsKey) }
@@ -323,7 +341,8 @@ public final class AppUpdaterManager {
         bundleURL: URL = Bundle.main.bundleURL,
         expectedTeamIdentifier: String? = nil,
         openURL: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        checkDeadline: TimeInterval = 20
     ) {
         self.currentVersion = currentVersion
         self.manifestProvider = manifestProvider
@@ -331,6 +350,7 @@ public final class AppUpdaterManager {
         self.explicitTeamIdentifier = expectedTeamIdentifier
         self.openURL = openURL
         self.defaults = defaults
+        self.checkDeadline = checkDeadline
     }
 
     public func isNewer(release: AppReleaseInfo) -> Bool {
@@ -357,8 +377,30 @@ public final class AppUpdaterManager {
             return
         }
 
+        checkGeneration &+= 1
+        let generation = checkGeneration
         state = .checking
         lastCheckDate = Date()
+
+        // The watchdog is what gives `.checking` an exit. It fires after the
+        // request deadline; if this check has been replaced by then, the
+        // generation no longer matches and it leaves the newer one alone.
+        let deadline = checkDeadline
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(deadline))
+            guard let self,
+                  self.checkGeneration == generation,
+                  case .checking = self.state else { return }
+            // Recorded so the next occurrence can be diagnosed: the dialog
+            // only says "timed out", and whether that was DNS, a proxy holding
+            // the socket open, or a dead continuation is not visible there.
+            DiagnosticLogger.shared.log(
+                level: .warning,
+                category: "Updater",
+                message: "Update check produced no answer within \(Int(deadline))s; abandoned."
+            )
+            self.state = .failed(error: "The update check timed out. Try again.")
+        }
 
         if let release = simulatedRelease {
             state = availability(of: release)
@@ -369,6 +411,11 @@ public final class AppUpdaterManager {
 
         do {
             let (data, statusCode) = try await provider.fetchLatestRelease()
+
+            // Answers that arrive after this check stopped being the current
+            // one are dropped, not applied: they describe a question nobody
+            // is showing any more.
+            guard generation == checkGeneration else { return }
 
             guard statusCode == 200 else {
                 if statusCode == 404 {
@@ -396,6 +443,7 @@ public final class AppUpdaterManager {
 
             state = availability(of: release)
         } catch {
+            guard generation == checkGeneration else { return }
             // Not the same thing as "you are up to date". The launch check
             // stays silent because it only presents for a real update; a
             // manual check says it could not reach GitHub.
