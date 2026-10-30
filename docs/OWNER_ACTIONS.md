@@ -17,8 +17,10 @@ Gatekeeper. A personal tap is not audited that way, so it can.
 
 Steps, once:
 
-1. Create `github.com/rheatin/homebrew-purah`. The `homebrew-` prefix is
-   required — Homebrew maps `brew install --cask rheatin/purah/purah` onto it.
+1. Create `github.com/rheatin/homebrew-tap`. The `homebrew-` prefix is required,
+   and the rest becomes the tap's short name — so the tap is `rheatin/tap`.
+   Naming it `homebrew-purah` would make the qualified install read
+   `rheatin/purah/purah`, which is only confusing.
 2. `mkdir -p Casks` inside it.
 
 After every release:
@@ -28,11 +30,14 @@ After every release:
 4. Commit and push. Users then run:
 
    ```bash
-   brew install --cask rheatin/purah/purah
+   brew install --cask rheatin/tap/purah
    ```
 
-   On a recent Homebrew this asks to trust a third-party tap first
-   (`brew trust rheatin/purah`).
+   The three parts are `user/tap/cask` — Homebrew's fully qualified form, which
+   also taps the repo on the way in, so it is the single command to publish.
+   On a recent Homebrew it asks to trust a third-party tap first
+   (`brew trust rheatin/tap`). Once tapped, `brew install --cask purah` is
+   enough.
 
 5. Once the tap works, add the install line to `README.md` §Install.
 

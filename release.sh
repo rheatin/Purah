@@ -452,7 +452,7 @@ EOF
 echo -e "${GREEN}✓ Created updater metadata: ${RELEASE_INFO_PATH}${RESET}\n"
 
 # 5e. Generate the Homebrew cask for the self-hosted tap
-#     The tap lives in its own repo (github.com/rheatin/homebrew-purah); this
+#     The tap lives in its own repo (github.com/rheatin/homebrew-tap); this
 #     file is the only place the version and checksum are written, so copy it
 #     over Casks/purah.rb after every release. See docs/OWNER_ACTIONS.md.
 CASK_PATH="${DIST_DIR}/purah.rb"
@@ -503,7 +503,7 @@ echo -e "   • ${BOLD}${DMG_FILENAME}${RESET} ($(du -sh "$DMG_PATH" | cut -f1))
 echo -e "   • ${BOLD}${ZIP_FILENAME}${RESET} ($(du -sh "$ZIP_PATH" | cut -f1)) [SHA256: ${ZIP_SHA256:0:16}...]"
 echo -e "   • ${BOLD}release-info.json${RESET} (In-App Auto-Updater manifest)"
 echo -e "   • ${BOLD}release-notes.txt${RESET}"
-echo -e "   • ${BOLD}purah.rb${RESET} (Homebrew cask → homebrew-purah/Casks/purah.rb)"
+echo -e "   • ${BOLD}purah.rb${RESET} (Homebrew cask → homebrew-tap/Casks/purah.rb)"
 echo -e "${BOLD}${GREEN}====================================================================${RESET}\n"
 
 # 6. Publish via GitHub CLI (optional)
