@@ -763,6 +763,10 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             // 4. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
+                // Same lift as the source card: the menu floats above this bar
+                // and anything drawn after it would otherwise paint over its
+                // header strip.
+                .zIndex(state.isSlashMenuVisible ? 10 : 0)
         }
     }
 
@@ -924,6 +928,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .zIndex(100)
                     }
                 }
+                // The role pills below this field are a later sibling, so their
+                // row painted over the menu's header strip while the rest of
+                // the panel — which hangs past the card — stayed visible.
+                .zIndex(state.isSlashMenuVisible ? 1 : 0)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {

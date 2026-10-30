@@ -623,11 +623,11 @@ public struct AISlashSuggestionsPopupView: View {
                     .foregroundColor(palette.primaryAccent)
                 Text("ai.drawer.commandsAndSkills".localized)
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.45))
+                    .foregroundColor(Color.white.opacity(0.78))
                 Spacer()
                 Text("ai.drawer.navHint".localized)
                     .font(.system(size: 7.5, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.35))
+                    .foregroundColor(Color.white.opacity(0.55))
             }
             .padding(.horizontal, 10)
             .padding(.top, 7)
