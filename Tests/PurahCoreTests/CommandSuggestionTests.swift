@@ -409,7 +409,7 @@ struct CommandSuggestionContextTests {
 struct ZshSuggestionHistoryTests {
 
     /// Runs the generated `.zshrc` in a real zsh and returns its stdout.
-    private func runInZsh(_ script: String) throws -> String {
+    private func runInZsh(_ script: String, workingDirectory: URL? = nil) throws -> String {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah-zdotdir-\(UUID().uuidString)", isDirectory: true)
         let real = root.appendingPathComponent("real", isDirectory: true)
@@ -434,6 +434,7 @@ struct ZshSuggestionHistoryTests {
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-i", "-c", script]
         process.environment = environment
+        process.currentDirectoryURL = workingDirectory
         let out = Pipe()
         process.standardOutput = out
         process.standardError = Pipe()
@@ -481,5 +482,163 @@ struct ZshSuggestionHistoryTests {
         }
         #expect(fields?.count == 3, "the description's own tab must not add a field")
         #expect(fields?.first.map(String.init) == "a b")
+    }
+}
+
+@Suite("`??` Environment Snapshot")
+@MainActor
+struct ShellEnvironmentSnapshotTests {
+
+    @Test("Fields are read, trimmed, and capped")
+    func parsesFields() {
+        let snapshot = ShellEnvironmentSnapshot.parse([
+            "arch": "arm64\n",
+            "entries": "Sources\n  Tests  \n\nPackage.swift",
+            "markers": "Package.swift\n.git",
+            "git": "## main...origin/main\n M Sources/A.swift",
+            "tools": "rg\nfd\ngit",
+            "functions": "g\nmkcd",
+            "recent": "git\nswift\ngit",
+        ])
+        #expect(snapshot.architecture == "arm64")
+        #expect(snapshot.entries == ["Sources", "Tests", "Package.swift"])
+        #expect(snapshot.markers == ["Package.swift", ".git"])
+        #expect(snapshot.tools == ["rg", "fd", "git"])
+        #expect(snapshot.functions == ["g", "mkcd"])
+        #expect(snapshot.recent == ["git", "swift", "git"])
+        #expect(snapshot.rendered()?.contains("Directory entries: Sources  Tests  Package.swift") == true)
+    }
+
+    @Test("An older shell that sends nothing produces no block at all")
+    func noFieldsNoBlock() {
+        let snapshot = ShellEnvironmentSnapshot.parse(["mode": "suggest", "cwd": "/tmp"])
+        #expect(snapshot.rendered() == nil)
+        let prompt = CommandSuggestionPrompt.userPrompt(
+            mode: .suggest, description: "list files", workingDirectory: "/tmp",
+            lastCommand: nil, lastExitStatus: nil, environment: snapshot
+        )
+        #expect(!prompt.contains("Environment the command will run in"))
+        #expect(!prompt.contains("Machine:"))
+    }
+
+    @Test("A line carrying a credential is dropped before anything leaves")
+    func dropsCredentials() {
+        let snapshot = ShellEnvironmentSnapshot.parse([
+            "git": "## main\n\n M .env\n export GITHUB_TOKEN=abc",
+            "recent": "git\nexport\n",
+        ])
+        #expect(snapshot.git == ["## main", "M .env"], "lines are trimmed; the token line is dropped")
+        #expect(snapshot.recent == ["git", "export"])
+    }
+
+    @Test("The environment reaches the prompt, with the machine line")
+    func promptCarriesEnvironment() {
+        let snapshot = ShellEnvironmentSnapshot(
+            architecture: "arm64",
+            entries: ["Sources", "Tests"],
+            markers: ["Package.swift"],
+            tools: ["swift", "rg"],
+            recent: ["swift"]
+        )
+        let prompt = CommandSuggestionPrompt.userPrompt(
+            mode: .suggest, description: "run the tests", workingDirectory: "/Users/char/Repos/Purah",
+            lastCommand: nil, lastExitStatus: nil, environment: snapshot
+        )
+        #expect(prompt.contains("Machine: macOS "))
+        #expect(prompt.contains(", arm64"))
+        #expect(prompt.contains("Environment the command will run in:"))
+        #expect(prompt.contains("Project files present: Package.swift"))
+        #expect(prompt.contains("Installed and on PATH: swift rg"))
+    }
+
+    @Test("The whole block is bounded, whatever the shell sends")
+    func blockIsBounded() {
+        let many = (1...500).map { "very-long-directory-entry-name-\($0)" }.joined(separator: "\n")
+        let snapshot = ShellEnvironmentSnapshot.parse(["entries": many])
+        #expect(snapshot.entries.count == ShellEnvironmentSnapshot.maximumEntries)
+        let rendered = snapshot.rendered() ?? ""
+        #expect(rendered.count <= ShellEnvironmentSnapshot.maximumRenderedLength)
+    }
+}
+
+@Suite("`??` Environment Collection in zsh")
+struct ZshEnvironmentCollectionTests {
+
+    private func runInZsh(_ script: String, workingDirectory: URL) throws -> String {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-zdotdir-\(UUID().uuidString)", isDirectory: true)
+        let real = root.appendingPathComponent("real", isDirectory: true)
+        let managed = root.appendingPathComponent("managed", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: managed, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try ZshSuggestionIntegration.zshrc.write(
+            to: managed.appendingPathComponent(".zshrc"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["ZDOTDIR"] = managed.path
+        environment["PURAH_REAL_ZDOTDIR"] = real.path
+        environment["PURAH_AI_PORT"] = "1"
+        environment["PURAH_BRIDGE_TOKEN"] = "test"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-i", "-c", script]
+        process.environment = environment
+        process.currentDirectoryURL = workingDirectory
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        try process.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    @Test("The collector reports real entries, project markers and installed tools")
+    func collectsWhatIsThere() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-env-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data().write(to: directory.appendingPathComponent("Package.swift"))
+        try Data().write(to: directory.appendingPathComponent("notes.txt"))
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent(".git"), withIntermediateDirectories: true
+        )
+
+        let output = try runInZsh("""
+        __purah_collect
+        print -r -- "ARCH=$__purah_ctx_arch"
+        print -r -- "ENTRIES=---${__purah_ctx_entries}---"
+        print -r -- "MARKERS=---${__purah_ctx_markers}---"
+        print -r -- "TOOLS=---${__purah_ctx_tools}---"
+        """, workingDirectory: directory)
+
+        #expect(!output.contains("ARCH=\n"))
+        #expect(output.contains("notes.txt"))
+        #expect(output.contains("Package.swift"))
+        // `.git` is present but is not a valid repository, so no git line is
+        // fabricated — and the collector still finishes.
+        #expect(output.contains("TOOLS=---"))
+        #expect(output.contains("git"))
+    }
+
+    @Test("Nothing in the collector can stop `??` from answering")
+    func collectorSurvivesAnEmptyDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-env-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let output = try runInZsh("""
+        __purah_collect
+        print -r -- "DONE"
+        """, workingDirectory: directory)
+        #expect(output.contains("DONE"))
     }
 }

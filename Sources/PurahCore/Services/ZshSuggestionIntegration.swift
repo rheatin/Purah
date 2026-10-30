@@ -153,6 +153,72 @@ public enum ZshSuggestionIntegration {
         fi
       }
 
+      # --- what this machine and this directory are ---------------------------
+      # A command can be correct and still be the wrong answer: `rg` is not
+      # installed, there is no `src/` here, or this is a Swift package rather
+      # than a Node project. All of it is knowable locally in a few
+      # milliseconds, and none of it was being said.
+      typeset -g __purah_ctx_arch="" __purah_ctx_entries="" __purah_ctx_markers=""
+      typeset -g __purah_ctx_git="" __purah_ctx_tools="" __purah_ctx_functions=""
+      typeset -g __purah_ctx_recent=""
+
+      __purah_collect() {
+        emulate -L zsh
+        local -a entries markers tools funcs hist recent
+        local item
+
+        __purah_ctx_arch="$(uname -m 2>/dev/null)"
+
+        entries=("${(@f)$(command ls -A 2>/dev/null | head -n 40)}")
+
+        for item in Package.swift package.json pyproject.toml setup.py go.mod \
+                    Cargo.toml Makefile CMakeLists.txt Dockerfile docker-compose.yml \
+                    .git .gitignore README.md; do
+          [[ -e "$item" ]] && markers+=("$item")
+        done
+        # `(N)` keeps a missing glob from becoming an error.
+        local -a xcodeProjects
+        xcodeProjects=("${(@)${(N)./*.xcodeproj}[1,2]}")
+        for item in $xcodeProjects; do
+          markers+=("${item:t}")
+        done
+
+        # One hash lookup per name, not a subprocess each.
+        for item in rg fd bat eza jq yq gh git docker podman kubectl terraform \
+                    make cmake swift node pnpm npm yarn bun deno python3 uv cargo \
+                    rustc go ffmpeg magick trash brew; do
+          (( $+commands[$item] )) && tools+=("$item")
+        done
+
+        funcs=("${(@k)functions}")
+        funcs=("${(@)funcs[1,30]}")
+
+        # First word of the commands just run: what the person is working on,
+        # without the arguments that could carry a secret.
+        hist=("${(@f)$(fc -ln -12 -1 2>/dev/null)}")
+        for item in $hist; do
+          item="${item##[[:space:]]#}"
+          item="${item%%[[:space:]]*}"
+          [[ -z "$item" ]] && continue
+          [[ "$item" == "??" || "$item" == "???" || "$item" == "__purah_suggest" || "$item" == "__purah_explain" ]] && continue
+          recent+=("$item")
+        done
+        recent=("${(@u)recent}")
+        recent=("${(@)recent[1,6]}")
+
+        __purah_ctx_entries="${(F)entries}"
+        __purah_ctx_markers="${(F)markers}"
+        __purah_ctx_tools="${(F)tools}"
+        __purah_ctx_functions="${(F)funcs}"
+        __purah_ctx_recent="${(F)recent}"
+
+        # `-sb` gives branch and change list in one call; ignoring untracked
+        # files keeps it fast in a large working tree.
+        if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+          __purah_ctx_git="$(command git status -sb --untracked-files=no 2>/dev/null | head -n 12)"
+        fi
+      }
+
       # precmd keeps the last exit status and command line for `???`.
       __purah_precmd() {
         __purah_last_status=$?
@@ -173,6 +239,8 @@ public enum ZshSuggestionIntegration {
         # replaced by the answer once it arrives.
         print -P "%F{213}%B⚡ Purah 正在思考…%b%f"
 
+        __purah_collect
+
         # `Expect:` suppresses curl's 100-continue wait on larger bodies.
         #
         # `aliases` is what makes the answer usable here rather than merely
@@ -189,6 +257,13 @@ public enum ZshSuggestionIntegration {
           --data-urlencode "path=$PATH" \\
           --data-urlencode "aliases=$(alias -L 2>/dev/null | head -n 60)" \\
           --data-urlencode "history=$(__purah_history)" \\
+          --data-urlencode "arch=$__purah_ctx_arch" \\
+          --data-urlencode "entries=$__purah_ctx_entries" \\
+          --data-urlencode "markers=$__purah_ctx_markers" \\
+          --data-urlencode "git=$__purah_ctx_git" \\
+          --data-urlencode "tools=$__purah_ctx_tools" \\
+          --data-urlencode "functions=$__purah_ctx_functions" \\
+          --data-urlencode "recent=$__purah_ctx_recent" \\
           "http://127.0.0.1:$PURAH_AI_PORT/v1/suggest" 2>&1)
 
         # Drop the banner line so the answer takes its place.

@@ -117,6 +117,110 @@ public enum CommandRiskClassifier {
 
 // MARK: - Prompt & parsing
 
+/// What the shell can say about itself, in the few hundred bytes worth spending.
+///
+/// A command that is *correct* can still be the wrong answer here: `rg` is not
+/// installed, the directory has no `src/`, the person has been running `docker`
+/// all afternoon, or the "repo" is a Swift package and not a Node project. All
+/// of that is knowable locally, cheaply, and none of it was being told to the
+/// model — so it guessed, and the guess read like a stranger's advice.
+///
+/// Everything is collected by the shell (it owns the state) and capped here (the
+/// app owns how much leaves the machine).
+public struct ShellEnvironmentSnapshot: Sendable, Equatable {
+    public static let maximumEntries = 40
+    public static let maximumGitLines = 12
+    public static let maximumTools = 60
+    public static let maximumFunctions = 30
+    public static let maximumRecent = 6
+    /// The whole block, before it is pasted into the prompt.
+    public static let maximumRenderedLength = 2_500
+
+    public let architecture: String?
+    /// Names in the working directory: stops the model inventing files.
+    public let entries: [String]
+    /// Project/manifest files that exist, so the type is not guessed.
+    public let markers: [String]
+    /// `git status -sb` lines: branch, ahead/behind, changed files.
+    public let git: [String]
+    /// The usual CLI tools that are actually resolvable on this `PATH`.
+    public let tools: [String]
+    public let functions: [String]
+    /// First word of the commands just run — what the person is doing today.
+    public let recent: [String]
+
+    public init(
+        architecture: String? = nil,
+        entries: [String] = [],
+        markers: [String] = [],
+        git: [String] = [],
+        tools: [String] = [],
+        functions: [String] = [],
+        recent: [String] = []
+    ) {
+        self.architecture = architecture
+        self.entries = entries
+        self.markers = markers
+        self.git = git
+        self.tools = tools
+        self.functions = functions
+        self.recent = recent
+    }
+
+    /// Reads the fields the shell sent. Unknown or missing fields simply mean
+    /// "nothing to say" — an older managed `.zshrc` must not break `??`.
+    public static func parse(_ form: [String: String]) -> ShellEnvironmentSnapshot {
+        ShellEnvironmentSnapshot(
+            architecture: cleaned(form["arch"], limit: 1).first,
+            entries: cleaned(form["entries"], limit: maximumEntries),
+            markers: cleaned(form["markers"], limit: 12),
+            git: cleaned(form["git"], limit: maximumGitLines),
+            tools: cleaned(form["tools"], limit: maximumTools),
+            functions: cleaned(form["functions"], limit: maximumFunctions),
+            recent: cleaned(form["recent"], limit: maximumRecent)
+        )
+    }
+
+    /// One line per field, or nil when the shell had nothing to report.
+    public func rendered() -> String? {
+        var lines: [String] = []
+        if !entries.isEmpty {
+            lines.append("Directory entries: " + entries.joined(separator: "  "))
+        }
+        if !markers.isEmpty {
+            lines.append("Project files present: " + markers.joined(separator: ", "))
+        }
+        if !git.isEmpty {
+            lines.append("Git: " + git.joined(separator: " | "))
+        }
+        if !tools.isEmpty {
+            lines.append("Installed and on PATH: " + tools.joined(separator: " "))
+        }
+        if !functions.isEmpty {
+            lines.append("Shell functions defined: " + functions.joined(separator: " "))
+        }
+        if !recent.isEmpty {
+            lines.append("Commands used recently: " + recent.joined(separator: " "))
+        }
+        guard !lines.isEmpty else { return nil }
+        let block = lines.joined(separator: "\n")
+        return block.count > Self.maximumRenderedLength
+            ? String(block.prefix(Self.maximumRenderedLength))
+            : block
+    }
+
+    /// Newline-separated fields, trimmed, empties and credential-bearing lines
+    /// dropped, then capped — the same discipline as the alias list.
+    private static func cleaned(_ raw: String?, limit: Int) -> [String] {
+        guard let raw, !raw.isEmpty else { return [] }
+        let kept = raw
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !CommandSuggestionPrompt.isCredentialLine($0) }
+        return Array(kept.prefix(max(limit, 0)))
+    }
+}
+
 public enum CommandSuggestionPrompt {
 
     public static func systemPrompt(osVersion: String = currentOSVersion) -> String {
@@ -129,6 +233,12 @@ public enum CommandSuggestionPrompt {
         Rules:
         - "command" is exactly one line. Chain steps with && rather than separate lines.
         - Use macOS/BSD syntax: sed -i '', stat -f, date -v, xargs -0, no --color=auto.
+        - A snapshot of the machine and directory comes with the request: the \
+        real directory entries, which project files exist, which common tools \
+        are installed, the git state, and the commands the person has been \
+        running. Read it before choosing a tool. Use the names that are \
+        actually there, prefer a tool you can see is installed (and already in \
+        use), match the project type, and never suggest one you can see is absent.
         - The request lists this shell's aliases. When one shadows a name the person \
         would type, answer with the alias and the options of the tool it points at, \
         not the options of the binary it replaces: `fd` takes -S/-H/-e where `find` \
@@ -141,8 +251,10 @@ public enum CommandSuggestionPrompt {
         - Apple removes tools between releases. When you are not certain a binary \
         still ships, reach for the one you are certain about instead of a path you \
         remember from an older system.
-        - "explanation" is one short sentence, in the same language as the request, \
-        saying what the command does.
+        - "explanation" is one or two short sentences, in the same language as the \
+        request, printed in grey under the command: say what it will do, and when it \
+        matters, why this tool or these options (for instance that `find` here is \
+        really `fd`). Plain language, no jargon wall, never a paragraph.
         - Answer in one step. Do not deliberate at length: this runs while a \
         person waits at their prompt.
         """
@@ -167,14 +279,22 @@ public enum CommandSuggestionPrompt {
         "token", "secret", "password", "passwd", "api_key", "api-key", "apikey", "bearer"
     ]
 
+    /// True for a line that looks like it carries a credential.
+    ///
+    /// Everything collected from the shell is the person's own configuration and
+    /// is forwarded to whichever provider is configured — a remote endpoint for
+    /// most setups. This is the one guard between "environment awareness" and
+    /// "pasted a token into someone's logs".
+    public static func isCredentialLine(_ line: String) -> Bool {
+        let lowered = line.lowercased()
+        return credentialMarkers.contains { lowered.contains($0) }
+    }
+
     public static func sanitizedAliases(_ raw: String?) -> String? {
         guard let raw, !raw.isEmpty else { return nil }
         let kept = raw
             .split(separator: "\n", omittingEmptySubsequences: true)
-            .filter { line in
-                let lowered = line.lowercased()
-                return !credentialMarkers.contains { lowered.contains($0) }
-            }
+            .filter { !isCredentialLine(String($0)) }
         guard !kept.isEmpty else { return nil }
         let joined = kept.joined(separator: "\n")
         return joined.count > maximumAliasesLength
@@ -183,7 +303,8 @@ public enum CommandSuggestionPrompt {
     }
 
     /// The request as the model sees it: what the person asked, where they are,
-    /// which aliases their shell actually uses, and — for `???` — what just failed.
+    /// what this machine and directory are, which aliases their shell actually
+    /// uses, and — for `???` — what just failed.
     public static func userPrompt(
         mode: CommandSuggestionMode,
         description: String,
@@ -191,9 +312,18 @@ public enum CommandSuggestionPrompt {
         lastCommand: String?,
         lastExitStatus: Int32?,
         correction: String? = nil,
-        aliases: String? = nil
+        aliases: String? = nil,
+        environment: ShellEnvironmentSnapshot? = nil
     ) -> String {
         var lines = ["Working directory: \(workingDirectory)"]
+        if let architecture = environment?.architecture, !architecture.isEmpty {
+            lines.append("Machine: \(currentOSVersion), \(architecture)")
+        }
+        if let snapshot = environment?.rendered() {
+            lines.append("")
+            lines.append("Environment the command will run in:")
+            lines.append(snapshot)
+        }
         if let aliasBlock = sanitizedAliases(aliases) {
             lines.append("")
             lines.append("Shell aliases (they shadow the binary of the same name):")

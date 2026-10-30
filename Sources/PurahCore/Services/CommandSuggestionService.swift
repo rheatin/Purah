@@ -55,7 +55,8 @@ public final class CommandSuggestionService {
         lastExitStatus: Int32? = nil,
         pathList: String? = nil,
         history: String? = nil,
-        aliases: String? = nil
+        aliases: String? = nil,
+        environment: ShellEnvironmentSnapshot? = nil
     ) async throws -> CommandSuggestion {
         let request = String(description.prefix(Self.maximumDescriptionLength))
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -75,7 +76,8 @@ public final class CommandSuggestionService {
                     lastExitStatus: lastExitStatus,
                     correction: correction,
                     history: history,
-                    aliases: aliases
+                    aliases: aliases,
+                    environment: environment
                 ),
                 provider: settings.provider,
                 cliExecutable: settings.cli,
@@ -126,7 +128,8 @@ public final class CommandSuggestionService {
         lastExitStatus: Int32?,
         correction: String?,
         history: String?,
-        aliases: String?
+        aliases: String?,
+        environment: ShellEnvironmentSnapshot? = nil
     ) -> [AIChatMessage] {
         var messages: [AIChatMessage] = []
         for turn in CommandSuggestionTurn.parse(history) {
@@ -142,7 +145,8 @@ public final class CommandSuggestionService {
                 lastCommand: lastCommand,
                 lastExitStatus: lastExitStatus,
                 correction: correction,
-                aliases: aliases
+                aliases: aliases,
+                environment: environment
             )
         ))
         return messages

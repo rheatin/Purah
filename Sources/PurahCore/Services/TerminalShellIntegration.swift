@@ -38,7 +38,9 @@ public enum TerminalShellIntegration {
                     // Its aliases too — `find` is `fd` in this shell, and the
                     // flags are not the same — plus the last few exchanges.
                     history: form["history"],
-                    aliases: form["aliases"]
+                    aliases: form["aliases"],
+                    // What the machine and this directory actually are.
+                    environment: ShellEnvironmentSnapshot.parse(form)
                 )
             }
         }
