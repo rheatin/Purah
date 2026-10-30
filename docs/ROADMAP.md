@@ -4,7 +4,7 @@ The order below is not "what would be fun to build". It is the order in which
 things stop a stranger from using Purah, then stop them from trusting it, then
 stop them from keeping it.
 
-Last reviewed: 2026-10-30 (v0.7.3)
+Last reviewed: 2026-10-30 (v0.7.4)
 
 ---
 
@@ -14,7 +14,7 @@ Last reviewed: 2026-10-30 (v0.7.3)
 |---|---|
 | Features | 10 built-in plugins; the feature set is deeper than most tools in this space |
 | Quality | 870+ tests, strict concurrency, source-level guards for tooltips and motion tokens |
-| Distribution | Self-signed. Calendar/reminders grants now survive updates, but **Gatekeeper still blocks a download on someone else's Mac** |
+| Distribution | Self-signed, on a self-hosted Homebrew tap. Grants survive updates and `brew` installs cleanly; **a DMG download from the website still hits Gatekeeper** |
 | Ecosystem | Complete plugin ABI and a developer guide, but the marketplace ships only the built-ins and the only install path is Developer Mode |
 | Trust | Permission matrix, risk classification, checksums, signature verification — but **nothing is said at install time** |
 | Resources | ~184 MB resident, ~2.4% idle CPU measured. That is the gap between the tagline and the product |
