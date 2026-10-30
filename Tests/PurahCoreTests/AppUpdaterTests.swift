@@ -308,22 +308,54 @@ struct AppUpdaterTests {
         // The dialog's own `.task`, the menu item and the bottom button can all
         // ask at once. Two requests racing meant the dialog settled on
         // whichever happened to finish last.
-        let release = AppReleaseInfo(
-            version: "9.9.9",
-            releaseNotes: "Newer",
-            downloadURL: try #require(URL(string: "https://example.com/Purah.zip")),
-            sha256: String(repeating: "ab", count: 32)
-        )
         let updater = AppUpdaterManager(
             currentVersion: "2.0.0",
-            bundleURL: URL(fileURLWithPath: "/tmp/PurahTest.app"),
+            manifestProvider: SequencedProvider(delays: [0.3], json: Self.manifestJSON(version: "2.1.0")),
             expectedTeamIdentifier: nil,
-            openURL: { _ in }
+            checkDeadline: 5
         )
 
-        updater.state = .checking
-        await updater.checkForUpdates(simulatedRelease: release)
-        #expect(updater.state == .checking, "a check already running must not be restarted or overwritten")
+        _ = Task { await updater.checkForUpdates(force: true) }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(updater.isChecking)
+
+        // Second caller: must not start a request of its own, and must not
+        // repaint the first one's answer.
+        await updater.checkForUpdates(force: true)
+        #expect(updater.isChecking, "the in-flight check is still the one running")
+
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(!updater.isChecking)
+        // No checksum in the fixture, so the newer release is offered as a
+        // manual download rather than an in-place install.
+        guard case .manualUpdateRequired = updater.state else {
+            Issue.record("expected the first check's answer, got \(updater.state)")
+            return
+        }
+    }
+
+    @Test("A known answer stays on screen while a re-check runs")
+    func testReCheckKeepsPreviousAnswer() async throws {
+        // The dialog used to blank to a spinner on every open, which is why
+        // closing and reopening felt faster than waiting.
+        let updater = AppUpdaterManager(
+            currentVersion: "2.0.0",
+            manifestProvider: SequencedProvider(delays: [0.3], json: Self.manifestJSON(version: "2.1.0")),
+            expectedTeamIdentifier: nil,
+            checkDeadline: 5
+        )
+        updater.state = .upToDate(currentVersion: "2.0.0")
+
+        _ = Task { await updater.checkForUpdates(force: true) }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(updater.isChecking)
+        #expect(updater.state == .upToDate(currentVersion: "2.0.0"), "a re-check must not replace what is on screen")
+
+        try await Task.sleep(for: .milliseconds(500))
+        guard case .manualUpdateRequired = updater.state else {
+            Issue.record("expected the re-check's answer, got \(updater.state)")
+            return
+        }
     }
 
     @Test("Shell-quoting survives spaces and apostrophes in a path")

@@ -193,6 +193,23 @@ public struct ReleaseManifestProvider: UpdateManifestProviding {
     }
 }
 
+private extension UpdateCheckState {
+    /// One word for the diagnostic log — the release notes in
+    /// `.updateAvailable` would dwarf the line.
+    var logName: String {
+        switch self {
+        case .idle: "idle"
+        case .checking: "checking"
+        case .upToDate: "up-to-date"
+        case .updateAvailable: "update-available"
+        case .manualUpdateRequired: "manual-download"
+        case .downloading: "downloading"
+        case .installing: "installing"
+        case .failed: "failed"
+        }
+    }
+}
+
 /// Reads the signing identity of a bundle.
 ///
 /// The install script had its expected Team ID passed in as an empty string
@@ -245,7 +262,13 @@ public final class AppUpdaterManager {
     public static let shared = AppUpdaterManager()
 
     public let currentVersion: String
+    /// The last answer, not the current activity. A check in flight leaves it
+    /// alone: replacing a known answer with a spinner is what made reopening
+    /// the dialog feel faster than waiting in it.
     public var state: UpdateCheckState = .idle
+    /// Whether a check is running right now. Never inferred from `state` —
+    /// a leaked `.checking` used to refuse every later check.
+    public private(set) var isChecking = false
     public var lastCheckDate: Date?
     private let manifestProvider: (any UpdateManifestProviding)?
     private let defaults: UserDefaults
@@ -260,6 +283,12 @@ public final class AppUpdaterManager {
     /// How often a check that was not explicitly requested may ask again.
     /// Opening the update dialog repeatedly is not asking a new question.
     public static let minimumCheckInterval: TimeInterval = 15 * 60
+
+    /// The last manifest that was fetched, kept so opening the dialog shows the
+    /// previous answer at once instead of a spinner. Re-checked every time; a
+    /// stale entry cannot make an old release look current, because the answer
+    /// is recomputed against `currentVersion` on restore.
+    static let lastManifestDefaultsKey = "purah.updater.lastManifest"
 
     /// How long a check may stay in `.checking` before the dialog gives up.
     ///
@@ -351,6 +380,16 @@ public final class AppUpdaterManager {
         self.openURL = openURL
         self.defaults = defaults
         self.checkDeadline = checkDeadline
+
+        // Never inherit another test's or the person's answer in a test run.
+        if !PurahWorkspaceStore.isTestingEnvironment,
+           let data = defaults.data(forKey: Self.lastManifestDefaultsKey) {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            if let cached = try? decoder.decode(AppReleaseInfo.self, from: data) {
+                state = availability(of: cached)
+            }
+        }
     }
 
     public func isNewer(release: AppReleaseInfo) -> Bool {
@@ -366,7 +405,7 @@ public final class AppUpdaterManager {
         // `.task` — and the bottom button used to start a third. A second
         // request while one is in flight raced the first for `state`, so the
         // dialog could settle on whichever happened to finish last.
-        guard state != .checking else { return }
+        guard !isChecking else { return }
 
         // The same question twice in a quarter of an hour has the same answer.
         // Ask GitHub every time the dialog opens and the update check becomes
@@ -379,8 +418,12 @@ public final class AppUpdaterManager {
 
         checkGeneration &+= 1
         let generation = checkGeneration
-        state = .checking
+        // The spinner is for "nothing to show yet". With a previous answer on
+        // screen, the check runs behind it and only the result changes.
+        if case .idle = state { state = .checking }
+        isChecking = true
         lastCheckDate = Date()
+        let started = Date()
 
         // The watchdog is what gives `.checking` an exit. It fires after the
         // request deadline; if this check has been replaced by then, the
@@ -399,7 +442,24 @@ public final class AppUpdaterManager {
                 category: "Updater",
                 message: "Update check produced no answer within \(Int(deadline))s; abandoned."
             )
-            self.state = .failed(error: "The update check timed out. Try again.")
+            // Free the flag first: a check that never answered must not refuse
+            // every later one. A known answer stays on screen rather than
+            // being replaced by an error about a background refresh.
+            self.isChecking = false
+            if case .checking = self.state {
+                self.state = .failed(error: "The update check timed out. Try again.")
+            }
+        }
+
+        // Only this check may clear the flag: after the deadline released it,
+        // a newer check may already own it, and this abandoned one returning
+        // late must not hand a third one the same slot.
+        defer {
+            if generation == checkGeneration { isChecking = false }
+            DiagnosticLogger.shared.info(
+                "Updater",
+                "Update check finished in \(Int(Date().timeIntervalSince(started) * 1000)) ms (\(state.logName))"
+            )
         }
 
         if let release = simulatedRelease {
@@ -441,9 +501,14 @@ public final class AppUpdaterManager {
                 return
             }
 
+            defaults.set(data, forKey: Self.lastManifestDefaultsKey)
             state = availability(of: release)
         } catch {
             guard generation == checkGeneration else { return }
+            DiagnosticLogger.shared.warn(
+                "Updater",
+                "Update check failed after \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(error.localizedDescription)"
+            )
             // Not the same thing as "you are up to date". The launch check
             // stays silent because it only presents for a real update; a
             // manual check says it could not reach GitHub.

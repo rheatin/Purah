@@ -220,14 +220,26 @@ public struct AppUpdateDialogView: View {
                     EmptyView()
 
                 default:
-                    Button("updater.button.check".localized) {
-                        Task {
-                            // The person pressed the button: never rate-limit
-                            // them to the quarter-hour floor.
-                            await updater.checkForUpdates(force: true)
+                    // The body keeps the last answer while a re-check runs, so
+                    // the footer is the only place that can say one is running.
+                    if updater.isChecking {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("updater.checking".localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
+                    } else {
+                        Button("updater.button.check".localized) {
+                            Task {
+                                // The person pressed the button: never rate-limit
+                                // them to the quarter-hour floor.
+                                await updater.checkForUpdates(force: true)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
             }
         }
@@ -244,11 +256,10 @@ public struct AppUpdateDialogView: View {
         .task {
             // Opening the dialog *is* the request to check. The menu item
             // starts one too; `checkForUpdates` ignores a second call while
-            // one is in flight, so whichever arrives first wins and the
-            // dialog never sits on a check that nobody started.
-            if case .idle = updater.state {
-                await updater.checkForUpdates(force: true)
-            }
+            // one is really in flight, so whichever arrives first wins — and
+            // the old test for whether one was in flight (`state == .checking`)
+            // is exactly what left the spinner running when a check leaked.
+            await updater.checkForUpdates(force: true)
         }
     }
 }
