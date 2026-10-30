@@ -6,6 +6,9 @@ public struct ScriptRunwayDrawerView: View {
     public let state: ScriptsPluginState
     public let store: PurahWorkspaceStore
     @State private var isOutputDismissed: Bool = false
+    @State private var diagnosis: String? = nil
+    @State private var showsDiagnosis: Bool = false
+    @State private var isDiagnosing: Bool = false
     private var runway: ScriptRunwayService {
         ScriptRunwayService.shared
     }
@@ -98,6 +101,8 @@ public struct ScriptRunwayDrawerView: View {
                             } else {
                                 Button {
                                     isOutputDismissed = false
+                                    diagnosis = nil
+                                    showsDiagnosis = false
                                     Task {
                                         let res = await state.executeAction(action, store: store)
                                         if action.showNotification {
@@ -139,6 +144,7 @@ public struct ScriptRunwayDrawerView: View {
             }()
 
             if !isOutputDismissed, let msg = activeMessage, !msg.isEmpty {
+                let isShowingDiagnosis = showsDiagnosis && diagnosis != nil
                 HStack(alignment: .top, spacing: 5) {
                     HStack(spacing: 3) {
                         if anyRunning {
@@ -147,24 +153,70 @@ public struct ScriptRunwayDrawerView: View {
                                 .frame(width: 4.5, height: 4.5)
                                 .shadow(color: Color.green.opacity(0.8), radius: 3)
                         }
-                        Text("$")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.9))
+                        if isShowingDiagnosis {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundColor(scriptColor)
+                        } else {
+                            Text("$")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(.green.opacity(0.9))
+                        }
                     }
                     .padding(.top, 1)
 
-                    Text(msg)
+                    Text(isShowingDiagnosis ? (diagnosis ?? "") : msg)
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(.primary.opacity(0.85))
-                        .lineLimit(3)
+                        .lineLimit(isShowingDiagnosis ? 6 : 3)
                         .multilineTextAlignment(.leading)
+                        .textSelection(.enabled)
 
                     Spacer()
+
+                    if !anyRunning {
+                        // Same box, two faces: the diagnosis replaces the raw
+                        // output rather than stacking under it, so the card
+                        // keeps its height at the 240pt minimum.
+                        if isShowingDiagnosis {
+                            Button {
+                                showsDiagnosis = false
+                            } label: {
+                                Image(systemName: "text.alignleft")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                            }
+                            .buttonStyle(.plain)
+                            .help("runway.ai.showOutput".localized)
+                            .accessibilityLabel("runway.ai.showOutput".localized)
+                        }
+
+                        Button {
+                            diagnose(actionId: state.lastExecutedActionId, output: msg)
+                        } label: {
+                            if isDiagnosing {
+                                ProgressView()
+                                    .controlSize(.mini)
+                                    .scaleEffect(0.55)
+                                    .frame(width: 8, height: 8)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(scriptColor)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isDiagnosing)
+                        .help("runway.ai.diagnose".localized)
+                        .accessibilityLabel("runway.ai.diagnose".localized)
+                    }
 
                     Button {
                         isOutputDismissed = true
                         state.lastOutput = nil
                         state.liveStreamingOutput = ""
+                        diagnosis = nil
+                        showsDiagnosis = false
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 8))
@@ -184,6 +236,45 @@ public struct ScriptRunwayDrawerView: View {
             }
         }
     }
+
+    /// Hands the failed run back to the assistant: what was run, and what it
+    /// said. The answer replaces the output box rather than adding a second
+    /// one — the person asked for a reading of the text already on screen.
+    /// `.remoteAllowed`: the script and its output go to the provider they
+    /// chose, which is why this is a click and never a background task.
+    private func diagnose(actionId: String?, output: String) {
+        guard !isDiagnosing else { return }
+        let action = state.actions.first { $0.id == actionId }
+        let prompt = """
+        Saved action: \(action?.name ?? "unknown")
+        Command:
+        \(action?.command ?? action?.scriptContent ?? "(not recorded)")
+
+        Output from the last run:
+        \(output)
+        """
+        isDiagnosing = true
+        Task { @MainActor in
+            defer { isDiagnosing = false }
+            do {
+                diagnosis = try await PurahAIService.ask(
+                    prompt,
+                    system: Self.diagnosisSystemPrompt,
+                    privacy: .remoteAllowed
+                )
+                showsDiagnosis = true
+            } catch {
+                diagnosis = error.localizedDescription
+                showsDiagnosis = true
+            }
+        }
+    }
+
+    private static let diagnosisSystemPrompt = """
+    You are a shell expert looking at a command the person saved and ran. Say in one short paragraph \
+    why the output means the run did not do what they wanted, then give the corrected command in a \
+    single fenced shell block. Do not repeat the output back to them.
+    """
 
     @ViewBuilder
     private func badgeForType(_ type: ScriptCommandType, color: Color) -> some View {
