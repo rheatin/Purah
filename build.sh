@@ -30,7 +30,9 @@ ${BOLD}Options:${RESET}
   -h, --help                           Show this help message
 
 ${BOLD}Environment Variables:${RESET}
-  APPLE_SIGNING_IDENTITY               Codesign identity (default: "-" ad-hoc)
+  APPLE_SIGNING_IDENTITY               Codesign identity (default: the only valid
+                                       identity on this Mac, else "-" ad-hoc)
+  PURAH_SIGN_IDENTITY                  Same thing, under the name release.sh uses
 
 EOF
 }
@@ -185,7 +187,12 @@ shopt -u nullglob
 # Hardened runtime is required for notarization. Ad-hoc (`-`) builds keep it off
 # because it has no security meaning without a real identity and would only make
 # local debugging (attaching a debugger, `dtruss`) harder.
-SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
+#
+# A configured certificate is picked up silently: an ad-hoc rebuild resets the
+# app's TCC grants, so local builds want the same identity releases use.
+source "$REPO_ROOT/signing-identity.sh"
+SIGNING_IDENTITY="$(purah_resolve_signing_identity)"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 ENTITLEMENTS="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/Sources/PurahApp/Resources/Purah.entitlements"
 
 HARDENED_ARGS=()

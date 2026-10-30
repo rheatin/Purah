@@ -14,8 +14,6 @@
 	    * com.apple.security.app-sandbox — Purah drives the whole screen edge,
 	      spawns shells and scripts, and reads other apps' windows. The App
 	      Sandbox forbids all three; enabling it would mean rewriting the app.
-	    * com.apple.security.cs.disable-library-validation — no dynamically
-	      loaded code outside the bundle needs to run, so it is not needed.
 	-->
 
 	<!-- Script Runway runs user-authored shell scripts from the right pane. -->
@@ -26,9 +24,34 @@
 	<key>com.apple.security.cs.allow-executable-file-mappings</key>
 	<true/>
 
+	<!-- Hardened runtime makes tccd demand these before it will even prompt.
+	     Measured in the unified log: "Prompting policy for hardened runtime;
+	     service: kTCCServiceCalendar requires entitlement
+	     com.apple.security.personal-information.calendars but it is missing".
+	     Ad-hoc builds never needed them because they skip the runtime, so the
+	     first signed build silently lost calendar and reminders access.
+	     Reminders is covered by the calendars key — tccd has no reminders one
+	     (its whole list is audio-input, camera, addressbook, calendars,
+	     photos-library). -->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+
+	<!-- The same requirement for kTCCServiceMicrophone, which any plugin that
+	     records audio will hit through `context.requestCapability(.microphone)`. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+
 	<!-- AppleScript drives Music.app for the now-playing pod and its transport
 	     controls. The matching NSAppleEventsUsageDescription lives in Info.plist. -->
 	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+
+	<!-- `Dev: Load Package...` compiles a plugin and dlopens it. Hardened
+	     runtime validates every loaded library against the process's Team ID,
+	     and a locally built dylib has none — measured: dlopen fails with
+	     "mapping process and mapped file (non-platform) have different Team
+	     IDs". Ad-hoc builds never hit this because they skip the runtime. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
 </dict>
 </plist>

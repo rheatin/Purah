@@ -15,6 +15,7 @@ RESET="\033[0m"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$REPO_ROOT"
+source "$REPO_ROOT/signing-identity.sh"
 
 VERSION=""
 SKIP_TESTS=false
@@ -274,7 +275,7 @@ fi
 # configured once. Without it we still produce artifacts, but we say plainly
 # that they are not distributable instead of shipping something that fails on
 # the user's machine.
-SIGN_IDENTITY="${PURAH_SIGN_IDENTITY:-}"
+SIGN_IDENTITY="$(purah_resolve_signing_identity)"
 NOTARY_PROFILE="${PURAH_NOTARY_PROFILE:-}"
 
 if [ -n "$SIGN_IDENTITY" ]; then
@@ -330,9 +331,10 @@ if [ -n "$SIGN_IDENTITY" ]; then
         echo -e "${YELLOW}   The in-app updater will offer a manual download instead of installing.${RESET}"
     fi
 else
-    echo -e "${YELLOW}⚠️  No PURAH_SIGN_IDENTITY set — building UNSIGNED.${RESET}"
+    echo -e "${YELLOW}⚠️  No signing identity found — building UNSIGNED.${RESET}"
     echo -e "${YELLOW}   This artifact is for local use only: it will be blocked by${RESET}"
     echo -e "${YELLOW}   Gatekeeper elsewhere, and each rebuild resets TCC grants.${RESET}"
+    echo -e "${YELLOW}   Set PURAH_SIGN_IDENTITY, or create one valid codesigning identity.${RESET}"
     echo -e "${YELLOW}   Available identities:${RESET}"
     security find-identity -v -p codesigning 2>/dev/null | sed 's/^/     /' || true
 fi
