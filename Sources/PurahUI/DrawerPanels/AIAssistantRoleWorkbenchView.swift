@@ -708,6 +708,11 @@ public struct AIAssistantRoleWorkbenchView: View {
         VStack(alignment: .leading, spacing: 6) {
             // 1. Top 3-in-1 Compact Status Bar (24pt when collapsed, spring-expands to ~96pt when isEditingSource)
             topStatusBar
+                // The `/` menu floats out of this card and down over the answer,
+                // which is a *later* sibling — so it painted on top of the menu
+                // and the panel read as transparent. Lift the card only while
+                // the menu is open.
+                .zIndex(state.isSlashMenuVisible ? 10 : 0)
 
             // 2. Center Main Output Stage (80%+ of vertical height)
             centerOutputStage
