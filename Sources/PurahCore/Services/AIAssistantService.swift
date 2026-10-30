@@ -872,6 +872,15 @@ public final class AIAssistantService {
         // A CLI agent cannot receive image bytes on stdin, so attachments arrive
         // as text: file contents inline, images named rather than silently dropped.
         var promptText = lastMsg.map { AIAttachmentEncoder.expand($0, modelAcceptsImages: false).text } ?? ""
+        // A CLI turn is a process that knows nothing about the last one, so the
+        // turns before it have to travel with the prompt. Without this a
+        // follow-up reached the agent as a bare instruction — "make it shorter"
+        // with no idea what "it" was — because only the previous *answer* used
+        // to be folded in by hand.
+        let transcript = Self.cliTranscript(messages.dropLast())
+        if !transcript.isEmpty {
+            promptText = "Conversation so far:\n\(transcript)\n\nUser Input:\n\(promptText)"
+        }
         let effectiveSystemPrompt = systemPromptOverride ?? lastMsg?.systemPromptOverride ?? lastMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
         if let sys = effectiveSystemPrompt, !sys.isEmpty {
             promptText = "\(sys)\n\nUser Input:\n\(promptText)"
@@ -906,6 +915,30 @@ public final class AIAssistantService {
             isNDJSON: isNDJSON,
             onChunk: onChunk
         )
+    }
+
+    /// The turns before the current one, flattened for a CLI that starts fresh
+    /// every time.
+    ///
+    /// Newest turns win when the budget runs out: a long chat would otherwise
+    /// send the whole conversation on every turn, and the agent only needs
+    /// enough of it to know what "it" refers to.
+    public nonisolated static func cliTranscript(
+        _ messages: ArraySlice<AIChatMessage>,
+        budget: Int = 16_000
+    ) -> String {
+        var turns: [String] = []
+        var used = 0
+        for message in messages.reversed() where message.role != .system {
+            let text = AIAttachmentEncoder.expand(message, modelAcceptsImages: false).text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            let turn = (message.role == .user ? "User: " : "Assistant: ") + text
+            guard used + turn.count <= budget else { break }
+            used += turn.count
+            turns.append(turn)
+        }
+        return turns.reversed().joined(separator: "\n\n")
     }
 
     public nonisolated static func resolveCLIArguments(

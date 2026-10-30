@@ -418,8 +418,12 @@ public final class AIAssistantPluginState: Sendable {
 
         let prevOutput = currentViewedAssistantMessage?.content ?? ""
         let origSource = currentViewedUserMessage?.originalSelection ?? currentViewedUserMessage?.content ?? currentInputText
-        let refinementPrompt = "Previous output:\n\(prevOutput)\n\nUser refinement instruction: \(trimmed)\n\nPlease output the updated result directly following the instruction."
-        sendPrompt(refinementPrompt, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
+        // A follow-up is a turn of its own. Wrapping it as "Previous output: …
+        // / User refinement instruction: …" made every question read as an edit
+        // of the answer above it, and it hid a leading `/skill` from the matcher
+        // that requires the prompt to start with "/". The previous answer is
+        // already in the history this turn is sent with.
+        sendPrompt(trimmed, role: selectedRole, originalSelection: origSource.isEmpty ? prevOutput : origSource, includeHistory: true)
     }
 
     // MARK: - Slash Command Autocomplete

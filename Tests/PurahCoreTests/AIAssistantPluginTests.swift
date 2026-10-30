@@ -1296,9 +1296,35 @@ struct AIAssistantPluginTests {
 
         let refinedUserMsg = state.activeSession?.messages.last(where: { $0.role == .user })
         #expect(refinedUserMsg != nil)
-        #expect(refinedUserMsg?.content.contains("Previous output:\nPolished Content Draft") == true)
-        #expect(refinedUserMsg?.content.contains("User refinement instruction: Make it more concise and formal") == true)
+        // A follow-up is sent as written: the previous answer rides along in the
+        // history, so wrapping it into the prompt only made ordinary questions
+        // read as edit instructions.
+        #expect(refinedUserMsg?.content == "Make it more concise and formal")
         #expect(refinedUserMsg?.originalSelection == "Initial Output Content")
+    }
+
+    @Test("A slash skill typed into the follow-up box still starts with its slash")
+    func testFollowUpKeepsSlashSkillAtTheFront() {
+        let isolated = UserDefaults(suiteName: "test_ai_followup_skill_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_followup_skill_test", defaults: isolated)
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_followup_skill_\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai_followup_skill_test", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_followup_skill_test", customStorage: fileStorage)
+
+        let state = AIAssistantPluginState(storage: storage, repository: repo)
+        if let sIdx = state.sessions.firstIndex(where: { $0.id == state.activeSessionId }) {
+            state.sessions[sIdx].messages.append(contentsOf: [
+                AIChatMessage(role: .user, content: "Initial Prompt"),
+                AIChatMessage(role: .assistant, content: "Initial Output Content")
+            ])
+        }
+
+        state.refineCurrentOutput(instruction: "/grill-me interview me about the plan")
+
+        // The slash matcher only looks at the start of the prompt, so the
+        // follow-up must deliver it there rather than inside a wrapper.
+        let followUp = state.activeSession?.messages.last(where: { $0.role == .user })
+        #expect(followUp?.content.hasPrefix("/grill-me") == true)
     }
 
     @Test("Model persistence in ScopedPluginStorage and auto-selection of active model")
@@ -1849,6 +1875,31 @@ struct AIAssistantPluginTests {
         let emptyScanned = service.scanSkills(config: disabledConfig)
         #expect(emptyScanned.isEmpty)
         #expect(service.discoveredSkills.isEmpty)
+    }
+
+    @Test("A CLI follow-up carries the turns that came before it")
+    func testCLITranscriptCarriesHistory() {
+        let messages = [
+            AIChatMessage(role: .user, content: "Summarise this file"),
+            AIChatMessage(role: .assistant, content: "It is a Swift package manifest."),
+            AIChatMessage(role: .user, content: "Make it shorter")
+        ]
+
+        let transcript = AIAssistantService.cliTranscript(messages.dropLast())
+        #expect(transcript.contains("User: Summarise this file"))
+        #expect(transcript.contains("Assistant: It is a Swift package manifest."))
+        #expect(transcript.hasSuffix("It is a Swift package manifest."))
+
+        let empty: [AIChatMessage] = []
+        #expect(AIAssistantService.cliTranscript(empty[...]).isEmpty)
+
+        // The newest turns win when the budget cannot hold them all.
+        let long = (0..<40).map { _ in
+            AIChatMessage(role: .user, content: String(repeating: "x", count: 2000))
+        }
+        let capped = AIAssistantService.cliTranscript(long[...], budget: 5000)
+        #expect(capped.count <= 5000)
+        #expect(!capped.isEmpty)
     }
 
     @Test("AIAssistantService extracts slash skill command and enriches prompt")
