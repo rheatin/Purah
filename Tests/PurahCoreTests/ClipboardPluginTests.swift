@@ -101,6 +101,14 @@ struct ClipboardPluginTests {
         let store = PurahWorkspaceStore()
         let plugin = ClipboardPlugin()
 
+        // Mounting starts the shared watcher, which owns the person's real
+        // index in ~/Library/Application Support/Purah/Clipboard: the first
+        // tick captures whatever is on the pasteboard and saves it. A test
+        // process must not do that, so the pod is off while it runs.
+        if let idx = store.pods.firstIndex(where: { $0.id == "clipboard" }) {
+            store.pods[idx].isEnabled = false
+        }
+
         #expect(plugin.manifest.id == "clipboard")
         #expect(plugin.manifest.permissions.contains(.pasteboard))
         #expect(plugin.manifest.permissions.contains(.fileSystem))

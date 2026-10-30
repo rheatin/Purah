@@ -136,9 +136,11 @@ struct DragRoundTripTests {
     @Test("Clipboard reorder is a single commit; hovering never mutates order")
     @MainActor
     func testClipboardReorderCommitsOnDrop() throws {
-        let service = SystemClipboardSyncService.shared
-        service.clearAll(keepFavorites: false)
-        defer { service.clearAll(keepFavorites: false) }
+        // The shared service writes the person's real clipboard index
+        // (~/Library/Application Support/Purah/Clipboard) — a test that clears
+        // it deletes their history, image files included.
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
 
         let items = ["alpha", "beta", "gamma"].map { ClipboardItem(type: .text($0)) }
         service.history = items
@@ -157,9 +159,8 @@ struct DragRoundTripTests {
     @Test("Aborting a drag never leaves the clipboard reordered")
     @MainActor
     func testAbortedClipboardDragLeavesOrder() throws {
-        let service = SystemClipboardSyncService.shared
-        service.clearAll(keepFavorites: false)
-        defer { service.clearAll(keepFavorites: false) }
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
 
         let items = ["one", "two", "three"].map { ClipboardItem(type: .text($0)) }
         service.history = items

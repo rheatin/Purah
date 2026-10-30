@@ -8,7 +8,21 @@ import CryptoKit
 @Observable
 @MainActor
 public final class SystemClipboardSyncService {
-    public static let shared = SystemClipboardSyncService()
+    public static let shared: SystemClipboardSyncService = {
+        // This singleton owns the person's real index. A test that mounts the
+        // clipboard plugin (or calls `clearAll`) would otherwise delete their
+        // history — images included — and the watcher's first tick would save
+        // whatever happened to be on their pasteboard. Tests get a throwaway
+        // directory; `createIsolatedTestService()` is still the way to get one
+        // that a test can name itself.
+        if NSClassFromString("XCTestCase") != nil {
+            return SystemClipboardSyncService(
+                storageDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("purah_clipboard_testdomain_\(UUID().uuidString)", isDirectory: true)
+            )
+        }
+        return SystemClipboardSyncService()
+    }()
 
     @ObservationIgnored private var _historyLoaded: Bool = false
     private var _history: [ClipboardItem] = []

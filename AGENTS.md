@@ -263,6 +263,8 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
 ## 9. Coding & Verification Standards
 
+- **Tests Never Touch the Person's Real Stores (Mandatory)**: `PurahWorkspaceStore(userDefaults:)`, `ScopedPluginStorage`, and `SystemClipboardSyncService.createIsolatedTestService()` exist so a test can run against throwaway state. A test that reaches a `shared` singleton instead writes `~/Library/Application Support/Purah` — `swift test` once ran `clearAll(keepFavorites: false)` through `SystemClipboardSyncService.shared` and deleted the user's clipboard history and its images, with no backup and no recovery. `shared` now returns a temp directory whenever `NSClassFromString("XCTestCase") != nil`, but that guard is a net, not a licence: isolate the service in the test, and when adding a new service that owns user data, give it the same seam before writing tests against it.
+
 - **Language Baseline**: Swift 6.0+ with complete strict concurrency checking (`-strict-concurrency=complete`).
 - **Tests**: Use Swift Testing (`@Suite`, `@Test`, `#expect`).
 - **Verification Commands**:
