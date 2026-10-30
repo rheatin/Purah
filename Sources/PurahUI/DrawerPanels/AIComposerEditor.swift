@@ -22,6 +22,8 @@ public final class PurahAIComposerTextView: NSTextView {
     public var onSlashDismiss: (() -> Void)?
     public var onTextAndCursorChange: ((String, Int) -> Void)?
     public var onEscape: (() -> Void)?
+    /// Returns true when the pasteboard held an attachment; the paste then never reaches the text.
+    public var onPasteAttachments: (() -> Bool)?
 
     private var hasAutoFocused = false
 
@@ -93,6 +95,11 @@ public final class PurahAIComposerTextView: NSTextView {
         onSubmit()
     }
 
+    public override func paste(_ sender: Any?) {
+        if onPasteAttachments?() == true { return }
+        super.paste(sender)
+    }
+
     public override func didChangeText() {
         super.didChangeText()
         let cursor = selectedRange().location
@@ -139,6 +146,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
     private let onSlashDismiss: (() -> Void)?
     private let onTextAndCursorChange: ((String, Int) -> Void)?
     private let onEscape: (() -> Void)?
+    private let onPasteAttachments: (() -> Bool)?
     private let onSubmit: () -> Void
 
     public init(
@@ -152,6 +160,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         onSlashDismiss: (() -> Void)? = nil,
         onTextAndCursorChange: ((String, Int) -> Void)? = nil,
         onEscape: (() -> Void)? = nil,
+        onPasteAttachments: (() -> Bool)? = nil,
         onSubmit: @escaping () -> Void
     ) {
         self._text = text
@@ -164,6 +173,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         self.onSlashDismiss = onSlashDismiss
         self.onTextAndCursorChange = onTextAndCursorChange
         self.onEscape = onEscape
+        self.onPasteAttachments = onPasteAttachments
         self.onSubmit = onSubmit
     }
 
@@ -215,6 +225,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         textView.onSlashDismiss = onSlashDismiss
         textView.onTextAndCursorChange = onTextAndCursorChange
         textView.onEscape = onEscape
+        textView.onPasteAttachments = onPasteAttachments
         textView.unregisterDraggedTypes()
 
         scrollView.documentView = textView
@@ -232,6 +243,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         textView.onSlashDismiss = onSlashDismiss
         textView.onTextAndCursorChange = onTextAndCursorChange
         textView.onEscape = onEscape
+        textView.onPasteAttachments = onPasteAttachments
 
         if textView.font?.pointSize != fontSize {
             textView.font = .systemFont(ofSize: fontSize)

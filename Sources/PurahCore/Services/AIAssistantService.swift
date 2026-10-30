@@ -608,15 +608,35 @@ public final class AIAssistantService {
             ])
         }
 
+        let acceptsImages = provider.acceptsImages(model: selectedModel)
         for msg in messages {
-            let trimmedContent = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let expansion = AIAttachmentEncoder.expand(msg, modelAcceptsImages: acceptsImages)
+            let trimmedContent = expansion.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedContent.isEmpty || (msg.role == .assistant && msg.content.hasPrefix("⚠️")) {
                 continue
             }
-            formattedMessages.append([
-                "role": msg.role.rawValue,
-                "content": msg.content
-            ])
+            if provider == .httpOllama {
+                var entry: [String: Any] = ["role": msg.role.rawValue, "content": expansion.text]
+                // Ollama takes images beside the text rather than inside it.
+                if !expansion.images.isEmpty {
+                    entry["images"] = expansion.images.map(\.base64)
+                }
+                formattedMessages.append(entry)
+            } else if expansion.images.isEmpty {
+                formattedMessages.append([
+                    "role": msg.role.rawValue,
+                    "content": expansion.text
+                ])
+            } else {
+                var parts: [[String: Any]] = [["type": "text", "text": expansion.text]]
+                for image in expansion.images {
+                    parts.append([
+                        "type": "image_url",
+                        "image_url": ["url": "data:\(image.mediaType);base64,\(image.base64)"]
+                    ])
+                }
+                formattedMessages.append(["role": msg.role.rawValue, "content": parts])
+            }
         }
 
         var bodyPayload: [String: Any] = [
@@ -761,15 +781,30 @@ public final class AIAssistantService {
         }
 
         var formattedMessages: [[String: Any]] = []
+        let acceptsImages = AIProviderKind.httpAnthropic.acceptsImages()
         for msg in messages where msg.role != .system {
-            let trimmedContent = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let expansion = AIAttachmentEncoder.expand(msg, modelAcceptsImages: acceptsImages)
+            let trimmedContent = expansion.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedContent.isEmpty || (msg.role == .assistant && msg.content.hasPrefix("⚠️")) {
                 continue
             }
-            formattedMessages.append([
-                "role": msg.role == .assistant ? "assistant" : "user",
-                "content": msg.content
-            ])
+            let role = msg.role == .assistant ? "assistant" : "user"
+            if expansion.images.isEmpty {
+                formattedMessages.append(["role": role, "content": expansion.text])
+            } else {
+                var parts: [[String: Any]] = [["type": "text", "text": expansion.text]]
+                for image in expansion.images {
+                    parts.append([
+                        "type": "image",
+                        "source": [
+                            "type": "base64",
+                            "media_type": image.mediaType,
+                            "data": image.base64,
+                        ],
+                    ])
+                }
+                formattedMessages.append(["role": role, "content": parts])
+            }
         }
 
         var bodyPayload: [String: Any] = [
@@ -834,7 +869,9 @@ public final class AIAssistantService {
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let lastMsg = messages.last
-        var promptText = lastMsg?.content ?? ""
+        // A CLI agent cannot receive image bytes on stdin, so attachments arrive
+        // as text: file contents inline, images named rather than silently dropped.
+        var promptText = lastMsg.map { AIAttachmentEncoder.expand($0, modelAcceptsImages: false).text } ?? ""
         let effectiveSystemPrompt = systemPromptOverride ?? lastMsg?.systemPromptOverride ?? lastMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
         if let sys = effectiveSystemPrompt, !sys.isEmpty {
             promptText = "\(sys)\n\nUser Input:\n\(promptText)"
@@ -1526,7 +1563,10 @@ public final class AIAssistantService {
     ) async throws -> String {
         let lastUserMsg = messages.last(where: { $0.role == .user })
         let effectiveSystemPrompt = systemPromptOverride ?? lastUserMsg?.systemPromptOverride ?? lastUserMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
-        let prompt = lastUserMsg?.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? messages.last?.content ?? ""
+        let prompt = lastUserMsg
+            .map { AIAttachmentEncoder.expand($0, modelAcceptsImages: false).text }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            ?? messages.last?.content ?? ""
 
         let session = LanguageModelSession(instructions: effectiveSystemPrompt)
         let stream = session.streamResponse(to: prompt)
@@ -1972,8 +2012,11 @@ public final class AIAssistantService {
                         var sampleContent = ""
                         if let handle = try? FileHandle(forReadingFrom: url) {
                             defer { try? handle.close() }
-                            if let data = try? handle.read(upToCount: 65_536) {
-                                let decoded = String(decoding: data, as: UTF8.self)
+                            // `String(decoding:)` never fails, so a PNG used to arrive as 16 KB of
+                            // replacement characters. Only real UTF-8 is inlined; images are
+                            // attached as images by the caller instead.
+                            if let data = try? handle.read(upToCount: 65_536),
+                               let decoded = String(data: data, encoding: .utf8) {
                                 sampleContent = String(decoded.prefix(16_000))
                             }
                         }

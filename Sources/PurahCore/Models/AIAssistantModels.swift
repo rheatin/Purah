@@ -32,6 +32,35 @@ public enum AIProviderKind: String, Codable, CaseIterable, Sendable, Identifiabl
         }
     }
 
+    /// Whether this provider can carry an image to the model.
+    ///
+    /// The model is chosen by name, and the name is the only evidence the host
+    /// has: an OpenAI-compatible endpoint may front a vision model or a text
+    /// one, and nothing in the protocol enumerates which. The markers below are
+    /// deliberately an allowlist — a wrong "yes" sends an image to a model that
+    /// cannot read it and the person blames Purah, while a wrong "no" costs one
+    /// sentence in the prompt saying the image was not sent.
+    public func acceptsImages(model: String? = nil) -> Bool {
+        switch self {
+        case .httpAnthropic, .httpOllama:
+            return true
+        case .appleIntelligence, .localCLI:
+            // Apple's on-device model takes text only, and a CLI agent is handed
+            // a prompt string — it can read files itself, but not because of us.
+            return false
+        case .httpOpenAI:
+            let name = (model ?? "").lowercased()
+            guard !name.isEmpty else { return false }
+            return Self.visionModelMarkers.contains { name.contains($0) }
+        }
+    }
+
+    static let visionModelMarkers = [
+        "gpt-4o", "gpt-4.1", "gpt-4.5", "gpt-5", "o3", "o4",
+        "claude", "gemini", "llava", "qwen-vl", "qwen2-vl", "qwen2.5-vl",
+        "glm-4v", "pixtral", "internvl", "minicpm-v", "moondream", "vision",
+    ]
+
     public var shortTitle: String {
         switch self {
         case .appleIntelligence: return "Apple Intel"

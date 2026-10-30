@@ -1366,6 +1366,11 @@ public final class AIAssistantPluginState: Sendable {
 
         guard let sessionIdx = sessions.firstIndex(where: { $0.id == activeSessionId }) else { return }
 
+        // After the session reset, which clears staged attachments.
+        if !skipFileEnrichment {
+            attachReferencedImages(in: trimmed)
+        }
+
         let effectiveAction = quickAction ?? (role.flatMap { AIQuickActionType(rawValue: $0.id) })
         let effectiveRoleTitle = role?.title ?? effectiveAction?.title
         let effectiveRoleId = role?.id ?? effectiveAction?.id
@@ -1766,6 +1771,60 @@ public final class AIAssistantPluginState: Sendable {
         }
 
         return handleDroppedProviders(providers, target: target)
+    }
+
+    /// Stages files or images copied to the general pasteboard as attachments.
+    ///
+    /// ⌘V in most apps pastes a picture into whatever is focused; the composer had no image
+    /// support at all, so the paste looked ignored. Only a picture or a file is claimed here —
+    /// plain text returns false and reaches the text view normally.
+    @discardableResult
+    public func ingestPasteboardAttachments(_ pasteboard: NSPasteboard = .general) -> Bool {
+        guard stagedAttachments.count < AIAttachmentBudget.maxAttachments else { return false }
+
+        var items: [AIAttachmentItem] = []
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !urls.isEmpty {
+            for url in urls {
+                self.allowPath(url.standardizedFileURL.path)
+                if let attachment = AIAssistantService.shared.makeAttachment(from: url) {
+                    items.append(attachment)
+                }
+            }
+        } else if let imageURL = Self.writeTransientImageFromPasteboard(pasteboard),
+                  let attachment = AIAssistantService.shared.makeAttachment(from: imageURL) {
+            self.allowPath(imageURL.path)
+            items.append(attachment)
+        }
+
+        guard !items.isEmpty else { return false }
+        let slots = max(AIAttachmentBudget.maxAttachments - stagedAttachments.count, 0)
+        let staged = Array(items.prefix(slots))
+        stagedAttachments.append(contentsOf: staged)
+        // Nothing on screen would otherwise change, and a paste that appears to do nothing
+        // is indistinguishable from a broken one. Name the file in the prompt, as a drop does.
+        let echo = staged
+            .map { "[\(($0.name as NSString).lastPathComponent)]" }
+            .joined(separator: " ")
+        currentInputText = currentInputText.isEmpty ? echo : currentInputText + " " + echo
+        focusRequestCounter += 1
+        return true
+    }
+
+    /// Attaches images named by path in the prompt.
+    ///
+    /// Dropping a desktop picture writes its path into the prompt, and a path is not a picture:
+    /// text enrichment cannot inline a PNG, so the model answered "I cannot read local files"
+    /// while the image sat on disk one line away.
+    private func attachReferencedImages(in prompt: String) {
+        for path in AIAssistantService.extractReferencedLocalPaths(in: prompt) {
+            guard isPathAllowed(path),
+                  !stagedAttachments.contains(where: { $0.filePath == path }),
+                  stagedAttachments.count < AIAttachmentBudget.maxAttachments else { continue }
+            guard let attachment = AIAssistantService.shared.makeAttachment(from: URL(fileURLWithPath: path)),
+                  attachment.kind == .image else { continue }
+            stagedAttachments.append(attachment)
+        }
     }
 
     /// Routes staged drop content to the New Session or Follow-up slot.

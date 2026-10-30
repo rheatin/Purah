@@ -532,6 +532,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             onTextAndCursorChange: { newText, cursor in
                                 state.checkSlashTrigger(in: newText, cursorLocation: cursor)
                             },
+                            onPasteAttachments: { state.ingestPasteboardAttachments() },
                             onSubmit: sendSourcePrompt
                         )
                         .padding(5)
@@ -819,6 +820,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             state.isEditingSource = false
                         }
                     },
+                    onPasteAttachments: { state.ingestPasteboardAttachments() },
                     onSubmit: sendSourcePromptFromEditCard
                 )
                 .frame(height: 58)
