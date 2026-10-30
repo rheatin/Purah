@@ -19,6 +19,9 @@ public final class EdgeMouseMonitor {
     private var globalKeyDownMonitor: Any?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    /// `tapCreate` fails without Input Monitoring, and it was retried on
+    /// every mouse move. Wait between attempts once it has failed.
+    private var eventTapRetryAfter: Date = .distantPast
     private var leftExitGraceTask: Task<Void, Never>?
     private var rightExitGraceTask: Task<Void, Never>?
     private var initialDwellTask: Task<Void, Never>?
@@ -79,6 +82,7 @@ public final class EdgeMouseMonitor {
             bezelArrivalTime = nil
             tearDownEventTap()
         } else {
+            eventTapRetryAfter = .distantPast
             updateEventTapState()
         }
     }
@@ -130,7 +134,12 @@ public final class EdgeMouseMonitor {
                 self?.handleMouse(event: event)
             }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+        // `.mouseMoved` is deliberately absent: moves over Purah's own windows
+        // already arrive through `PassThroughHostingView.mouseMoved` →
+        // `store.onLocalMouseMove`, so watching them here ran the dwell and
+        // push-force pipeline twice for every pixel.
+        let localMask: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp, .scrollWheel]
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: localMask) { [weak self] event in
             switch event.type {
             case .leftMouseDragged, .leftMouseUp:
                 self?.handleDrag(event: event)
@@ -249,9 +258,10 @@ public final class EdgeMouseMonitor {
     /// re-opens the card it came from.
     private func expandDropCapablePodIfNeeded(edge: MountEdge, currentWindowY: CGFloat, totalHeight: Double) {
         let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
+        let isBreathing = store.isBreathingActive(for: edge)
         guard let matched = layoutItems.first(where: { item in
             let topY = CGFloat(item.startY)
-            return currentWindowY >= topY && currentWindowY <= topY + actualOccupiedHeight(for: item)
+            return currentWindowY >= topY && currentWindowY <= topY + actualOccupiedHeight(for: item, isBreathing: isBreathing)
         }) else { return }
         // Only pods that actually accept payloads should pop open mid-drag; everything else
         // would open a card that then refuses the drop.
@@ -372,7 +382,7 @@ public final class EdgeMouseMonitor {
             return
         }
         if !isFrozen && !store.isRailsFrozen && store.edgeTriggerMode == .pushForce {
-            if eventTap == nil {
+            if eventTap == nil, Date() >= eventTapRetryAfter {
                 setupEventTap()
             }
         } else {
@@ -454,6 +464,18 @@ public final class EdgeMouseMonitor {
                 guard monitor === sharedMonitor else {
                     return Unmanaged.passUnretained(event)
                 }
+                // A listen-only tap is disabled by the system when its callback
+                // is slow (`tapDisabledByTimeout`) or a grant is revoked
+                // (`tapDisabledByUserInput`), and stays off until re-enabled —
+                // push force would silently stop working for the session.
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    if Thread.isMainThread {
+                        MainActor.assumeIsolated {
+                            if let tap = monitor.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+                        }
+                    }
+                    return Unmanaged.passUnretained(event)
+                }
                 guard type == .mouseMoved || type == .leftMouseDragged else {
                     return Unmanaged.passUnretained(event)
                 }
@@ -517,6 +539,8 @@ public final class EdgeMouseMonitor {
             CGEvent.tapEnable(tap: tap, enable: true)
             self.eventTap = tap
             self.runLoopSource = source
+        } else {
+            eventTapRetryAfter = Date().addingTimeInterval(5.0)
         }
     }
 
@@ -594,9 +618,10 @@ public final class EdgeMouseMonitor {
         if breakthrough {
             let currentWindowY = visibleRect.maxY - mousePoint.y
             let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
+            let isBreathing = store.isBreathingActive(for: edge)
             let matchedItem = layoutItems.first { item in
                 let topY = CGFloat(item.startY)
-                let bottomY = topY + actualOccupiedHeight(for: item)
+                let bottomY = topY + actualOccupiedHeight(for: item, isBreathing: isBreathing)
                 return currentWindowY >= topY && currentWindowY <= bottomY
             }
             if let matched = matchedItem {
@@ -606,9 +631,11 @@ public final class EdgeMouseMonitor {
         }
     }
 
-    public func actualOccupiedHeight(for item: ResolvedPodLayoutItem) -> CGFloat {
+    /// `isBreathing` is passed in by the per-item loops: the answer is the same
+    /// for every pod on the rail, and solving it is not cheap.
+    public func actualOccupiedHeight(for item: ResolvedPodLayoutItem, isBreathing: Bool? = nil) -> CGFloat {
         let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
-        let isDynamicAccordion = store.isBreathingActive(for: item.pod.edge)
+        let isDynamicAccordion = isBreathing ?? store.isBreathingActive(for: item.pod.edge)
         if !isSharedMajorSubBar,
            store.isPodDecomposed(item.pod.id),
            let provider = store.capabilityProvider(for: item.pod.id),
@@ -863,9 +890,10 @@ public final class EdgeMouseMonitor {
         }
 
         let layoutItems = store.resolvedPhysicalLayout(for: edge, totalHeight: Double(visibleRect.height))
+        let isBreathing = store.isBreathingActive(for: edge)
         let matchedItem = layoutItems.first { item in
             let topY = CGFloat(item.startY)
-            let bottomY = topY + actualOccupiedHeight(for: item)
+            let bottomY = topY + actualOccupiedHeight(for: item, isBreathing: isBreathing)
             return currentWindowY >= topY && currentWindowY <= bottomY
         }
 
@@ -1044,9 +1072,10 @@ public final class EdgeMouseMonitor {
 
                         let curWinY = curVisibleRect.maxY - currentPoint.y
                         let curLayout = self.store.resolvedPhysicalLayout(for: edge, totalHeight: Double(curVisibleRect.height))
+                        let curIsBreathing = self.store.isBreathingActive(for: edge)
                         let curMatched = curLayout.first(where: { item in
                             let topY = CGFloat(item.startY)
-                            let bottomY = topY + self.actualOccupiedHeight(for: item)
+                            let bottomY = topY + self.actualOccupiedHeight(for: item, isBreathing: curIsBreathing)
                             return curWinY >= topY && curWinY <= bottomY
                         })
 

@@ -268,6 +268,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         if isOnRail {
             // Only capture if physically over an actual pod on the rail (not in empty margins or corners!)
             updateCacheIfNeeded()
+            // Hoisted out of the per-item closure: `isBreathingActive` solves
+            // the whole rail's layout, and `hitTest` runs on every mouse move.
+            let railIsBreathing = store.isBreathingActive(for: edge, totalHeight: totalH)
             let isOverPod = cache.cachedLayoutItems.contains(where: { item in
                 let topY = item.startY
                 let actualSpan: Double
@@ -280,7 +283,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                     let minChipH = Double(policy.minChipHeight)
                     let maxChipH = Double(policy.maxChipHeight)
                     let spacing = Double(policy.spacing)
-                    let isDynamicAccordion = store.isBreathingActive(for: edge, totalHeight: totalH)
+                    let isDynamicAccordion = railIsBreathing
                     let maxAllowed = isDynamicAccordion
                         ? max(policy.maxRailItems, 1)
                         : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)

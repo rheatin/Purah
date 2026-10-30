@@ -2233,7 +2233,10 @@ public final class PurahWorkspaceStore {
 
     public func resolvedPhysicalLayout(for edge: MountEdge, totalHeight: Double) -> [ResolvedPodLayoutItem] {
         lastKnownTotalHeight[edge] = totalHeight
-        let now = Date().timeIntervalSinceReferenceDate
+        // Same clock as `paginatedPods`: a wall-clock jump (time zone change,
+        // NTP correction) would otherwise leave the cache looking stale for
+        // hours or fresh forever.
+        let now = ProcessInfo.processInfo.systemUptime
         let allEdgePods = pods.filter { $0.edge == edge && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
         guard !allEdgePods.isEmpty else { return [] }
@@ -2761,6 +2764,9 @@ public final class PurahWorkspaceStore {
         var frames: [CGRect] = []
         let layoutItems = resolvedPhysicalLayout(for: edge, totalHeight: totalHeight)
         let corridor = activeCatchCorridor
+        // Same answer for every pod; solving it per item made each hit test
+        // recompute the whole rail layout once per pod.
+        let isBreathing = isBreathingActive(for: edge, totalHeight: totalHeight)
 
         for item in layoutItems {
             let pod = item.pod
@@ -2792,7 +2798,7 @@ public final class PurahWorkspaceStore {
                 let minChipH = Double(policy.minChipHeight)
                 let maxChipH = Double(policy.maxChipHeight)
                 let spacing = Double(policy.spacing)
-                let isDynamicAccordion = isBreathingActive(for: edge, totalHeight: totalHeight)
+                let isDynamicAccordion = isBreathing
                 let maxAllowed = isDynamicAccordion
                     ? max(policy.maxRailItems, 1)
                     : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
