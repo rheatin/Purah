@@ -560,12 +560,15 @@ if [ "$PUBLISH" = true ]; then
 
     # Create release (or update if already exists)
     echo -e "   └── Publishing to GitHub release ${TAG_NAME}..."
+    # The cask is published as an asset so the tap repo's workflow can copy the
+    # generated file verbatim instead of re-deriving the version and checksum.
     if ! gh release create "$TAG_NAME" \
         "$DMG_PATH" \
         "$ZIP_PATH" \
         "${DMG_PATH}.sha256" \
         "${ZIP_PATH}.sha256" \
         "$RELEASE_INFO_PATH" \
+        "$CASK_PATH" \
         --title "Purah ${TAG_NAME}" \
         --notes-file "$NOTES_PATH" 2>/dev/null; then
         echo -e "   └── Release ${TAG_NAME} already exists, updating assets..."
@@ -575,7 +578,20 @@ if [ "$PUBLISH" = true ]; then
             "${DMG_PATH}.sha256" \
             "${ZIP_PATH}.sha256" \
             "$RELEASE_INFO_PATH" \
+            "$CASK_PATH" \
             --clobber
+    fi
+
+    # The tap lives in its own repo, so nothing in this repository can update
+    # `Casks/purah.rb` directly. A dispatch makes the tap's workflow do it now
+    # rather than on its next scheduled poll. Not fatal: the release is already
+    # public, and a failed notification only means the cask is a little stale.
+    TAP_REPO="rheatin/homebrew-tap"
+    echo "   └── Notifying ${TAP_REPO}..."
+    if gh api -X POST "repos/${TAP_REPO}/dispatches" -f event_type=purah-release >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Tap workflow dispatched.${RESET}"
+    else
+        echo -e "${YELLOW}⚠️  Could not notify ${TAP_REPO} — copy dist/purah.rb into the tap by hand.${RESET}" >&2
     fi
 
     echo -e "\n${BOLD}${GREEN}🚀 Release ${TAG_NAME} published successfully on GitHub!${RESET}"

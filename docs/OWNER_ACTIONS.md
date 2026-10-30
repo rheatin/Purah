@@ -28,10 +28,17 @@ Homebrew 5 asks users to trust a third-party tap first (`brew trust rheatin/tap`
 and answers that with an error rather than a prompt, so the caveat has to be in
 the README.
 
-**Every release:** copy `dist/purah.rb` (written by `release.sh`, with the
-version and ZIP checksum filled in) to `Casks/purah.rb` in the tap repo, commit
-and push. That generated file is the only place those two values are written —
-never hand-edit the tap copy.
+**Every release:** nothing to do by hand. `release.sh` publishes `dist/purah.rb`
+(written with the version and ZIP checksum filled in) as a release asset and
+then dispatches `purah-release` to the tap, whose workflow copies that asset into
+`Casks/purah.rb` and commits it. The generated file is the only place those two
+values are written — never hand-edit the tap copy.
+
+The dispatch is what makes it immediate; the workflow also runs on
+`workflow_dispatch`, so a missed notification is one click away. It needs no
+secret: the default token reads the public release and pushes to its own repo.
+Verified end to end on 2026-10-30 (v0.7.8): a rolled-back cask was restored by
+the bot within a minute.
 
 Homebrew 5 rejected three stanzas the first time the cask was installed, so the
 template now uses the current forms and should not drift back:
