@@ -125,12 +125,19 @@ public final class ClipboardPluginState: Sendable {
         SystemClipboardSyncService.shared.onItemAdded = { [weak self] _ in
             self?.items = SystemClipboardSyncService.shared.history
         }
+        // The history read below starts an asynchronous load and returns empty
+        // the first time; without this the drawer stayed blank after a fresh
+        // launch until the next copy happened to refresh it.
+        SystemClipboardSyncService.shared.onHistoryLoaded = { [weak self] in
+            self?.items = SystemClipboardSyncService.shared.history
+        }
         self.items = SystemClipboardSyncService.shared.history
     }
 
     public func unmount(store: PurahWorkspaceStore) {
         SystemClipboardSyncService.shared.stopListening()
         SystemClipboardSyncService.shared.onItemAdded = nil
+        SystemClipboardSyncService.shared.onHistoryLoaded = nil
         SystemClipboardSyncService.shared.onQuotaWarning = nil
         save()
         if boundStore === store {

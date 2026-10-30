@@ -43,6 +43,15 @@ public final class SystemClipboardSyncService {
     public var onItemAdded: ((ClipboardItem) -> Void)?
     public var onQuotaWarning: ((String) -> Void)?
 
+    /// Fired once the on-disk history has actually landed in `_history`.
+    ///
+    /// The load is asynchronous, so the first read returns an empty list and
+    /// the real one arrives a moment later. Anything that snapshotted that
+    /// first read — the drawer's `items`, for instance — never learned about
+    /// the second one, which is why a fresh launch showed an empty Clipboard
+    /// until the next copy fired `onItemAdded`.
+    public var onHistoryLoaded: (() -> Void)?
+
     public var retentionPeriod: ClipboardRetentionPeriod = .sevenDays
     public var diskQuota: ClipboardDiskQuota = .mb500
     public var autoPruneOnQuota: Bool = true
@@ -153,6 +162,7 @@ public final class SystemClipboardSyncService {
         }
         guard let items = outcome.items else { return }
         self._history = items
+        onHistoryLoaded?()
     }
 
     private func saveToDisk() {
