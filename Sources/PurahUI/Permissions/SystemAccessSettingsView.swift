@@ -100,6 +100,34 @@ public struct SystemAccessSettingsView: View {
                             }
                         }
                     }
+
+                    let unsupported = unsupportedDeclarations
+                    if !unsupported.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("permissions.unsupported.title".localized)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.orange)
+                                .textCase(.uppercase)
+
+                            ForEach(unsupported, id: \.self) { line in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 9.5))
+                                        .foregroundColor(.orange)
+                                    Text(line)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.orange.opacity(0.10))
+                                .cornerRadius(6)
+                            }
+                        }
+                    }
                 }
                 .padding(.trailing, 4)
             }
@@ -294,6 +322,19 @@ public struct SystemAccessSettingsView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
         )
+    }
+
+    /// Capability names plugins declared that this build has never heard of.
+    /// The host cannot grant them — each one needs its own system API — but a
+    /// silent drop would look like the plugin simply has no requirements.
+    private var unsupportedDeclarations: [String] {
+        PluginRegistry.shared.allCatalogPlugins
+            .flatMap { entry in
+                entry.manifest.unsupportedPermissions.map {
+                    String(format: "permissions.unsupported".localized, entry.manifest.displayName, $0)
+                }
+            }
+            .sorted()
     }
 
     private func statusColor(_ status: AccessStatus) -> Color {

@@ -8,6 +8,7 @@ import Foundation
 // what is actually true — the class is only used from the main actor — instead
 // of silencing the diagnostic at the call site.
 @preconcurrency import EventKit
+import AVFoundation
 import AppKit
 import Observation
 
@@ -41,6 +42,7 @@ public final class PermissionManager {
     public private(set) var calendarStatus: AccessStatus = .notDetermined
     public private(set) var remindersStatus: AccessStatus = .notDetermined
     public private(set) var musicStatus: AccessStatus = .standardCapability
+    public private(set) var microphoneStatus: AccessStatus = .notDetermined
 
     private var eventStore = EKEventStore()
 
@@ -58,22 +60,42 @@ public final class PermissionManager {
 
         // Apple Music observes standard distributed notifications without TCC prompt
         self.musicStatus = .standardCapability
+
+        self.microphoneStatus = Self.status(fromCaptureAuthorization:
+            AVCaptureDevice.authorizationStatus(for: .audio))
     }
 
     public func status(for permission: PluginPermission) -> AccessStatus {
         switch permission {
         case .calendar: return calendarStatus
         case .reminders: return remindersStatus
+        case .microphone: return microphoneStatus
         case .appleMusic, .pasteboard, .machTelemetry, .shellExecution, .fileSystem:
             return .standardCapability
         }
     }
 
+    /// Exhaustive on purpose: a `default: return true` here silently granted
+    /// every capability added later, so a new TCC-gated permission would have
+    /// looked authorized and never prompted. Adding a case now fails to
+    /// compile until someone decides what it means.
     public func requestAccess(for permission: PluginPermission) async -> Bool {
         switch permission {
         case .calendar: return await requestCalendarAccess()
         case .reminders: return await requestRemindersAccess()
-        default: return true
+        case .microphone: return await requestMicrophoneAccess()
+        case .appleMusic, .pasteboard, .machTelemetry, .shellExecution, .fileSystem:
+            return true
+        }
+    }
+
+    public static func status(fromCaptureAuthorization status: AVAuthorizationStatus) -> AccessStatus {
+        switch status {
+        case .authorized: return .authorized
+        case .notDetermined: return .notDetermined
+        case .denied: return .denied
+        case .restricted: return .restricted
+        @unknown default: return .notDetermined
         }
     }
 
@@ -121,8 +143,17 @@ public final class PermissionManager {
         }
     }
 
-    public func openSystemSettings(for service: String = "Privacy_Calendars") {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(service)") {
+    /// The system prompt names Purah, because TCC keys on the app. That is why
+    /// a plugin can only *ask the host* for this: a dylib that called
+    /// `AVCaptureDevice.requestAccess` itself would still raise the same app
+    /// sheet, and the host would have no chance to check the declaration first.
+    public func requestMicrophoneAccess() async -> Bool {
+        let granted = await AVCaptureDevice.requestAccess(for: .audio)
+        refreshStatuses()
+        return granted
+    }
+
+    public func openSystemSettings(for service: String = "Privacy_Calendars") {        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(service)") {
             NSWorkspace.shared.open(url)
         }
     }
