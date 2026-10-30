@@ -33,7 +33,16 @@ public struct AppUpdateDialogView: View {
 
             Divider()
 
-            // Content based on state
+            // Content based on state.
+            //
+            // No `.transition` and no `.animation` here, on purpose. The
+            // branches shared one spring, and switching to `.updateAvailable`
+            // (a ScrollView of release notes) while the `.checking` branch was
+            // still being removed left the dialog frozen on its spinner: the
+            // state had the answer, the window still drew the check, and only
+            // closing and reopening — a fresh view graph — showed it. A state
+            // that is being reported as "still checking" must never depend on
+            // an animation finishing.
             ZStack {
                 switch updater.state {
                 case .idle:
@@ -51,10 +60,6 @@ public struct AppUpdateDialogView: View {
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
 
                 case .checking:
                     VStack(spacing: 12) {
@@ -64,10 +69,6 @@ public struct AppUpdateDialogView: View {
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
 
                 case .upToDate:
                     VStack(spacing: 10) {
@@ -80,10 +81,6 @@ public struct AppUpdateDialogView: View {
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
 
                 case .updateAvailable(let release), .manualUpdateRequired(let release):
                     VStack(alignment: .leading, spacing: 10) {
@@ -127,10 +124,6 @@ public struct AppUpdateDialogView: View {
                         .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
                         .cornerRadius(8)
                     }
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
 
                 case .downloading(let progress):
                     VStack(spacing: 12) {
@@ -147,10 +140,6 @@ public struct AppUpdateDialogView: View {
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
 
                 case .installing:
                     VStack(spacing: 12) {
@@ -161,10 +150,6 @@ public struct AppUpdateDialogView: View {
                             .foregroundColor(.primary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
 
                 case .failed(let error):
                     VStack(spacing: 8) {
@@ -176,13 +161,8 @@ public struct AppUpdateDialogView: View {
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 140)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96).combined(with: .opacity),
-                        removal: .opacity
-                    ))
                 }
             }
-            .animation(PurahMotionPolicy.micro, value: updater.state)
 
             Divider()
 
