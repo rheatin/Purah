@@ -24,13 +24,15 @@ Last reviewed: 2026-10-30 (v0.7.3)
 
 ## Phase 0 — Blockers. Ship nothing public until these are done
 
-- [ ] **0.1 Developer ID + notarization** — $99/year, owner action.
-      Removes the Gatekeeper wall, makes in-place updates silently installable,
-      and satisfies `spctl`. The plumbing already exists: `release.sh` reads
-      `PURAH_SIGN_IDENTITY` and `PURAH_NOTARY_PROFILE`, and `signing-identity.sh`
-      resolves the identity. Swapping the certificate is the whole change.
-      *Note: the switch re-prompts calendar/reminders once. After that they
-      survive updates.*
+- [ ] **0.1 Distribution without Gatekeeper** — decided 2026-10-30: a
+      self-hosted Homebrew tap instead of the $99 Developer ID.
+      The official `homebrew/cask` tap quarantines downloads and drops casks
+      that fail Gatekeeper, so it cannot carry an unnotarized app; a personal
+      tap can. `release.sh` now writes `dist/purah.rb`, and the install steps
+      are in [`OWNER_ACTIONS.md`](OWNER_ACTIONS.md). Notarization is deferred,
+      not cancelled — it is the only way to stop the wall for people who
+      download the DMG directly, and that is the next Phase 0 blocker once the
+      tap is live.
 - [ ] **0.2 First launch for someone who is not the author** — partial.
       Onboarding teaches the rail model but never explains permissions, and a
       denied pod used to look identical to an empty one. Calendar got an

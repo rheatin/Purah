@@ -175,30 +175,10 @@ swift build -c release --disable-sandbox
 
 #### Releasing
 
-```bash
-./build.sh --configuration release      # build/Purah.app
-PURAH_SIGN_IDENTITY="Developer ID Application: …" \
-PURAH_NOTARY_PROFILE="purah-notary" \
-  ./release.sh --publish                # bump, build, sign, notarize, publish
-```
-
-`release.sh --publish` refuses to run unless the tree is clean, the branch is
-`main`, and local `main` contains `origin/main` — a release tagged from an
-unmerged branch ships assets that do not match the commit its tag points at.
-
-The DMG carries `Install Purah.command` and `Read Me.txt` from `packaging/`.
-The script is what makes an ad-hoc build openable: it copies the app into
-Applications and clears the quarantine flag, and it says so in the file where
-anyone can read it before running it.
-
-Signing is optional but decides what the in-app updater can do:
-
-| Build | Self-update | Why |
-|---|---|---|
-| Developer ID + notarized | Installs in place and relaunches | The download's Team ID and Gatekeeper verdict can both be checked |
-| Developer ID only | Installs in place | The download is matched against the published SHA-256; the publisher is known, the app is not notarized |
-| Ad-hoc / unsigned | Installs in place; the dialog says the publisher cannot be proven | There is no Team ID to compare, so the SHA-256 is the whole guarantee |
-
+`./release.sh --publish` bumps, builds, signs and publishes. The runbook, the
+Homebrew tap and the signing trade-offs are in
+[docs/OWNER_ACTIONS.md](docs/OWNER_ACTIONS.md) — notes for whoever ships Purah,
+not for people installing it.
 
 ---
 
