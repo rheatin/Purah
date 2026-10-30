@@ -25,6 +25,7 @@ public final class SystemClipboardSyncService {
     }()
 
     @ObservationIgnored private var _historyLoaded: Bool = false
+    @ObservationIgnored private var _loadStarted: Bool = false
     private var _history: [ClipboardItem] = []
 
     public var history: [ClipboardItem] {
@@ -102,8 +103,11 @@ public final class SystemClipboardSyncService {
 
     // MARK: - Disk Persistence & Memory Paging
     public func loadFromDiskIfNeeded() {
-        guard !_historyLoaded else { return }
-        _historyLoaded = true
+        // `_historyLoaded` is set by `apply`, not here: marking the load done
+        // before the decode lands left `history` empty for a moment, and a copy
+        // arriving in that window saved a one-item index over the real one.
+        guard !_historyLoaded, !_loadStarted else { return }
+        _loadStarted = true
         // First access happens while the drawer is drawing its first frame;
         // decoding the whole history there was a visible hitch. Read and decode
         // off-main, then publish.
@@ -119,7 +123,12 @@ public final class SystemClipboardSyncService {
     }
 
     nonisolated private static func readHistory(at url: URL) -> (items: [ClipboardItem]?, isUnreadable: Bool) {
-        guard let data = try? Data(contentsOf: url) else { return (nil, false) }
+        guard FileManager.default.fileExists(atPath: url.path) else { return (nil, false) }
+        guard let data = try? Data(contentsOf: url) else {
+            // Present but unreadable is not "empty": treating it as empty let
+            // the next save replace a good history with one new clip.
+            return (nil, true)
+        }
         guard let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
             return (nil, true)
         }
@@ -127,6 +136,7 @@ public final class SystemClipboardSyncService {
     }
 
     private func apply(_ outcome: (items: [ClipboardItem]?, isUnreadable: Bool)) {
+        _historyLoaded = true
         guard !outcome.isUnreadable else {
             // Keep the unreadable file instead of letting the next save write
             // an empty history over it: one added field, or one launch of an
@@ -146,6 +156,8 @@ public final class SystemClipboardSyncService {
     }
 
     private func saveToDisk() {
+        // Writing before the base is loaded would persist a partial list.
+        guard _historyLoaded else { return }
         // No `.prettyPrinted`: this is machine state, and indentation roughly
         // doubles every write and every later parse.
         if let data = try? JSONEncoder().encode(_history) {
@@ -342,9 +354,25 @@ public final class SystemClipboardSyncService {
         var currentSize = computeDirectorySize(url: storageDirectory)
         guard currentSize > maxBytes else { return 0 }
 
+        let warn: (Int64, Int64) -> Void = onWarning ?? { [weak self] current, max in
+            let curMB = Double(current) / (1024.0 * 1024.0)
+            let maxMB = Double(max) / (1024.0 * 1024.0)
+            self?.onQuotaWarning?("⚠️ Clipboard storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
+        }
+
         var prunedCount = 0
 
         if shouldPrune {
+            // Pruning can only reclaim what the clips own. The index file,
+            // quarantined copies and interrupted conversions stay, so when
+            // *those* are over quota every deletion is wasted — and an earlier
+            // version deleted the whole unstarred history trying.
+            let clipBytes = history.reduce(Int64(0)) { $0 + assetBytes(of: $1) }
+            if currentSize - clipBytes >= maxBytes {
+                warn(currentSize, maxBytes)
+                return 0
+            }
+
             // Find unstarred items ordered by oldest timestamp first
             while currentSize > maxBytes {
                 guard let oldestUnstarredIdx = history.indices
@@ -355,20 +383,11 @@ public final class SystemClipboardSyncService {
 
                 let removed = history.remove(at: oldestUnstarredIdx)
                 prunedCount += 1
-                if case .image(let path, let thumbPath, _, _, let byteSize) = removed.type {
-                    var freedBytes: Int64 = 0
-                    if let imgAttrs = try? FileManager.default.attributesOfItem(atPath: path),
-                       let s = imgAttrs[.size] as? Int64 {
-                        freedBytes += s
-                    }
-                    if let thumbAttrs = try? FileManager.default.attributesOfItem(atPath: thumbPath),
-                       let s = thumbAttrs[.size] as? Int64 {
-                        freedBytes += s
-                    }
-                    try? FileManager.default.removeItem(atPath: path)
-                    try? FileManager.default.removeItem(atPath: thumbPath)
-                    currentSize = max(0, currentSize - (freedBytes > 0 ? freedBytes : Int64(byteSize)))
-                }
+                // A text clip frees no image bytes, but it does shrink the
+                // index — without counting that too, the loop never saw the
+                // size drop and kept deleting.
+                let freedIndex = Int64((try? JSONEncoder().encode([removed]))?.count ?? 0)
+                currentSize = max(0, currentSize - removeAssets(of: removed) - freedIndex)
             }
 
             if prunedCount > 0 {
@@ -377,19 +396,40 @@ public final class SystemClipboardSyncService {
         }
 
         if currentSize > maxBytes {
-            let callback = onWarning ?? { [weak self] current, max in
-                let curMB = Double(current) / (1024.0 * 1024.0)
-                let maxMB = Double(max) / (1024.0 * 1024.0)
-                self?.onQuotaWarning?("⚠️ Clipboard storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
-            }
-            callback(currentSize, maxBytes)
+            warn(currentSize, maxBytes)
         }
 
         return prunedCount
     }
 
+    /// Bytes the clip's own files occupy (an image and its thumbnail); zero
+    /// for text and colours, which live only in the index.
+    private func assetBytes(of item: ClipboardItem) -> Int64 {
+        guard case .image(let path, let thumbPath, _, _, let byteSize) = item.type else { return 0 }
+        var total: Int64 = 0
+        for filePath in [path, thumbPath] {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
+               let size = attrs[.size] as? Int64 {
+                total += size
+            }
+        }
+        return total > 0 ? total : Int64(byteSize)
+    }
+
+    private func removeAssets(of item: ClipboardItem) -> Int64 {
+        guard case .image(let path, let thumbPath, _, _, _) = item.type else { return 0 }
+        let freed = assetBytes(of: item)
+        try? FileManager.default.removeItem(atPath: path)
+        try? FileManager.default.removeItem(atPath: thumbPath)
+        return freed
+    }
+
     // MARK: - Internal Processors
     public func addItem(_ item: ClipboardItem) {
+        // The first copy can arrive while the launch read is still decoding;
+        // settle that base synchronously so this item is inserted into the real
+        // history rather than into `[]`.
+        if !_historyLoaded { loadFromDisk() }
         if let latest = history.first, latest.plainTextToCopy == item.plainTextToCopy {
             return
         }
