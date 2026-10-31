@@ -43,6 +43,12 @@ public final class NotesPluginState: Sendable {
     /// *every* document's `.md` file each time — a long notebook turned a
     /// paragraph into megabytes of main-thread disk IO.
     @ObservationIgnored private var coalescedSaveTask: Task<Void, Never>?
+    /// True when `index.json` could not be read on launch. The in-memory list is
+    /// then one synthetic scratchpad, and reconciling the directory against it
+    /// would delete every real note file. The stale-file sweep stays off for
+    /// the session; renaming still works, only the cleanup waits for a launch
+    /// whose index reads cleanly.
+    @ObservationIgnored private var sweepDisabled = false
 
     public var quickNote: NoteContent {
         get { noteContent }
@@ -111,7 +117,16 @@ public final class NotesPluginState: Sendable {
         self.noteContent = legacyContent
 
         // Load multi-document collection from disk index.json
+        //
+        // `loadIndex` returns nil for "no file" and for "could not be read",
+        // and quarantines the second. The fallback below is then one synth
+        // scratchpad, and a sweep from that state would delete every note
+        // file the person has. One check before and after the load tells the
+        // two apart: the quarantined file is no longer there.
+        let indexPath = fileStorage.dataDirectory.appendingPathComponent("index.json")
+        let indexExistedBeforeLoad = FileManager.default.fileExists(atPath: indexPath.path)
         var loadedDocs: [NoteDocument] = fileStorage.loadIndex([NoteDocument].self) ?? []
+        self.sweepDisabled = indexExistedBeforeLoad && !FileManager.default.fileExists(atPath: indexPath.path)
 
         if loadedDocs.isEmpty {
             let initialDoc = NoteDocument(
@@ -187,14 +202,43 @@ public final class NotesPluginState: Sendable {
         }
 
         var written: Set<URL> = []
+        let urls = resolvedFileURLs()
         for doc in documents {
             let dir = directory(for: doc)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let url = fileURL(for: doc)
+            guard let url = urls[doc.id] else { continue }
             try? doc.content.data(using: .utf8)?.write(to: url, options: .atomic)
             written.insert(url.standardizedFileURL)
         }
         removeStaleMarkdown(keeping: written)
+    }
+
+    /// Each note's file, with colliding titles kept apart.
+    ///
+    /// The file is named after the title, and the title is the note's `#`
+    /// heading — so two notes called "Ideas" in the same tag resolved to the
+    /// same path and the second write silently replaced the first. Every
+    /// duplicate now carries its id, which is stable across launches and does
+    /// not depend on which note happens to be first in the list.
+    private func resolvedFileURLs() -> [String: URL] {
+        var counts: [URL: Int] = [:]
+        for doc in documents {
+            counts[fileURL(for: doc).standardizedFileURL, default: 0] += 1
+        }
+        var result: [String: URL] = [:]
+        for doc in documents {
+            let url = fileURL(for: doc)
+            if counts[url.standardizedFileURL, default: 0] > 1 {
+                let name = url.lastPathComponent as NSString
+                let stem = name.deletingPathExtension
+                result[doc.id] = directory(for: doc).appendingPathComponent(
+                    "\(stem)-\(doc.id.prefix(8)).\(name.pathExtension)"
+                )
+            } else {
+                result[doc.id] = url
+            }
+        }
+        return result
     }
 
     /// Deletes `.md` files this index no longer points at.
@@ -205,6 +249,10 @@ public final class NotesPluginState: Sendable {
     /// Markdown files in Finder. Writing alone can never clean that up, so the
     /// directory is reconciled against what was just written.
     private func removeStaleMarkdown(keeping written: Set<URL>) {
+        // The list in memory is what the index said. If the index could not be
+        // read, that list is a placeholder and "not written this pass" means
+        // nothing — sweeping from it deleted every note on the machine.
+        guard !sweepDisabled else { return }
         let manager = FileManager.default
         var directories = [fileStorage.dataDirectory]
         if let children = try? manager.contentsOfDirectory(
@@ -294,10 +342,13 @@ public final class NotesPluginState: Sendable {
 
     public func deleteNote(id: String) {
         guard let idx = documents.firstIndex(where: { $0.id == id }) else { return }
+        // Resolve the path while the note is still in the list: a duplicate
+        // title's file carries an id suffix that only exists in that context.
+        let removedURL = resolvedFileURLs()[id]
         let removed = documents.remove(at: idx)
 
         // Remove disk file if it exists
-        try? FileManager.default.removeItem(at: fileURL(for: removed))
+        try? FileManager.default.removeItem(at: removedURL ?? fileURL(for: removed))
 
         if selectedNoteId == id {
             selectedNoteId = documents.first?.id
@@ -385,9 +436,10 @@ public final class NotesPluginState: Sendable {
     /// Removes non-favorite notes, deletes their .md files from fileStorage.dataDirectory,
     /// and ensures at least one note remains under the Star Protection Immunity Rule.
     public func clearNonFavoriteNotes() {
+        let urls = resolvedFileURLs()
         let nonFavorites = documents.filter { !$0.isFavorite }
         for doc in nonFavorites {
-            try? FileManager.default.removeItem(at: fileURL(for: doc))
+            if let url = urls[doc.id] { try? FileManager.default.removeItem(at: url) }
         }
         documents.removeAll { !$0.isFavorite }
         if documents.isEmpty {

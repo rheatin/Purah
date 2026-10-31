@@ -141,6 +141,8 @@ public final class LocalizationManager {
             "general.startup.onboarding.title": "Interactive Panoramic Guide",
             "general.startup.onboarding.subtitle": "Replay the 6-step guided walkthrough to learn mounting, decomposing, stacking, pagination, breathing, and anti-touch calibration.",
             "general.startup.onboarding.button": "Start Interactive Guide",
+            "general.startup.onboarding.confirmTitle": "Replay the interactive guide?",
+            "general.startup.onboarding.confirmMessage": "Every pod on both rails is turned off and the 6-step walkthrough starts. The current rail layout — heights, stacks and pages — is replaced, not restored afterwards.",
             "general.startup.autoUpdate.title": "Check for Updates Automatically",
             "general.startup.autoUpdate.subtitle": "Once at launch, and only opens the update window when a new version exists.",
 
@@ -1072,6 +1074,8 @@ public final class LocalizationManager {
             "general.startup.onboarding.title": "全景实景交互新手向导",
             "general.startup.onboarding.subtitle": "重温 6 步实景向导：演练挂轨、解构子胶囊、叠放卡片、多页翻动、动态呼吸折叠及防误触结界校准。",
             "general.startup.onboarding.button": "启动实景新手向导",
+            "general.startup.onboarding.confirmTitle": "重新开始实景新手向导？",
+            "general.startup.onboarding.confirmMessage": "两条边缘轨上的所有 Pod 会被停用，并开始 6 步向导。当前挂轨布局（高度、叠放与分页）将被替换，结束后不会自动恢复。",
             "general.startup.autoUpdate.title": "自动检查更新",
             "general.startup.autoUpdate.subtitle": "每次启动检查一次，只有发现新版本才会打开更新窗口。",
 
@@ -1998,6 +2002,8 @@ public final class LocalizationManager {
             "general.startup.onboarding.title": "全景實景互動新手向導",
             "general.startup.onboarding.subtitle": "重溫 6 步實景向導：演練掛軌、解構子膠囊、疊放卡片、多頁翻動、動態呼吸折疊及防誤觸結界校准。",
             "general.startup.onboarding.button": "啟動實景新手向導",
+            "general.startup.onboarding.confirmTitle": "重新開始實景新手向導？",
+            "general.startup.onboarding.confirmMessage": "兩條邊緣軌上的所有 Pod 會被停用，並開始 6 步向導。目前掛軌佈局（高度、疊放與分頁）將被替換，結束後不會自動恢復。",
             "general.startup.autoUpdate.title": "自動檢查更新",
             "general.startup.autoUpdate.subtitle": "每次啟動檢查一次，只有發現新版本才會開啟更新視窗。",
 

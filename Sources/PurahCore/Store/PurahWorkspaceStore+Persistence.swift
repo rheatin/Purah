@@ -35,7 +35,11 @@ extension PurahWorkspaceStore {
                     }
                     merged.append(def)
                 }
-                self.pods = merged
+                // A backup or a hand-edited key can carry the same pod id
+                // twice. The layout solvers key their result maps by id, and a
+                // duplicate traps the process on the next reflow.
+                var seenIds: Set<String> = []
+                self.pods = merged.filter { seenIds.insert($0.id).inserted }
             } else if decoded == nil {
                 // Undecodable, as opposed to an empty-but-valid list. Keep the
                 // bytes: the next save writes the default pods over this key,

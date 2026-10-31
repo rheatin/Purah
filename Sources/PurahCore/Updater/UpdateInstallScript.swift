@@ -144,11 +144,29 @@ public enum UpdateInstallScript {
             abandon "The new version could not be moved into place."
         fi
 
+        /usr/bin/xattr -cr "$TARGET" 2>/dev/null || true
+
+        # 8. The backup stays until the new bundle is known to start. `open`'s
+        # exit status is the only signal available, and deleting the backup
+        # first meant a bundle that could not launch left the person with no
+        # app and no old one to go back to.
+        if ! "$OPEN_CMD" "$TARGET" 2>/dev/null; then
+            /bin/rm -rf "$TARGET"
+            if /bin/mv "$BACKUP" "$TARGET"; then
+                /bin/echo "The updated app could not be opened; the previous version was restored." > "$MARKER"
+                "$OPEN_CMD" "$TARGET" 2>/dev/null || true
+            else
+                /bin/echo "The updated app could not be opened, and the previous version could not be restored from $BACKUP." > "$MARKER"
+            fi
+            /bin/rm -rf "$TEMP_DIR"
+            /bin/rm -f "$ARCHIVE"
+            /bin/rm -f "$SCRIPT_SELF"
+            exit 1
+        fi
+
         /bin/rm -rf "$BACKUP"
         /bin/rm -rf "$TEMP_DIR"
         /bin/rm -f "$ARCHIVE"
-        /usr/bin/xattr -cr "$TARGET" 2>/dev/null || true
-        "$OPEN_CMD" "$TARGET"
         /bin/rm -f "$SCRIPT_SELF"
         exit 0
         """

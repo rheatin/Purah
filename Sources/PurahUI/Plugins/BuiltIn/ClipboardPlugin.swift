@@ -1092,8 +1092,11 @@ public struct ClipboardPluginSettingsView: View {
                 ),
                 fileStorage: PurahPluginFileStorage(pluginId: "clipboard"),
                 onClearAll: {
+                    // `clearAll` already deletes the removed items' image and
+                    // thumbnail files. Also wiping the image directories — as
+                    // this used to — took the favourites with it, on a button
+                    // labelled "Clear Unstarred".
                     state.clearAll()
-                    SystemClipboardSyncService.shared.clearDiskStorage()
                 }
             )
         }

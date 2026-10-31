@@ -447,7 +447,6 @@ public final class AIAssistantService {
         mcpConfigPath: String? = nil,
         resumeCLISessionId: String? = nil,
         onCLISessionId: (@Sendable (String) -> Void)? = nil,
-        onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
@@ -509,7 +508,6 @@ public final class AIAssistantService {
                         model: model,
                         targetLanguage: targetLanguage,
                         systemPromptOverride: systemPromptOverride,
-                        onResolvedModel: onResolvedModel,
                         onServedModel: onServedModel,
                         onChunk: onChunk
                     )
@@ -586,7 +584,6 @@ public final class AIAssistantService {
         model: String?,
         targetLanguage: String,
         systemPromptOverride: String? = nil,
-        onResolvedModel: (@Sendable (String) -> Void)? = nil,
         onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
@@ -652,14 +649,17 @@ public final class AIAssistantService {
         request.httpBody = try JSONSerialization.data(withJSONObject: bodyPayload)
 
         var (bytes, response) = try await URLSession.shared.bytes(for: request)
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 || httpResponse.statusCode == 400 {
+        // Only a model that the server does not know is healed, which OpenAI
+        // reports as 404. A 400 covers a bad key and a malformed body too, and
+        // retrying those with whatever model the server lists first made them
+        // look fixed while quietly replacing the model the person chose.
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
             let discoveredModels = try? await fetchAvailableModels(provider: provider, baseURL: endpoint ?? "", apiKey: apiKey ?? "")
             if let fallbackModel = discoveredModels?.first, fallbackModel != selectedModel {
-                DiagnosticLogger.shared.info("AI", "Auto-healing model error \(httpResponse.statusCode) from '\(selectedModel)' to '\(fallbackModel)'")
+                DiagnosticLogger.shared.info("AI", "Auto-healing model error 404 from '\(selectedModel)' to '\(fallbackModel)'")
                 selectedModel = fallbackModel
                 bodyPayload["model"] = fallbackModel
                 request.httpBody = try JSONSerialization.data(withJSONObject: bodyPayload)
-                onResolvedModel?(fallbackModel)
                 let retryResult = try await URLSession.shared.bytes(for: request)
                 bytes = retryResult.0
                 response = retryResult.1

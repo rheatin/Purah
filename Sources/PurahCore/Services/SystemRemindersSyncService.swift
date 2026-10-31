@@ -120,7 +120,10 @@ public final class SystemRemindersSyncService {
         if let targetStore = targetStore {
             targetStore.remindersScope = targetScope
             targetStore.isUsingRealReminders = true
-            targetStore._todos = items
+            // A task EventKit has never seen is not a deleted one: tasks
+            // written while access was denied live only here.
+            let localOnly = targetStore._todos.filter { $0.id.hasPrefix(TodoItem.localIdPrefix) }
+            targetStore._todos = items + localOnly
         }
         lastSyncDate = Date()
         isSyncing = false
@@ -145,11 +148,11 @@ public final class SystemRemindersSyncService {
                 await syncReminders(into: targetStore)
                 return true
             } catch {
-                targetStore?._todos.append(TodoItem(title: trimmed))
+                targetStore?._todos.append(TodoItem(id: TodoItem.localIdPrefix + UUID().uuidString, title: trimmed))
                 return true
             }
         } else {
-            targetStore?._todos.append(TodoItem(title: trimmed))
+            targetStore?._todos.append(TodoItem(id: TodoItem.localIdPrefix + UUID().uuidString, title: trimmed))
             return true
         }
     }

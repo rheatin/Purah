@@ -428,12 +428,16 @@ public final class AppUpdaterManager {
         // The watchdog is what gives `.checking` an exit. It fires after the
         // request deadline; if this check has been replaced by then, the
         // generation no longer matches and it leaves the newer one alone.
+        //
+        // It must not also require `.checking`: a re-check started while an
+        // older answer is still on screen keeps that answer, so the state is
+        // never `.checking` — and if the request then hung, `isChecking` stayed
+        // true and every later check was refused.
         let deadline = checkDeadline
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(deadline))
             guard let self,
-                  self.checkGeneration == generation,
-                  case .checking = self.state else { return }
+                  self.checkGeneration == generation else { return }
             // Recorded so the next occurrence can be diagnosed: the dialog
             // only says "timed out", and whether that was DNS, a proxy holding
             // the socket open, or a dead continuation is not visible there.

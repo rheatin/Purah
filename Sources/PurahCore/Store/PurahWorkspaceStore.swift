@@ -1448,7 +1448,12 @@ public final class PurahWorkspaceStore {
         }
         if podId == "calendar" {
             if isEventGlowAlertEnabled && alertStyle != .off {
-                if _calendarEvents.contains(where: { ($0.isOngoing || $0.isImminent) && !isAlertAcknowledged(id: $0.id) }) {
+                // The window is the person's setting. A hardcoded 15 minutes
+                // lit the rail for an event the drawer, reading the setting,
+                // did not consider imminent.
+                if _calendarEvents.contains(where: {
+                    ($0.isOngoing || $0.isImminent(leadTime: calendarAlertLeadTime)) && !isAlertAcknowledged(id: $0.id)
+                }) {
                     return true
                 }
             }
@@ -1469,7 +1474,7 @@ public final class PurahWorkspaceStore {
     public func acknowledgeAllAlerts(forPodId podId: String) {
         acknowledgedAlertIds.insert(podId)
         if podId == "calendar" {
-            for event in _calendarEvents where (event.isOngoing || event.isImminent) {
+            for event in _calendarEvents where (event.isOngoing || event.isImminent(leadTime: calendarAlertLeadTime)) {
                 acknowledgedAlertIds.insert(event.id)
             }
         }
@@ -3498,7 +3503,7 @@ public final class PurahWorkspaceStore {
                     return max(minH / screenH, 0.05)
                 }
             )
-            var resolvedMap = Dictionary(uniqueKeysWithValues: resolvedPagePods.map { ($0.id, $0) })
+            var resolvedMap = Dictionary(resolvedPagePods.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             if var updatedTarget = resolvedMap[id] {
                 updatedTarget.minLength = min(updatedTarget.minLength, 0.05)
                 resolvedMap[id] = updatedTarget
@@ -3547,7 +3552,11 @@ public final class PurahWorkspaceStore {
 
     public func canMovePod(id: String, direction: PodMoveDirection) -> Bool {
         guard let currentPod = pods.first(where: { $0.id == id && $0.isEnabled }) else { return false }
-        let railPods = pods.filter { $0.edge == currentPod.edge && $0.isEnabled }
+        // Order is per page: ranges on page 2 are 0…1 on their own, so a pod
+        // there would have been swapped with a neighbour it never meets.
+        let railPods = pods.filter {
+            $0.edge == currentPod.edge && $0.isEnabled && $0.pageIndex == currentPod.pageIndex
+        }
             .sorted { $0.range.start < $1.range.start }
         guard let currentIndex = railPods.firstIndex(where: { $0.id == id }) else { return false }
         switch direction {
@@ -3561,7 +3570,9 @@ public final class PurahWorkspaceStore {
     public func movePodInOrder(id: String, direction: PodMoveDirection) {
         guard let currentPod = pods.first(where: { $0.id == id && $0.isEnabled }) else { return }
         let edge = currentPod.edge
-        let railPods = pods.filter { $0.edge == edge && $0.isEnabled }
+        let railPods = pods.filter {
+            $0.edge == edge && $0.isEnabled && $0.pageIndex == currentPod.pageIndex
+        }
             .sorted { $0.range.start < $1.range.start }
 
         guard let currentIndex = railPods.firstIndex(where: { $0.id == id }) else { return }
@@ -3586,7 +3597,7 @@ public final class PurahWorkspaceStore {
 
         let p1 = pods[idx1]
         let p2 = pods[idx2]
-        guard p1.edge == p2.edge else { return }
+        guard p1.edge == p2.edge, p1.pageIndex == p2.pageIndex else { return }
 
         let start1 = p1.range.start
         let start2 = p2.range.start
@@ -3691,6 +3702,10 @@ public final class PurahWorkspaceStore {
         let rightPageCount = max(paginatedPods(for: .right, totalHeight: max(Double(availableScreenHeight(for: .right)), 600.0)).count, 1)
         if leftRailPage >= leftPageCount { leftRailPage = max(0, leftPageCount - 1) }
         if rightRailPage >= rightPageCount { rightRailPage = max(0, rightPageCount - 1) }
+        // The demo pods are mounted with `mountPod`, which persists — so disk
+        // held the sandbox layout while memory was put back. Write the restored
+        // layout too, or the next launch opens on the demo rail.
+        savePersistentState()
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
     }

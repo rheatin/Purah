@@ -312,6 +312,11 @@ public final class AIAssistantPluginState: Sendable {
     public var isAwaitingRoleForDroppedContent: Bool = false
 
     @ObservationIgnored private var currentStreamingTask: Task<Void, Never>?
+    /// Which turn owns `isStreaming`, `activeQuickAction` and
+    /// `accumulatedStreamRaw`. A cancelled task still runs its completion
+    /// block, and without this it cleared the state of the request that
+    /// replaced it, so a stopped answer broke the next one.
+    @ObservationIgnored private var streamGeneration = 0
     @ObservationIgnored private var accumulatedStreamRaw: String = ""
 
     public var activeSession: AIChatSession? {
@@ -1617,6 +1622,8 @@ public final class AIAssistantPluginState: Sendable {
         activeQuickAction = effectiveAction
         activeRole = role
         accumulatedStreamRaw = ""
+        streamGeneration &+= 1
+        let generation = streamGeneration
 
         let msgsToSend: [AIChatMessage]
         if includeHistory || effectiveRoleId == "ask" {
@@ -1681,19 +1688,6 @@ public final class AIAssistantPluginState: Sendable {
                     mcpConfigPath: AIAssistantService.mcpConfigPath(servers: mcpServers),
                     resumeCLISessionId: resumeCLISessionId,
                     onCLISessionId: { sessionIdBox.set($0) },
-                    onResolvedModel: { [weak self] resolved in
-                        Task { @MainActor [weak self] in
-                            guard let self else { return }
-                            if provider == .httpOpenAI {
-                                self.openAIModel = resolved
-                            } else if provider == .httpOllama {
-                                self.ollamaModel = resolved
-                            } else if provider == .httpAnthropic {
-                                self.anthropicModel = resolved
-                            }
-                            self.save()
-                        }
-                    },
                     onServedModel: { [weak self] served in
                         Task { @MainActor [weak self] in
                             guard let self else { return }
@@ -1711,7 +1705,7 @@ public final class AIAssistantPluginState: Sendable {
                     },
                     onChunk: { [weak self] chunk in
                         Task { @MainActor [weak self] in
-                            self?.handleChunk(chunk, forSession: targetSessionId, assistantMsgId: assistantMsgId)
+                            self?.handleChunk(chunk, forSession: targetSessionId, assistantMsgId: assistantMsgId, generation: generation)
                         }
                     }
                 )
@@ -1722,13 +1716,17 @@ public final class AIAssistantPluginState: Sendable {
             }
 
             Task { @MainActor [weak self] in
-                self?.handleStreamingComplete(forSession: targetSessionId, cliSessionId: sessionIdBox.current)
+                self?.handleStreamingComplete(
+                    forSession: targetSessionId,
+                    cliSessionId: sessionIdBox.current,
+                    generation: generation
+                )
             }
         }
     }
 
-    private func handleChunk(_ chunk: String, forSession sessionId: String, assistantMsgId: UUID) {
-        guard isStreaming else { return }
+    private func handleChunk(_ chunk: String, forSession sessionId: String, assistantMsgId: UUID, generation: Int) {
+        guard isStreaming, generation == streamGeneration else { return }
         accumulatedStreamRaw += chunk
         let parsed = AIThinkAndChoicesParser.parse(raw: accumulatedStreamRaw)
         if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }),
@@ -1774,7 +1772,10 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
-    private func handleStreamingComplete(forSession sessionId: String, cliSessionId: String? = nil) {
+    private func handleStreamingComplete(forSession sessionId: String, cliSessionId: String? = nil, generation: Int) {
+        // A cancelled turn still reaches here after the request that replaced
+        // it has started; its completion must not clear the new one's state.
+        guard generation == streamGeneration else { return }
         isStreaming = false
         activeQuickAction = nil
         currentStreamingTask = nil

@@ -131,6 +131,14 @@ public final class SystemClipboardSyncService {
         apply(Self.readHistory(at: metadataURL))
     }
 
+    /// Mutators run on a list that may still be on its way in from disk. Acting
+    /// on the empty placeholder either does nothing (`deleteItem`) or writes
+    /// `[]` over the real history (`clearAll` sets `history`, which marks the
+    /// load done and lets the next save persist an empty index).
+    private func ensureLoaded() {
+        if !_historyLoaded { loadFromDisk() }
+    }
+
     nonisolated private static func readHistory(at url: URL) -> (items: [ClipboardItem]?, isUnreadable: Bool) {
         guard FileManager.default.fileExists(atPath: url.path) else { return (nil, false) }
         guard let data = try? Data(contentsOf: url) else {
@@ -145,6 +153,11 @@ public final class SystemClipboardSyncService {
     }
 
     private func apply(_ outcome: (items: [ClipboardItem]?, isUnreadable: Bool)) {
+        // The launch read runs off-main, and a synchronous read (a copy arriving
+        // before it lands) or a mutation can finish first. The first answer
+        // wins: a later snapshot is at best the same file, and at worst an
+        // older one that drops the item copied in between.
+        guard !_historyLoaded else { return }
         _historyLoaded = true
         guard !outcome.isUnreadable else {
             // Keep the unreadable file instead of letting the next save write
@@ -275,6 +288,7 @@ public final class SystemClipboardSyncService {
     }
 
     public func deleteItem(id: String) {
+        ensureLoaded()
         if let idx = history.firstIndex(where: { $0.id == id }) {
             let removed = history.remove(at: idx)
             saveToDisk()
@@ -286,6 +300,7 @@ public final class SystemClipboardSyncService {
     }
 
     public func clearAll(keepFavorites: Bool = true) {
+        ensureLoaded()
         let itemsToDelete = keepFavorites ? history.filter { !$0.isFavorite } : history
         for item in itemsToDelete {
             if case .image(let path, let thumbPath, _, _, _) = item.type {
@@ -302,6 +317,7 @@ public final class SystemClipboardSyncService {
     }
 
     public func toggleFavorite(id: String) {
+        ensureLoaded()
         if let idx = history.firstIndex(where: { $0.id == id }) {
             history[idx].isFavorite.toggle()
             saveToDisk()
@@ -313,6 +329,7 @@ public final class SystemClipboardSyncService {
     }
 
     public func moveItem(from sourceIndex: Int, to destinationIndex: Int) {
+        ensureLoaded()
         guard history.indices.contains(sourceIndex),
               history.indices.contains(destinationIndex),
               sourceIndex != destinationIndex else { return }
