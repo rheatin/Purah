@@ -51,6 +51,34 @@ struct DragRoundTripTests {
         #expect(state.files.contains { $0.id == itemId })
     }
 
+    @Test("An AirDrop sheet launched from the shelf cannot delete the staged item before it succeeds")
+    @MainActor
+    func testAirDropFromShelfKeepsStagedItem() throws {
+        let (state, tempDir) = try makeShelf()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let staged = tempDir.appendingPathComponent("airdrop-me.txt")
+        try "keep until AirDrop completes".write(to: staged, atomically: true, encoding: .utf8)
+        state.addFile(url: staged)
+        let itemId = try #require(state.files.first?.id)
+
+        let pasteboard = NSPasteboard.withUniqueName()
+        pasteboard.clearContents()
+        #expect(pasteboard.writeObjects([staged as NSURL]))
+
+        ShelfDragSession.shared.begin(paths: [staged.path])
+        #expect(
+            ShelfAirDropDelegate.preserveShelfItemsIfNeeded(in: pasteboard),
+            "the internal AirDrop target must recognise its own drag"
+        )
+        #expect(ShelfDragSession.shared.consumeSelfDrop())
+
+        // The source callback sees a round trip, not a successful hand-off.
+        // Canceling the AirDrop sheet therefore leaves the staged row intact.
+        #expect(state.files.contains { $0.id == itemId })
+        #expect(FileManager.default.fileExists(atPath: staged.path))
+    }
+
     @Test("Dropping onto another pod still counts as an export")
     @MainActor
     func testDropOnOtherPodIsStillAnExport() throws {

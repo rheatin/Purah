@@ -39,10 +39,14 @@ public struct PersistentTerminalDrawerView: View {
                 fontSize: state.fontSize,
                 palette: palette
             )
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(palette.borderColor.opacity(0.3), lineWidth: 0.8)
+                // Was a 0.3 border around a 6pt box — together with the
+                // terminal's own dark fill it read as a separate window. With
+                // the fill gone this is only a hairline, so the drawer's own
+                // corner shows.
+                RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
+                    .stroke(palette.borderColor.opacity(0.12), lineWidth: 0.8)
             )
             .frame(maxHeight: .infinity)
 

@@ -531,8 +531,12 @@ public final class TerminalManager: ObservableObject {
         lastAppliedPalette = palette
 
         // 2. Terminal Colors & Translucency
+        // A terminal is a panel inside the drawer, not a terminal window: it
+        // used to paint its own near-black rectangle, which read as a black
+        // box bolted into the card. Clear lets the card's surface through, so
+        // the only thing the terminal contributes is text.
         let isDark = palette.style != .native
-        view.nativeBackgroundColor = isDark ? NSColor(red: 0.07, green: 0.08, blue: 0.11, alpha: 0.92) : NSColor.textBackgroundColor.withAlphaComponent(0.92)
+        view.nativeBackgroundColor = .clear
         view.nativeForegroundColor = isDark ? NSColor(white: 0.94, alpha: 1.0) : NSColor.labelColor
         view.caretColor = isDark ? NSColor(red: 0.0, green: 0.96, blue: 0.83, alpha: 1.0) : NSColor.controlAccentColor
         view.layer?.backgroundColor = NSColor.clear.cgColor

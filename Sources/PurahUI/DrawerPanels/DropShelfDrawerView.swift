@@ -98,6 +98,7 @@ public struct DropShelfDrawerView: View {
     @State private var marqueeStartPoint: CGPoint? = nil
     @State private var marqueeCurrentPoint: CGPoint? = nil
     @State private var rowFrames: [String: CGRect] = [:]
+    @State private var isHoveringAirDropButton = false
 
     private var isStashTargeted: Bool { activeDropZone == .stash }
     private var isAirDropTargeted: Bool { activeDropZone == .airDrop }
@@ -351,26 +352,40 @@ public struct DropShelfDrawerView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: isAirDropTargeted ? "paperplane.fill" : "paperplane")
-                                .font(.system(size: 9.5, weight: .semibold))
+                                .font(.system(size: 9.5, weight: .bold))
                             Text("dropshelf.airDrop".localized)
                                 .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         }
-                        .padding(.horizontal, 8)
-                        .frame(height: 22)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 9)
+                        .frame(height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isAirDropTargeted ? Color.blue.opacity(0.22) : Color.primary.opacity(0.06))
+                                .fill(shelfColor.opacity(isAirDropTargeted ? 1.0 : 0.90))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .stroke(
-                                    isAirDropTargeted ? Color.cyan : Color.clear,
-                                    style: StrokeStyle(lineWidth: 1.2, dash: [3, 3])
+                                    isAirDropTargeted
+                                        ? Color.white.opacity(0.55)
+                                        : Color.white.opacity(0.12),
+                                    lineWidth: isAirDropTargeted ? 1.2 : 0.8
                                 )
                         )
-                        .foregroundColor(isAirDropTargeted ? .cyan : .primary.opacity(0.85))
+                        .foregroundColor(shelfColor.highContrastInk)
+                        .shadow(
+                            color: shelfColor.opacity(isAirDropTargeted ? 0.45 : (isHoveringAirDropButton ? 0.24 : 0.10)),
+                            radius: isAirDropTargeted ? 8 : 4,
+                            x: 0,
+                            y: 2
+                        )
+                        .scaleEffect(isAirDropTargeted ? 1.04 : (isHoveringAirDropButton ? 1.02 : 1.0))
+                        .animation(PurahMotionPolicy.hover, value: isAirDropTargeted)
+                        .animation(PurahMotionPolicy.hover, value: isHoveringAirDropButton)
                     }
                     .buttonStyle(.tactile)
+                    .onHover { isHoveringAirDropButton = $0 }
                     .help("dropshelf.airDropHelp".localized)
                     .accessibilityLabel("dropshelf.airDropHelp".localized)
                     .disabled(state.filesForBatchExport().isEmpty)
@@ -886,6 +901,7 @@ public struct ShelfAirDropDelegate: DropDelegate {
     public func performDrop(info: DropInfo) -> Bool {
         isTargeted = false
         let pasteboard = NSPasteboard(name: .drag)
+        Self.preserveShelfItemsIfNeeded(in: pasteboard)
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             DropShelfDrawerView.shareViaAirDrop(urls: urls)
             store.triggerControlHaptic(.alignment)
@@ -907,6 +923,7 @@ public struct ShelfAirDropDelegate: DropDelegate {
                     }
                     if let fileURL = url {
                         Task { @MainActor in
+                            ShelfDragSession.shared.claimSelfDropIfCarrying([fileURL])
                             DropShelfDrawerView.shareViaAirDrop(urls: [fileURL])
                             store.triggerControlHaptic(.alignment)
                         }
@@ -916,6 +933,7 @@ public struct ShelfAirDropDelegate: DropDelegate {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     if let url = url {
                         Task { @MainActor in
+                            ShelfDragSession.shared.claimSelfDropIfCarrying([url])
                             DropShelfDrawerView.shareViaAirDrop(urls: [url])
                             store.triggerControlHaptic(.alignment)
                         }
@@ -924,6 +942,21 @@ public struct ShelfAirDropDelegate: DropDelegate {
             }
         }
         return true
+    }
+
+    /// An internal AirDrop drop opens a sheet; it does not prove delivery.
+    /// Marking the round trip synchronously keeps the source row alive if the
+    /// person cancels the sheet or no nearby device accepts it.
+    @MainActor
+    @discardableResult
+    public static func preserveShelfItemsIfNeeded(in pasteboard: NSPasteboard) -> Bool {
+        guard let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL], !urls.isEmpty else {
+            return false
+        }
+        return ShelfDragSession.shared.claimSelfDropIfCarrying(urls)
     }
 }
 

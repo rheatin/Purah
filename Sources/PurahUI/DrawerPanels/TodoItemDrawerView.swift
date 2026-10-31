@@ -78,53 +78,80 @@ public struct TodoItemDrawerView: View {
                     await SystemRemindersSyncService.shared.toggleCompletion(id: todo.id, into: store)
                 }
             } label: {
-                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isDone ? podColor.opacity(0.4) : podColor)
-                    .font(.system(size: 13))
+                ZStack {
+                    Circle()
+                        .fill(podColor.opacity(isDone ? 0.12 : 0.16))
+                    Circle()
+                        .strokeBorder(podColor.opacity(isDone ? 0.26 : 0.55), lineWidth: 1)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundColor(podColor)
+                        .opacity(isDone ? 1 : 0)
+                }
+                .frame(width: 18, height: 18)
             }
             .buttonStyle(.plain)
             .help("todo.toggleDone".localized)
 
-            VStack(alignment: .leading, spacing: 1) {
-                TextField("", text: Binding(
-                    get: { todo.title },
-                    set: { newTitle in
-                        if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
-                            store._todos[idx].title = newTitle
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    TextField("", text: Binding(
+                        get: { todo.title },
+                        set: { newTitle in
+                            if let idx = store._todos.firstIndex(where: { $0.id == todo.id }) {
+                                store._todos[idx].title = newTitle
+                            }
                         }
-                    }
-                ))
-                .textFieldStyle(.plain)
-                .strikethrough(isDone)
-                .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .opticalTracking(size: 11)
-                .lineLimit(1)
+                    ))
+                    .textFieldStyle(.plain)
+                    .strikethrough(isDone)
+                    .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .opticalTracking(size: 11)
+                    .lineLimit(1)
 
-                if let due = todo.dueDate {
-                    Text(due.formatted(date: .abbreviated, time: .shortened))
-                        .purahCaption(size: 9)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundColor(isDone ? podColor.opacity(0.35) : .gray)
+                    if !isDone, let status = statusPresentation() {
+                        Text(status.text)
+                            .purahBadge(size: 7.5, weight: .heavy, design: .rounded)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule(style: .continuous).fill(status.color))
+                            .foregroundColor(status.color.highContrastInk)
+                            .fixedSize()
+                    }
                 }
+
+                HStack(spacing: 4) {
+                    Image(systemName: todo.dueDate == nil ? "calendar" : "clock")
+                        .font(.system(size: 7.5, weight: .semibold))
+
+                    if let due = todo.dueDate {
+                        Text(dueLabel(for: due))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                    } else {
+                        Text("todo.noDueDate".localized)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+
+                    Text("·")
+                        .opacity(0.55)
+
+                    Circle()
+                        .fill(listColor.opacity(isDone ? 0.35 : 0.9))
+                        .frame(width: 4, height: 4)
+
+                    Text(todo.listTitle)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(isDone ? .secondary.opacity(0.42) : .secondary.opacity(0.78))
             }
 
             Spacer(minLength: 4)
-
-            // Category tag with native list color indicator
-            HStack(spacing: 3) {
-                Circle()
-                    .fill(listColor)
-                    .frame(width: 4.5, height: 4.5)
-                Text(todo.listTitle)
-                    .purahBadge(size: 8, weight: .bold)
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .background(listColor.opacity(isDone ? 0.08 : 0.16))
-            .foregroundColor(listColor.opacity(isDone ? 0.45 : 1.0))
-            .cornerRadius(3)
 
             pinButton
         }
@@ -199,6 +226,41 @@ public struct TodoItemDrawerView: View {
                 Label(isPinned ? "Unpin Task" : "Pin Task", systemImage: isPinned ? "pin.slash" : "pin")
             }
         }
+    }
+
+    private func statusPresentation() -> (text: String, color: Color)? {
+        switch TodoPlugin.urgencyPresentation(for: todo).badge {
+        case "OVERDUE":
+            return ("todo.status.overdue".localized, Color(hex: "#FF453A"))
+        case "TODAY":
+            return ("todo.status.today".localized, Color(hex: "#FF9F0A"))
+        default:
+            return nil
+        }
+    }
+
+    private func dueLabel(for due: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(due) {
+            return due.formatted(date: .omitted, time: .shortened)
+        }
+        if calendar.component(.year, from: due) == calendar.component(.year, from: Date()) {
+            return due.formatted(
+                .dateTime
+                    .month(.twoDigits)
+                    .day(.twoDigits)
+                    .hour()
+                    .minute()
+            )
+        }
+        return due.formatted(
+            .dateTime
+                .year(.twoDigits)
+                .month(.twoDigits)
+                .day(.twoDigits)
+                .hour()
+                .minute()
+        )
     }
 
     /// Applies a repeating schedule to this item, in both the plugin state and

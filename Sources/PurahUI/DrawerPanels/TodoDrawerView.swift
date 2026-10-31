@@ -244,9 +244,19 @@ public struct TodoDrawerView: View {
                 // Single item stepped drawer mode
                 todoCard(todo: activeItem)
             } else {
+                let visibleTodos = state.todos.filter {
+                    $0.isCompleted == state.showsCompleted && !excludeIDs.contains($0.id)
+                }
                 PurahScrollableBody {
+                    if visibleTodos.isEmpty {
+                        Text(state.showsCompleted ? "todo.empty.completed".localized : "todo.empty.title".localized)
+                            .font(.system(size: 9.5, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                    }
                     VStack(spacing: 5) {
-                        ForEach(state.todos.filter { !excludeIDs.contains($0.id) }) { todo in
+                        ForEach(visibleTodos) { todo in
                             todoCard(todo: todo)
                                 .transition(.asymmetric(
                                     insertion: .scale(scale: 0.96).combined(with: .opacity),

@@ -42,6 +42,13 @@ public struct TodoPlugin: PurahPodPlugin {
         AnyView(TodoPluginSettingsView(state: state, store: store))
     }
 
+    /// Open / Completed live in the header so the drawer body keeps its full
+    /// height for tasks. Nothing else in the pod reads this flag: the rail
+    /// chips and the pod's minimum height still describe what is open.
+    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        AnyView(TodoHeaderScopeTabs(state: state, accent: context.accentColor))
+    }
+
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
         store.todoMaxRailTasks = state.maxRailTodos
@@ -439,3 +446,49 @@ public struct TodoPluginSettingsView: View {
     }
 }
 
+
+// MARK: - Header: Open / Completed
+
+/// Two segments, sized off `PurahHeaderMetrics` like every other header
+/// control. Deliberately not persisted: opening the completed half is a
+/// glance, not a mode, and nobody wants yesterday's finished tasks greeting
+/// them after a relaunch.
+struct TodoHeaderScopeTabs: View {
+    let state: TodoPluginState
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 2) {
+            segment(title: "todo.tab.open", isOn: !state.showsCompleted) {
+                state.showsCompleted = false
+            }
+            segment(title: "todo.tab.done", isOn: state.showsCompleted) {
+                state.showsCompleted = true
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: PurahHeaderMetrics.buttonCorner + 2, style: .continuous)
+                .fill(Color.primary.opacity(PurahHeaderMetrics.menuFill))
+        )
+    }
+
+    private func segment(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(PurahMotionPolicy.surfaceSoft) { action() }
+        } label: {
+            Text(title.localized)
+                .font(.system(size: PurahHeaderMetrics.pillFontSize, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .padding(.horizontal, PurahHeaderMetrics.pillPaddingH + 1)
+                .padding(.vertical, PurahHeaderMetrics.pillPaddingV)
+                .foregroundColor(isOn ? Color.primary : Color.primary.opacity(0.55))
+                .background(
+                    RoundedRectangle(cornerRadius: PurahHeaderMetrics.pillCorner, style: .continuous)
+                        .fill(isOn ? accent.opacity(PurahHeaderMetrics.selectedFill) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+}

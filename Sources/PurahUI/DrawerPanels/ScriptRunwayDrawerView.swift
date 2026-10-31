@@ -9,6 +9,9 @@ public struct ScriptRunwayDrawerView: View {
     @State private var diagnosis: String? = nil
     @State private var showsDiagnosis: Bool = false
     @State private var isDiagnosing: Bool = false
+    @State private var hoveredActionId: String? = nil
+    @State private var armedActionId: String? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var runway: ScriptRunwayService {
         ScriptRunwayService.shared
     }
@@ -29,11 +32,12 @@ public struct ScriptRunwayDrawerView: View {
     public var body: some View {
         let scriptColor = palette.podColor(for: "scripts")
 
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PurahItemRhythm.sectionGap) {
             PurahScrollableBody {
-                VStack(spacing: 5) {
+                VStack(spacing: PurahItemRhythm.rowGap) {
                     ForEach(state.actions) { action in
                         let isThisRunning = (state.isRunning && state.lastExecutedActionId == action.id) || (runway.isRunning && runway.lastExecutedActionId == action.id)
+                        let isHovered = hoveredActionId == action.id
 
                         HStack(spacing: 8) {
                             ZStack {
@@ -63,77 +67,83 @@ public struct ScriptRunwayDrawerView: View {
 
                             badgeForType(action.commandType, color: scriptColor)
 
-                            if isThisRunning {
-                                HStack(spacing: 4) {
-                                    HStack(spacing: 3) {
-                                        ProgressView()
-                                            .controlSize(.mini)
-                                        Text("runway.running".localized)
-                                            .font(.system(size: 8.5, weight: .bold))
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3.5)
-                                    .background(scriptColor.opacity(0.75))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(5)
-
-                                    Button {
-                                        isOutputDismissed = false
-                                        state.stopRunningScript()
-                                    } label: {
-                                        HStack(spacing: 2.5) {
-                                            Image(systemName: "stop.fill")
-                                                .font(.system(size: 6.5, weight: .bold))
-                                            Text("ai.action.stop".localized)
-                                                .font(.system(size: 8.5, weight: .bold))
-                                        }
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3.5)
-                                        .background(Color.red.opacity(0.9))
-                                        .foregroundColor(.white)
-                                        .cornerRadius(5)
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .help("help.stopScript".localized)
-                                    .accessibilityLabel("help.stopScript".localized)
-                                }
-                                .fixedSize()
-                            } else {
-                                Button {
-                                    isOutputDismissed = false
-                                    diagnosis = nil
-                                    showsDiagnosis = false
-                                    Task {
-                                        let res = await state.executeAction(action, store: store)
-                                        if action.showNotification {
-                                            let text = res.success ? "Ran \(action.name)" : "Failed: \(res.message)"
-                                            store.onCapacityWarningToast?(text)
-                                        }
-                                    }
-                                } label: {
-                                    HStack(spacing: 3.5) {
-                                        Image(systemName: "play.fill")
-                                            .font(.system(size: 7, weight: .bold))
-                                        Text("runway.run".localized)
-                                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3.5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .fill(scriptColor)
-                                    )
-                                    .foregroundColor(scriptColor.highContrastInk)
-                                }
-                                .buttonStyle(.tactile)
-                                .fixedSize()
+                            // A whole row that runs on one click must not
+                            // fire `sudo …` because the pointer was passing
+                            // by. Destructive commands take a second click.
+                            if armedActionId == action.id {
+                                Text("runway.confirmRun".localized)
+                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                                    .foregroundColor(Color(hex: "#F87171"))
+                                    .lineLimit(1)
+                                    .fixedSize()
                             }
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .liquidCardBackground(cornerRadius: 6, strokeColor: palette.borderColor.opacity(0.35))
+                        .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
+                        .padding(.vertical, PurahItemRhythm.rowVerticalInset)
+                        .background {
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
+                                    .fill(
+                                        isThisRunning
+                                            ? scriptColor.opacity(0.12)
+                                            : (isHovered ? scriptColor.opacity(0.08) : Color.clear)
+                                    )
+                                // No percentage can be known for a shell script,
+                                // so this sweeps instead of filling: the row is
+                                // visibly busy, and nothing claims to know how
+                                // far along it is. The result colour arrives
+                                // when the run actually ends.
+                                if isThisRunning {
+                                    ScriptRunwaySweep(color: scriptColor, reduceMotion: reduceMotion)
+                                        .clipShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
+                                }
+                            }
+                        }
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(scriptColor.opacity(isHovered || isThisRunning ? 0.9 : 0))
+                                .frame(width: 2, height: 18)
+                                .padding(.leading, 2)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
+                                .stroke(
+                                    isThisRunning
+                                        ? scriptColor.opacity(0.32)
+                                        : (isHovered ? scriptColor.opacity(0.20) : Color.clear),
+                                    lineWidth: 0.8
+                                )
+                        }
+                        .shadow(
+                            color: scriptColor.opacity(isThisRunning ? 0.20 : (isHovered ? 0.16 : 0)),
+                            radius: isHovered || isThisRunning ? 6 : 0,
+                            x: 0,
+                            y: 2
+                        )
+                        .offset(y: !reduceMotion && isHovered ? -1 : 0)
+                        .animation(reduceMotion ? nil : PurahMotionPolicy.shelfRow, value: isHovered)
+                        .animation(reduceMotion ? nil : PurahMotionPolicy.shelfRow, value: isThisRunning)
+                        .contentShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
+                        // The run button is gone: the row is the control. One
+                        // click starts, the same click while it runs stops.
+                        .onTapGesture {
+                            runOrStop(action)
+                        }
+                        .help(isThisRunning ? "help.stopScript".localized : "runway.run".localized)
+                        .onHover { hovering in
+                            if hovering {
+                                hoveredActionId = action.id
+                            } else if hoveredActionId == action.id {
+                                hoveredActionId = nil
+                                // A half-armed destructive row must not stay
+                                // armed once the pointer has left it.
+                                if armedActionId == action.id { armedActionId = nil }
+                            }
+                        }
+                        .zIndex(isHovered ? 1 : 0)
                     }
                 }
+                .padding(.vertical, 2)
             }
 
             let anyRunning = state.isRunning || runway.isRunning
@@ -237,6 +247,39 @@ public struct ScriptRunwayDrawerView: View {
         }
     }
 
+    private func isRunning(_ action: ScriptActionItem) -> Bool {
+        (state.isRunning && state.lastExecutedActionId == action.id)
+            || (runway.isRunning && runway.lastExecutedActionId == action.id)
+    }
+
+    /// The row's whole job now. First click starts, a click while it is
+    /// running stops; a `.dangerous` command (sudo, mkfs, `rm -rf /`, a pipe
+    /// into a shell) only arms on the first click, because the row is now a
+    /// much bigger target than the button it replaced.
+    private func runOrStop(_ action: ScriptActionItem) {
+        if isRunning(action) {
+            isOutputDismissed = false
+            state.stopRunningScript()
+            return
+        }
+        if armedActionId != action.id,
+           CommandRiskClassifier.classify(action.scriptContent) == .dangerous {
+            withAnimation(PurahMotionPolicy.microLight) { armedActionId = action.id }
+            return
+        }
+        armedActionId = nil
+        isOutputDismissed = false
+        diagnosis = nil
+        showsDiagnosis = false
+        Task {
+            let res = await state.executeAction(action, store: store)
+            if action.showNotification {
+                let text = res.success ? "Ran \(action.name)" : "Failed: \(res.message)"
+                store.onCapacityWarningToast?(text)
+            }
+        }
+    }
+
     /// Hands the failed run back to the assistant: what was run, and what it
     /// said. The answer replaces the output box rather than adding a second
     /// one — the person asked for a reading of the text already on screen.
@@ -293,5 +336,37 @@ public struct ScriptRunwayDrawerView: View {
             .background(badgeColor.opacity(0.18))
             .foregroundColor(badgeColor)
             .cornerRadius(3)
+    }
+}
+
+/// A light band travelling left to right across a running row.
+///
+/// Deliberately not a progress bar: a shell script reports nothing about how
+/// far through it is, so a bar that fills would be inventing a number. This
+/// only says "working"; the row's tint changes when the run actually ends.
+private struct ScriptRunwaySweep: View {
+    let color: Color
+    let reduceMotion: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            if reduceMotion {
+                Rectangle().fill(color.opacity(0.18))
+            } else {
+                TimelineView(.animation(paused: reduceMotion)) { context in
+                    let period: Double = 1.4
+                    let phase = context.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: period) / period
+                    let band = max(geo.size.width * 0.45, 24)
+                    LinearGradient(
+                        colors: [color.opacity(0.02), color.opacity(0.34), color.opacity(0.02)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: band)
+                    .offset(x: -band + (geo.size.width + band) * phase)
+                }
+            }
+        }
     }
 }

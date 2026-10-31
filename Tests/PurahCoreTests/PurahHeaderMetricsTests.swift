@@ -43,3 +43,23 @@ struct PurahHeaderMetricsTests {
         #expect(PurahHeaderMetrics.activeFill < PurahHeaderMetrics.selectedFill)
     }
 }
+
+@Suite("Drawer Item Rhythm")
+struct PurahItemRhythmTests {
+    @Test("Rail steps and content rows keep separate spacing scales")
+    func testSpacingScales() {
+        #expect(PurahItemRhythm.railStepGap == 2.5)
+        #expect(PurahItemRhythm.rowGap == 4)
+        #expect(PurahItemRhythm.sectionGap == 8)
+        #expect(PurahItemRhythm.railStepGap < PurahItemRhythm.rowGap)
+        #expect(PurahItemRhythm.rowGap < PurahItemRhythm.sectionGap)
+    }
+
+    @Test("Content rows share one inset and one corner")
+    func testRowMetrics() {
+        #expect(PurahItemRhythm.contentInset == 8)
+        #expect(PurahItemRhythm.rowHorizontalInset == 8)
+        #expect(PurahItemRhythm.rowVerticalInset == 6)
+        #expect(PurahItemRhythm.rowCornerRadius == 8)
+    }
+}

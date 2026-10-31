@@ -93,7 +93,7 @@ struct NotesFindBarView: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: PurahItemRhythm.rowGap) {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 9, weight: .semibold))
@@ -124,6 +124,12 @@ struct NotesFindBarView: View {
                 }
                 iconButton("xmark", help: "notes.find.close", action: onClose)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
 
             HStack(spacing: 6) {
                 scopePicker
@@ -155,13 +161,22 @@ struct NotesFindBarView: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(6)
-        // Frosted glass: the bar floats over a live document, so it must read
-        // as a surface instead of letting the note's text run under it.
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 5)
+        .padding(.vertical, 5)
+        // An inline tool strip, not a second floating card. The accent wash
+        // defines the controls while the drawer material remains the only
+        // translucent surface in this part of the panel.
+        .background(
+            LinearGradient(
+                colors: [accentColor.opacity(0.065), Color.primary.opacity(0.025)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(accentColor.opacity(0.30), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(accentColor.opacity(0.14), lineWidth: 0.6)
         )
         .onAppear { isQueryFocused = true }
         .onExitCommand { onClose() }

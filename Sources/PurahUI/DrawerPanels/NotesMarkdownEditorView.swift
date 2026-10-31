@@ -40,12 +40,22 @@ public final class PurahNotesNSTextView: NSTextView {
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
-        textContainerInset = NSSize(width: 4, height: 6)
+        textContainerInset = NSSize(width: 8, height: 8)
         isVerticallyResizable = true
         isHorizontallyResizable = false
         autoresizingMask = [.width]
         font = NSFont.systemFont(ofSize: 11.5, weight: .regular)
         textColor = NSColor.labelColor
+    }
+
+    /// A recessed Markdown block should be darker than the paper in dark mode
+    /// and a quiet grey wash in light mode. A fixed black overlay looked
+    /// correct at night and became a muddy rectangle during the day.
+    private var recessedSurfaceColor: NSColor {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark
+            ? NSColor(calibratedWhite: 0.02, alpha: 0.26)
+            : NSColor(calibratedWhite: 0.46, alpha: 0.06)
     }
 
     public override func updateTrackingAreas() {
@@ -358,9 +368,9 @@ public final class PurahNotesNSTextView: NSTextView {
             boundingRect.size.width = max(100, bounds.width - (textContainerOrigin.x * 2) - 4)
 
             let codeBoxPath = NSBezierPath(roundedRect: boundingRect.insetBy(dx: 0, dy: -2), xRadius: 6, yRadius: 6)
-            NSColor.black.withAlphaComponent(0.28).setFill()
+            recessedSurfaceColor.setFill()
             codeBoxPath.fill()
-            accentColor.withAlphaComponent(0.28).setStroke()
+            accentColor.withAlphaComponent(0.24).setStroke()
             codeBoxPath.lineWidth = 1.0
             codeBoxPath.stroke()
         }
@@ -385,7 +395,7 @@ public final class PurahNotesNSTextView: NSTextView {
             let tableRect = NSRect(x: x, y: y, width: width, height: height)
 
             let outerPath = NSBezierPath(roundedRect: tableRect.insetBy(dx: 0, dy: -2), xRadius: 6, yRadius: 6)
-            NSColor.black.withAlphaComponent(0.22).setFill()
+            recessedSurfaceColor.setFill()
             outerPath.fill()
 
             NSGraphicsContext.saveGraphicsState()
@@ -719,6 +729,7 @@ public struct NotesMarkdownEditorView: NSViewRepresentable {
         textView.string = text
         let nsAccentColor = NSColor(accentColor)
         textView.accentColor = nsAccentColor
+        textView.insertionPointColor = nsAccentColor
         QuickNotesMarkdownHelper.styleAttributedString(textView.textStorage ?? textStorage, accentColor: nsAccentColor, selectedRange: nil)
         textView.typingAttributes = [
             .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
@@ -739,6 +750,7 @@ public struct NotesMarkdownEditorView: NSViewRepresentable {
         let nsAccentColor = NSColor(accentColor)
         if textView.accentColor != nsAccentColor {
             textView.accentColor = nsAccentColor
+            textView.insertionPointColor = nsAccentColor
         }
 
         if textView.string != text && !textView.hasMarkedText() {
