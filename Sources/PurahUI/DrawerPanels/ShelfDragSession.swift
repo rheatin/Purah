@@ -32,6 +32,18 @@ public final class ShelfDragSession {
         selfDropClaimed = true
     }
 
+    /// Claims the round trip only when these URLs came from this shelf drag.
+    ///
+    /// AirDrop is launched as a sheet, and the person can cancel it. The shelf
+    /// therefore cannot treat the internal drop as a completed hand-off and
+    /// remove the staged item before AirDrop says anything.
+    @discardableResult
+    public func claimSelfDropIfCarrying(_ urls: [URL]) -> Bool {
+        guard carriesAny(of: urls) else { return false }
+        claimSelfDrop()
+        return true
+    }
+
     /// Reads and clears the claim. Call once per drag, from
     /// `draggingSession(_:endedAt:)`.
     public func consumeSelfDrop() -> Bool {

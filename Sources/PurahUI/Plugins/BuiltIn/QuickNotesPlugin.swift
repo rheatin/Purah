@@ -215,6 +215,16 @@ struct NotesHeaderTools: View {
 
     var body: some View {
         PurahHeaderGroup {
+            // Where the note lives on disk is a header concern, same as find
+            // and star — it was taking a slot in the footer next to Copy.
+            PurahHeaderButton(
+                systemImage: "folder",
+                help: "help.openNotesInFinder".localized,
+                tint: accent
+            ) {
+                state.fileStorage.openInFinder()
+            }
+
             PurahHeaderButton(
                 systemImage: "magnifyingglass",
                 help: "notes.findReplace".localized,

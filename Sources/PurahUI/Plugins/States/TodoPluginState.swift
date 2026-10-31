@@ -14,6 +14,10 @@ public final class TodoPluginState: Sendable {
     public var isUsingRealReminders: Bool
     public var isSyncing: Bool
     public var maxRailTodos: Int
+    /// Which half of the list the drawer is showing. Header tabs only — the
+    /// rail chips and the pod's height always describe what is still open,
+    /// so a finished task can never change how much rail the pod owns.
+    public var showsCompleted: Bool = false
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private var reminderStoreObserver: (any NSObjectProtocol)?
@@ -27,6 +31,10 @@ public final class TodoPluginState: Sendable {
 
     public var incompleteTodos: [TodoItem] {
         todos.filter { !$0.isCompleted }
+    }
+
+    public var completedTodos: [TodoItem] {
+        todos.filter { $0.isCompleted }
     }
 
     public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "todo")) {

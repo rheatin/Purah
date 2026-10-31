@@ -969,7 +969,7 @@ public struct QuickNoteDrawerView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: PurahItemRhythm.sectionGap) {
             // The header row that used to sit here — folder, note, new, find,
             // assistant, star — now lives in the drawer header itself, so the
             // note gets the whole card.
@@ -1006,7 +1006,7 @@ public struct QuickNoteDrawerView: View {
                 // A capped result list (6 rows) in a transient overlay: it can
                 // overflow a short drawer, but it is a picker, not a document.
                 PurahScrollableBody {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: PurahItemRhythm.rowGap) {
                         if matches.isEmpty {
                             Text("notes.noMatches".localized)
                                 .font(.system(size: 9, design: .rounded))
@@ -1043,10 +1043,12 @@ public struct QuickNoteDrawerView: View {
                                             }
                                         }
                                     }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Color.primary.opacity(0.04))
-                                    .cornerRadius(4)
+                                    .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(Color.primary.opacity(0.035))
+                                    )
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -1194,21 +1196,16 @@ public struct QuickNoteDrawerView: View {
                         .font(.system(size: 11, design: .rounded))
                         .foregroundColor(.secondary.opacity(0.45))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                // The editor's text container starts at the same 8pt inset, so
+                // the caret was landing on the pencil. Clear it by a caret's
+                // width instead of drawing on top of it.
+                .padding(.leading, PurahItemRhythm.contentInset + 6)
+                .padding(.trailing, PurahItemRhythm.contentInset)
+                .padding(.vertical, 10)
                 .allowsHitTesting(false)
             }
         }
-        .padding(4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.45))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
-        )
     }
 
     private func updateNoteText(_ newText: String) {
@@ -1281,77 +1278,10 @@ public struct QuickNoteDrawerView: View {
 
             Spacer()
 
-            Button {
-                state.fileStorage.openInFinder()
-            } label: {
-                Image(systemName: "folder")
-                    .font(.system(size: 8))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("help.openNotesInFinder".localized)
-            .accessibilityLabel("help.openNotesInFinder".localized)
-
-            Button {
-                exportCurrentNote()
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: isExported ? "checkmark" : "square.and.arrow.up")
-                        .font(.system(size: 8, weight: .semibold))
-                    Text("notes.export".localized)
-                        .font(.system(size: 8, weight: .semibold, design: .rounded))
-                }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.primary.opacity(0.08))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
-                )
-                .foregroundColor(isExported ? .green : .primary.opacity(0.88))
-            }
-            .buttonStyle(.tactile)
-            .help("notes.exportHelp".localized)
-            .accessibilityLabel("notes.exportHelp".localized)
-
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(currentText, forType: .string)
-                store.triggerControlHaptic(.alignment)
-                withAnimation(PurahMotionPolicy.confirm) {
-                    isCopied = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    withAnimation {
-                        isCopied = false
-                    }
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc.fill")
-                        .font(.system(size: 8, weight: .bold))
-                    Text(isCopied ? "notes.copied".localized : "notes.copy".localized)
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(isCopied ? Color.green : noteColor)
-                )
-                .foregroundColor(isCopied ? Color.slateInk : noteColor.highContrastInk)
-            }
-            .buttonStyle(.tactile)
-            .help("help.copyNote".localized)
-            .accessibilityLabel("help.copyNote".localized)
-
-            // Markdown syntax is reference material, so it belongs with the
-            // other reference in the drawer — its footer, not its header.
-            // The popover opens upward, into the card, rather than escaping
-            // off the bottom of the screen.
+            // The folder moved up into the card header, and copy/export are
+            // the two things anyone actually does here — they get the same
+            // primary/secondary pair the AI drawer's answer row uses.
+            // Copy stays rightmost: it is the one people reach for.
             PurahHeaderButton(
                 systemImage: "questionmark.circle",
                 help: "notes.tips.title".localized,
@@ -1363,8 +1293,81 @@ public struct QuickNoteDrawerView: View {
             .popover(isPresented: $isShowingTips, arrowEdge: .top) {
                 MarkdownTipsPopoverView()
             }
+
+            exportNoteButton
+            copyNoteButton
         }
         .padding(.horizontal, 2)
+        .padding(.top, 3)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(palette.borderColor.opacity(0.16))
+                .frame(height: 0.5)
+        }
+    }
+
+    private var copyNoteButton: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(currentText, forType: .string)
+            store.triggerControlHaptic(.alignment)
+            withAnimation(PurahMotionPolicy.confirm) {
+                isCopied = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation {
+                    isCopied = false
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: isCopied ? "checkmark" : "doc.on.doc.fill")
+                    .font(.system(size: 8.5, weight: .bold))
+                Text(isCopied ? "notes.copied".localized : "notes.copy".localized)
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+            }
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isCopied ? Color.green : noteColor)
+            )
+            .foregroundColor(isCopied ? Color.slateInk : noteColor.highContrastInk)
+        }
+        .buttonStyle(.tactile)
+        .disabled(currentText.isEmpty)
+        .help("help.copyNote".localized)
+        .accessibilityLabel("help.copyNote".localized)
+    }
+
+    /// The quiet half of the pair: present, not competing with Copy. Same
+    /// shape and height, so the row reads as one control surface.
+    private var exportNoteButton: some View {
+        Button {
+            exportCurrentNote()
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: isExported ? "checkmark" : "square.and.arrow.up")
+                    .font(.system(size: 8.5, weight: .bold))
+                Text("notes.export".localized)
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+            }
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.08))
+            )
+            .foregroundColor(.primary)
+        }
+        .buttonStyle(.tactile)
+        .disabled(currentText.isEmpty)
+        .help("notes.exportHelp".localized)
+        .accessibilityLabel("notes.export".localized)
     }
 
     private func exportCurrentNote() {
