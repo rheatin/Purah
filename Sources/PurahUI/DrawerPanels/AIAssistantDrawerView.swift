@@ -56,9 +56,6 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isRoleRunning: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
     @State private var isContentHovered: Bool = false
-    /// What answered the last chip turn. A chip's header is already full, so
-    /// this rides in the title's tooltip instead of costing a row.
-    @State private var servedModel: String? = nil
     @State private var currentStreamTask: Task<Void, Never>? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -97,12 +94,14 @@ public struct AIAssistantSteppedDrawerView: View {
         let font = 10 * scale
         let lineH = font * 1.25 + 2
         let maxLines = max(1, Int(floor((cardH - 4) / lineH)))
-        let showsInlineTools = isRoleRunning || !roleOutput.isEmpty
+        let isPreviewPinned = ClipboardHoverPreviewController.shared.isPinned(id: "ai-\(role.id)")
+        // The eye stays mounted while its panel is pinned: clearing the answer
+        // would otherwise unmount the only control that can unpin it.
+        let showsInlineTools = isRoleRunning || !roleOutput.isEmpty || isPreviewPinned
         let headerToolsWidth = 2 * PurahHeaderMetrics.hitSize + PurahHeaderMetrics.groupSpacing + 4
         let inlineToolsWidth = showsInlineTools ? 32 + 12 * scale : 0
         let contentW = max(drawerW - 30 - iconSize - 12 * scale - headerToolsWidth - inlineToolsWidth, 1)
         let previewItem = ClipboardItem(id: "ai-\(role.id)", type: .text(roleOutput))
-        let isPreviewPinned = ClipboardHoverPreviewController.shared.isPinned(id: "ai-\(role.id)")
         let isPreviewAvailable: Bool = {
             guard !isRoleRunning, !roleOutput.isEmpty else { return false }
             // Measure with the same 2pt line spacing the Text is drawn with:
@@ -307,8 +306,8 @@ public struct AIAssistantSteppedDrawerView: View {
                                     .cornerRadius(3)
                             }
                             .buttonStyle(.plain)
-                            .opacity(isPreviewAvailable ? 1 : 0.35)
-                            .disabled(!isPreviewAvailable)
+                            .opacity(isPreviewAvailable || isPreviewPinned ? 1 : 0.35)
+                            .disabled(!isPreviewAvailable && !isPreviewPinned)
                             .help("ai.stepped.preview".localized)
                             .accessibilityLabel("ai.stepped.preview".localized)
                         }
@@ -339,6 +338,10 @@ public struct AIAssistantSteppedDrawerView: View {
             }
         }
         .onDisappear {
+            // The chip is conditionally mounted, so a collapsing drawer destroys
+            // this view's state: a run that outlived it could never be shown.
+            currentStreamTask?.cancel()
+            currentStreamTask = nil
             ClipboardHoverPreviewController.shared.hide()
         }
     }
@@ -350,18 +353,6 @@ public struct AIAssistantSteppedDrawerView: View {
         roleInput = ""
         roleOutput = ""
         rawSteppedStream = ""
-        servedModel = nil
-    }
-
-    /// `<model> · <provider>`, or just the provider when the run predates model
-    /// attribution. Empty before anything has run.
-    private var steppedAttributionTooltip: String {
-        guard !roleOutput.isEmpty || isRoleRunning || servedModel != nil else { return "" }
-        let provider = state.selectedProvider.displayName
-        if let servedModel, !servedModel.isEmpty {
-            return "\(servedModel) · \(provider)"
-        }
-        return provider
     }
 
     private func stopSteppedRun() {
@@ -456,12 +447,6 @@ public struct AIAssistantSteppedDrawerView: View {
                     endpoint: endpoint,
                     model: model,
                     systemPromptOverride: systemPrompt,
-                    onServedModel: { served in
-                        Task { @MainActor in
-                            let trimmed = served.trimmingCharacters(in: .whitespacesAndNewlines)
-                            self.servedModel = trimmed.isEmpty ? nil : trimmed
-                        }
-                    },
                     onChunk: { chunk in
                         Task { @MainActor in
                             self.rawSteppedStream += chunk
