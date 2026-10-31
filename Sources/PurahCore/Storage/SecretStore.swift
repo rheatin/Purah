@@ -62,10 +62,17 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
 
     public func setSecret(_ value: String?, forKey key: String) {
         guard let key = Self.normalized(key) else { return }
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The environment already supplies exactly this value, so the copy the
+        // settings field displays is a copy of a secret the person deliberately
+        // kept out of this file (`PURAH_OPENAI_API_KEY`, 1Password `op run`).
+        // Saving the field wrote it to disk anyway.
+        if let trimmed, !trimmed.isEmpty, lookupInEnvironment(for: key) == trimmed {
+            return
+        }
         lock.lock(); defer { lock.unlock() }
 
         var values = loadLocked()
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let trimmed, !trimmed.isEmpty {
             values[key] = trimmed
         } else {

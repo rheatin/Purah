@@ -301,6 +301,24 @@ struct SecretHandlingTests {
         #expect(store.secret(forKey: "ai.openAIAPIKey") == "sk-from-env")
     }
 
+    @Test("Saving the value the environment already supplies writes nothing")
+    func testEnvironmentValueIsNotCopiedToDisk() {
+        let url = makeSecretFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let name = FileSecretStore.environmentName(forKey: "ai.anthropicAPIKey")
+        setenv(name, "sk-ant-from-env", 1)
+        defer { unsetenv(name) }
+
+        let store = FileSecretStore(fileURL: url, environmentKey: nil)
+        // The settings field is filled from the environment, and saving the
+        // form saved that copy back to disk.
+        store.setSecret("sk-ant-from-env", forKey: "ai.anthropicAPIKey")
+
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(store.secret(forKey: "ai.anthropicAPIKey") == "sk-ant-from-env")
+    }
+
     @Test("An environment file indirection resolves secrets without a copy on disk")
     func testEnvironmentFileIndirection() throws {
         let url = makeSecretFile()

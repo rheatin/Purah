@@ -42,7 +42,7 @@ public enum CommandRiskClassifier {
     /// is dangerous, not merely worth a look.
     static let cautionCommands: Set<String> = [
         "rm", "mv", "dd", "chmod", "chown", "kill", "pkill", "defaults",
-        "trash", "unlink",
+        "trash", "unlink", "eval",
     ]
 
     /// Substrings that make an otherwise ordinary command dangerous.
@@ -79,6 +79,26 @@ public enum CommandRiskClassifier {
             return .dangerous
         }
         if dangerousSubstrings.contains(where: { normalised.contains($0) }) {
+            return .dangerous
+        }
+
+        // A pipe is only the obvious way to run fetched text: `eval "$(curl …)"`
+        // and `bash <(curl …)` run it with none. Text fetched at run time cannot
+        // be read before it runs, so a substitution or backtick starting with a
+        // downloader is judged the same as `curl … | sh`.
+        if unquoted.range(
+            of: #"(\$\(|<\(|`)\s*(sudo\s+)?(env\s+)?([^\s)`;|&]*/)?(curl|wget)\b"#,
+            options: .regularExpression
+        ) != nil {
+            return .dangerous
+        }
+        // `eval "$(…)"` reaches the substitution through quotes, and stripping
+        // the quoted text — right for `echo "rm -rf /"` — hides exactly the
+        // text eval is about to run. Judge the raw command there.
+        if normalised.range(
+            of: #"\b(eval|source)\b[^;|&]*(\$\(|`)\s*(sudo\s+)?(env\s+)?([^\s)`;|&]*/)?(curl|wget)\b"#,
+            options: .regularExpression
+        ) != nil {
             return .dangerous
         }
 

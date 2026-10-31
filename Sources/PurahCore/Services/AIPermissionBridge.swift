@@ -364,7 +364,10 @@ private final class HTTPConnection: @unchecked Sendable {
                   parts[0].trimmingCharacters(in: .whitespaces).lowercased() == "content-length" else { continue }
             contentLength = Int(parts[1].trimmingCharacters(in: .whitespaces)) ?? 0
         }
-        guard contentLength <= AIPermissionBridge.maximumRequestBytes else { return nil }
+        // `>= 0` is load-bearing: a negative length reaches `prefix(_:)` and
+        // traps, and this runs before the path is checked, so any local
+        // process could take the app down with one header.
+        guard contentLength >= 0, contentLength <= AIPermissionBridge.maximumRequestBytes else { return nil }
 
         let body = buffer[headerEnd.upperBound...]
         guard body.count >= contentLength else { return nil }
