@@ -9,29 +9,45 @@ import Foundation
 @MainActor
 @Suite("Persistent Terminal Plugin Tests", .serialized)
 struct TerminalPluginTests {
-    @Test("A finished-command form decodes tolerantly")
-    func testTerminalCommandCompletionForm() {
-        let ok = TerminalShellIntegration.TerminalCommandCompletion(
-            form: ["cmd": "make", "status": "0", "ms": "1234"]
-        )
-        #expect(ok.command == "make")
-        #expect(ok.status == 0)
-        #expect(ok.milliseconds == 1234)
+    /// The bridge's hook runs on its own queue, so the test reads the result
+    /// through a lock rather than a bare captured `var`.
+    private final class LockedBox<Value>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Value
+        init(_ value: Value) { self.value = value }
+        func get() -> Value { lock.lock(); defer { lock.unlock() }; return value }
+        func set(_ newValue: Value) { lock.lock(); value = newValue; lock.unlock() }
+    }
 
-        // A shell that sends only the status still earns a notification.
-        let failed = TerminalShellIntegration.TerminalCommandCompletion(
-            form: ["cmd": "false", "status": "1"]
-        )
-        #expect(failed.command == "false")
-        #expect(failed.status == 1)
-        #expect(failed.milliseconds == 0)
+    @Test("A shell's /v1/done POST reaches the completion hook")
+    func testCommandFinishedReachesTheHook() async throws {
+        // The whole chain after the shell's curl: listener, bearer check,
+        // route, form decode, hook. Isolated instance — never `shared`.
+        let bridge = TerminalSuggestionBridge()
+        defer { bridge.stop() }
 
-        // Garbage reads as success, not as an invented failure.
-        let junk = TerminalShellIntegration.TerminalCommandCompletion(
-            form: ["cmd": "", "status": "abc", "ms": "-5"]
-        )
-        #expect(junk.status == 0)
-        #expect(junk.milliseconds == 0)
+        let fired = LockedBox<[String: String]?>(nil)
+        bridge.onCommandFinished = { form in fired.set(form) }
+
+        let endpoint = try #require(bridge.startIfNeeded(), "the bridge did not open a loopback port")
+
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(endpoint.port)/v1/done")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("cmd=sleep&status=2&ms=10000".utf8)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+
+        // The hook runs on the listener's queue; give it a moment to land.
+        for _ in 0..<50 where fired.get() == nil {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        let form = try #require(fired.get(), "the bridge answered 200 but never called onCommandFinished")
+        #expect(form["cmd"] == "sleep")
+        #expect(form["status"] == "2")
+        #expect(form["ms"] == "10000")
     }
 
     @Test("TerminalPlugin manifest and capability specifications meet ergonomic guidelines")

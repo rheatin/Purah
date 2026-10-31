@@ -105,9 +105,6 @@ public struct PersistentTerminalDrawerView: View {
         }
         .onAppear {
             manager.focusTerminal()
-            // Opening the drawer is how the person sees the result the rail
-            // dot was reporting.
-            state.acknowledgeCommandResult()
         }
         .task {
             aiAvailability = .current()

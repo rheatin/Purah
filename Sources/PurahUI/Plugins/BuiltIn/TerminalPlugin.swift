@@ -48,11 +48,13 @@ public struct TerminalPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
-        // The shell reports finished commands over the loopback bridge; this is
-        // the only place that knows both the bridge and the pod's state.
-        TerminalShellIntegration.onCommandCompletion = { completion in
+        // The shell reports finished commands over the loopback bridge. The
+        // pod glow is the host's, not ours: raising the pod's alert id is the
+        // whole notification, and hovering the rail or opening the drawer
+        // clears it the same way it clears Calendar's.
+        TerminalShellIntegration.onCommandCompletion = { [weak store] in
             Task { @MainActor in
-                state.recordCommandCompletion(completion)
+                store?.triggerAlert(id: "terminal")
             }
         }
     }
@@ -94,26 +96,12 @@ public struct TerminalRailBarPluginView: View {
 
     public var body: some View {
         let radius = min(context.railWidth / 2, 4)
-        let dotSize = min(context.railWidth - 2, 5)
         ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: radius)
                 .fill(context.accentColor.opacity(0.85))
                 .frame(width: context.railWidth, height: context.slotHeight)
 
-            // The result outranks the idle "shell is alive" dot: both sit at
-            // the same spot, and the one that is news is the one to show.
-            if state.hasUnseenCommandResult, let result = state.lastCommandResult {
-                let dotColor: Color = result.status == 0 ? .green : Color(hex: "#F87171")
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: dotSize, height: dotSize)
-                    .shadow(color: dotColor.opacity(0.9), radius: 3)
-                    .padding(.bottom, 4)
-                    .help(result.status == 0
-                          ? String(format: "terminal.done.ok".localized, result.command)
-                          : String(format: "terminal.done.failed".localized, result.command, result.status))
-                    .transition(.opacity)
-            } else if state.isProcessRunning {
+            if state.isProcessRunning {
                 Circle()
                     .fill(Color.green)
                     .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
@@ -121,7 +109,6 @@ public struct TerminalRailBarPluginView: View {
             }
         }
         .frame(width: context.railWidth, height: context.slotHeight)
-        .animation(PurahMotionPolicy.surface, value: state.hasUnseenCommandResult)
     }
 }
 
