@@ -95,7 +95,12 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         lock.unlock()
         listener.start(queue: queue)
 
-        let deadline = Date().addingTimeInterval(1.5)
+        // 1.5s was measured on an idle machine and lost the race on a loaded
+        // one (CI runs the whole suite in parallel): the caller then starts the
+        // shell without the endpoint and `??` is dead for that shell's life.
+        // A healthy listener is ready in tens of milliseconds, so this only
+        // lengthens the failing path.
+        let deadline = Date().addingTimeInterval(3.0)
         while Date() < deadline {
             lock.lock()
             let ready = isListening ? endpoint : nil
