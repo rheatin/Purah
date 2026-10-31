@@ -37,6 +37,43 @@ public struct CalendarPlugin: PurahPodPlugin {
         AnyView(CalendarDrawerView(state: state, store: context.store))
     }
 
+    /// The one thing the drawer's summary row was actually for. When the
+    /// calendar is not connected the same slot offers the connection, so the
+    /// affordance survives without a whole row above the agenda.
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        let connected = context.store.isUsingRealCalendar
+            && PermissionManager.shared.calendarStatus == .authorized
+
+        return AnyView(
+            PurahHeaderGroup {
+                if connected {
+                    PurahHeaderButton(
+                        systemImage: "calendar.badge.clock",
+                        help: "help.openAppleCalendar".localized,
+                        tint: context.accentColor
+                    ) {
+                        launchAppleCalendar()
+                        context.performHaptic(.alignment)
+                    }
+                } else {
+                    PurahHeaderButton(
+                        systemImage: "exclamationmark.triangle",
+                        help: "help.sampleCalendar".localized,
+                        tint: .orange
+                    ) {
+                        Task {
+                            let granted = await PermissionManager.shared.requestCalendarAccess()
+                            if granted {
+                                state.syncEvents(into: context.store)
+                                SystemCalendarSyncService.shared.syncEvents(into: context.store)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    }
+
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
         AnyView(CalendarPluginSettingsView(state: state, store: store))
     }

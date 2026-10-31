@@ -33,13 +33,79 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         AnyView(HardwareVitalsDrawerView(state: state, store: context.store))
     }
 
+    /// The reading the header reports, and which metric it reports.
+    ///
+    /// A control names what it changes (AGENTS.md §3): the pill used to be a
+    /// fixed CPU badge, so the other five metrics were unreachable without
+    /// opening the drawer. It is a menu now and the label is the live value of
+    /// the chosen metric.
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            PurahHeaderBadge(
-                String(format: "vitals.barCpu".localized, Int(state.metrics.cpuUsage * 100)),
-                tint: context.accentColor
-            )
+            Menu {
+                ForEach(VitalsMetricType.allCases) { metric in
+                    Button {
+                        state.headerMetric = metric
+                    } label: {
+                        HStack {
+                            Label(metric.displayName, systemImage: metric.systemIcon)
+                            if state.headerMetric == metric {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                PurahHeaderMenuLabel(
+                    text: headerMetricValue,
+                    icon: state.headerMetric.systemIcon,
+                    tint: context.accentColor,
+                    maxTextWidth: 78
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         )
+    }
+
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            PurahHeaderGroup {
+                ForEach(VitalsDashboardTab.allCases) { tab in
+                    PurahHeaderButton(
+                        systemImage: tab.icon,
+                        help: tab.title,
+                        tint: context.accentColor,
+                        isActive: state.dashboardTab == tab
+                    ) {
+                        withAnimation(PurahMotionPolicy.surfaceSoft) { state.dashboardTab = tab }
+                    }
+                }
+            }
+        )
+    }
+
+    private var headerMetricValue: String {
+        let metrics = state.metrics
+        switch state.headerMetric {
+        case .cpu:
+            return String(format: "vitals.barCpu".localized, Int(metrics.cpuUsage * 100))
+        case .gpu:
+            return String(format: "vitals.pill.gpu".localized, Int(metrics.gpuUsage * 100))
+        case .ram:
+            return String(format: "vitals.pill.ram".localized, Int(metrics.memoryUsage * 100))
+        case .power:
+            return String(format: "vitals.pill.power".localized, metrics.batteryLevel)
+        case .network:
+            let megabytes = (metrics.networkDownSpeed + metrics.networkUpSpeed) / 1_048_576.0
+            return String(format: "vitals.pill.network".localized,
+                          megabytes >= 10 ? String(format: "%.0f", megabytes) : String(format: "%.1f", megabytes))
+        case .disk:
+            let used = metrics.diskTotalGB > 0
+                ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB * 100
+                : 0
+            return String(format: "vitals.pill.disk".localized, Int(used))
+        }
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {

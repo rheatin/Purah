@@ -35,7 +35,6 @@ public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
-    @State private var selectedTab: VitalsDashboardTab = .overview
     @State private var sortProcessesByCPU: Bool = true
     @State private var isPulsing: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -206,12 +205,11 @@ public struct HardwareVitalsDrawerView: View {
         netColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            topNavigationBar(metrics: metrics, cpuColor: cpuColor)
-                .frame(height: 24)
-
+            // The four dashboard tabs live in the card header now, so the
+            // body starts with content.
             PurahScrollableBody {
                 VStack(alignment: .leading, spacing: 6) {
-                    switch selectedTab {
+                    switch state.dashboardTab {
                     case .overview:
                         overviewTabContent(
                             metrics: metrics,
@@ -343,49 +341,6 @@ public struct HardwareVitalsDrawerView: View {
         .background(Color.primary.opacity(0.035))
         .cornerRadius(6)
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
-    }
-
-    // MARK: - Top Navigation Bar (24pt)
-    @ViewBuilder
-    private func topNavigationBar(metrics: HardwareVitalsInfo, cpuColor: Color) -> some View {
-        HStack(spacing: 4) {
-            // Segmented pill tabs — the same control the Todo header uses, so
-            // "pick one of these views" looks identical everywhere.
-            PurahSegmentedTabs(
-                segments: VitalsDashboardTab.allCases.map { .init($0, title: $0.title) },
-                selection: selectedTab,
-                tint: palette.primaryAccent,
-                height: 22
-            ) { tab in
-                selectedTab = tab
-                if tab == .processes {
-                    Task {
-                        await vitals.refreshMetricsAsync(includeProcesses: true)
-                    }
-                }
-            }
-
-            Spacer()
-
-            // Pulsing thermal status indicator
-            HStack(spacing: 3) {
-                Circle()
-                    .fill(thermalColor(for: metrics.thermalStateLabel))
-                    .frame(width: 4.5, height: 4.5)
-                    .scaleEffect(isPulsing ? 1.25 : 0.85)
-                    .opacity(isPulsing ? 0.95 : 0.6)
-                Text(metrics.thermalStateLabel)
-                    .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(Color.primary.opacity(0.03))
-            .cornerRadius(4)
-
-        }
-        .padding(.horizontal, 1)
     }
 
     // MARK: - Tab: Overview
@@ -605,7 +560,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Button {
-                            withAnimation { selectedTab = .processes }
+                            withAnimation { state.dashboardTab = .processes }
                             Task {
                                 await vitals.refreshMetricsAsync(includeProcesses: true)
                             }

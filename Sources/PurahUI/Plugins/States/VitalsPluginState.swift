@@ -12,6 +12,13 @@ public final class VitalsPluginState: Sendable {
     public var maxRailMetrics: Int
     public var enabledMetrics: [VitalsMetricType]
     public var thresholds: VitalsColorThresholds
+    /// Which dashboard the body shows. It lives here, not in the drawer's
+    /// view state, because the tabs moved into the header — a different view
+    /// that has to read and write the same selection.
+    public var dashboardTab: VitalsDashboardTab = .overview
+    /// Which reading the header pill reports. Picking one is the header's job;
+    /// the drawer's own numbers stay unchanged.
+    public var headerMetric: VitalsMetricType = .cpu
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?

@@ -1389,8 +1389,15 @@ public struct ShelfFileRowView: View {
     public let onMarqueeDragEnded: (() -> Void)?
 
     @State private var isHovered: Bool = false
+    /// The drag-source overlay is an NSView with its own tracking area, so it
+    /// reports hover for the icon/name region. It used to write `isHovered`
+    /// directly, which meant moving the pointer onto the revealed buttons
+    /// (outside the overlay) cleared the row's hover and hid them again.
+    @State private var isContentHovered: Bool = false
     @State private var isDragging: Bool = false
     @State private var thumbnailImage: NSImage? = nil
+
+    private var isRowHovered: Bool { isHovered || isContentHovered }
 
     public init(
         file: ShelfFileItem,
@@ -1443,7 +1450,7 @@ public struct ShelfFileRowView: View {
             } label: {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(isSelected ? shelfColor : .secondary.opacity(isHovered ? 0.85 : 0.45))
+                    .foregroundColor(isSelected ? shelfColor : .secondary.opacity(isRowHovered ? 0.85 : 0.45))
             }
             .buttonStyle(.plain)
             .help("shelf.selectFile".localized)
@@ -1491,7 +1498,7 @@ public struct ShelfFileRowView: View {
                         state?.selectRange(to: file.id)
                         store.triggerControlHaptic(.alignment)
                     },
-                    onHover: { isHovered = $0 },
+                    onHover: { isContentHovered = $0 },
                     onDragStarted: {
                         isDragging = true
                         store.isDraggingFromDrawer = true
@@ -1532,7 +1539,7 @@ public struct ShelfFileRowView: View {
             // reserved empty band looked like a hole in the row.
             let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == file.id
             HStack(spacing: 5) {
-                if isHovered {
+                if isRowHovered {
                     Button {
                         let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
                         DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
@@ -1579,7 +1586,7 @@ public struct ShelfFileRowView: View {
                 } label: {
                     Image(systemName: isPreviewPinned ? "eye.fill" : "eye")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(isPreviewPinned ? shelfColor : .gray.opacity(isHovered ? 1.0 : 0.55))
+                        .foregroundColor(isPreviewPinned ? shelfColor : .gray.opacity(isRowHovered ? 1.0 : 0.55))
                         .frame(width: 18, height: 18)
                 }
                 .buttonStyle(.plain)
@@ -1596,14 +1603,14 @@ public struct ShelfFileRowView: View {
                 } label: {
                     Image(systemName: file.isFavorite ? "star.fill" : "star")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isHovered ? 1.0 : 0.4))
+                        .foregroundColor(file.isFavorite ? Color(hex: "#FF9F0A") : .gray.opacity(isRowHovered ? 1.0 : 0.4))
                         .frame(width: 18, height: 18)
                 }
                 .buttonStyle(.plain)
                 .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
                 .accessibilityLabel(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
             }
-            .animation(PurahMotionPolicy.hover, value: isHovered)
+            .animation(PurahMotionPolicy.hover, value: isRowHovered)
         }
         .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
         .padding(.vertical, PurahItemRhythm.rowVerticalInset)
@@ -1615,20 +1622,21 @@ public struct ShelfFileRowView: View {
             cornerRadius: PurahItemRhythm.rowCornerRadius,
             strokeColor: isSelected
                 ? shelfColor
-                : (isHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4))
+                : (isRowHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4))
         )
         .overlay(
             RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
                 .stroke(isSelected ? shelfColor : Color.clear, lineWidth: 1.5)
         )
-        .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))
-        .animation(PurahMotionPolicy.shelfRow, value: isHovered)
+        .scaleEffect(isDragging ? 0.96 : 1.0)
+        .animation(PurahMotionPolicy.shelfRow, value: isRowHovered)
         .animation(PurahMotionPolicy.shelfRow, value: isDragging)
         .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .accessibilityLabel("dropshelf.doubleClickHint".localized)
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .onChange(of: isHovered) { _, hovered in
+        .onChange(of: isRowHovered) { _, hovered in
             if hovered {
                 if !isDragging {
                     ClipboardHoverPreviewController.shared.show(
