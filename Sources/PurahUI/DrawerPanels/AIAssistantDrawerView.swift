@@ -218,13 +218,21 @@ public struct AIAssistantSteppedDrawerView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else if isRoleRunning && roleOutput.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
-                                AIShimmerSingleLineView(roleColor: roleColor)
+                                AIShimmerSingleLineView(roleColor: roleColor, widthFraction: 1.0)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                AIShimmerSingleLineView(roleColor: roleColor)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text("ai.stepped.tapToStop".localized)
-                                    .font(.system(size: 8, weight: .medium, design: .rounded))
-                                    .foregroundColor(ink.opacity(0.55))
+                                // The hint rides the end of the last line instead of
+                                // sitting under a 72%-wide bar: the column reads full,
+                                // and "click to stop" lands beside the tools the eye
+                                // is already heading for.
+                                HStack(spacing: 8) {
+                                    AIShimmerSingleLineView(roleColor: roleColor, widthFraction: 1.0)
+                                    Text("ai.stepped.tapToStop".localized)
+                                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                                        .foregroundColor(ink.opacity(0.55))
+                                        .fixedSize()
+                                        .layoutPriority(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -1093,6 +1101,9 @@ public struct AISessionHistoryManagerView: View {
 struct AIShimmerSingleLineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let roleColor: Color
+    /// Share of the proposed width the bar fills. 0.72 suits the composite
+    /// drawer; a chip line wants the whole column.
+    var widthFraction: CGFloat = 0.72
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
@@ -1100,7 +1111,7 @@ struct AIShimmerSingleLineView: View {
             let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
 
             GeometryReader { geo in
-                let w = geo.size.width * 0.72
+                let w = geo.size.width * widthFraction
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(Color.white.opacity(0.08))
