@@ -384,21 +384,6 @@ public struct HardwareVitalsDrawerView: View {
             .background(Color.primary.opacity(0.03))
             .cornerRadius(4)
 
-            // Compact refresh button
-            Button {
-                Task {
-                    await vitals.refreshMetricsAsync(includeProcesses: true)
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 8.5))
-                    .foregroundColor(.secondary)
-                    .padding(3.5)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(4)
-            }
-            .buttonStyle(.plain)
-            .help("help.refresh".localized)
         }
         .padding(.horizontal, 1)
     }

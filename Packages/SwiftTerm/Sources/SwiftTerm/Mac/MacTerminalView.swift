@@ -564,7 +564,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
     func setupScroller()
     {
         if scroller == nil {
-            scroller = NSScroller(frame: .zero)
+            scroller = PurahScroller(frame: .zero)
             scroller.translatesAutoresizingMaskIntoConstraints = false
             addSubview(scroller)
 
@@ -574,7 +574,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
                 scroller.trailingAnchor.constraint(equalTo: trailingAnchor),
                 scroller.topAnchor.constraint(equalTo: topAnchor),
                 scroller.bottomAnchor.constraint(equalTo: bottomAnchor),
-                scroller.widthAnchor.constraint(equalToConstant: scrollerWidth)
+                scroller.widthAnchor.constraint(equalToConstant: PurahScroller.barSlotWidth)
             ])
         }
         scroller.scrollerStyle = scrollerStyle
@@ -2486,3 +2486,32 @@ extension TerminalViewDelegate {
     }
 }
 #endif
+
+
+/// Purah: an overlay `NSScroller` still paints a translucent slot behind the
+/// knob, which read as a frame around a 4pt bar. Draw the bar and nothing else.
+final class PurahScroller: NSScroller {
+    static let barSlotWidth: CGFloat = 9
+    private let barWidth: CGFloat = 4
+
+    override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {
+        // Deliberately empty: there is no track, only the bar below.
+    }
+
+    override func drawKnob() {
+        let knob = rect(for: .knob)
+        guard knob.height > 2 else { return }
+        let bar = NSRect(
+            x: knob.midX - barWidth / 2,
+            y: knob.minY + 1,
+            width: barWidth,
+            height: max(knob.height - 2, 10)
+        )
+        NSColor.labelColor.withAlphaComponent(0.28).setFill()
+        NSBezierPath(
+            roundedRect: bar,
+            xRadius: barWidth / 2,
+            yRadius: barWidth / 2
+        ).fill()
+    }
+}

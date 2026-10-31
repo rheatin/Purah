@@ -1526,9 +1526,47 @@ public struct ShelfFileRowView: View {
             // Open middle space of the row passes drags directly to list marquee selection
             Spacer(minLength: 8)
 
-            // Trailing action buttons (remain directly clickable)
+            // Trailing actions. Preview and star always anchor the right
+            // edge; the three rarer verbs slot in to their left only while the
+            // pointer is on the row, and take no space when it is not — a
+            // reserved empty band looked like a hole in the row.
             let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == file.id
             HStack(spacing: 5) {
+                if isHovered {
+                    Button {
+                        let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
+                        DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
+                    } label: {
+                        Image(systemName: "airplayaudio")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(shelfColor.opacity(1.0))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("dropshelf.airdrop".localized)
+                    .accessibilityLabel("dropshelf.airdrop".localized)
+
+                    Button(action: onReveal) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.gray.opacity(1.0))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("dropshelf.reveal".localized)
+                    .accessibilityLabel("dropshelf.reveal".localized)
+
+                    Button(action: onRemove) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.gray.opacity(0.8))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("dropshelf.remove".localized)
+                    .accessibilityLabel("dropshelf.remove".localized)
+                }
+
                 Button {
                     ClipboardHoverPreviewController.shared.togglePin(
                         shelfFile: file,
@@ -1564,47 +1602,8 @@ public struct ShelfFileRowView: View {
                 .buttonStyle(.plain)
                 .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
                 .accessibilityLabel(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
-
-            // AirDrop, Reveal and Remove arrive with the pointer. Five glyphs
-            // standing on every row read as a toolbar and squeezed the file
-            // name; the row is about the file.
-            HStack(spacing: 5) {
-                Button {
-                    let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
-                    DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
-                } label: {
-                    Image(systemName: "airplayaudio")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(shelfColor.opacity(isHovered ? 1.0 : 0.6))
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.plain)
-                .help("dropshelf.airdrop".localized)
-                .accessibilityLabel("dropshelf.airdrop".localized)
-
-                Button(action: onReveal) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.gray.opacity(isHovered ? 1.0 : 0.6))
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.plain)
-                .help("dropshelf.reveal".localized)
-                .accessibilityLabel("dropshelf.reveal".localized)
-
-                Button(action: onRemove) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.gray.opacity(isHovered ? 0.8 : 0.4))
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.plain)
-                .help("dropshelf.remove".localized)
-                .accessibilityLabel("dropshelf.remove".localized)
             }
-            .opacity(isHovered ? 1 : 0)
-            .allowsHitTesting(isHovered)
-            }
+            .animation(PurahMotionPolicy.hover, value: isHovered)
         }
         .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
         .padding(.vertical, PurahItemRhythm.rowVerticalInset)

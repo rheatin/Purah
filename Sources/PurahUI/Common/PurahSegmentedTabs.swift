@@ -22,6 +22,7 @@ public struct PurahSegmentedTabs<Value: Hashable>: View {
     private let selection: Value
     private let tint: Color
     private let height: CGFloat
+    private let minSegmentWidth: CGFloat
     private let onSelect: (Value) -> Void
 
     /// `height` defaults to the header's 20pt hit box; a tab row that lives in
@@ -32,12 +33,14 @@ public struct PurahSegmentedTabs<Value: Hashable>: View {
         selection: Value,
         tint: Color = .accentColor,
         height: CGFloat = PurahHeaderMetrics.hitSize,
+        minSegmentWidth: CGFloat = 46,
         onSelect: @escaping (Value) -> Void
     ) {
         self.segments = segments
         self.selection = selection
         self.tint = tint
         self.height = height
+        self.minSegmentWidth = minSegmentWidth
         self.onSelect = onSelect
     }
 
@@ -55,8 +58,11 @@ public struct PurahSegmentedTabs<Value: Hashable>: View {
                             design: .rounded
                         ))
                         .lineLimit(1)
-                        .padding(.horizontal, PurahHeaderMetrics.pillPaddingH + 1)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // The whole segment is the button, not the glyphs:
+                        // clicking the empty half of the pill used to do
+                        // nothing because only the text carried the hit area.
+                        .frame(minWidth: minSegmentWidth, maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                         .foregroundColor(isOn ? tint : Color.primary.opacity(0.55))
                         .background(
                             RoundedRectangle(cornerRadius: PurahHeaderMetrics.pillCorner, style: .continuous)

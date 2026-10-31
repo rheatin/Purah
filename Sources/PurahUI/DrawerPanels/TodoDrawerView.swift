@@ -99,23 +99,25 @@ struct TodoOverviewRow: View {
                 .foregroundColor(effectiveColor.opacity(isDone ? 0.45 : 1.0))
                 .cornerRadius(3)
 
-            Button {
-                withAnimation(PurahMotionPolicy.microLight) {
-                    state.remove(id: todo.id)
-                    store._todos.removeAll { $0.id == todo.id }
+            // Delete is the one irreversible verb on the row and it sat in the
+            // reading path of every task. It is a conditional sibling, not a
+            // transparent one: a reserved empty slot is a hole in the row for
+            // every task you are not deleting.
+            if isHovered {
+                Button {
+                    withAnimation(PurahMotionPolicy.microLight) {
+                        state.remove(id: todo.id)
+                        store._todos.removeAll { $0.id == todo.id }
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray.opacity(0.6))
                 }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 10))
-                    .foregroundColor(.gray.opacity(0.4))
+                .buttonStyle(.tactile)
+                .help("todo.delete".localized)
+                .transition(.opacity)
             }
-            .buttonStyle(.tactile)
-            // Delete is the one irreversible verb on the row, and it sat in
-            // the reading path of every task. Space stays reserved; the glyph
-            // arrives with the pointer.
-            .opacity(isHovered ? 1 : 0)
-            .allowsHitTesting(isHovered)
-            .help("todo.delete".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
