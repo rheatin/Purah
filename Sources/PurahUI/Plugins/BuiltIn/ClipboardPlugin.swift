@@ -154,15 +154,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
             PurahHeaderGroup {
                 ClipboardSearchButton(state: state, accentColor: Color(hex: "#FF9F0A"))
 
-                PurahHeaderButton(
-                    systemImage: "trash",
-                    help: "Clear unpinned clipboard history (keeps starred items)",
-                    role: .destructive
-                ) {
-                    state.clearHistory(keepFavorites: true)
-                    context.performHaptic(.levelChange)
-                    context.showToast("Cleared unstarred clipboard items", "trash")
-                }
+                ClipboardClearHistoryButton(state: state, context: context)
             }
         )
     }
@@ -583,7 +575,7 @@ public struct ClipboardFullDrawerView: View {
                     // A clipping list is long-form by nature — an overlay
                     // scroller is the only cue that more entries exist.
                     PurahScrollableBody(indicators: .automatic) {
-                        LazyVStack(spacing: isCompact ? 4 : 8) {
+                        LazyVStack(spacing: isCompact ? 4 : 6) {
                             ForEach(itemsToDisplay) { item in
                                 clipboardCard(item: item)
                             }
@@ -818,9 +810,9 @@ public struct ClipboardFullDrawerView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(isCompact ? 6 : 10)
+        .padding(isCompact ? 6 : 8)
         .background(isHovered ? Color.secondary.opacity(0.14) : Color.secondary.opacity(0.08))
-        .cornerRadius(isCompact ? 7 : 10)
+        .cornerRadius(8)
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 5) {
                 let isPreviewPinned = ClipboardHoverPreviewController.shared.pinnedItemId == item.id
@@ -859,7 +851,7 @@ public struct ClipboardFullDrawerView: View {
             .padding(isCompact ? 4 : 6)
         }
         .overlay(
-            RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
+            RoundedRectangle(cornerRadius: 8)
                 .stroke(
                     item.isFavorite
                         ? Color(hex: "#FF9F0A").opacity(0.65)
@@ -870,7 +862,7 @@ public struct ClipboardFullDrawerView: View {
         // Drop target only while a card is actually in flight, so the static
         // list never shows a stray highlight.
         .overlay(
-            RoundedRectangle(cornerRadius: isCompact ? 7 : 10)
+            RoundedRectangle(cornerRadius: 8)
                 .stroke(palette.primaryAccent, lineWidth: 1.6)
                 .opacity(isDropTarget ? 1 : 0)
         )
@@ -1101,6 +1093,49 @@ public struct ClipboardPluginSettingsView: View {
 
 
 // MARK: - Header Search
+
+/// Deleting the whole unpinned history is bulk and irreversible, so the
+/// trash arms on the first click and acts on the second.
+struct ClipboardClearHistoryButton: View {
+    let state: ClipboardPluginState
+    let context: PurahPluginContext
+
+    @State private var isConfirming = false
+    @State private var armTimer: Task<Void, Never>?
+
+    var body: some View {
+        Group {
+            if isConfirming {
+                PurahHeaderButton(
+                    systemImage: "trash.fill",
+                    help: "destructive.confirmClearHelp".localized,
+                    tint: Color(hex: PurahHeaderMetrics.destructiveHex),
+                    isActive: true
+                ) {
+                    armTimer?.cancel()
+                    isConfirming = false
+                    state.clearHistory(keepFavorites: true)
+                    context.performHaptic(.levelChange)
+                    context.showToast("Cleared unstarred clipboard items", "trash")
+                }
+            } else {
+                PurahHeaderButton(
+                    systemImage: "trash",
+                    help: "Clear unpinned clipboard history (keeps starred items)",
+                    role: .destructive
+                ) {
+                    isConfirming = true
+                    armTimer?.cancel()
+                    armTimer = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(3))
+                        guard !Task.isCancelled else { return }
+                        isConfirming = false
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// The clipboard's magnifier. Search used to be a full-width row inside the
 /// drawer — 30pt of a 150pt card, always visible, used some of the time. It

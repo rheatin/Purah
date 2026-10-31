@@ -18,4 +18,10 @@ and open the Terminal drawer.
    shear matrix has to go through `CTFontCreateWithFontDescriptorAndOptions`;
    the `.matrix` attribute on `NSFontDescriptor` renders stray dots.
 
+4. **`Mac/MacTerminalView.swift`, scroller** — `scrollerStyle` is `.overlay`
+   instead of `.legacy`. The legacy style draws a permanent track down the
+   right edge, which read as a scrollbar bolted onto the drawer card. The knob
+   starts at `alphaValue = 0`, fades in from `scrollWheel`, and fades out 0.9s
+   after the hand stops; it stays hidden entirely while `canScroll` is false.
+
 Nothing else in the tree is modified.

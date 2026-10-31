@@ -505,6 +505,8 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
     @objc
     func scrollerActivated ()
     {
+        // Dragging the knob counts as scrolling: keep it from fading mid-drag.
+        revealScroller()
         switch scroller.hitPart {
         case .decrementPage:
             pageUp()
@@ -527,7 +529,32 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         }
     }
 
-    let scrollerStyle: NSScroller.Style = .legacy
+    // Purah: `.legacy` draws a permanent track down the right edge, which read
+    // as a scrollbar bolted onto a drawer card. `.overlay` is the system's own
+    // auto-hiding style — thin knob, no track — and this view fades it in on
+    // scroll and out again when the hand stops.
+    let scrollerStyle: NSScroller.Style = .overlay
+    private var scrollerHideWorkItem: DispatchWorkItem?
+    private static let scrollerIdleDelay: TimeInterval = 0.9
+
+    /// Show the knob because something actually scrolled, and schedule it away.
+    private func revealScroller() {
+        guard let scroller, scroller.isEnabled else { return }
+        scrollerHideWorkItem?.cancel()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            scroller.animator().alphaValue = 1
+        }
+        let hide = DispatchWorkItem { [weak self] in
+            guard let self, let scroller = self.scroller else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.35
+                scroller.animator().alphaValue = 0
+            }
+        }
+        scrollerHideWorkItem = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.scrollerIdleDelay, execute: hide)
+    }
 
     func getScrollerFrame() -> CGRect {
         let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollerStyle)
@@ -553,6 +580,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         scroller.scrollerStyle = scrollerStyle
         scroller.knobProportion = 0.1
         scroller.isEnabled = false
+        scroller.alphaValue = 0
         if let progressBarView {
             addSubview(progressBarView, positioned: .above, relativeTo: scroller)
         }
@@ -646,6 +674,11 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         scroller.isEnabled = canScroll
         scroller.doubleValue = scrollPosition
         scroller.knobProportion = scrollThumbsize
+        // Nothing to scroll back through: nothing to show.
+        if !canScroll {
+            scrollerHideWorkItem?.cancel()
+            scroller.alphaValue = 0
+        }
     }
     
     var userScrolling = false
@@ -2194,6 +2227,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         if event.deltaY == 0 {
             return
         }
+        revealScroller()
         let velocity = calcScrollingVelocity(delta: Int (abs (event.deltaY)))
         if event.deltaY > 0 {
             scrollUp (lines: velocity)

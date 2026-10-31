@@ -1565,6 +1565,10 @@ public struct ShelfFileRowView: View {
                 .help(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
                 .accessibilityLabel(file.isFavorite ? "dropshelf.unstar".localized : "dropshelf.star".localized)
 
+            // AirDrop, Reveal and Remove arrive with the pointer. Five glyphs
+            // standing on every row read as a toolbar and squeezed the file
+            // name; the row is about the file.
+            HStack(spacing: 5) {
                 Button {
                     let targetURL = DropShelfDrawerView.ensureDragURL(for: file)
                     DropShelfDrawerView.shareViaAirDrop(urls: [targetURL])
@@ -1598,21 +1602,24 @@ public struct ShelfFileRowView: View {
                 .help("dropshelf.remove".localized)
                 .accessibilityLabel("dropshelf.remove".localized)
             }
+            .opacity(isHovered ? 1 : 0)
+            .allowsHitTesting(isHovered)
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
+        .padding(.vertical, PurahItemRhythm.rowVerticalInset)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
                 .fill(isSelected ? shelfColor.opacity(0.18) : Color.clear)
         )
         .liquidCardBackground(
-            cornerRadius: 6,
+            cornerRadius: PurahItemRhythm.rowCornerRadius,
             strokeColor: isSelected
                 ? shelfColor
                 : (isHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
                 .stroke(isSelected ? shelfColor : Color.clear, lineWidth: 1.5)
         )
         .scaleEffect(isDragging ? 0.96 : (isHovered ? 1.015 : 1.0))

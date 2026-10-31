@@ -8,6 +8,7 @@ struct TodoOverviewRow: View {
     let todo: TodoItem
     let state: TodoPluginState
     let store: PurahWorkspaceStore
+    @State private var isHovered = false
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
     private var podColor: Color { palette.podColor(for: "todo") }
@@ -109,6 +110,11 @@ struct TodoOverviewRow: View {
                     .foregroundColor(.gray.opacity(0.4))
             }
             .buttonStyle(.tactile)
+            // Delete is the one irreversible verb on the row, and it sat in
+            // the reading path of every task. Space stays reserved; the glyph
+            // arrives with the pointer.
+            .opacity(isHovered ? 1 : 0)
+            .allowsHitTesting(isHovered)
             .help("todo.delete".localized)
         }
         .padding(.horizontal, 8)
@@ -117,6 +123,9 @@ struct TodoOverviewRow: View {
             cornerRadius: 8,
             strokeColor: effectiveColor.opacity(isDone ? 0.35 : 0.9)
         )
+        .onHover { hovering in
+            withAnimation(PurahMotionPolicy.hover) { isHovered = hovering }
+        }
 
     }
 

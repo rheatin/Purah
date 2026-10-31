@@ -477,7 +477,18 @@ public struct CalendarDrawerView: View {
             // A full agenda is a scrollable document; keep the indicators.
             PurahScrollableBody(indicators: .automatic) {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(state.events) { event in
+                    // A day header only exists because that day has an event:
+                    // an empty day never enters the list, so it can never draw
+                    // a divider over nothing.
+                    ForEach(Array(state.events.enumerated()), id: \.element.id) { index, event in
+                        let isFirstOfDay = index == 0
+                            || !Foundation.Calendar.current.isDate(
+                                state.events[index - 1].startTime,
+                                inSameDayAs: event.startTime
+                            )
+                        if isFirstOfDay {
+                            dayDividerRow(for: event.startTime)
+                        }
                         if event.id == nowLineEventID {
                             nowDividerRow()
                         }
@@ -510,6 +521,30 @@ public struct CalendarDrawerView: View {
         } else {
             agendaAnchorID = state.events.first?.id
         }
+    }
+
+    /// The line that says which day the rows below belong to. Without one, a
+    /// multi-day agenda was an undifferentiated run of "09:00 …".
+    @ViewBuilder
+    private func dayDividerRow(for date: Date) -> some View {
+        let calendar = Foundation.Calendar.current
+        let dayText = date.formatted(.dateTime.month(.abbreviated).day().weekday(.abbreviated))
+        let label: String = {
+            if calendar.isDateInToday(date) { return "\(("calendar.day.today".localized)) · \(dayText)" }
+            if calendar.isDateInTomorrow(date) { return "\(("calendar.day.tomorrow".localized)) · \(dayText)" }
+            return dayText
+        }()
+
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .foregroundColor(palette.primaryAccent.opacity(0.9))
+                .fixedSize()
+            Rectangle()
+                .fill(palette.borderColor.opacity(0.30))
+                .frame(height: 1)
+        }
+        .padding(.top, 3)
     }
 
     @ViewBuilder
