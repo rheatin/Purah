@@ -55,6 +55,7 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var rawSteppedStream: String = ""
     @State private var isRoleRunning: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
+    @State private var isContentHovered: Bool = false
     /// What answered the last chip turn. A chip's header is already full, so
     /// this rides in the title's tooltip instead of costing a row.
     @State private var servedModel: String? = nil
@@ -104,14 +105,33 @@ public struct AIAssistantSteppedDrawerView: View {
         let isPreviewPinned = ClipboardHoverPreviewController.shared.isPinned(id: "ai-\(role.id)")
         let isPreviewAvailable: Bool = {
             guard !isRoleRunning, !roleOutput.isEmpty else { return false }
-            let nsFont = NSFont.systemFont(ofSize: font)
+            // Measure with the same 2pt line spacing the Text is drawn with:
+            // without it an answer one line past the card's limit measured as
+            // "fits", so the ellipsis was on screen but the eye stayed dim.
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = 2
             let h = (roleOutput as NSString).boundingRect(
                 with: CGSize(width: contentW, height: .greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [.font: nsFont]
+                attributes: [.font: NSFont.systemFont(ofSize: font), .paragraphStyle: paragraph]
             ).height
             return h > cardH - 4
         }()
+        // A pointer already resting on the card never re-fires onHover, so a run
+        // that finishes under the cursor would never open the preview.
+        let refreshPreview: (Bool) -> Void = { hovering in
+            if hovering && isPreviewAvailable {
+                ClipboardHoverPreviewController.shared.show(
+                    item: previewItem,
+                    edge: edge,
+                    palette: palette,
+                    drawerWidth: drawerW,
+                    dwell: 0.4
+                )
+            } else {
+                ClipboardHoverPreviewController.shared.hide()
+            }
+        }
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // 1. In-Rail Indicator Bar with flowing light spot when running
@@ -236,19 +256,11 @@ public struct AIAssistantSteppedDrawerView: View {
                             .fill(isSteppedDropTargeted ? roleColor.opacity(0.14) : Color.clear)
                     )
                     .onHover { hovering in
-                        if hovering {
-                            if isPreviewAvailable {
-                                ClipboardHoverPreviewController.shared.show(
-                                    item: previewItem,
-                                    edge: edge,
-                                    palette: palette,
-                                    drawerWidth: drawerW,
-                                    dwell: 0.4
-                                )
-                            }
-                        } else {
-                            ClipboardHoverPreviewController.shared.hide()
-                        }
+                        isContentHovered = hovering
+                        refreshPreview(hovering)
+                    }
+                    .onChange(of: isPreviewAvailable) { _, available in
+                        if available { refreshPreview(isContentHovered) }
                     }
                     .onDrop(of: AIWorkbenchSplitDropDelegate.acceptedTypes, isTargeted: $isSteppedDropTargeted) { _ in
                         handleSteppedTurnFromDrag()
@@ -314,6 +326,7 @@ public struct AIAssistantSteppedDrawerView: View {
         .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
         .onChange(of: isExpanded) { _, expanded in
             if !expanded {
+                isContentHovered = false
                 ClipboardHoverPreviewController.shared.hide()
             }
         }
