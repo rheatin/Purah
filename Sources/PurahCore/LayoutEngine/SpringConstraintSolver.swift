@@ -113,7 +113,7 @@ public enum SpringConstraintSolver {
         }
 
         // 4. Merge back to all pods preserving un-mutated rails
-        var resultMap = Dictionary(uniqueKeysWithValues: allPods.map { ($0.id, $0) })
+        var resultMap = Dictionary(allPods.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for updated in edgePods {
             resultMap[updated.id] = updated
         }

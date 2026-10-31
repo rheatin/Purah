@@ -109,6 +109,12 @@ public struct SteppedRailContainerView: View {
                         let isPinned = store.isItemPinned(id: subItem.id)
                         let isActive = (subItem.id == store.activeDrawerItemId || isPinned)
                         let state: ItemDrawerState = isActive ? .expandedDrawer : .dockedFlush
+                        // The chip is drawn from a clear shape with no text, so
+                        // VoiceOver had nothing to read and nothing to activate.
+                        let activate: () -> Void = {
+                            let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: railChipIDs)
+                            plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
+                        }
 
                         // Coordinate alignment: Shift expanded drawer card upward if it overflows screen bottom
                         let cardH = max(slotH, minChipH)
@@ -135,10 +141,12 @@ public struct SteppedRailContainerView: View {
                                 .fill(Color.clear)
                                 .frame(width: barW, height: slotH)
                                 .contentShape(Rectangle())
-                                .onTapGesture {
-                                    let subContext = makeSubItemContext(for: subItem, itemH: slotH, isActive: state == .expandedDrawer, isPinned: isPinned, visibleIDs: railChipIDs)
-                                    plugin.onRailBarTap(subItemId: subItem.id, context: subContext)
-                                }
+                                .onTapGesture(perform: activate)
+                                // A slot is a button.
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(Text(subItem.title))
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityAction { activate() }
                         }
                         .frame(height: slotH, alignment: .top)
                         .zIndex(isActive ? 100 : Double(10 - idx))

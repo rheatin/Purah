@@ -108,6 +108,12 @@ public struct ScriptRunwayDrawerView: View {
                         .onTapGesture {
                             runOrStop(action)
                         }
+                        // The row is the run button and shows it with colour
+                        // only, so VoiceOver read nothing and could not run it.
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(Text(action.name))
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { runOrStop(action) }
                         .help(isThisRunning ? "help.stopScript".localized : "runway.run".localized)
                         .onHover { hovering in
                             if hovering {

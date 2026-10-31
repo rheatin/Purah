@@ -288,6 +288,12 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                         ? max(policy.maxRailItems, 1)
                         : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
                     let count = min(rawCount, maxAllowed)
+                    // Zero sub-items draws the composite bar (AGENTS §3), so
+                    // the hit box is the whole pod. The chip maths gave a
+                    // zero-height box and nothing to click.
+                    guard count > 0 else {
+                        return currentWindowY >= topY && currentWindowY <= topY + item.spanH
+                    }
                     let safeCount = max(count, 1)
                     let totalSpacing = spacing * Double(safeCount - 1)
                     let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH

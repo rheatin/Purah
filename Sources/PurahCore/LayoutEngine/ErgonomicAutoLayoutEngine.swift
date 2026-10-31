@@ -180,7 +180,7 @@ public enum ErgonomicAutoLayoutEngine {
         let laidOutLeft = layout(pods: leftCandidates, on: .left, preserveCustomOrder: !reassignEdges, safeBounds: safeBounds, gap: gap)
         let laidOutRight = layout(pods: rightCandidates, on: .right, preserveCustomOrder: !reassignEdges, safeBounds: safeBounds, gap: gap)
 
-        let map = Dictionary(uniqueKeysWithValues: (laidOutLeft + laidOutRight).map { ($0.id, $0) })
+        let map = Dictionary((laidOutLeft + laidOutRight).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return pods.map { map[$0.id] ?? $0 }
     }
 }
