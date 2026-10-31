@@ -1082,9 +1082,9 @@ struct DrawerInteractionUITests {
         #expect(store.activeDrawerPodId == activePod2.pod.id)
     }
 
-    @Test("CalendarItemDrawerView instantiates across Compact, Standard, and Flagship height tiers")
+    @Test("Calendar stepped body lays out across the body-height range")
     @MainActor
-    func testCalendarDrawerViewTiers() {
+    func testCalendarSteppedBodyTiers() throws {
         let store = PurahWorkspaceStore()
         let event = CalendarEventItem(
             title: "Project Strategy Review",
@@ -1092,54 +1092,22 @@ struct DrawerInteractionUITests {
             calendarTitle: "Work",
             colorHex: "#007AFF",
             url: URL(string: "https://zoom.us/j/123456789"),
+            notes: "Bring the Q4 numbers.",
             startTime: Date(),
             endTime: Date().addingTimeInterval(3600)
         )
 
-        // Compact Tier (< 65pt)
-        let compactView = CalendarItemDrawerView(
-            event: event,
-            edge: .right,
-            state: .expandedDrawer,
-            isPinned: false,
-            height: 48.0,
-            store: store,
-            onTogglePin: {}
-        )
-        _ = compactView
-
-        // Standard Tier (65pt ~ 115pt)
-        let standardView = CalendarItemDrawerView(
-            event: event,
-            edge: .right,
-            state: .expandedDrawer,
-            isPinned: false,
-            height: 85.0,
-            store: store,
-            onTogglePin: {}
-        )
-        let hosting = NSHostingView(rootView: standardView)
-        hosting.frame = NSRect(x: 0, y: 0, width: 320, height: 95)
-        hosting.layoutSubtreeIfNeeded()
-        if let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
+        for height in [CGFloat(10), 40, 120] {
+            let hosting = NSHostingView(rootView: CalendarSteppedBodyView(
+                event: event,
+                availableHeight: height,
+                store: store
+            ))
+            hosting.frame = NSRect(x: 0, y: 0, width: 320, height: height)
+            hosting.layoutSubtreeIfNeeded()
+            let rep = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
             hosting.cacheDisplay(in: hosting.bounds, to: rep)
-            if let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: URL(fileURLWithPath: "/tmp/cal_sample_button_check.png"))
-            }
         }
-        _ = standardView
-
-        // Flagship Tier (>= 115pt)
-        let flagshipView = CalendarItemDrawerView(
-            event: event,
-            edge: .right,
-            state: .expandedDrawer,
-            isPinned: true,
-            height: 140.0,
-            store: store,
-            onTogglePin: {}
-        )
-        _ = flagshipView
     }
 
     @Test("SystemAudioLiveMonitor live capture probe")

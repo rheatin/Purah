@@ -708,12 +708,13 @@ public struct AIAssistantRoleWorkbenchView: View {
         VStack(alignment: .leading, spacing: 6) {
             // 1. Top 3-in-1 Compact Status Bar (24pt when collapsed, spring-expands to ~96pt when isEditingSource)
             topStatusBar
-                // The `/` menu floats out of this card and down over the
-                // answer, the action row and the refine bar — every one of
-                // them a *later* sibling that painted on top. A transient
-                // popup belongs above all of them, so this is not 10: an
-                // equal value loses to the later sibling.
-                .zIndex(state.isSlashMenuVisible ? 100 : 0)
+                // The role/language dropdown floats out of this 22pt bar and
+                // down over the answer, the action row and the refine bar —
+                // every one of them a *later* sibling that painted on top.
+                // Whether a popup is open lives inside the dropdown, so this
+                // cannot depend on `isSlashMenuVisible`: a transient popup
+                // belongs above every sibling, always.
+                .zIndex(100)
 
             // 2. Center Main Output Stage (80%+ of vertical height)
             centerOutputStage

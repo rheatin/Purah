@@ -943,6 +943,7 @@ public struct VitalsFocusedDrawerView: View {
     public let metric: VitalsMetricType
     public let availableHeight: CGFloat
     public let trailingHeader: AnyView?
+    public let showsHeader: Bool
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
@@ -951,6 +952,11 @@ public struct VitalsFocusedDrawerView: View {
     private var palette: ThemePalette { ThemeManager.shared.palette }
     private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
     private var effectiveThresholds: VitalsColorThresholds { state.thresholds }
+
+    /// A header-less body (host-owned stepped card) still chooses the tier it
+    /// would have drawn with its 15pt header row, then uses that room for the
+    /// graph instead of leaving a blank strip.
+    private var layoutHeight: CGFloat { availableHeight }
 
     private var scopePicker: some View {
         HStack(spacing: 2) {
@@ -977,12 +983,14 @@ public struct VitalsFocusedDrawerView: View {
         metric: VitalsMetricType,
         availableHeight: CGFloat = 48.0,
         trailingHeader: AnyView? = nil,
+        showsHeader: Bool = true,
         state: VitalsPluginState,
         store: PurahWorkspaceStore = PurahWorkspaceStore()
     ) {
         self.metric = metric
         self.availableHeight = availableHeight
         self.trailingHeader = trailingHeader
+        self.showsHeader = showsHeader
         self.state = state
         self.store = store
     }
@@ -991,10 +999,11 @@ public struct VitalsFocusedDrawerView: View {
         metric: VitalsMetricType,
         availableHeight: CGFloat = 48.0,
         trailingHeader: AnyView? = nil,
+        showsHeader: Bool = true,
         store: PurahWorkspaceStore
     ) {
         let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
-        self.init(metric: metric, availableHeight: availableHeight, trailingHeader: trailingHeader, state: pluginState, store: store)
+        self.init(metric: metric, availableHeight: availableHeight, trailingHeader: trailingHeader, showsHeader: showsHeader, state: pluginState, store: store)
     }
 
     public init(metric: VitalsMetricType, availableHeight: CGFloat = 48.0, state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
@@ -1053,7 +1062,7 @@ public struct VitalsFocusedDrawerView: View {
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        if availableHeight < 42.0 {
+        if layoutHeight < 42.0 {
             // Tier A: Ultra-compact (< 42pt) -> 2 crisp lines
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
@@ -1076,7 +1085,8 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 HStack(spacing: 4) {
                     GeometryReader { geo in
@@ -1096,7 +1106,7 @@ public struct VitalsFocusedDrawerView: View {
                 }
                 .frame(height: 13)
             }
-        } else if availableHeight < 105.0 {
+        } else if layoutHeight < 105.0 {
             // Tier B (42 <= availableHeight < 105)
             VStack(alignment: .leading, spacing: 2) {
                 // Row 1: Header
@@ -1113,10 +1123,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(availableHeight - 32.0, 14.0)
+                let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .cpu, scope: timeScope),
@@ -1171,10 +1182,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 16)
+                .frame(height: showsHeader ? 16 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(min(availableHeight - 64.0, 90.0), 36.0)
+                let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .cpu, scope: timeScope),
@@ -1230,7 +1242,7 @@ public struct VitalsFocusedDrawerView: View {
         let color = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let gpuRatio = max(min(metrics.gpuUsage, 1.0), 0.0)
 
-        if availableHeight < 42.0 {
+        if layoutHeight < 42.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("GPU", systemImage: "display")
@@ -1249,7 +1261,8 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 HStack(spacing: 4) {
                     GeometryReader { geo in
@@ -1268,7 +1281,7 @@ public struct VitalsFocusedDrawerView: View {
                 }
                 .frame(height: 13)
             }
-        } else if availableHeight < 105.0 {
+        } else if layoutHeight < 105.0 {
             VStack(alignment: .leading, spacing: 2) {
                 // Row 1: Header
                 HStack(spacing: 6) {
@@ -1284,10 +1297,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(availableHeight - 32.0, 14.0)
+                let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .gpu, scope: timeScope),
@@ -1324,10 +1338,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 16)
+                .frame(height: showsHeader ? 16 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(min(availableHeight - 64.0, 90.0), 36.0)
+                let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .gpu, scope: timeScope),
@@ -1365,7 +1380,7 @@ public struct VitalsFocusedDrawerView: View {
     private func ramFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        if availableHeight < 42.0 {
+        if layoutHeight < 42.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("Memory", systemImage: "memorychip")
@@ -1387,7 +1402,8 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 HStack(spacing: 4) {
                     GeometryReader { geo in
@@ -1406,7 +1422,7 @@ public struct VitalsFocusedDrawerView: View {
                 }
                 .frame(height: 13)
             }
-        } else if availableHeight < 105.0 {
+        } else if layoutHeight < 105.0 {
             VStack(alignment: .leading, spacing: 2) {
                 // Row 1: Header
                 HStack(spacing: 6) {
@@ -1422,10 +1438,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(availableHeight - 32.0, 14.0)
+                let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .ram, scope: timeScope),
@@ -1462,10 +1479,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 16)
+                .frame(height: showsHeader ? 16 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(min(availableHeight - 64.0, 90.0), 36.0)
+                let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .ram, scope: timeScope),
@@ -1503,7 +1521,7 @@ public struct VitalsFocusedDrawerView: View {
     private func powerFocusedView(metrics: HardwareVitalsInfo) -> some View {
         let color = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
 
-        if availableHeight < 42.0 {
+        if layoutHeight < 42.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("Battery", systemImage: "bolt.batteryblock.fill")
@@ -1525,7 +1543,8 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 HStack(spacing: 4) {
                     GeometryReader { geo in
@@ -1544,7 +1563,7 @@ public struct VitalsFocusedDrawerView: View {
                 }
                 .frame(height: 13)
             }
-        } else if availableHeight < 105.0 {
+        } else if layoutHeight < 105.0 {
             VStack(alignment: .leading, spacing: 2) {
                 // Row 1: Header
                 HStack(spacing: 6) {
@@ -1560,10 +1579,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(availableHeight - 32.0, 14.0)
+                let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .power, scope: timeScope),
@@ -1600,10 +1620,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 16)
+                .frame(height: showsHeader ? 16 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(min(availableHeight - 64.0, 90.0), 36.0)
+                let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .power, scope: timeScope),
@@ -1642,7 +1663,7 @@ public struct VitalsFocusedDrawerView: View {
         let downColor = Color(hex: "#00F5D4")
         let upColor = Color(hex: "#0A84FF")
 
-        if availableHeight < 42.0 {
+        if layoutHeight < 42.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("Network", systemImage: "network")
@@ -1662,7 +1683,8 @@ public struct VitalsFocusedDrawerView: View {
                     .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 HStack(spacing: 4) {
                     GeometryReader { geo in
@@ -1683,7 +1705,7 @@ public struct VitalsFocusedDrawerView: View {
                 }
                 .frame(height: 13)
             }
-        } else if availableHeight < 105.0 {
+        } else if layoutHeight < 105.0 {
             VStack(alignment: .leading, spacing: 2) {
                 // Row 1: Header
                 HStack(spacing: 6) {
@@ -1704,10 +1726,11 @@ public struct VitalsFocusedDrawerView: View {
                     .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(availableHeight - 32.0, 14.0)
+                let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsDualTimeSeriesGraphView(
                     downPoints: vitals.history(for: .network, scope: timeScope),
@@ -1751,10 +1774,11 @@ public struct VitalsFocusedDrawerView: View {
                     .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 16)
+                .frame(height: showsHeader ? 16 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(min(availableHeight - 64.0, 90.0), 36.0)
+                let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsDualTimeSeriesGraphView(
                     downPoints: vitals.history(for: .network, scope: timeScope),
@@ -1795,7 +1819,7 @@ public struct VitalsFocusedDrawerView: View {
         let color = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
         let usedRatio = metrics.diskTotalGB > 0 ? max(min((metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB, 1.0), 0.0) : 0.5
 
-        if availableHeight < 42.0 {
+        if layoutHeight < 42.0 {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Label("Disk", systemImage: "internaldrive")
@@ -1810,7 +1834,8 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 HStack(spacing: 4) {
                     GeometryReader { geo in
@@ -1830,7 +1855,7 @@ public struct VitalsFocusedDrawerView: View {
                 }
                 .frame(height: 13)
             }
-        } else if availableHeight < 105.0 {
+        } else if layoutHeight < 105.0 {
             VStack(alignment: .leading, spacing: 2) {
                 // Row 1: Header
                 HStack(spacing: 6) {
@@ -1846,10 +1871,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 15)
+                .frame(height: showsHeader ? 15 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(availableHeight - 32.0, 14.0)
+                let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .disk, scope: timeScope),
@@ -1886,10 +1912,11 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     if let trailingHeader { trailingHeader }
                 }
-                .frame(height: 16)
+                .frame(height: showsHeader ? 16 : 0.0)
+                .opacity(showsHeader ? 1.0 : 0.0)
 
                 // Row 2: Graph
-                let graphH: CGFloat = max(min(availableHeight - 64.0, 90.0), 36.0)
+                let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsTimeSeriesGraphView(
                     points: vitals.history(for: .disk, scope: timeScope),
@@ -1949,37 +1976,50 @@ public struct VitalsTimeSeriesGraphView: View {
     public let palette: ThemePalette
     public let height: CGFloat
     public let scope: VitalsTimeScope
+    public let showsGrid: Bool
 
     public init(
         points: [VitalsHistoryPoint],
         color: Color,
         palette: ThemePalette,
         height: CGFloat = 46.0,
-        scope: VitalsTimeScope = .realTime30s
+        scope: VitalsTimeScope = .realTime30s,
+        showsGrid: Bool = true
     ) {
         self.points = points
         self.color = color
         self.palette = palette
         self.height = height
         self.scope = scope
+        self.showsGrid = showsGrid
     }
 
+    /// The visible points, mapped onto the window. The vertical domain follows
+    /// the data instead of a fixed 0…1: a metric that moves between 58% and
+    /// 62% drew a flat line before, and "no visible change" is the one thing a
+    /// sparkline must never say about data that did change.
     private func computePlotPoints(width: CGFloat, height: CGFloat) -> [CGPoint] {
         let now = Date()
         let windowSec = scope.durationSeconds
 
         let recent = points.filter { now.timeIntervalSince($0.timestamp) <= windowSec }
         let currentVal = points.last?.value ?? 0.0
+        let domain = valueDomain(recent)
+        let span = max(domain.upperBound - domain.lowerBound, 0.0001)
+
+        func yPosition(_ value: Double) -> CGFloat {
+            let clamped = min(max(CGFloat(value), domain.lowerBound), domain.upperBound)
+            return height - height * ((clamped - domain.lowerBound) / span)
+        }
 
         var result: [CGPoint] = recent.map { pt in
             let age = min(max(now.timeIntervalSince(pt.timestamp), 0.0), windowSec)
             let x = width * CGFloat(1.0 - (age / windowSec))
-            let y = height - (height * CGFloat(max(min(pt.value, 1.0), 0.0)))
-            return CGPoint(x: x, y: y)
+            return CGPoint(x: x, y: yPosition(pt.value))
         }
 
         if result.isEmpty {
-            let y = height - (height * CGFloat(max(min(currentVal, 1.0), 0.0)))
+            let y = yPosition(currentVal)
             result = [CGPoint(x: 0, y: y), CGPoint(x: width, y: y)]
         } else if result.count == 1, let only = result.first {
             result.insert(CGPoint(x: 0, y: only.y), at: 0)
@@ -1989,9 +2029,24 @@ public struct VitalsTimeSeriesGraphView: View {
         return result
     }
 
+    /// Padded min…max of the visible samples, with a floor on the span so a
+    /// constant reading sits in the middle instead of filling the chart.
+    private func valueDomain(_ recent: [VitalsHistoryPoint]) -> ClosedRange<CGFloat> {
+        let values = recent.map { CGFloat(min(max($0.value, 0.0), 1.0)) }
+        guard let low = values.min(), let high = values.max() else { return 0...1 }
+        let minimumSpan: CGFloat = 0.05
+        if high - low < minimumSpan {
+            let mid = (low + high) / 2
+            let lower = max(mid - minimumSpan / 2, 0)
+            return lower...min(lower + minimumSpan, 1)
+        }
+        let padding = (high - low) * 0.15
+        return max(low - padding, 0)...min(high + padding, 1)
+    }
+
     public var body: some View {
-        let showMarkings = height >= 46.0
-        let canvasH = showMarkings ? max(height - 12.0, 10.0) : height
+        let showMarkings = height >= 34.0
+        let canvasH = showMarkings ? max(height - 11.0, 10.0) : height
 
         VStack(spacing: showMarkings ? 2 : 0) {
             GeometryReader { geo in
@@ -2001,15 +2056,17 @@ public struct VitalsTimeSeriesGraphView: View {
 
                 ZStack {
                     // Grid background lines at 25%, 50%, 75%
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: h * 0.25))
-                        path.addLine(to: CGPoint(x: w, y: h * 0.25))
-                        path.move(to: CGPoint(x: 0, y: h * 0.50))
-                        path.addLine(to: CGPoint(x: w, y: h * 0.50))
-                        path.move(to: CGPoint(x: 0, y: h * 0.75))
-                        path.addLine(to: CGPoint(x: w, y: h * 0.75))
+                    if showsGrid {
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: h * 0.25))
+                            path.addLine(to: CGPoint(x: w, y: h * 0.25))
+                            path.move(to: CGPoint(x: 0, y: h * 0.50))
+                            path.addLine(to: CGPoint(x: w, y: h * 0.50))
+                            path.move(to: CGPoint(x: 0, y: h * 0.75))
+                            path.addLine(to: CGPoint(x: w, y: h * 0.75))
+                        }
+                        .stroke(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 0.8, dash: [3, 3]))
                     }
-                    .stroke(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 0.8, dash: [3, 3]))
 
                     if !plotPoints.isEmpty {
                         // Area fill under curve
@@ -2027,7 +2084,7 @@ public struct VitalsTimeSeriesGraphView: View {
                         }
                         .fill(
                             LinearGradient(
-                                colors: [color.opacity(0.32), color.opacity(0.02)],
+                                colors: [color.opacity(0.5), color.opacity(0.06)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -2076,6 +2133,58 @@ public struct VitalsTimeSeriesGraphView: View {
             }
         }
         .frame(height: height)
+    }
+}
+
+// MARK: - Row Sparkline (chip row, 28pt)
+
+/// The mini chart that rides a hardware chip's row: the same area fill and
+/// end dot as the drawer graph, no grid and no axis, with the time range in
+/// the corner. It takes whatever width the row's text leaves, so it never
+/// leaves a dead gap between the reading and the line.
+public struct VitalsRowSparkline: View {
+    public let metric: VitalsMetricType
+    public let color: Color
+    public let palette: ThemePalette
+    public let height: CGFloat
+
+    /// Tapping cycles the window, so a 24h trend is one click away from a chip
+    /// that has no room for a scope picker.
+    @State private var scope: VitalsTimeScope = .realTime30s
+
+    public init(metric: VitalsMetricType, color: Color, palette: ThemePalette, height: CGFloat = 28.0) {
+        self.metric = metric
+        self.color = color
+        self.palette = palette
+        self.height = height
+    }
+
+    public var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            VitalsTimeSeriesGraphView(
+                points: HardwareVitalsService.shared.history(for: metric, scope: scope),
+                color: color,
+                palette: palette,
+                height: max(height - 9.0, 12.0),
+                scope: scope,
+                showsGrid: false
+            )
+            Text(scope.rawValue)
+                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .foregroundColor(.secondary)
+        }
+        .frame(minWidth: 60, maxWidth: .infinity, alignment: .trailing)
+        .frame(height: height)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            let all = VitalsTimeScope.allCases
+            guard let index = all.firstIndex(of: scope) else { return }
+            scope = all[(index + 1) % all.count]
+            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+        }
+        .help("vitals.scope.cycleHint".localized)
+        .accessibilityLabel("vitals.scope.cycleHint".localized)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -2132,9 +2241,24 @@ public struct VitalsDualTimeSeriesGraphView: View {
         return result
     }
 
+    /// Padded min…max of the visible samples, with a floor on the span so a
+    /// constant reading sits in the middle instead of filling the chart.
+    private func valueDomain(_ recent: [VitalsHistoryPoint]) -> ClosedRange<CGFloat> {
+        let values = recent.map { CGFloat(min(max($0.value, 0.0), 1.0)) }
+        guard let low = values.min(), let high = values.max() else { return 0...1 }
+        let minimumSpan: CGFloat = 0.05
+        if high - low < minimumSpan {
+            let mid = (low + high) / 2
+            let lower = max(mid - minimumSpan / 2, 0)
+            return lower...min(lower + minimumSpan, 1)
+        }
+        let padding = (high - low) * 0.15
+        return max(low - padding, 0)...min(high + padding, 1)
+    }
+
     public var body: some View {
-        let showMarkings = height >= 46.0
-        let canvasH = showMarkings ? max(height - 12.0, 10.0) : height
+        let showMarkings = height >= 34.0
+        let canvasH = showMarkings ? max(height - 11.0, 10.0) : height
 
         VStack(spacing: showMarkings ? 2 : 0) {
             GeometryReader { geo in

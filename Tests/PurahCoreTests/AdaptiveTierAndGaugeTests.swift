@@ -190,4 +190,63 @@ struct AdaptiveTierAndGaugeTests {
         #expect(resolver.resolve(for: prefH, currentId: nil) == "immersive",
                 "the 300pt preferred height must reach the immersive tier")
     }
+
+    @Test("A stepped card never grows beyond its chip, and its row fits inside it")
+    func testSteppedCardMatchesItsChip() {
+        for chip in [CGFloat(32), 40, 56, 63, 120, 185] {
+            let card = PurahSteppedCardMetrics.cardHeight(slotHeight: chip, minChipHeight: chip)
+            #expect(card == chip, "a drawer must never be taller than the chip it extrudes from")
+
+            // The row and the body always add up to the card, never past it.
+            let row = PurahSteppedCardMetrics.rowHeight(cardHeight: card)
+            let body = PurahSteppedCardMetrics.bodyHeight(cardHeight: card)
+            let gap = body > 0 ? PurahSteppedCardMetrics.rowGap : 0
+            #expect(row + body + gap + PurahSteppedCardMetrics.verticalPadding * 2 == chip)
+            #expect(row <= chip, "the row can never be taller than the chip")
+        }
+
+        // A chip compressed below its ergonomic floor still gets the floor.
+        #expect(PurahSteppedCardMetrics.cardHeight(slotHeight: 6, minChipHeight: 32) == 32)
+
+        // A minimum-size chip is its row and nothing else: no clipped sliver
+        // of a body pretending to be content.
+        #expect(PurahSteppedCardMetrics.bodyHeight(cardHeight: 40) == 4)
+    }
+
+    @Test("The chip row scales with the card instead of leaving a dead band")
+    func testSteppedRowScales() {
+        // A 40pt chip is the design's scale 1.0.
+        #expect(PurahSteppedCardMetrics.rowScale(cardHeight: 40) == 1.0)
+        #expect(PurahSteppedCardMetrics.rowHeight(cardHeight: 40) == 30)
+
+        // Type grows with the card, monotonically, and stops growing before a
+        // tall chip turns its row into a poster.
+        let scales = [CGFloat(40), 63, 120, 200, 400].map(PurahSteppedCardMetrics.rowScale(cardHeight:))
+        #expect(scales == scales.sorted())
+        #expect(scales.last == 1.15)
+        #expect(PurahSteppedCardMetrics.rowScale(cardHeight: 120) == 1.15)
+
+        // A tall chip spends its extra height on the body.
+        #expect(PurahSteppedCardMetrics.bodyHeight(cardHeight: 120)
+                > PurahSteppedCardMetrics.bodyHeight(cardHeight: 63))
+    }
+
+    @Test("A stepped card stays inside the screen at both edges")
+    func testSteppedCardShiftStaysOnScreen() {
+        let screen: CGFloat = 900
+        let card: CGFloat = 40
+
+        // Room to spare: no shift.
+        #expect(PurahSteppedCardMetrics.verticalShift(itemTop: 400, cardHeight: card, screenHeight: screen) == 0)
+
+        // Running off the bottom: shifted up just enough.
+        let low = PurahSteppedCardMetrics.verticalShift(itemTop: 860, cardHeight: card, screenHeight: screen)
+        #expect(low == 860 + card - (screen - 12))
+        #expect(860 + card - low <= screen - 12)
+
+        // Running off the top: never shifted above the safe band.
+        let high = PurahSteppedCardMetrics.verticalShift(itemTop: 4, cardHeight: card, screenHeight: screen)
+        #expect(high == 0)
+        #expect(4 - high >= 0)
+    }
 }

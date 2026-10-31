@@ -390,8 +390,9 @@ struct PluginArchitectureTests {
             togglePin: {}
         )
 
-        // Vitals stepped drawer returns non-nil for valid metric
-        let vitalsDrawer = vitalsPlugin.makeSteppedDrawerView(subItemId: "vitals-cpu", context: context)
+        // Vitals stepped body returns non-nil for a valid metric (the host
+        // draws the card around it)
+        let vitalsDrawer = vitalsPlugin.makeSteppedDrawerContent(subItemId: "vitals-cpu", context: context)
         #expect(vitalsDrawer != nil)
 
         // Scripts stepped drawer returns non-nil for valid action
@@ -403,9 +404,9 @@ struct PluginArchitectureTests {
         let todoDrawer = todoPlugin.makeSteppedDrawerView(subItemId: store._todos[0].id, context: context)
         #expect(todoDrawer != nil)
 
-        // Calendar stepped drawer returns non-nil when event exists
+        // Calendar stepped body returns non-nil when the event exists
         store._calendarEvents = [CalendarEventItem(title: "Meeting", startTime: Date(), endTime: Date().addingTimeInterval(3600))]
-        let calDrawer = calPlugin.makeSteppedDrawerView(subItemId: store._calendarEvents[0].id, context: context)
+        let calDrawer = calPlugin.makeSteppedDrawerContent(subItemId: store._calendarEvents[0].id, context: context)
         #expect(calDrawer != nil)
 
         // Non-stepped plugin returns nil by default

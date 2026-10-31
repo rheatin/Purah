@@ -43,6 +43,9 @@ public struct TodoItemDrawerView: View {
         let isExpanded = (state == .expandedDrawer)
         let cardH = isExpanded ? max(height, 32.0) : max(height, 6.0)
         let urgency = TodoPlugin.urgencyPresentation(for: todo)
+        // Same factor the host row uses, so a tall task chip's type grows with
+        // the pod instead of leaving a small row floating in a big card.
+        let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardH)
         let listColor: Color = {
             if let hex = urgency.tintColorHex {
                 return Color(hex: hex)
@@ -62,7 +65,7 @@ public struct TodoItemDrawerView: View {
                 }
 
             if isExpanded {
-                expandedCard(isDone: isDone, cardH: cardH, listColor: listColor)
+                expandedCard(isDone: isDone, cardH: cardH, listColor: listColor, scale: scale)
                     .transition(.move(edge: edge == .right ? .trailing : .leading))
             }
         }
@@ -71,7 +74,7 @@ public struct TodoItemDrawerView: View {
     }
 
     @ViewBuilder
-    private func expandedCard(isDone: Bool, cardH: CGFloat, listColor: Color) -> some View {
+    private func expandedCard(isDone: Bool, cardH: CGFloat, listColor: Color, scale: CGFloat) -> some View {
         HStack(spacing: 8) {
             Button {
                 Task {
@@ -84,11 +87,11 @@ public struct TodoItemDrawerView: View {
                     Circle()
                         .strokeBorder(podColor.opacity(isDone ? 0.26 : 0.55), lineWidth: 1)
                     Image(systemName: "checkmark")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 8 * scale, weight: .black))
                         .foregroundColor(podColor)
                         .opacity(isDone ? 1 : 0)
                 }
-                .frame(width: 18, height: 18)
+                .frame(width: 18 * scale, height: 18 * scale)
             }
             .buttonStyle(.plain)
             .help("todo.toggleDone".localized)
@@ -106,13 +109,13 @@ public struct TodoItemDrawerView: View {
                     .textFieldStyle(.plain)
                     .strikethrough(isDone)
                     .foregroundColor((palette.style == .native ? Color.primary : Color.white).opacity(isDone ? 0.45 : 1.0))
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .opticalTracking(size: 11)
+                    .font(.system(size: 11 * scale, weight: .semibold, design: .rounded))
+                    .opticalTracking(size: 11 * scale)
                     .lineLimit(1)
 
                     if !isDone, let status = statusPresentation() {
                         Text(status.text)
-                            .purahBadge(size: 7.5, weight: .heavy, design: .rounded)
+                            .purahBadge(size: 7.5 * scale, weight: .heavy, design: .rounded)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)
                             .background(Capsule(style: .continuous).fill(status.color))
@@ -123,7 +126,7 @@ public struct TodoItemDrawerView: View {
 
                 HStack(spacing: 4) {
                     Image(systemName: todo.dueDate == nil ? "calendar" : "clock")
-                        .font(.system(size: 7.5, weight: .semibold))
+                        .font(.system(size: 7.5 * scale, weight: .semibold))
 
                     if let due = todo.dueDate {
                         Text(dueLabel(for: due))
@@ -141,15 +144,19 @@ public struct TodoItemDrawerView: View {
 
                     Circle()
                         .fill(listColor.opacity(isDone ? 0.35 : 0.9))
-                        .frame(width: 4, height: 4)
+                        .frame(width: 4 * scale, height: 4 * scale)
 
                     Text(todo.listTitle)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                .font(.system(size: 9, design: .monospaced))
+                .font(.system(size: 9 * scale, design: .monospaced))
                 .foregroundColor(isDone ? .secondary.opacity(0.42) : .secondary.opacity(0.78))
             }
+            // The text column claims its width before the spacer and the tools
+            // plate do; without it the list name truncated at "Remi…" with
+            // empty card space beside it.
+            .layoutPriority(1)
 
             Spacer(minLength: 4)
 
@@ -158,7 +165,10 @@ public struct TodoItemDrawerView: View {
         .padding(.leading, edge == .left ? 12 : 22)
         .padding(.trailing, edge == .left ? 22 : 12)
         .padding(.vertical, 6)
-        .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0), height: cardH)
+        // The pod id is passed so the plugin's declared adaptive width (340pt)
+        // applies; resolving from the title alone fell back to ~280pt and cut
+        // the list name off.
+        .frame(width: store.effectiveDrawerWidth(for: todo.title, baseWidth: 280.0, podId: "todo"), height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: listColor.opacity(isDone ? 0.35 : 1.0))
         .contextMenu {
             Button("Due Today (18:00)") {

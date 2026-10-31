@@ -26,6 +26,8 @@ public struct PurahDrawerHeaderTools: View {
     }
 
     public var body: some View {
+        // One look everywhere: a faint plate holding both tools. A plugin cannot
+        // choose a flat or disc-ed variant, so no card drifts from the standard.
         PurahHeaderGroup(showsSurface: true) {
             PurahHeaderButton(systemImage: "gearshape", help: settingsHelp, action: onSettings)
             PurahPinButton(isPinned: isPinned, tintColor: tintColor, showsDisc: false, action: onTogglePin)

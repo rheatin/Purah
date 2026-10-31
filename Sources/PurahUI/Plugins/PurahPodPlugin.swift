@@ -11,6 +11,22 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
     @ViewBuilder func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView?
+    /// Body for a stepped chip's expanded drawer. The host supplies the card
+    /// (rail bar, background, the one row with settings/pin, on-screen clamp);
+    /// the plugin supplies only what goes below that row, sized to
+    /// `context.slotHeight` — zero on a minimum-size chip. Returning nil keeps
+    /// `makeSteppedDrawerView`.
+    @ViewBuilder func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView?
+    /// How much body this chip needs before it is worth drawing. A chip whose
+    /// row already says everything (a vitals badge) stays a clean row until the
+    /// pod is tall enough for its body to render properly, instead of squeezing
+    /// a graph into a 20pt sliver.
+    func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat
+    /// One action at the end of the chip's row, just before settings/pin — a
+    /// calendar's Join button. The row is the whole card, so this is the only
+    /// place a per-chip action fits; the trailing column itself belongs to the
+    /// host (a plugin button there would collide with the gear and the pin).
+    @ViewBuilder func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView?
     // Requirement (not just an extension default) so existential calls
     // dynamically dispatch to the plugin's override.
     @ViewBuilder func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView?
@@ -84,6 +100,9 @@ public extension PurahPodPlugin {
     func onUnmount(store: PurahWorkspaceStore) {}
     func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? { nil }
     func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
+    func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
+    func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
+    func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 8.0 }
     func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? { nil }
     func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? { nil }
 

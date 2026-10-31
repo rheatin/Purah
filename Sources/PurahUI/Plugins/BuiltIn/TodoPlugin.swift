@@ -229,18 +229,11 @@ public struct TodoPlugin: PurahPodPlugin {
         let completed = overflow.filter { $0.isCompleted }
         return AnyView(
             PurahOverviewList(
+                showsHeader: false,
                 icon: "checklist",
                 title: "todo.overview.title".localized,
                 count: overflow.count,
                 accent: context.accentColor,
-                showsSettings: true,
-                onSettings: { context.store.openPluginSettings(id: "todo") },
-                isPinned: context.isItemPinned("todo_more_items"),
-                onPin: {
-                    withAnimation(PurahMotionPolicy.pin) {
-                        context.togglePin("todo_more_items")
-                    }
-                },
                 showsBoundary: !completed.isEmpty && !incomplete.isEmpty,
                 boundaryTitle: "todo.overview.completed".localized,
                 boundaryColor: context.accentColor,
