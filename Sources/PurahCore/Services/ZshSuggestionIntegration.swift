@@ -224,11 +224,66 @@ public enum ZshSuggestionIntegration {
       }
 
       # precmd keeps the last exit status and command line for `???`.
+      typeset -g __purah_cmd_start=""
+      typeset -g __purah_cmd_name=""
+      typeset -g __purah_now=0
+
+      # Milliseconds since the epoch, without the 19-digit arithmetic that
+      # overflows zsh's 64-bit integers: `EPOCHREALTIME` carries nanosecond
+      # digits, and stripping its dot produced a number larger than Int64
+      # (the shell printed "number truncated after 19 digits" instead).
+      __purah_now_ms() {
+        local t="$EPOCHREALTIME"
+        if [[ -z "$t" ]]; then
+          # The module is loaded by default in an interactive shell, but a
+          # shell that starts without it would otherwise fall back to
+          # one-second resolution.
+          zmodload zsh/datetime 2>/dev/null
+          t="$EPOCHREALTIME"
+        fi
+        if [[ -z "$t" ]]; then
+          __purah_now=$(( SECONDS * 1000 ))
+          return
+        fi
+        local sec="${t%%.*}"
+        local frac="${t#*.}000"
+        frac="${frac[1,3]}"
+        __purah_now=$(( sec * 1000 + 10#$frac ))
+      }
+
+      # preexec marks the start of a command the person actually ran. Without
+      # it every precmd would look like a finished command, including the one
+      # that runs before the very first prompt.
+      __purah_preexec() {
+        __purah_cmd_name="${1%%[[:space:]]*}"
+        __purah_now_ms
+        __purah_cmd_start="$__purah_now"
+      }
+
       __purah_precmd() {
         __purah_last_status=$?
         __purah_last_command="$(fc -ln -1 2>/dev/null)"
         __purah_last_command="${__purah_last_command##[[:space:]]#}"
+
+        # Tell Purah the command is over so its pod can report the result
+        # while you are looking at something else. Fire-and-forget: no curl, no
+        # listener, no answer must never delay the prompt.
+        if [[ -n "$__purah_cmd_start" ]]; then
+          __purah_now_ms
+          local __purah_ms=$(( __purah_now - __purah_cmd_start ))
+          __purah_cmd_start=""
+          if command -v curl >/dev/null 2>&1; then
+            /usr/bin/curl -sS -m 2 -X POST \\
+              -H "Authorization: Bearer $PURAH_BRIDGE_TOKEN" \\
+              --data-urlencode "cmd=$__purah_cmd_name" \\
+              --data-urlencode "status=$__purah_last_status" \\
+              --data-urlencode "ms=$__purah_ms" \\
+              "http://127.0.0.1:$PURAH_AI_PORT/v1/done" >/dev/null 2>&1 &!
+          fi
+          __purah_cmd_name=""
+        fi
       }
+      autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook preexec __purah_preexec
       autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook precmd __purah_precmd
 
       __purah_ask() {

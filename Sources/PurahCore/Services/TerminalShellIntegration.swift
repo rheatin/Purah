@@ -30,6 +30,20 @@ public enum TerminalShellIntegration {
         set { tailSlot.withLock { $0 = newValue } }
     }
 
+    /// The shell's `/v1/done` report carries the command name, its exit status
+    /// and how long it took. None of them is read: the notification is the
+    /// host's pod glow, and it says "this pod has news", not "this one exited
+    /// 2". They stay on the wire because a shell that reports a result is the
+    /// contract, and the fields cost nothing.
+    private static let completionSlot = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+
+    /// Called when a shell reports a finished command. Set by the terminal
+    /// plugin; nil means nobody is showing the result, so it is dropped.
+    public static var onCommandCompletion: (@Sendable () -> Void)? {
+        get { completionSlot.withLock { $0 } }
+        set { completionSlot.withLock { $0 = newValue } }
+    }
+
     /// Installs the files and brings the listener up ahead of time.
     ///
     /// `NWListener` reports readiness asynchronously, and `prepare` has to wait
@@ -61,6 +75,11 @@ public enum TerminalShellIntegration {
                     // output would pull the answer toward fixing that instead.
                     recentOutput: mode == .explain ? await terminalTail?() : nil
                 )
+            }
+        }
+        if bridge.onCommandFinished == nil {
+            bridge.onCommandFinished = { _ in
+                completionSlot.withLock { $0 }?()
             }
         }
         _ = ZshSuggestionIntegration.installIfNeeded()

@@ -275,93 +275,10 @@ public struct CalendarDrawerView: View {
         }
     }
 
-    // MARK: - Top Summary Bar
-    @ViewBuilder
-    private func topSummaryBar() -> some View {
-        let todayBadgeText = Date().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()).uppercased()
-
-        HStack(spacing: 5) {
-            Text(todayBadgeText)
-                .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                .foregroundColor(podColor)
-                .lineLimit(1)
-
-            Text(state.scope.title.uppercased())
-                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                .foregroundColor(podColor.opacity(0.85))
-                .padding(.horizontal, 4.5)
-                .padding(.vertical, 1.5)
-                .background(Capsule().fill(podColor.opacity(0.12)))
-
-            Text("\(state.events.count)")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundColor(podColor)
-                .padding(.horizontal, 5.5)
-                .padding(.vertical, 1.5)
-                .background(Capsule().fill(podColor.opacity(0.16)))
-
-            Spacer(minLength: 4)
-
-            if !store.isUsingRealCalendar || PermissionManager.shared.calendarStatus != .authorized {
-                Button {
-                    Task {
-                        let granted = await PermissionManager.shared.requestCalendarAccess()
-                        if granted {
-                            state.syncEvents(into: store)
-                            SystemCalendarSyncService.shared.syncEvents(into: store)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 7.5, weight: .semibold))
-                        Text("calendar.connect".localized)
-                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    }
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 6.5)
-                    .padding(.vertical, 2.5)
-                    .background(Capsule().fill(Color.orange.opacity(0.14)))
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.orange.opacity(0.35), lineWidth: 0.8)
-                    )
-                }
-                .buttonStyle(.tactile)
-                .help("help.sampleCalendar".localized)
-                .accessibilityLabel("help.sampleCalendar".localized)
-            }
-
-            Button {
-                openInSystemCalendar()
-            } label: {
-                HStack(spacing: 3.5) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 8.5, weight: .semibold))
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 7.5, weight: .bold))
-                }
-                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3.5)
-                .background(Capsule().fill(palette.surfaceBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(palette.borderColor.opacity(0.5), lineWidth: 0.8)
-                )
-            }
-            .buttonStyle(.tactile)
-            .help("help.openAppleCalendar".localized)
-            .accessibilityLabel("help.openAppleCalendar".localized)
-        }
-    }
-
     // MARK: - Empty State View
     @ViewBuilder
     private func emptyStateView() -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            topSummaryBar()
-
             // A stack's drawer is exactly as tall as the shelf it slid out of,
             // and on a shared pod that can be shorter than this composition
             // needs (the footer buttons used to be cut off by the card's
@@ -471,13 +388,22 @@ public struct CalendarDrawerView: View {
     @ViewBuilder
     private func agendaListView() -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            topSummaryBar()
-
             // Chrono Event Cards — the viewport lands on "now" every open
             // A full agenda is a scrollable document; keep the indicators.
             PurahScrollableBody(indicators: .automatic) {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(state.events) { event in
+                    // A day header only exists because that day has an event:
+                    // an empty day never enters the list, so it can never draw
+                    // a divider over nothing.
+                    ForEach(Array(state.events.enumerated()), id: \.element.id) { index, event in
+                        let isFirstOfDay = index == 0
+                            || !Foundation.Calendar.current.isDate(
+                                state.events[index - 1].startTime,
+                                inSameDayAs: event.startTime
+                            )
+                        if isFirstOfDay {
+                            dayDividerRow(for: event.startTime)
+                        }
                         if event.id == nowLineEventID {
                             nowDividerRow()
                         }
@@ -510,6 +436,30 @@ public struct CalendarDrawerView: View {
         } else {
             agendaAnchorID = state.events.first?.id
         }
+    }
+
+    /// The line that says which day the rows below belong to. Without one, a
+    /// multi-day agenda was an undifferentiated run of "09:00 …".
+    @ViewBuilder
+    private func dayDividerRow(for date: Date) -> some View {
+        let calendar = Foundation.Calendar.current
+        let dayText = date.formatted(.dateTime.month(.abbreviated).day().weekday(.abbreviated))
+        let label: String = {
+            if calendar.isDateInToday(date) { return "\(("calendar.day.today".localized)) · \(dayText)" }
+            if calendar.isDateInTomorrow(date) { return "\(("calendar.day.tomorrow".localized)) · \(dayText)" }
+            return dayText
+        }()
+
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .foregroundColor(podColor.opacity(0.9))
+                .fixedSize()
+            Rectangle()
+                .fill(palette.borderColor.opacity(0.30))
+                .frame(height: 1)
+        }
+        .padding(.top, 3)
     }
 
     @ViewBuilder

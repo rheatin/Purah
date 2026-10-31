@@ -81,48 +81,27 @@ public struct ScriptRunwayDrawerView: View {
                         .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
                         .padding(.vertical, PurahItemRhythm.rowVerticalInset)
                         .background {
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
-                                    .fill(
-                                        isThisRunning
-                                            ? scriptColor.opacity(0.12)
-                                            : (isHovered ? scriptColor.opacity(0.08) : Color.clear)
-                                    )
-                                // No percentage can be known for a shell script,
-                                // so this sweeps instead of filling: the row is
-                                // visibly busy, and nothing claims to know how
-                                // far along it is. The result colour arrives
-                                // when the run actually ends.
-                                if isThisRunning {
-                                    ScriptRunwaySweep(color: scriptColor, reduceMotion: reduceMotion)
-                                        .clipShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
-                                }
+                            // No percentage can be known for a shell script,
+                            // so this sweeps instead of filling: the row is
+                            // visibly busy, and nothing claims to know how
+                            // far along it is. The result colour arrives
+                            // when the run actually ends.
+                            if isThisRunning {
+                                ScriptRunwaySweep(color: scriptColor, reduceMotion: reduceMotion)
+                                    .clipShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
                             }
                         }
                         .overlay(alignment: .leading) {
                             Capsule()
-                                .fill(scriptColor.opacity(isHovered || isThisRunning ? 0.9 : 0))
+                                .fill(scriptColor.opacity(isThisRunning ? 0.9 : 0))
                                 .frame(width: 2, height: 18)
                                 .padding(.leading, 2)
                         }
-                        .overlay {
-                            RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
-                                .stroke(
-                                    isThisRunning
-                                        ? scriptColor.opacity(0.32)
-                                        : (isHovered ? scriptColor.opacity(0.20) : Color.clear),
-                                    lineWidth: 0.8
-                                )
-                        }
-                        .shadow(
-                            color: scriptColor.opacity(isThisRunning ? 0.20 : (isHovered ? 0.16 : 0)),
-                            radius: isHovered || isThisRunning ? 6 : 0,
-                            x: 0,
-                            y: 2
-                        )
-                        .offset(y: !reduceMotion && isHovered ? -1 : 0)
-                        .animation(reduceMotion ? nil : PurahMotionPolicy.shelfRow, value: isHovered)
-                        .animation(reduceMotion ? nil : PurahMotionPolicy.shelfRow, value: isThisRunning)
+                        // Same frame as a Shelf row: present at rest, lit on
+                        // hover, tinted while running. No scale, no offset —
+                        // the row used to lift 1pt and shadow itself, which
+                        // read as a different component from the Shelf.
+                        .purahItemCard(accent: scriptColor, isHovered: isHovered, isActive: isThisRunning)
                         .contentShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
                         // The run button is gone: the row is the control. One
                         // click starts, the same click while it runs stops.

@@ -35,7 +35,6 @@ public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
-    @State private var selectedTab: VitalsDashboardTab = .overview
     @State private var sortProcessesByCPU: Bool = true
     @State private var isPulsing: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -206,12 +205,11 @@ public struct HardwareVitalsDrawerView: View {
         netColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            topNavigationBar(metrics: metrics, cpuColor: cpuColor)
-                .frame(height: 24)
-
+            // The four dashboard tabs live in the card header now, so the
+            // body starts with content.
             PurahScrollableBody {
                 VStack(alignment: .leading, spacing: 6) {
-                    switch selectedTab {
+                    switch state.dashboardTab {
                     case .overview:
                         overviewTabContent(
                             metrics: metrics,
@@ -315,7 +313,7 @@ public struct HardwareVitalsDrawerView: View {
                     .font(.system(size: 7.5))
                     .foregroundColor(.secondary)
                 Text(title)
-                    .font(.system(size: 8, weight: .semibold, design: .rounded))
+                    .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                     .foregroundColor(.secondary)
                 Spacer()
                 Text(value)
@@ -334,82 +332,15 @@ public struct HardwareVitalsDrawerView: View {
             .frame(height: 3)
 
             Text(detail)
-                .font(.system(size: 7, design: .monospaced))
+                .font(.system(size: 7.5, design: .monospaced))
                 .foregroundColor(.secondary.opacity(0.8))
                 .lineLimit(1)
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 3.5)
         .background(Color.primary.opacity(0.035))
-        .cornerRadius(5.5)
-        .overlay(RoundedRectangle(cornerRadius: 5.5).stroke(palette.borderColor.opacity(0.18), lineWidth: 0.6))
-    }
-
-    // MARK: - Top Navigation Bar (24pt)
-    @ViewBuilder
-    private func topNavigationBar(metrics: HardwareVitalsInfo, cpuColor: Color) -> some View {
-        HStack(spacing: 4) {
-            // Segmented pill tabs
-            HStack(spacing: 2) {
-                ForEach(VitalsDashboardTab.allCases) { tab in
-                    Button {
-                        withAnimation(PurahMotionPolicy.micro) {
-                            selectedTab = tab
-                        }
-                        if tab == .processes {
-                            Task {
-                                await vitals.refreshMetricsAsync(includeProcesses: true)
-                            }
-                        }
-                    } label: {
-                        Text(tab.title)
-                            .font(.system(size: 8.5, weight: selectedTab == tab ? .bold : .medium, design: .rounded))
-                            .padding(.horizontal, 5.5)
-                            .padding(.vertical, 2.5)
-                            .background(selectedTab == tab ? palette.primaryAccent.opacity(0.18) : Color.clear)
-                            .foregroundColor(selectedTab == tab ? palette.primaryAccent : .secondary)
-                            .cornerRadius(4)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Spacer()
-
-            // Pulsing thermal status indicator
-            HStack(spacing: 3) {
-                Circle()
-                    .fill(thermalColor(for: metrics.thermalStateLabel))
-                    .frame(width: 4.5, height: 4.5)
-                    .scaleEffect(isPulsing ? 1.25 : 0.85)
-                    .opacity(isPulsing ? 0.95 : 0.6)
-                Text(metrics.thermalStateLabel)
-                    .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(Color.primary.opacity(0.03))
-            .cornerRadius(3.5)
-
-            // Compact refresh button
-            Button {
-                Task {
-                    await vitals.refreshMetricsAsync(includeProcesses: true)
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 8))
-                    .foregroundColor(.secondary)
-                    .padding(3.5)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(3.5)
-            }
-            .buttonStyle(.plain)
-            .help("help.refresh".localized)
-        }
-        .padding(.horizontal, 1)
+        .cornerRadius(6)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
     }
 
     // MARK: - Tab: Overview
@@ -435,7 +366,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Text("\(Int(metrics.cpuUsage * 100))%")
-                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(cpuColor)
                     }
                     GeometryReader { geo in
@@ -453,8 +384,8 @@ public struct HardwareVitalsDrawerView: View {
                 }
                 .padding(6)
                 .background(Color.primary.opacity(0.035))
-                .cornerRadius(7)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
 
                 // 2. GPU Card
                 VStack(alignment: .leading, spacing: 3) {
@@ -464,7 +395,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Text("\(Int(metrics.gpuUsage * 100))%")
-                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(gpuColor)
                     }
                     GeometryReader { geo in
@@ -482,8 +413,8 @@ public struct HardwareVitalsDrawerView: View {
                 }
                 .padding(6)
                 .background(Color.primary.opacity(0.035))
-                .cornerRadius(7)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
             }
 
             HStack(spacing: 6) {
@@ -495,7 +426,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Text("\(Int(metrics.memoryUsage * 100))%")
-                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(ramColor)
                     }
                     GeometryReader { geo in
@@ -514,8 +445,8 @@ public struct HardwareVitalsDrawerView: View {
                 }
                 .padding(6)
                 .background(Color.primary.opacity(0.035))
-                .cornerRadius(7)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
 
                 // 4. Battery Card
                 VStack(alignment: .leading, spacing: 3) {
@@ -525,7 +456,7 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Text("\(metrics.batteryLevel)%")
-                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(powerColor)
                     }
                     GeometryReader { geo in
@@ -543,8 +474,8 @@ public struct HardwareVitalsDrawerView: View {
                 }
                 .padding(6)
                 .background(Color.primary.opacity(0.035))
-                .cornerRadius(7)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
             }
 
             // Dedicated Full-Width Network Card
@@ -564,7 +495,7 @@ public struct HardwareVitalsDrawerView: View {
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1.5)
                         .background(Color.primary.opacity(0.04))
-                        .cornerRadius(3.5)
+                        .cornerRadius(4)
 
                     Spacer()
 
@@ -597,8 +528,8 @@ public struct HardwareVitalsDrawerView: View {
             }
             .padding(6)
             .background(Color.primary.opacity(0.035))
-            .cornerRadius(7)
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
 
             // Deep telemetry strip + top processes belong to the immersive
             // tier only; the standard tier keeps the 2x2 grid plus I/O.
@@ -619,7 +550,7 @@ public struct HardwareVitalsDrawerView: View {
                 }
                 .padding(6)
                 .background(Color.primary.opacity(0.025))
-                .cornerRadius(6.5)
+                .cornerRadius(8)
 
                 // Top 3 Processes Strip
                 VStack(alignment: .leading, spacing: 4) {
@@ -629,13 +560,13 @@ public struct HardwareVitalsDrawerView: View {
                             .foregroundColor(.secondary)
                         Spacer()
                         Button {
-                            withAnimation { selectedTab = .processes }
+                            withAnimation { state.dashboardTab = .processes }
                             Task {
                                 await vitals.refreshMetricsAsync(includeProcesses: true)
                             }
                         } label: {
                             Text("vitals.viewAll".localized)
-                                .font(.system(size: 8, weight: .medium))
+                                .font(.system(size: 8.5, weight: .medium))
                                 .foregroundColor(palette.primaryAccent)
                         }
                         .buttonStyle(.plain)
@@ -648,7 +579,7 @@ public struct HardwareVitalsDrawerView: View {
                                 .lineLimit(1)
                             Spacer()
                             Text("CPU \(String(format: "%.1f", proc.cpuPercent))% · \(String(format: "%.0f", proc.memoryMB))MB")
-                                .font(.system(size: 8, design: .monospaced))
+                                .font(.system(size: 8.5, design: .monospaced))
                                 .foregroundColor(.secondary)
                             Button("Kill") {
                                 vitals.killProcess(pid: proc.id)
@@ -658,13 +589,13 @@ public struct HardwareVitalsDrawerView: View {
                             .padding(.vertical, 1)
                             .background(palette.dangerAccent.opacity(0.12))
                             .foregroundColor(palette.dangerAccent)
-                            .cornerRadius(3)
+                            .cornerRadius(4)
                             .buttonStyle(.tactile)
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(Color.primary.opacity(0.025))
-                        .cornerRadius(5)
+                        .cornerRadius(6)
                     }
                 }
             }
@@ -694,7 +625,7 @@ public struct HardwareVitalsDrawerView: View {
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1.5)
                         .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3.5)
+                        .cornerRadius(4)
                 }
 
                 // 3-Segment Color Bar: User / System / Idle
@@ -733,8 +664,8 @@ public struct HardwareVitalsDrawerView: View {
             }
             .padding(7)
             .background(Color.primary.opacity(0.035))
-            .cornerRadius(7.5)
-            .overlay(RoundedRectangle(cornerRadius: 7.5).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
 
             // RAM Deep Card
             VStack(alignment: .leading, spacing: 5) {
@@ -745,12 +676,12 @@ public struct HardwareVitalsDrawerView: View {
                         .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     Spacer()
                     Text(String(format: "vitals.pressure".localized, metrics.memoryPressureLevel))
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
                         .foregroundColor(metrics.memoryPressureLevel == "Normal" ? palette.primaryAccent : palette.dangerAccent)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1.5)
                         .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3.5)
+                        .cornerRadius(4)
                 }
 
                 HStack {
@@ -759,7 +690,7 @@ public struct HardwareVitalsDrawerView: View {
                         .foregroundColor(.secondary)
                     Spacer()
                     Text("\(Int(metrics.memoryUsage * 100))%")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                         .foregroundColor(ramColor)
                 }
 
@@ -781,8 +712,8 @@ public struct HardwareVitalsDrawerView: View {
             }
             .padding(7)
             .background(Color.primary.opacity(0.035))
-            .cornerRadius(7.5)
-            .overlay(RoundedRectangle(cornerRadius: 7.5).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
         }
     }
 
@@ -808,20 +739,20 @@ public struct HardwareVitalsDrawerView: View {
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1.5)
                         .background(Color.primary.opacity(0.05))
-                        .cornerRadius(3.5)
+                        .cornerRadius(4)
                 }
 
                 HStack(spacing: 8) {
                     HStack(spacing: 3) {
                         Text("↓")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9.5, weight: .bold))
                             .foregroundColor(netColor)
                         Text(formatSpeed(metrics.networkDownSpeed))
                             .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                     }
                     HStack(spacing: 3) {
                         Text("↑")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9.5, weight: .bold))
                             .foregroundColor(Color(hex: "#0A84FF"))
                         Text(formatSpeed(metrics.networkUpSpeed))
                             .font(.system(size: 10.5, weight: .bold, design: .monospaced))
@@ -836,8 +767,8 @@ public struct HardwareVitalsDrawerView: View {
             }
             .padding(7)
             .background(Color.primary.opacity(0.035))
-            .cornerRadius(7.5)
-            .overlay(RoundedRectangle(cornerRadius: 7.5).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
 
             // Storage & Battery Deep Card
             VStack(alignment: .leading, spacing: 5) {
@@ -868,8 +799,8 @@ public struct HardwareVitalsDrawerView: View {
             }
             .padding(7)
             .background(Color.primary.opacity(0.035))
-            .cornerRadius(7.5)
-            .overlay(RoundedRectangle(cornerRadius: 7.5).stroke(palette.borderColor.opacity(0.2), lineWidth: 0.6))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
         }
     }
 
@@ -886,7 +817,7 @@ public struct HardwareVitalsDrawerView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(String(format: "vitals.processInspector".localized, sorted.count))
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
                 Spacer()
                 HStack(spacing: 2) {
                     Button {
@@ -898,7 +829,7 @@ public struct HardwareVitalsDrawerView: View {
                             .padding(.vertical, 1.5)
                             .background(sortProcessesByCPU ? palette.primaryAccent.opacity(0.18) : Color.clear)
                             .foregroundColor(sortProcessesByCPU ? palette.primaryAccent : .secondary)
-                            .cornerRadius(3)
+                            .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
 
@@ -911,7 +842,7 @@ public struct HardwareVitalsDrawerView: View {
                             .padding(.vertical, 1.5)
                             .background(!sortProcessesByCPU ? palette.primaryAccent.opacity(0.18) : Color.clear)
                             .foregroundColor(!sortProcessesByCPU ? palette.primaryAccent : .secondary)
-                            .cornerRadius(3)
+                            .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
                 }
@@ -943,7 +874,7 @@ public struct HardwareVitalsDrawerView: View {
 
                     VStack(alignment: .trailing, spacing: 1) {
                         Text("CPU \(String(format: "%.1f", proc.cpuPercent))%")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                             .foregroundColor(.primary)
                         Text("\(String(format: "%.0f", proc.memoryMB)) MB")
                             .font(.system(size: 7.5, design: .monospaced))
@@ -959,14 +890,14 @@ public struct HardwareVitalsDrawerView: View {
                             .padding(.vertical, 1.5)
                             .background(palette.dangerAccent.opacity(0.12))
                             .foregroundColor(palette.dangerAccent)
-                            .cornerRadius(3)
+                            .cornerRadius(4)
                     }
                     .buttonStyle(.tactile)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3.5)
                 .background(Color.primary.opacity(0.025))
-                .cornerRadius(5.5)
+                .cornerRadius(6)
             }
         }
         .onAppear {
@@ -981,7 +912,7 @@ public struct HardwareVitalsDrawerView: View {
     private func breakdownPill(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
-                .font(.system(size: 6.5, design: .monospaced))
+                .font(.system(size: 7.5, design: .monospaced))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
             Text(value)
@@ -1034,7 +965,7 @@ public struct VitalsFocusedDrawerView: View {
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(timeScope == sc ? Color.primary.opacity(0.12) : Color.clear)
-                        .cornerRadius(3)
+                        .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(timeScope == sc ? .primary : .secondary)
@@ -1139,7 +1070,7 @@ public struct VitalsFocusedDrawerView: View {
                         .cornerRadius(2.5)
                     Spacer(minLength: 6)
                     Text("\(Int(metrics.cpuUsage * 100))%")
-                        .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1157,7 +1088,7 @@ public struct VitalsFocusedDrawerView: View {
                     .frame(height: 3.5)
 
                     Text(String(format: "vitals.cpuUsrSys".localized, Int(metrics.cpuUserUsage * 100), Int(metrics.cpuSystemUsage * 100)))
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Spacer()
@@ -1205,7 +1136,7 @@ public struct VitalsFocusedDrawerView: View {
                         Button("Kill") {
                             vitals.killProcess(pid: top.id)
                         }
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.system(size: 7.5, weight: .bold))
                         .padding(.horizontal, 3)
                         .padding(.vertical, 0.5)
                         .background(palette.dangerAccent.opacity(0.18))
@@ -1234,7 +1165,7 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
                     Text("\(Int(metrics.cpuUsage * 100))%")
-                        .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1277,7 +1208,7 @@ public struct VitalsFocusedDrawerView: View {
                         .padding(.vertical, 1)
                         .background(palette.dangerAccent.opacity(0.18))
                         .foregroundColor(palette.dangerAccent)
-                        .cornerRadius(3)
+                        .cornerRadius(4)
                         .buttonStyle(.tactile)
                     } else {
                         Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Ld \(String(format: "%.1f", metrics.loadAverage1m))")
@@ -1312,7 +1243,7 @@ public struct VitalsFocusedDrawerView: View {
                         .lineLimit(1)
                     Spacer(minLength: 6)
                     Text("\(Int(gpuRatio * 100))%")
-                        .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1330,7 +1261,7 @@ public struct VitalsFocusedDrawerView: View {
                     .frame(height: 3.5)
 
                     Text(metrics.thermalStateLabel)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                     Spacer()
                     scopePicker
@@ -1387,7 +1318,7 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
                     Text("\(Int(gpuRatio * 100))%")
-                        .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1450,7 +1381,7 @@ public struct VitalsFocusedDrawerView: View {
                         .cornerRadius(2.5)
                     Spacer(minLength: 6)
                     Text("\(Int(metrics.memoryUsage * 100))%")
-                        .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1468,7 +1399,7 @@ public struct VitalsFocusedDrawerView: View {
                     .frame(height: 3.5)
 
                     Text("\(String(format: "%.1f", metrics.memoryUsedGB))G / \(String(format: "%.0f", metrics.memoryTotalGB))G")
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                     Spacer()
                     scopePicker
@@ -1588,7 +1519,7 @@ public struct VitalsFocusedDrawerView: View {
                         .cornerRadius(2.5)
                     Spacer(minLength: 6)
                     Text("\(metrics.batteryLevel)%")
-                        .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1606,7 +1537,7 @@ public struct VitalsFocusedDrawerView: View {
                     .frame(height: 3.5)
 
                     Text(metrics.isCharging ? "Charging" : metrics.powerSource)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                     Spacer()
                     scopePicker
@@ -1663,7 +1594,7 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
                     Text("\(metrics.batteryLevel)%")
-                        .font(.system(size: 12.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 12, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1744,7 +1675,7 @@ public struct VitalsFocusedDrawerView: View {
                     .frame(height: 3.5)
 
                     Text("\(metrics.networkInterfaceName) · \(metrics.localIPAddress)")
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Spacer()
@@ -1763,10 +1694,10 @@ public struct VitalsFocusedDrawerView: View {
                     Spacer(minLength: 6)
                     HStack(spacing: 4) {
                         Text("↓ \(formatSpeed(bytesPerSec: metrics.networkDownSpeed))")
-                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                            .font(.system(size: 10.5, weight: .heavy, design: .monospaced))
                             .foregroundColor(downColor)
                         Text("↑ \(formatSpeed(bytesPerSec: metrics.networkUpSpeed))")
-                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                            .font(.system(size: 9.5, weight: .heavy, design: .monospaced))
                             .foregroundColor(upColor)
                     }
                     .lineLimit(1)
@@ -1873,7 +1804,7 @@ public struct VitalsFocusedDrawerView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 6)
                     Text(String(format: "vitals.diskFreeG".localized, Int(metrics.diskFreeGB)))
-                        .font(.system(size: 11.5, weight: .heavy, design: .monospaced))
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
                         .foregroundColor(color)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -1891,7 +1822,7 @@ public struct VitalsFocusedDrawerView: View {
                     .frame(height: 3.5)
 
                     Text("R: \(formatSpeed(bytesPerSec: metrics.diskReadBytesPerSec)) · W: \(formatSpeed(bytesPerSec: metrics.diskWriteBytesPerSec))")
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Spacer()
@@ -1995,7 +1926,7 @@ public struct VitalsFocusedDrawerView: View {
     private func miniPill(title: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.system(size: 6.5, design: .monospaced))
+                .font(.system(size: 7.5, design: .monospaced))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
             Text(value)
@@ -2007,7 +1938,7 @@ public struct VitalsFocusedDrawerView: View {
         .padding(.horizontal, 3.5)
         .padding(.vertical, 2)
         .background(Color.primary.opacity(0.03))
-        .cornerRadius(3.5)
+        .cornerRadius(4)
     }
 }
 
@@ -2130,15 +2061,15 @@ public struct VitalsTimeSeriesGraphView: View {
                 // X-axis time markings
                 HStack {
                     Text(scope.markings.left)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.7))
                     Spacer()
                     Text(scope.markings.middle)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.5))
                     Spacer()
                     Text(scope.markings.right)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.7))
                 }
                 .frame(height: 10)
@@ -2285,15 +2216,15 @@ public struct VitalsDualTimeSeriesGraphView: View {
                 // X-axis time markings
                 HStack {
                     Text(scope.markings.left)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.7))
                     Spacer()
                     Text(scope.markings.middle)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.5))
                     Spacer()
                     Text(scope.markings.right)
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.7))
                 }
                 .frame(height: 10)

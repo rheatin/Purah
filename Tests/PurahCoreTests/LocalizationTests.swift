@@ -111,7 +111,10 @@ struct LocalizationTests {
             // `clipboard.quota.*`, and the rest of the dead families). The
             // English vocabulary shrank, so a partial translation loses rows in
             // proportion to how much of it it covered.
-            .traditionalChinese: 570,
+            // -2: the finished-command strings went with the terminal's rail
+            // dot. The notification is the host's pod glow, which names no
+            // command, so nothing asks for `terminal.done.*` any more.
+            .traditionalChinese: 578,
             .japanese: 71,
             .korean: 71,
             .french: 71,

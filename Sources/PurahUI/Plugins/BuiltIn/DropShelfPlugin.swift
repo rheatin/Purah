@@ -161,20 +161,36 @@ struct ShelfHeaderTools: View {
     let state: ShelfPluginState
     let context: PurahPluginContext
 
+    /// Clearing the shelf is not undoable from inside Purah, and the trash
+    /// sits one click from Select All and Zip. The first click arms it; the
+    /// second one clears.
+    @State private var isConfirmingClear = false
+    @State private var clearArmTimer: Task<Void, Never>?
+
     private var allSelected: Bool {
         !state.files.isEmpty && state.selectedFileIds.count == state.files.count
     }
 
+    private func armClear() {
+        isConfirmingClear = true
+        clearArmTimer?.cancel()
+        clearArmTimer = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            isConfirmingClear = false
+        }
+    }
+
+    private func clearShelf() {
+        clearArmTimer?.cancel()
+        isConfirmingClear = false
+        state.clear()
+        context.store._shelfFiles = state.files
+        context.performHaptic(.levelChange)
+    }
+
     var body: some View {
         PurahHeaderGroup {
-            PurahHeaderButton(systemImage: "archivebox", help: "dropshelf.zipHelp".localized) {
-                if let zipItem = state.compressFilesToZip() {
-                    context.store._shelfFiles = state.files
-                    context.performHaptic(.levelChange)
-                    context.showToast("Created \(zipItem.name)", "archivebox.fill")
-                }
-            }
-
             PurahHeaderButton(
                 systemImage: allSelected ? "checkmark.circle.fill" : "checkmark.circle",
                 help: allSelected ? "dropshelf.deselectAll".localized : "dropshelf.selectAll".localized,
@@ -189,14 +205,31 @@ struct ShelfHeaderTools: View {
                 context.performHaptic(.alignment)
             }
 
-            PurahHeaderButton(
-                systemImage: "trash",
-                help: "dropshelf.clearAll".localized,
-                role: .destructive
-            ) {
-                state.clear()
-                context.store._shelfFiles = state.files
-                context.performHaptic(.levelChange)
+            PurahHeaderButton(systemImage: "archivebox", help: "dropshelf.zipHelp".localized) {
+                if let zipItem = state.compressFilesToZip() {
+                    context.store._shelfFiles = state.files
+                    context.performHaptic(.levelChange)
+                    context.showToast("Created \(zipItem.name)", "archivebox.fill")
+                }
+            }
+
+            if isConfirmingClear {
+                PurahHeaderButton(
+                    systemImage: "trash.fill",
+                    help: "destructive.confirmClearHelp".localized,
+                    tint: Color(hex: PurahHeaderMetrics.destructiveHex),
+                    isActive: true
+                ) {
+                    clearShelf()
+                }
+            } else {
+                PurahHeaderButton(
+                    systemImage: "trash",
+                    help: "dropshelf.clearAll".localized,
+                    role: .destructive
+                ) {
+                    armClear()
+                }
             }
         }
     }

@@ -505,6 +505,8 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
     @objc
     func scrollerActivated ()
     {
+        // Dragging the knob counts as scrolling: keep it from fading mid-drag.
+        revealScroller()
         switch scroller.hitPart {
         case .decrementPage:
             pageUp()
@@ -527,7 +529,32 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         }
     }
 
-    let scrollerStyle: NSScroller.Style = .legacy
+    // Purah: `.legacy` draws a permanent track down the right edge, which read
+    // as a scrollbar bolted onto a drawer card. `.overlay` is the system's own
+    // auto-hiding style — thin knob, no track — and this view fades it in on
+    // scroll and out again when the hand stops.
+    let scrollerStyle: NSScroller.Style = .overlay
+    private var scrollerHideWorkItem: DispatchWorkItem?
+    private static let scrollerIdleDelay: TimeInterval = 0.9
+
+    /// Show the knob because something actually scrolled, and schedule it away.
+    private func revealScroller() {
+        guard let scroller, scroller.isEnabled else { return }
+        scrollerHideWorkItem?.cancel()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            scroller.animator().alphaValue = 1
+        }
+        let hide = DispatchWorkItem { [weak self] in
+            guard let self, let scroller = self.scroller else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.35
+                scroller.animator().alphaValue = 0
+            }
+        }
+        scrollerHideWorkItem = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.scrollerIdleDelay, execute: hide)
+    }
 
     func getScrollerFrame() -> CGRect {
         let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollerStyle)
@@ -537,7 +564,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
     func setupScroller()
     {
         if scroller == nil {
-            scroller = NSScroller(frame: .zero)
+            scroller = PurahScroller(frame: .zero)
             scroller.translatesAutoresizingMaskIntoConstraints = false
             addSubview(scroller)
 
@@ -547,12 +574,13 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
                 scroller.trailingAnchor.constraint(equalTo: trailingAnchor),
                 scroller.topAnchor.constraint(equalTo: topAnchor),
                 scroller.bottomAnchor.constraint(equalTo: bottomAnchor),
-                scroller.widthAnchor.constraint(equalToConstant: scrollerWidth)
+                scroller.widthAnchor.constraint(equalToConstant: PurahScroller.barSlotWidth)
             ])
         }
         scroller.scrollerStyle = scrollerStyle
         scroller.knobProportion = 0.1
         scroller.isEnabled = false
+        scroller.alphaValue = 0
         if let progressBarView {
             addSubview(progressBarView, positioned: .above, relativeTo: scroller)
         }
@@ -646,6 +674,11 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         scroller.isEnabled = canScroll
         scroller.doubleValue = scrollPosition
         scroller.knobProportion = scrollThumbsize
+        // Nothing to scroll back through: nothing to show.
+        if !canScroll {
+            scrollerHideWorkItem?.cancel()
+            scroller.alphaValue = 0
+        }
     }
     
     var userScrolling = false
@@ -2194,6 +2227,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
         if event.deltaY == 0 {
             return
         }
+        revealScroller()
         let velocity = calcScrollingVelocity(delta: Int (abs (event.deltaY)))
         if event.deltaY > 0 {
             scrollUp (lines: velocity)
@@ -2452,3 +2486,32 @@ extension TerminalViewDelegate {
     }
 }
 #endif
+
+
+/// Purah: an overlay `NSScroller` still paints a translucent slot behind the
+/// knob, which read as a frame around a 4pt bar. Draw the bar and nothing else.
+final class PurahScroller: NSScroller {
+    static let barSlotWidth: CGFloat = 9
+    private let barWidth: CGFloat = 4
+
+    override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {
+        // Deliberately empty: there is no track, only the bar below.
+    }
+
+    override func drawKnob() {
+        let knob = rect(for: .knob)
+        guard knob.height > 2 else { return }
+        let bar = NSRect(
+            x: knob.midX - barWidth / 2,
+            y: knob.minY + 1,
+            width: barWidth,
+            height: max(knob.height - 2, 10)
+        )
+        NSColor.labelColor.withAlphaComponent(0.28).setFill()
+        NSBezierPath(
+            roundedRect: bar,
+            xRadius: barWidth / 2,
+            yRadius: barWidth / 2
+        ).fill()
+    }
+}

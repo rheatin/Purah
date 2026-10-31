@@ -205,6 +205,16 @@ public struct ScriptItemDrawerView: View {
         .padding(.vertical, 6)
         .frame(width: effectiveW, height: cardH)
         .liquidDrawerBackground(shape: drawerShape, accentColor: podColor)
+        // Same hover language as a Shelf or Runway row. The card is edge-flush,
+        // so this is a border rather than an outer glow — a glow would be cut
+        // off by the bezel on the rail side.
+        .overlay(
+            drawerShape.strokeBorder(
+                podColor.opacity(isHovered || isRunning ? 0.55 : 0),
+                lineWidth: 0.9
+            )
+        )
+        .animation(PurahMotionPolicy.hover, value: isHovered)
         .contextMenu {
             Button {
                 store.openPluginSettings(id: "scripts")

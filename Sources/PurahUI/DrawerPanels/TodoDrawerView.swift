@@ -8,6 +8,7 @@ struct TodoOverviewRow: View {
     let todo: TodoItem
     let state: TodoPluginState
     let store: PurahWorkspaceStore
+    @State private var isHovered = false
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
     private var podColor: Color { palette.podColor(for: "todo") }
@@ -98,18 +99,25 @@ struct TodoOverviewRow: View {
                 .foregroundColor(effectiveColor.opacity(isDone ? 0.45 : 1.0))
                 .cornerRadius(3)
 
-            Button {
-                withAnimation(PurahMotionPolicy.microLight) {
-                    state.remove(id: todo.id)
-                    store._todos.removeAll { $0.id == todo.id }
+            // Delete is the one irreversible verb on the row and it sat in the
+            // reading path of every task. It is a conditional sibling, not a
+            // transparent one: a reserved empty slot is a hole in the row for
+            // every task you are not deleting.
+            if isHovered {
+                Button {
+                    withAnimation(PurahMotionPolicy.microLight) {
+                        state.remove(id: todo.id)
+                        store._todos.removeAll { $0.id == todo.id }
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray.opacity(0.6))
                 }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 10))
-                    .foregroundColor(.gray.opacity(0.4))
+                .buttonStyle(.tactile)
+                .help("todo.delete".localized)
+                .transition(.opacity)
             }
-            .buttonStyle(.tactile)
-            .help("todo.delete".localized)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -117,6 +125,9 @@ struct TodoOverviewRow: View {
             cornerRadius: 8,
             strokeColor: effectiveColor.opacity(isDone ? 0.35 : 0.9)
         )
+        .onHover { hovering in
+            withAnimation(PurahMotionPolicy.hover) { isHovered = hovering }
+        }
 
     }
 

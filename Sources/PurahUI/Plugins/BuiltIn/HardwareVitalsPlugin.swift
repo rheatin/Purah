@@ -33,13 +33,79 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         AnyView(HardwareVitalsDrawerView(state: state, store: context.store))
     }
 
+    /// The reading the header reports, and which metric it reports.
+    ///
+    /// A control names what it changes (AGENTS.md §3): the pill used to be a
+    /// fixed CPU badge, so the other five metrics were unreachable without
+    /// opening the drawer. It is a menu now and the label is the live value of
+    /// the chosen metric.
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            PurahHeaderBadge(
-                String(format: "vitals.barCpu".localized, Int(state.metrics.cpuUsage * 100)),
-                tint: context.accentColor
-            )
+            Menu {
+                ForEach(VitalsMetricType.allCases) { metric in
+                    Button {
+                        state.headerMetric = metric
+                    } label: {
+                        HStack {
+                            Label(metric.displayName, systemImage: metric.systemIcon)
+                            if state.headerMetric == metric {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                PurahHeaderMenuLabel(
+                    text: headerMetricValue,
+                    icon: state.headerMetric.systemIcon,
+                    tint: context.accentColor,
+                    maxTextWidth: 78
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         )
+    }
+
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        AnyView(
+            PurahHeaderGroup {
+                ForEach(VitalsDashboardTab.allCases) { tab in
+                    PurahHeaderButton(
+                        systemImage: tab.icon,
+                        help: tab.title,
+                        tint: context.accentColor,
+                        isActive: state.dashboardTab == tab
+                    ) {
+                        withAnimation(PurahMotionPolicy.surfaceSoft) { state.dashboardTab = tab }
+                    }
+                }
+            }
+        )
+    }
+
+    private var headerMetricValue: String {
+        let metrics = state.metrics
+        switch state.headerMetric {
+        case .cpu:
+            return String(format: "vitals.barCpu".localized, Int(metrics.cpuUsage * 100))
+        case .gpu:
+            return String(format: "vitals.pill.gpu".localized, Int(metrics.gpuUsage * 100))
+        case .ram:
+            return String(format: "vitals.pill.ram".localized, Int(metrics.memoryUsage * 100))
+        case .power:
+            return String(format: "vitals.pill.power".localized, metrics.batteryLevel)
+        case .network:
+            let megabytes = (metrics.networkDownSpeed + metrics.networkUpSpeed) / 1_048_576.0
+            return String(format: "vitals.pill.network".localized,
+                          megabytes >= 10 ? String(format: "%.0f", megabytes) : String(format: "%.1f", megabytes))
+        case .disk:
+            let used = metrics.diskTotalGB > 0
+                ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB * 100
+                : 0
+            return String(format: "vitals.pill.disk".localized, Int(used))
+        }
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
@@ -174,26 +240,14 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let metrics = state.metrics
         return state.enabledMetrics.map { metric in
-            let ratio: Double = {
-                switch metric {
-                case .cpu: return metrics.cpuUsage
-                case .gpu: return metrics.gpuUsage
-                case .ram: return metrics.memoryUsage
-                case .power: return Double(metrics.batteryLevel) / 100.0
-                case .network: return min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
-                case .disk:
-                    return metrics.diskTotalGB > 0 ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB : 0.5
-                }
-            }()
             let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: state.thresholds, palette: context.palette)
-            let isAlerting = (metric == .cpu && metrics.cpuUsage > state.thresholds.cpuDanger) ||
-                             (metric == .ram && metrics.memoryUsage > state.thresholds.ramDanger)
+            let isAlerting = state.isAlerting(for: metric)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
                 title: metric.displayName,
                 systemIcon: metric.systemIcon,
                 state: isAlerting ? .alerting : .normal,
-                gaugeRatio: ratio,
+                gaugeRatio: state.ratio(for: metric),
                 gaugeStyle: .solid,
                 tintColorHex: color.toHex(),
                 isPinned: context.isItemPinned("vitals-\(metric.rawValue)")
@@ -234,14 +288,26 @@ public struct VitalsRailBarPluginView: View {
     }
 
     public var body: some View {
-        let cpu = state.metrics.cpuUsage
-        let isPulsing = cpu > 0.85
+        // One gauge, the metric the header pill names. They used to disagree:
+        // the header could say "内存 69%" while the pod still drew CPU.
+        let metric = state.headerMetric
+        let color = VitalsColorResolver.color(
+            for: metric,
+            vitals: state.metrics,
+            thresholds: state.thresholds,
+            palette: context.palette
+        )
 
         PurahSegmentGaugeBarView(
-            segments: [PurahGaugeSegment(id: "cpu", ratio: cpu, color: context.accentColor, isAlerting: isPulsing)],
+            segments: [PurahGaugeSegment(
+                id: metric.rawValue,
+                ratio: state.ratio(for: metric),
+                color: color,
+                isAlerting: state.isAlerting(for: metric)
+            )],
             barWidth: context.railWidth,
             height: context.slotHeight,
-            trackColor: context.accentColor.opacity(0.25),
+            trackColor: color.opacity(0.25),
             // The old bar always kept a 4pt sliver so the pod never looked
             // switched off at idle CPU.
             minimumVisibleFill: 4.0

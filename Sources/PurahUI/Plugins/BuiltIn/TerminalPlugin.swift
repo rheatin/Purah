@@ -48,9 +48,19 @@ public struct TerminalPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
+        // The shell reports finished commands over the loopback bridge. The
+        // pod glow is the host's, not ours: raising the pod's alert id is the
+        // whole notification, and hovering the rail or opening the drawer
+        // clears it the same way it clears Calendar's.
+        TerminalShellIntegration.onCommandCompletion = { [weak store] in
+            Task { @MainActor in
+                store?.triggerAlert(id: "terminal")
+            }
+        }
     }
 
     public func onUnmount(store: PurahWorkspaceStore) {
+        TerminalShellIntegration.onCommandCompletion = nil
         state.unmount(store: store)
     }
 
