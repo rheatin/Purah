@@ -240,26 +240,14 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let metrics = state.metrics
         return state.enabledMetrics.map { metric in
-            let ratio: Double = {
-                switch metric {
-                case .cpu: return metrics.cpuUsage
-                case .gpu: return metrics.gpuUsage
-                case .ram: return metrics.memoryUsage
-                case .power: return Double(metrics.batteryLevel) / 100.0
-                case .network: return min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
-                case .disk:
-                    return metrics.diskTotalGB > 0 ? (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB : 0.5
-                }
-            }()
             let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: state.thresholds, palette: context.palette)
-            let isAlerting = (metric == .cpu && metrics.cpuUsage > state.thresholds.cpuDanger) ||
-                             (metric == .ram && metrics.memoryUsage > state.thresholds.ramDanger)
+            let isAlerting = state.isAlerting(for: metric)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
                 title: metric.displayName,
                 systemIcon: metric.systemIcon,
                 state: isAlerting ? .alerting : .normal,
-                gaugeRatio: ratio,
+                gaugeRatio: state.ratio(for: metric),
                 gaugeStyle: .solid,
                 tintColorHex: color.toHex(),
                 isPinned: context.isItemPinned("vitals-\(metric.rawValue)")
@@ -300,14 +288,26 @@ public struct VitalsRailBarPluginView: View {
     }
 
     public var body: some View {
-        let cpu = state.metrics.cpuUsage
-        let isPulsing = cpu > 0.85
+        // One gauge, the metric the header pill names. They used to disagree:
+        // the header could say "内存 69%" while the pod still drew CPU.
+        let metric = state.headerMetric
+        let color = VitalsColorResolver.color(
+            for: metric,
+            vitals: state.metrics,
+            thresholds: state.thresholds,
+            palette: context.palette
+        )
 
         PurahSegmentGaugeBarView(
-            segments: [PurahGaugeSegment(id: "cpu", ratio: cpu, color: context.accentColor, isAlerting: isPulsing)],
+            segments: [PurahGaugeSegment(
+                id: metric.rawValue,
+                ratio: state.ratio(for: metric),
+                color: color,
+                isAlerting: state.isAlerting(for: metric)
+            )],
             barWidth: context.railWidth,
             height: context.slotHeight,
-            trackColor: context.accentColor.opacity(0.25),
+            trackColor: color.opacity(0.25),
             // The old bar always kept a 4pt sliver so the pod never looked
             // switched off at idle CPU.
             minimumVisibleFill: 4.0

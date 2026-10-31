@@ -95,6 +95,34 @@ public final class VitalsPluginState: Sendable {
         HardwareVitalsService.shared.history(for: metric)
     }
 
+    /// The 0…1 fill a rail gauge shows for this metric.
+    ///
+    /// The header pill picks a metric, and the pod on the rail is its gauge —
+    /// so both have to read the same number from the same place. The composite
+    /// rail bar and the stepped chips were computing it separately.
+    public func ratio(for metric: VitalsMetricType) -> Double {
+        let m = metrics
+        switch metric {
+        case .cpu: return m.cpuUsage
+        case .gpu: return m.gpuUsage
+        case .ram: return m.memoryUsage
+        case .power: return Double(m.batteryLevel) / 100.0
+        case .network: return min((m.networkDownSpeed + m.networkUpSpeed) / 10_485_760.0, 1.0)
+        case .disk:
+            return m.diskTotalGB > 0 ? (m.diskTotalGB - m.diskFreeGB) / m.diskTotalGB : 0.5
+        }
+    }
+
+    /// Whether this metric has crossed its danger threshold.
+    public func isAlerting(for metric: VitalsMetricType) -> Bool {
+        let m = metrics
+        switch metric {
+        case .cpu: return m.cpuUsage > thresholds.cpuDanger
+        case .ram: return m.memoryUsage > thresholds.ramDanger
+        default: return false
+        }
+    }
+
     public func load() {
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")

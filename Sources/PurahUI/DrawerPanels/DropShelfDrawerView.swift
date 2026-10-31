@@ -1614,24 +1614,9 @@ public struct ShelfFileRowView: View {
         }
         .padding(.horizontal, PurahItemRhythm.rowHorizontalInset)
         .padding(.vertical, PurahItemRhythm.rowVerticalInset)
-        .background(
-            RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
-                .fill(isSelected ? shelfColor.opacity(0.18) : Color.clear)
-        )
-        .liquidCardBackground(
-            cornerRadius: PurahItemRhythm.rowCornerRadius,
-            strokeColor: isSelected
-                ? shelfColor
-                : (isRowHovered ? shelfColor.opacity(0.6) : palette.borderColor.opacity(0.4))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous)
-                .stroke(isSelected ? shelfColor : Color.clear, lineWidth: 1.5)
-        )
+        .purahItemCard(accent: shelfColor, isHovered: isRowHovered, isSelected: isSelected)
         .scaleEffect(isDragging ? 0.96 : 1.0)
-        .animation(PurahMotionPolicy.shelfRow, value: isRowHovered)
         .animation(PurahMotionPolicy.shelfRow, value: isDragging)
-        .animation(.spring(response: 0.20, dampingFraction: 0.82), value: isSelected)
         .help("dropshelf.doubleClickHint".localized)
         .accessibilityLabel("dropshelf.doubleClickHint".localized)
         .contentShape(Rectangle())

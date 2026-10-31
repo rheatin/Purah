@@ -855,9 +855,18 @@ public struct ClipboardFullDrawerView: View {
                 .stroke(
                     item.isFavorite
                         ? Color(hex: "#FF9F0A").opacity(0.65)
-                        : (isHovered ? palette.primaryAccent.opacity(0.5) : palette.borderColor.opacity(0.25)),
+                        : (isHovered ? palette.primaryAccent.opacity(0.62) : palette.borderColor.opacity(0.25)),
                     lineWidth: item.isFavorite ? 1.5 : 1
                 )
+        )
+        // A blurred ring behind the row, so the hover reads as a glow rather
+        // than a slightly brighter hairline. Same language as the Shelf,
+        // Runway and script rows.
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(palette.primaryAccent.opacity(item.isFavorite ? 0.24 : 0.34), lineWidth: 3)
+                .blur(radius: 3)
+                .opacity(isHovered ? 1 : 0)
         )
         // Drop target only while a card is actually in flight, so the static
         // list never shows a stray highlight.
