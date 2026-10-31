@@ -50,7 +50,12 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             AIQuickActionType(rawValue: roleId).map({ AIRolePreset.from(action: $0) }) else {
             return nil
         }
-        return AnyView(AIAssistantSteppedDrawerView(role: role, state: state, context: context))
+        return AnyView(AIAssistantSteppedDrawerView(
+            role: role,
+            state: state,
+            context: context,
+            minChipHeight: decomposedPolicy(store: context.store).minChipHeight
+        ))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
@@ -244,7 +249,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public var decomposedPolicy: PurahDecomposedPolicy {
         return PurahDecomposedPolicy(
             maxRailItems: max(state.maxRailRoles, 1),
-            minChipHeight: 72.0,
+            minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
             overflowStrategy: .truncate
@@ -254,7 +259,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public func decomposedPolicy(store: PurahWorkspaceStore) -> PurahDecomposedPolicy {
         return PurahDecomposedPolicy(
             maxRailItems: max(state.maxRailRoles, 1),
-            minChipHeight: 72.0,
+            minChipHeight: 52.0,
             maxChipHeight: 210.0,
             spacing: 2.5,
             overflowStrategy: .truncate

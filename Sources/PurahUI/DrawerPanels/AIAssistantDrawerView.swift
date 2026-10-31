@@ -48,11 +48,11 @@ public struct AIAssistantSteppedDrawerView: View {
     public let role: AIRolePreset
     @Bindable public var state: AIAssistantPluginState
     public let context: PurahPluginContext
+    public let minChipHeight: CGFloat
 
     @State private var roleInput: String = ""
     @State private var roleOutput: String = ""
     @State private var rawSteppedStream: String = ""
-    @State private var isSteppedThinking: Bool = false
     @State private var isRoleRunning: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
     /// What answered the last chip turn. A chip's header is already full, so
@@ -61,16 +61,18 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var currentStreamTask: Task<Void, Never>? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
+    public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext, minChipHeight: CGFloat) {
         self.role = role
         self.state = state
         self.context = context
+        self.minChipHeight = minChipHeight
     }
 
-    public init(action: AIQuickActionType, state: AIAssistantPluginState, context: PurahPluginContext) {
+    public init(action: AIQuickActionType, state: AIAssistantPluginState, context: PurahPluginContext, minChipHeight: CGFloat) {
         self.role = AIRolePreset.from(action: action)
         self.state = state
         self.context = context
+        self.minChipHeight = minChipHeight
     }
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
@@ -84,32 +86,32 @@ public struct AIAssistantSteppedDrawerView: View {
         let isExpanded = context.isExpanded || isPinned
         let barW = CGFloat(context.store.railBarWidth)
         let slotH = context.slotHeight
-        let cardH = max(slotH, 48.0)
+        let cardH = PurahSteppedCardMetrics.cardHeight(slotHeight: slotH, minChipHeight: minChipHeight)
         let drawerW = context.drawerWidth
         let edge = context.edge
         let roleColor = Color(hex: role.colorHex)
         let barRadius = min(barW / 2, 4)
         let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardH)
         let iconSize = 26 * scale
-        let rowH = PurahSteppedCardMetrics.rowHeight(cardHeight: cardH)
-        let bodyH = PurahSteppedCardMetrics.bodyHeight(cardHeight: cardH)
-        let bodyW = drawerW - 30
-        let font = 11 * scale
+        let font = 10 * scale
         let lineH = font * 1.25 + 2
-        let maxLines = max(1, Int(floor(bodyH / lineH)))
+        let maxLines = max(1, Int(floor((cardH - 4) / lineH)))
+        let showsInlineTools = isRoleRunning || !roleOutput.isEmpty
+        let headerToolsWidth = 2 * PurahHeaderMetrics.hitSize + PurahHeaderMetrics.groupSpacing + 4
+        let inlineToolsWidth = showsInlineTools ? 32 + 12 * scale : 0
+        let contentW = max(drawerW - 30 - iconSize - 12 * scale - headerToolsWidth - inlineToolsWidth, 1)
         let previewItem = ClipboardItem(id: "ai-\(role.id)", type: .text(roleOutput))
         let isPreviewPinned = ClipboardHoverPreviewController.shared.isPinned(id: "ai-\(role.id)")
         let isPreviewAvailable: Bool = {
             guard !isRoleRunning, !roleOutput.isEmpty else { return false }
             let nsFont = NSFont.systemFont(ofSize: font)
             let h = (roleOutput as NSString).boundingRect(
-                with: CGSize(width: bodyW, height: .greatestFiniteMagnitude),
+                with: CGSize(width: contentW, height: .greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
                 attributes: [.font: nsFont]
             ).height
-            return h > bodyH
+            return h > cardH - 4
         }()
-        let hasSteppedContent = !roleInput.isEmpty || !roleOutput.isEmpty
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // 1. In-Rail Indicator Bar with flowing light spot when running
@@ -149,102 +151,18 @@ public struct AIAssistantSteppedDrawerView: View {
 
             // 2. Expanded Floating Role Stepped Card (1:1 Co-Planar Height)
             if isExpanded {
-                VStack(alignment: .leading, spacing: PurahSteppedCardMetrics.rowGap) {
-                    HStack(alignment: .center, spacing: 6 * scale) {
-                        // Same 26pt tinted icon block every chip leads with.
-                        RoundedRectangle(cornerRadius: 8 * scale, style: .continuous)
-                            .fill(roleColor.opacity(0.18))
-                            .frame(width: iconSize, height: iconSize)
-                            .overlay(
-                                Image(systemName: role.systemIcon)
-                                    .font(.system(size: 14 * scale, weight: .semibold))
-                                    .foregroundColor(roleColor)
-                            )
-
-                        Text(role.title)
-                            .font(.system(size: 13 * scale, weight: .semibold, design: .rounded))
-                            .foregroundColor(ink)
-                            .lineLimit(1)
-                            .help(steppedAttributionTooltip)
-
-                        if role.id == "translate" {
-                            Text("ai.drawer.autoLanguage".localized)
-                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Color.white.opacity(0.60))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.white.opacity(0.08))
-                                .cornerRadius(3)
-                        }
-
-                        Spacer()
-
-                        Button {
-                            resetSteppedState()
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 8.5))
-                                .foregroundColor(Color.white.opacity(0.65))
-                                .frame(width: 16, height: 16)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(3)
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(hasSteppedContent ? 1 : 0)
-                        .disabled(!hasSteppedContent)
-                        .help("help.resetSession".localized)
-                        .accessibilityLabel("help.resetSession".localized)
-
-                        Button {
-                            ClipboardHoverPreviewController.shared.togglePin(
-                                item: previewItem,
-                                edge: edge,
-                                palette: palette,
-                                drawerWidth: drawerW,
-                                store: context.store
-                            )
-                        } label: {
-                            Image(systemName: isPreviewPinned ? "eye.slash" : "eye")
-                                .font(.system(size: 8.5))
-                                .foregroundColor(Color.white.opacity(0.65))
-                                .frame(width: 16, height: 16)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(3)
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(isPreviewAvailable ? 1 : 0.35)
-                        .disabled(!isPreviewAvailable)
-                        .help("ai.stepped.preview".localized)
-                        .accessibilityLabel("ai.stepped.preview".localized)
-
-                        PurahDrawerHeaderTools(
-                            onSettings: { context.store.openPluginSettings(id: "ai") },
-                            settingsHelp: "Open AI Settings",
-                            isPinned: isPinned,
-                            tintColor: roleColor,
-                            onTogglePin: { context.togglePin(subItemId) }
+                HStack(alignment: .center, spacing: 6 * scale) {
+                    // Same 26pt tinted icon block every chip leads with.
+                    RoundedRectangle(cornerRadius: 8 * scale, style: .continuous)
+                        .fill(roleColor.opacity(0.18))
+                        .frame(width: iconSize, height: iconSize)
+                        .overlay(
+                            Image(systemName: role.systemIcon)
+                                .font(.system(size: 14 * scale, weight: .semibold))
+                                .foregroundColor(roleColor)
                         )
 
-                        Button {
-                            stopSteppedRun()
-                        } label: {
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 8))
-                                .foregroundColor(Color(hex: "#F87171"))
-                                .frame(width: 16, height: 16)
-                                .background(Color(hex: "#EF4444").opacity(0.20))
-                                .cornerRadius(3)
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(isRoleRunning ? 1 : 0)
-                        .disabled(!isRoleRunning)
-                        .help("help.stopGeneration".localized)
-                        .accessibilityLabel("help.stopGeneration".localized)
-                    }
-                    .frame(height: rowH)
-
-                    // Single Unified Body Box
-                    ZStack(alignment: .center) {
+                    ZStack(alignment: .leading) {
                         if roleOutput.isEmpty && !isRoleRunning {
                             // Input / Drop Box
                             HStack(spacing: 4) {
@@ -279,9 +197,20 @@ public struct AIAssistantSteppedDrawerView: View {
                             .padding(.horizontal, 8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else if isRoleRunning && roleOutput.isEmpty {
-                            AIShimmerSingleLineView(roleColor: roleColor)
-                                .frame(width: bodyW, height: 6)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            VStack(alignment: .leading, spacing: 6) {
+                                AIShimmerSingleLineView(roleColor: roleColor)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                AIShimmerSingleLineView(roleColor: roleColor)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text("ai.stepped.tapToStop".localized)
+                                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                                    .foregroundColor(ink.opacity(0.55))
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                stopSteppedRun()
+                            }
                         } else if !roleOutput.isEmpty {
                             // Result Ready -> Click anywhere to copy!
                             Text(roleOutput)
@@ -290,15 +219,18 @@ public struct AIAssistantSteppedDrawerView: View {
                                 .foregroundColor(ink)
                                 .lineLimit(maxLines, reservesSpace: true)
                                 .truncationMode(.tail)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    copyRoleOutput()
+                                    if isRoleRunning {
+                                        stopSteppedRun()
+                                    } else {
+                                        copyRoleOutput()
+                                    }
                                 }
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .frame(height: bodyH)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(isSteppedDropTargeted ? roleColor.opacity(0.14) : Color.clear)
@@ -320,6 +252,54 @@ public struct AIAssistantSteppedDrawerView: View {
                     }
                     .onDrop(of: AIWorkbenchSplitDropDelegate.acceptedTypes, isTargeted: $isSteppedDropTargeted) { _ in
                         handleSteppedTurnFromDrag()
+                    }
+
+                    HStack(spacing: 6 * scale) {
+                        if showsInlineTools {
+                            Button {
+                                resetSteppedState()
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(ink.opacity(0.65))
+                                    .frame(width: 16, height: 16)
+                                    .background(ink.opacity(0.06))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .help("help.resetSession".localized)
+                            .accessibilityLabel("help.resetSession".localized)
+
+                            Button {
+                                ClipboardHoverPreviewController.shared.togglePin(
+                                    item: previewItem,
+                                    edge: edge,
+                                    palette: palette,
+                                    drawerWidth: drawerW,
+                                    store: context.store
+                                )
+                            } label: {
+                                Image(systemName: isPreviewPinned ? "eye.slash" : "eye")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(ink.opacity(0.65))
+                                    .frame(width: 16, height: 16)
+                                    .background(ink.opacity(0.06))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(isPreviewAvailable ? 1 : 0.35)
+                            .disabled(!isPreviewAvailable)
+                            .help("ai.stepped.preview".localized)
+                            .accessibilityLabel("ai.stepped.preview".localized)
+                        }
+
+                        PurahDrawerHeaderTools(
+                            onSettings: { context.store.openPluginSettings(id: "ai") },
+                            settingsHelp: "Open AI Settings",
+                            isPinned: isPinned,
+                            tintColor: roleColor,
+                            onTogglePin: { context.togglePin(subItemId) }
+                        )
                     }
                 }
                 .padding(.leading, edge == .left ? 12 : 18)
@@ -349,7 +329,6 @@ public struct AIAssistantSteppedDrawerView: View {
         roleInput = ""
         roleOutput = ""
         rawSteppedStream = ""
-        isSteppedThinking = false
         servedModel = nil
     }
 
@@ -368,7 +347,6 @@ public struct AIAssistantSteppedDrawerView: View {
         currentStreamTask?.cancel()
         currentStreamTask = nil
         isRoleRunning = false
-        isSteppedThinking = false
     }
 
     private func copyRoleOutput() {
@@ -385,7 +363,6 @@ public struct AIAssistantSteppedDrawerView: View {
         isRoleRunning = true
         roleOutput = ""
         rawSteppedStream = ""
-        isSteppedThinking = false
         currentStreamTask?.cancel()
 
         let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
@@ -468,7 +445,6 @@ public struct AIAssistantSteppedDrawerView: View {
                         Task { @MainActor in
                             self.rawSteppedStream += chunk
                             let parsed = AIThinkAndChoicesParser.parse(raw: self.rawSteppedStream)
-                            self.isSteppedThinking = parsed.isThinking || (parsed.cleanText.isEmpty && !(parsed.reasoning ?? "").isEmpty)
                             self.roleOutput = parsed.cleanText
                         }
                     }
