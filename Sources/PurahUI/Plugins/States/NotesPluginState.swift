@@ -186,10 +186,43 @@ public final class NotesPluginState: Sendable {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
 
+        var written: Set<URL> = []
         for doc in documents {
             let dir = directory(for: doc)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try? doc.content.data(using: .utf8)?.write(to: fileURL(for: doc), options: .atomic)
+            let url = fileURL(for: doc)
+            try? doc.content.data(using: .utf8)?.write(to: url, options: .atomic)
+            written.insert(url.standardizedFileURL)
+        }
+        removeStaleMarkdown(keeping: written)
+    }
+
+    /// Deletes `.md` files this index no longer points at.
+    ///
+    /// The file is named after the title, and the title follows the note's `#`
+    /// heading — so renaming the heading (or moving a note to another tag)
+    /// changed the path and left the old file behind, and one note became two
+    /// Markdown files in Finder. Writing alone can never clean that up, so the
+    /// directory is reconciled against what was just written.
+    private func removeStaleMarkdown(keeping written: Set<URL>) {
+        let manager = FileManager.default
+        var directories = [fileStorage.dataDirectory]
+        if let children = try? manager.contentsOfDirectory(
+            at: fileStorage.dataDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) {
+            directories += children.filter {
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+        }
+        for directory in directories {
+            guard let names = try? manager.contentsOfDirectory(atPath: directory.path) else { continue }
+            for name in names where name.hasSuffix(".md") {
+                let url = directory.appendingPathComponent(name).standardizedFileURL
+                if !written.contains(url) {
+                    try? manager.removeItem(at: url)
+                }
+            }
         }
     }
 

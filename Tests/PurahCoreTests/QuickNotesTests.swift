@@ -42,6 +42,30 @@ struct QuickNotesTests {
         #expect(strippedTitle == "Testing persiste")
     }
 
+    @Test("Renaming a note's heading moves its Markdown file instead of leaving a copy")
+    func testRenamingNoteReplacesItsMarkdownFile() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_notes_rename_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = ScopedPluginStorage(pluginId: "test-notes-rename-\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "test-notes-rename", customBaseDirectory: tempDir)
+        let state = NotesPluginState(storage: storage, fileStorage: fileStorage)
+
+        let note = state.createNote(title: "Old Name", content: "# Old Name\nbody")
+        let oldFile = fileStorage.dataDirectory.appendingPathComponent("Old Name.md")
+        #expect(FileManager.default.fileExists(atPath: oldFile.path))
+
+        // The title follows the heading, so this is what the person does when
+        // they rename a note in the editor.
+        state.updateNoteContent(id: note.id, content: "# New Name\nbody")
+        state.saveToDisk()
+
+        let newFile = fileStorage.dataDirectory.appendingPathComponent("New Name.md")
+        #expect(FileManager.default.fileExists(atPath: newFile.path))
+        #expect(!FileManager.default.fileExists(atPath: oldFile.path))
+    }
+
     @Test("NotesPluginState manages tags, notes, and syncs physical markdown files")
     func testNotesPluginStateLifecycle() {
         let tempDir = FileManager.default.temporaryDirectory
