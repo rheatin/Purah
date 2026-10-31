@@ -64,7 +64,7 @@ struct CalendarReadOnlyGuardTests {
 
         let plugin = CalendarPlugin(state: CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_readonly_\(UUID().uuidString)")))
 
-        #expect(plugin.makeSteppedDrawerView(subItemId: event.id, context: makeContext(store: store)) != nil)
+        #expect(plugin.makeSteppedDrawerContent(subItemId: event.id, context: makeContext(store: store)) != nil)
         #expect(store._calendarEvents.count == 1)
     }
 }

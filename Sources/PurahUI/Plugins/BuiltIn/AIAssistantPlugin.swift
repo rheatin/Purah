@@ -50,7 +50,12 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             AIQuickActionType(rawValue: roleId).map({ AIRolePreset.from(action: $0) }) else {
             return nil
         }
-        return AnyView(AIAssistantSteppedDrawerView(role: role, state: state, context: context))
+        return AnyView(AIAssistantSteppedDrawerView(
+            role: role,
+            state: state,
+            context: context,
+            minChipHeight: decomposedPolicy(store: context.store).minChipHeight
+        ))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {

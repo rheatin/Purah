@@ -115,7 +115,8 @@ struct LocalizationTests {
             // dot. The notification is the host's pod glow, which names no
             // command, so nothing asks for `terminal.done.*` any more.
             // +2: the onboarding guide now asks before it replaces the layout.
-            .traditionalChinese: 580,
+            // +1: the vitals sparkline names its click-to-cycle hint.
+            .traditionalChinese: 581,
             .japanese: 71,
             .korean: 71,
             .french: 71,

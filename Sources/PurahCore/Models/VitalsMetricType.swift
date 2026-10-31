@@ -22,6 +22,20 @@ public enum VitalsMetricType: String, CaseIterable, Codable, Sendable, Identifia
         }
     }
 
+    /// The chip label. A decomposed chip is one row beside a live graph, and
+    /// "Network I/O" spent a third of that width on words every Mac user
+    /// already reads as NET.
+    public var shortName: String {
+        switch self {
+        case .cpu: "CPU"
+        case .gpu: "GPU"
+        case .ram: "RAM"
+        case .power: "PWR"
+        case .network: "NET"
+        case .disk: "DISK"
+        }
+    }
+
     public var systemIcon: String {
         switch self {
         case .cpu: "cpu"

@@ -688,7 +688,6 @@ fileprivate func openInSystemCalendar(event: CalendarEventItem? = nil) {
 public struct CalendarAgendaOverviewDrawerView: View {
     public let events: [CalendarEventItem]
     public let edge: MountEdge
-    public let isPinned: Bool
     public let store: PurahWorkspaceStore
     @State private var overviewAnchorID: String?
 
@@ -702,12 +701,10 @@ public struct CalendarAgendaOverviewDrawerView: View {
     public init(
         events: [CalendarEventItem],
         edge: MountEdge,
-        isPinned: Bool = false,
         store: PurahWorkspaceStore
     ) {
         self.events = events
         self.edge = edge
-        self.isPinned = isPinned
         self.store = store
     }
 
@@ -715,12 +712,11 @@ public struct CalendarAgendaOverviewDrawerView: View {
         let podColor = palette.podColor(for: "calendar")
         let batches = orderedBatches
         return PurahOverviewList(
+            showsHeader: false,
             icon: "calendar.badge.clock",
             title: "calendar.overview.title".localized,
             count: events.count,
             accent: podColor,
-            showsSettings: true,
-            onSettings: { store.openPluginSettings(id: "calendar") },
             headerTrailing: sampleConnectHidden ? nil : {
                 AnyView(
                     Button {
@@ -752,12 +748,6 @@ public struct CalendarAgendaOverviewDrawerView: View {
                     .accessibilityLabel("help.sampleCalendar".localized)
                 )
             },
-            isPinned: isPinned,
-            onPin: {
-                withAnimation(PurahMotionPolicy.pin) {
-                    store.togglePinItem(id: "calendar_more_events")
-                }
-            },
             showsBoundary: !batches.ended.isEmpty,
             boundaryTitle: "calendar.overview.pastBoundary".localized,
             boundaryColor: .orange,
@@ -788,7 +778,8 @@ public struct CalendarAgendaOverviewDrawerView: View {
                     store.togglePinItem(id: "calendar_more_events")
                 }
             } label: {
-                Label(isPinned ? "Unpin Agenda" : "Pin Agenda", systemImage: isPinned ? "pin.slash" : "pin")
+                let pinned = store.isItemPinned(id: "calendar_more_events")
+                Label(pinned ? "Unpin Agenda" : "Pin Agenda", systemImage: pinned ? "pin.slash" : "pin")
             }
             Divider()
             Button {

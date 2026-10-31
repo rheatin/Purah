@@ -360,6 +360,13 @@ public struct AmbientRailStripView: View {
                 Text(plugin.manifest.displayName)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    // A drawer header is one row. With a long accessory (a note
+                    // filename) this used to wrap onto a second line and squeeze
+                    // the card; the title keeps its room and the accessory
+                    // truncates instead.
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
 
                 if let accessory = plugin.makeHeaderAccessoryView(context: context) {
                     accessory

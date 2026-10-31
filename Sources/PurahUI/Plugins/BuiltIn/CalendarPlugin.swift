@@ -298,10 +298,13 @@ public struct CalendarPlugin: PurahPodPlugin {
                 }
                 return nil
             }()
+            // The card header has room for one live line under the title; the
+            // shortest chip has no body at all, so the time and place live here.
+            let place = (event.location.isEmpty || event.location == "Apple Calendar") ? "" : " · \(event.location)"
             return PurahPluginSubItem(
                 id: event.id,
                 title: event.title,
-                subtitle: event.location,
+                subtitle: event.timeRangeLabel + place,
                 systemIcon: "calendar",
                 badge: badgeText,
                 state: itemState,
@@ -346,32 +349,43 @@ public struct CalendarPlugin: PurahPodPlugin {
             CalendarAgendaOverviewDrawerView(
                 events: overflow,
                 edge: context.edge,
-                isPinned: context.isItemPinned("calendar_more_events"),
                 store: context.store
             )
         )
     }
 
-    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
-
+    public func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        guard !PurahPluginSubItem.isMoreItemsID(subItemId) else { return nil }
         let events = effectiveEvents(store: context.store)
         guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
-        let isPinned = context.isItemPinned(subItemId)
-        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        // Nothing to add under the row: an empty body would still hold its
+        // share of the card and push the row off centre.
+        let notes = (event.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !notes.isEmpty else { return AnyView(EmptyView()) }
         return AnyView(
-            CalendarItemDrawerView(
+            CalendarSteppedBodyView(
                 event: event,
-                allEvents: events,
-                edge: context.edge,
-                state: state,
-                isPinned: isPinned,
-                height: context.slotHeight,
-                store: context.store,
-                onTogglePin: {
-                    withAnimation(PurahMotionPolicy.pin) {
-                        context.togglePin(subItemId)
-                    }
-                }
+                availableHeight: context.slotHeight,
+                store: context.store
+            )
+        )
+    }
+
+    /// The chip's row already says title, status, time and place; a body is
+    /// only worth drawing once it can hold the progress bar and notes.
+    public func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 54.0 }
+
+    /// Join / open in Calendar, at the end of the chip's row. The event's own
+    /// action cannot live in the body: a 40pt chip's row is the whole card.
+    public func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        guard !PurahPluginSubItem.isMoreItemsID(subItemId) else { return nil }
+        let events = effectiveEvents(store: context.store)
+        guard let event = events.first(where: { $0.id == subItemId }) else { return nil }
+        return AnyView(
+            CalendarSteppedRowAccessory(
+                event: event,
+                rowScale: PurahSteppedCardMetrics.rowScale(cardHeight: context.slotHeight),
+                store: context.store
             )
         )
     }

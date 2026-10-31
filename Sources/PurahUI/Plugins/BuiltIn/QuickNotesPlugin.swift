@@ -104,13 +104,15 @@ struct NotesHeaderNoteMenu: View {
                 text: state.currentDocument?.title ?? "Untitled",
                 icon: "doc.text",
                 tint: accent,
-                maxTextWidth: 132,
+                maxTextWidth: 108,
                 isEmphasized: true
             )
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        // No `fixedSize`: the note name is the one flexible element in the
+        // header, so a long filename ellipsizes here instead of widening the
+        // row until "Quick Notes" wraps onto a second line.
         .help("notes.switchNote".localized)
     }
 }

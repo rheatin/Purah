@@ -48,31 +48,35 @@ public struct AIAssistantSteppedDrawerView: View {
     public let role: AIRolePreset
     @Bindable public var state: AIAssistantPluginState
     public let context: PurahPluginContext
+    public let minChipHeight: CGFloat
 
     @State private var roleInput: String = ""
     @State private var roleOutput: String = ""
     @State private var rawSteppedStream: String = ""
-    @State private var isSteppedThinking: Bool = false
     @State private var isRoleRunning: Bool = false
-    @State private var isCopiedFeedback: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
-    /// What answered the last chip turn. A chip's header is 16pt and already
-    /// full, so this rides in the copy badge's tooltip instead of costing a row.
-    @State private var servedModel: String? = nil
+    @State private var isContentHovered: Bool = false
     @State private var currentStreamTask: Task<Void, Never>? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext) {
+    public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext, minChipHeight: CGFloat) {
         self.role = role
         self.state = state
         self.context = context
+        self.minChipHeight = minChipHeight
     }
 
-    public init(action: AIQuickActionType, state: AIAssistantPluginState, context: PurahPluginContext) {
+    public init(action: AIQuickActionType, state: AIAssistantPluginState, context: PurahPluginContext, minChipHeight: CGFloat) {
         self.role = AIRolePreset.from(action: action)
         self.state = state
         self.context = context
+        self.minChipHeight = minChipHeight
     }
+
+    private var palette: ThemePalette { ThemeManager.shared.palette }
+    /// The chip sits on the same themed card as every other pod now, so text
+    /// follows the palette instead of assuming a dark navy background.
+    private var ink: Color { palette.style == .native ? Color.primary : .white }
 
     public var body: some View {
         let subItemId = "ai-\(role.id)"
@@ -80,14 +84,53 @@ public struct AIAssistantSteppedDrawerView: View {
         let isExpanded = context.isExpanded || isPinned
         let barW = CGFloat(context.store.railBarWidth)
         let slotH = context.slotHeight
-        let cardH = max(slotH, 48.0)
+        let cardH = PurahSteppedCardMetrics.cardHeight(slotHeight: slotH, minChipHeight: minChipHeight)
         let drawerW = context.drawerWidth
         let edge = context.edge
         let roleColor = Color(hex: role.colorHex)
         let barRadius = min(barW / 2, 4)
-        // Waiting for a prompt: the composer is the entire card, and the role
-        // is named by its placeholder rather than by a title strip.
-        let showsComposer = roleOutput.isEmpty && !isRoleRunning
+        let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardH)
+        let iconSize = 26 * scale
+        let font = 10 * scale
+        let lineH = font * 1.25 + 2
+        let maxLines = max(1, Int(floor((cardH - 4) / lineH)))
+        let isPreviewPinned = ClipboardHoverPreviewController.shared.isPinned(id: "ai-\(role.id)")
+        // The eye stays mounted while its panel is pinned: clearing the answer
+        // would otherwise unmount the only control that can unpin it.
+        let showsInlineTools = isRoleRunning || !roleOutput.isEmpty || isPreviewPinned
+        let headerToolsWidth = 2 * PurahHeaderMetrics.hitSize + PurahHeaderMetrics.groupSpacing + 4
+        let inlineToolsWidth = showsInlineTools ? 32 + 12 * scale : 0
+        let contentW = max(drawerW - 30 - iconSize - 12 * scale - headerToolsWidth - inlineToolsWidth, 1)
+        let previewItem = ClipboardItem(id: "ai-\(role.id)", type: .text(roleOutput))
+        let isPreviewAvailable: Bool = {
+            guard !isRoleRunning, !roleOutput.isEmpty else { return false }
+            // Measure with the same 2pt line spacing the Text is drawn with:
+            // without it an answer one line past the card's limit measured as
+            // "fits", so the ellipsis was on screen but the eye stayed dim.
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = 2
+            let h = (roleOutput as NSString).boundingRect(
+                with: CGSize(width: contentW, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: NSFont.systemFont(ofSize: font), .paragraphStyle: paragraph]
+            ).height
+            return h > cardH - 4
+        }()
+        // A pointer already resting on the card never re-fires onHover, so a run
+        // that finishes under the cursor would never open the preview.
+        let refreshPreview: (Bool) -> Void = { hovering in
+            if hovering && isPreviewAvailable {
+                ClipboardHoverPreviewController.shared.show(
+                    item: previewItem,
+                    edge: edge,
+                    palette: palette,
+                    drawerWidth: drawerW,
+                    dwell: 0.4
+                )
+            } else {
+                ClipboardHoverPreviewController.shared.hide()
+            }
+        }
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // 1. In-Rail Indicator Bar with flowing light spot when running
@@ -127,124 +170,19 @@ public struct AIAssistantSteppedDrawerView: View {
 
             // 2. Expanded Floating Role Stepped Card (1:1 Co-Planar Height)
             if isExpanded {
-                ZStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                    // The role's own name lives in the composer's placeholder,
-                    // so a card that is only waiting for input is one row tall:
-                    // the title strip above it used to take half a chip's
-                    // height to repeat what the placeholder already says.
-                    if !showsComposer {
-                        // Minimal Top Header Strip (16pt tall)
-                        HStack(spacing: 5) {
+                HStack(alignment: .center, spacing: 6 * scale) {
+                    // Same 26pt tinted icon block every chip leads with.
+                    RoundedRectangle(cornerRadius: 8 * scale, style: .continuous)
+                        .fill(roleColor.opacity(0.18))
+                        .frame(width: iconSize, height: iconSize)
+                        .overlay(
                             Image(systemName: role.systemIcon)
-                                .font(.system(size: 9.5, weight: .semibold))
+                                .font(.system(size: 14 * scale, weight: .semibold))
                                 .foregroundColor(roleColor)
+                        )
 
-                            Text(role.title)
-                                .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .help(steppedAttributionTooltip)
-
-                            if role.id == "translate" {
-                                Text("ai.drawer.autoLanguage".localized)
-                                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(Color.white.opacity(0.60))
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Color.white.opacity(0.08))
-                                    .cornerRadius(3)
-                            }
-
-                            Spacer()
-
-                            if !roleOutput.isEmpty || !roleInput.isEmpty {
-                                Button {
-                                    resetSteppedState()
-                                } label: {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 8.5))
-                                        .foregroundColor(Color.white.opacity(0.65))
-                                        .frame(width: 16, height: 16)
-                                        .background(Color.white.opacity(0.06))
-                                        .cornerRadius(3)
-                                }
-                                .buttonStyle(.plain)
-                                .help("help.resetSession".localized)
-                                .accessibilityLabel("help.resetSession".localized)
-                            }
-
-                            PurahDrawerHeaderTools(
-                                onSettings: { context.store.openPluginSettings(id: "ai") },
-                                settingsHelp: "Open AI Settings",
-                                isPinned: isPinned,
-                                tintColor: roleColor,
-                                onTogglePin: { context.togglePin(subItemId) }
-                            )
-
-                            if isRoleRunning {
-                                Button {
-                                    stopSteppedRun()
-                                } label: {
-                                    Image(systemName: "stop.fill")
-                                        .font(.system(size: 8))
-                                        .foregroundColor(Color(hex: "#F87171"))
-                                        .frame(width: 16, height: 16)
-                                        .background(Color(hex: "#EF4444").opacity(0.20))
-                                        .cornerRadius(3)
-                                }
-                                .buttonStyle(.plain)
-                                .help("help.stopGeneration".localized)
-                                .accessibilityLabel("help.stopGeneration".localized)
-                            }
-
-                        }
-                        .frame(height: 16)
-                    }
-
-                    // Single Unified Body Box
-                    ZStack(alignment: .bottomTrailing) {
-                        if isRoleRunning && roleOutput.isEmpty {
-                            VStack(spacing: 4) {
-                                AIShimmerSingleLineView(roleColor: roleColor)
-                                    .padding(.horizontal, 6)
-                                    .padding(.top, 4)
-                                Spacer()
-                                Text(isSteppedThinking ? "💭 Thinking..." : "ai.stepped.generating".localized)
-                                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                                    .foregroundColor(Color.white.opacity(0.60))
-                                    .padding(.bottom, 4)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else if !roleOutput.isEmpty {
-                            // Result Ready -> Click anywhere to copy!
-                            // A stepped chip is a glanceable surface: no
-                            // indicators, no bounce when the text already fits.
-                            PurahScrollableBody {
-                                Text(roleOutput)
-                                    .font(.system(size: 10.5, weight: .regular))
-                                    .lineSpacing(2)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(6)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                copyRoleOutput()
-                            }
-
-                            // Subtle bottom-right badge
-                            Text(isCopiedFeedback ? "ai.stepped.copied".localized : "ai.stepped.clickToCopy".localized)
-                                .font(.system(size: 8, weight: .bold, design: .rounded))
-                                .foregroundColor(isCopiedFeedback ? Color(hex: "#10B981") : Color.white.opacity(0.50))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color.black.opacity(0.55))
-                                .cornerRadius(3)
-                                .padding(4)
-                                .allowsHitTesting(false)
-                        } else {
+                    ZStack(alignment: .leading) {
+                        if roleOutput.isEmpty && !isRoleRunning {
                             // Input / Drop Box
                             HStack(spacing: 4) {
                                 TextField(
@@ -252,8 +190,8 @@ public struct AIAssistantSteppedDrawerView: View {
                                     text: $roleInput
                                 )
                                 .textFieldStyle(.plain)
-                                .font(.system(size: 10.5))
-                                .foregroundColor(.white)
+                                .font(.system(size: 11 * scale))
+                                .foregroundColor(ink)
                                 .onSubmit {
                                     runSingleTurn(input: roleInput)
                                 }
@@ -274,56 +212,138 @@ public struct AIAssistantSteppedDrawerView: View {
                                 .buttonStyle(.plain)
                                 .help(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
                                 .accessibilityLabel(roleInput.isEmpty ? "ai.stepped.pasteAndRun".localized : "Run")
-
-                                // The card's own controls sit at the end of the
-                                // row they belong to, the way a reminder's pin
-                                // rides the end of its title row.
-                                PurahDrawerHeaderTools(
-                                    onSettings: { context.store.openPluginSettings(id: "ai") },
-                                    settingsHelp: "Open AI Settings",
-                                    isPinned: isPinned,
-                                    tintColor: roleColor,
-                                    onTogglePin: { context.togglePin(subItemId) }
-                                )
                             }
                             .padding(.horizontal, 8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if isRoleRunning && roleOutput.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                AIShimmerSingleLineView(roleColor: roleColor, widthFraction: 1.0)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                // The hint rides the end of the last line instead of
+                                // sitting under a 72%-wide bar: the column reads full,
+                                // and "click to stop" lands beside the tools the eye
+                                // is already heading for.
+                                HStack(spacing: 8) {
+                                    AIShimmerSingleLineView(roleColor: roleColor, widthFraction: 1.0)
+                                    Text("ai.stepped.tapToStop".localized)
+                                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                                        .foregroundColor(ink.opacity(0.55))
+                                        .fixedSize()
+                                        .layoutPriority(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                stopSteppedRun()
+                            }
+                        } else if !roleOutput.isEmpty {
+                            // Result Ready -> Click anywhere to copy!
+                            Text(roleOutput)
+                                .font(.system(size: font))
+                                .lineSpacing(2)
+                                .foregroundColor(ink)
+                                .lineLimit(maxLines, reservesSpace: true)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if isRoleRunning {
+                                        stopSteppedRun()
+                                    } else {
+                                        copyRoleOutput()
+                                    }
+                                }
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(hex: "#141720"))
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isSteppedDropTargeted ? roleColor.opacity(0.14) : Color.clear)
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(
-                                isSteppedDropTargeted ? roleColor : roleColor.opacity(0.45),
-                                lineWidth: isSteppedDropTargeted ? 1.6 : 1.0
-                            )
-                    )
+                    .onHover { hovering in
+                        isContentHovered = hovering
+                        refreshPreview(hovering)
+                    }
+                    .onChange(of: isPreviewAvailable) { _, available in
+                        if available { refreshPreview(isContentHovered) }
+                    }
                     .onDrop(of: AIWorkbenchSplitDropDelegate.acceptedTypes, isTargeted: $isSteppedDropTargeted) { _ in
                         handleSteppedTurnFromDrag()
                     }
+
+                    HStack(spacing: 6 * scale) {
+                        if showsInlineTools {
+                            Button {
+                                resetSteppedState()
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(ink.opacity(0.65))
+                                    .frame(width: 16, height: 16)
+                                    .background(ink.opacity(0.06))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .help("help.resetSession".localized)
+                            .accessibilityLabel("help.resetSession".localized)
+
+                            Button {
+                                ClipboardHoverPreviewController.shared.togglePin(
+                                    item: previewItem,
+                                    edge: edge,
+                                    palette: palette,
+                                    drawerWidth: drawerW,
+                                    store: context.store
+                                )
+                            } label: {
+                                Image(systemName: isPreviewPinned ? "eye.slash" : "eye")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(ink.opacity(0.65))
+                                    .frame(width: 16, height: 16)
+                                    .background(ink.opacity(0.06))
+                                    .cornerRadius(3)
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(isPreviewAvailable || isPreviewPinned ? 1 : 0.35)
+                            .disabled(!isPreviewAvailable && !isPreviewPinned)
+                            .help("ai.stepped.preview".localized)
+                            .accessibilityLabel("ai.stepped.preview".localized)
+                        }
+
+                        PurahDrawerHeaderTools(
+                            onSettings: { context.store.openPluginSettings(id: "ai") },
+                            settingsHelp: "Open AI Settings",
+                            isPinned: isPinned,
+                            tintColor: roleColor,
+                            onTogglePin: { context.togglePin(subItemId) }
+                        )
+                    }
                 }
-                .padding(6)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(hex: "#181B24").opacity(0.96))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1.0)
-                )
-                .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 4)
+                .padding(.leading, edge == .left ? 12 : 18)
+                .padding(.trailing, edge == .left ? 18 : 12)
+                .padding(.vertical, PurahSteppedCardMetrics.verticalPadding)
+                .frame(width: drawerW, height: cardH, alignment: edge == .left ? .leading : .trailing)
+                .liquidDrawerBackground(shape: PurahDrawerShape.stepped(edge: edge), accentColor: roleColor)
+                .transition(.move(edge: edge == .right ? .trailing : .leading))
             }
-            .frame(width: drawerW, height: cardH)
-            .offset(x: edge == .right ? (-barW - 6) : (barW + 6))
-            .transition(.move(edge: edge == .right ? .trailing : .leading))
-        }
         }
         .frame(height: slotH, alignment: .top)
         .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
+        .onChange(of: isExpanded) { _, expanded in
+            if !expanded {
+                isContentHovered = false
+                ClipboardHoverPreviewController.shared.hide()
+            }
+        }
+        .onDisappear {
+            // The chip is conditionally mounted, so a collapsing drawer destroys
+            // this view's state: a run that outlived it could never be shown.
+            currentStreamTask?.cancel()
+            currentStreamTask = nil
+            ClipboardHoverPreviewController.shared.hide()
+        }
     }
 
     private func resetSteppedState() {
@@ -333,27 +353,12 @@ public struct AIAssistantSteppedDrawerView: View {
         roleInput = ""
         roleOutput = ""
         rawSteppedStream = ""
-        isSteppedThinking = false
-        isCopiedFeedback = false
-        servedModel = nil
-    }
-
-    /// `<model> · <provider>`, or just the provider when the run predates model
-    /// attribution. Empty before anything has run.
-    private var steppedAttributionTooltip: String {
-        guard !roleOutput.isEmpty || isRoleRunning || servedModel != nil else { return "" }
-        let provider = state.selectedProvider.displayName
-        if let servedModel, !servedModel.isEmpty {
-            return "\(servedModel) · \(provider)"
-        }
-        return provider
     }
 
     private func stopSteppedRun() {
         currentStreamTask?.cancel()
         currentStreamTask = nil
         isRoleRunning = false
-        isSteppedThinking = false
     }
 
     private func copyRoleOutput() {
@@ -361,14 +366,7 @@ public struct AIAssistantSteppedDrawerView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(roleOutput, forType: .string)
         SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-        withAnimation(.easeInOut(duration: 0.15)) {
-            isCopiedFeedback = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isCopiedFeedback = false
-            }
-        }
+        context.showToast("ai.stepped.copied".localized, "checkmark.circle.fill")
     }
 
     private func runSingleTurn(input: String) {
@@ -377,7 +375,6 @@ public struct AIAssistantSteppedDrawerView: View {
         isRoleRunning = true
         roleOutput = ""
         rawSteppedStream = ""
-        isSteppedThinking = false
         currentStreamTask?.cancel()
 
         let (enriched, _) = AIAssistantService.enrichPromptWithLocalSkills(
@@ -450,17 +447,10 @@ public struct AIAssistantSteppedDrawerView: View {
                     endpoint: endpoint,
                     model: model,
                     systemPromptOverride: systemPrompt,
-                    onServedModel: { served in
-                        Task { @MainActor in
-                            let trimmed = served.trimmingCharacters(in: .whitespacesAndNewlines)
-                            self.servedModel = trimmed.isEmpty ? nil : trimmed
-                        }
-                    },
                     onChunk: { chunk in
                         Task { @MainActor in
                             self.rawSteppedStream += chunk
                             let parsed = AIThinkAndChoicesParser.parse(raw: self.rawSteppedStream)
-                            self.isSteppedThinking = parsed.isThinking || (parsed.cleanText.isEmpty && !(parsed.reasoning ?? "").isEmpty)
                             self.roleOutput = parsed.cleanText
                         }
                     }
@@ -1096,6 +1086,9 @@ public struct AISessionHistoryManagerView: View {
 struct AIShimmerSingleLineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let roleColor: Color
+    /// Share of the proposed width the bar fills. 0.72 suits the composite
+    /// drawer; a chip line wants the whole column.
+    var widthFraction: CGFloat = 0.72
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
@@ -1103,7 +1096,7 @@ struct AIShimmerSingleLineView: View {
             let phase = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
 
             GeometryReader { geo in
-                let w = geo.size.width * 0.72
+                let w = geo.size.width * widthFraction
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(Color.white.opacity(0.08))

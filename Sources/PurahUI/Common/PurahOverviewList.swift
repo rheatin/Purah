@@ -12,6 +12,7 @@ import SwiftUI
 /// The stepped container's overview shell supplies the outer card; this view
 /// supplies the list anatomy so every +N drawer reads and scrolls the same.
 public struct PurahOverviewList<Primary: View, Secondary: View>: View {
+    private let showsHeader: Bool
     private let icon: String
     private let title: String
     private let count: Int
@@ -36,6 +37,7 @@ public struct PurahOverviewList<Primary: View, Secondary: View>: View {
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
     public init(
+        showsHeader: Bool = true,
         icon: String,
         title: String,
         count: Int,
@@ -56,6 +58,7 @@ public struct PurahOverviewList<Primary: View, Secondary: View>: View {
         onAction: (() -> Void)? = nil,
         scrollAnchor: Binding<String?>? = nil
     ) {
+        self.showsHeader = showsHeader
         self.icon = icon
         self.title = title
         self.count = count
@@ -79,9 +82,12 @@ public struct PurahOverviewList<Primary: View, Secondary: View>: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            header
-            Divider()
-                .background(palette.borderColor.opacity(0.35))
+            // The host owns the +N card's row; the plugin supplies the list.
+            if showsHeader {
+                header
+                Divider()
+                    .background(palette.borderColor.opacity(0.35))
+            }
             list
             Divider()
                 .background(palette.borderColor.opacity(0.35))
@@ -136,6 +142,11 @@ public struct PurahOverviewList<Primary: View, Secondary: View>: View {
     private var list: some View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(alignment: .leading, spacing: 6) {
+                // A host-owned row replaces the header, so a plugin accessory
+                // that used to ride it leads the list instead of vanishing.
+                if !showsHeader, let headerTrailing {
+                    headerTrailing
+                }
                 primary
                 if showsBoundary {
                     boundaryRow

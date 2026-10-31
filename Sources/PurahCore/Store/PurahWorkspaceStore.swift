@@ -2812,7 +2812,7 @@ public final class PurahWorkspaceStore {
                 let totalSpacing = spacing * Double(safeCount - 1)
                 let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
                 let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
-                let cardH = max(itemH, minChipH, 48.0)
+                let cardH = PurahSteppedCardMetrics.cardHeight(slotHeight: itemH, minChipHeight: minChipH)
 
                 var matchedSubItem = false
                 for idx in 0..<count {
@@ -2840,8 +2840,11 @@ public final class PurahWorkspaceStore {
                             frameTop = itemTop
                             frameBottom = itemTop + cardH
                         }
-                        let maxAllowedY = totalHeight - 12.0
-                        let shift = max(frameBottom - maxAllowedY, 0.0)
+                        let shift = PurahSteppedCardMetrics.verticalShift(
+                            itemTop: frameTop,
+                            cardHeight: cardH,
+                            screenHeight: totalHeight
+                        )
                         let shiftedTop = frameTop - shift
                         let shiftedBottom = frameBottom - shift
                         let topOfCardY = totalHeight - shiftedTop

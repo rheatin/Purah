@@ -388,25 +388,17 @@ public struct ClipboardItemDrawerView: View {
                 .help(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
                 .accessibilityLabel(isPreviewPinned ? "Unpin preview" : "Pin interactive preview")
 
-                Button {
-                    pluginState.copyItem(item)
-                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
-                    withAnimation(PurahMotionPolicy.drawerExit) {
-                        store.activeDrawerItemId = nil
-                    }
-                } label: {
-                    Image(systemName: "doc.on.doc.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(palette.style == .native ? .primary : .white)
-                }
-                .buttonStyle(.tactile)
-                .help("help.copyToClipboard".localized)
-                .accessibilityLabel("help.copyToClipboard".localized)
             }
 
-            PurahPinButton(isPinned: isPinned, tintColor: itemColor) {
-                onTogglePin()
-            }
+            // Gear + pin are the host's: tapping the card already copies, so a
+            // separate copy button was a second control for the same action.
+            PurahDrawerHeaderTools(
+                onSettings: { store.openPluginSettings(id: "clipboard") },
+                settingsHelp: String(format: "help.openSettingsNamed".localized, "Clipboard"),
+                isPinned: isPinned,
+                tintColor: itemColor,
+                onTogglePin: onTogglePin
+            )
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

@@ -203,7 +203,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public var subItemTitles: [String] {
-        state.isDecomposed ? state.enabledMetrics.map(\.displayName) : []
+        state.isDecomposed ? state.enabledMetrics.map(\.shortName) : []
     }
 
     public func subItemCount(store: PurahWorkspaceStore) -> Int {
@@ -226,7 +226,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         guard isDecomp else { return nil }
         let metrics = !store._vitalsEnabledMetrics.isEmpty ? store._vitalsEnabledMetrics : state.enabledMetrics
         guard metrics.indices.contains(index) else { return nil }
-        return metrics[index].displayName
+        return metrics[index].shortName
     }
 
     public func dynamicBarColor(context: PurahPluginContext) -> Color? {
@@ -244,8 +244,10 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
             let isAlerting = state.isAlerting(for: metric)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
-                title: metric.displayName,
+                title: metric.shortName,
+                subtitle: Self.subtitleText(for: metric, metrics: metrics),
                 systemIcon: metric.systemIcon,
+                badge: Self.badgeText(for: metric, metrics: metrics),
                 state: isAlerting ? .alerting : .normal,
                 gaugeRatio: state.ratio(for: metric),
                 gaugeStyle: .solid,
@@ -255,24 +257,92 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         }
     }
 
-    public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
+    /// The second line of a chip's row: the two or three numbers that make the
+    /// badge meaningful, in the same order the drawer reports them.
+    static func subtitleText(for metric: VitalsMetricType, metrics: HardwareVitalsInfo) -> String? {
+        switch metric {
+        case .cpu:
+            return String(format: "vitals.cpuUsrSys".localized,
+                          Int(metrics.cpuUserUsage * 100), Int(metrics.cpuSystemUsage * 100))
+        case .gpu:
+            return metrics.thermalStateLabel
+        case .ram:
+            return String(format: "%.1f / %.0f GB", metrics.memoryUsedGB, metrics.memoryTotalGB)
+        case .power:
+            let source = metrics.isCharging ? "CHG" : (metrics.powerSource == "AC Power" ? "AC" : "BAT")
+            return String(format: "vitals.batteryHealth".localized, metrics.batteryHealthPercent)
+                + " · " + String(format: "%.0f°C", metrics.batteryTemperatureCelsius)
+                + " · " + source
+        case .network:
+            return "↓ " + Self.rateText(metrics.networkDownSpeed) + " · ↑ " + Self.rateText(metrics.networkUpSpeed)
+        case .disk:
+            return String(format: "%.0f / %.0f GB",
+                          metrics.diskTotalGB - metrics.diskFreeGB, metrics.diskTotalGB)
+        }
+    }
+
+    static func rateText(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond >= 1_048_576.0 {
+            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576.0)
+        }
+        if bytesPerSecond >= 1024.0 {
+            return String(format: "%.0fK/s", bytesPerSecond / 1024.0)
+        }
+        return String(format: "%.0fB/s", bytesPerSecond)
+    }
+
+    /// The live reading that used to sit in the card's own header row. It is
+    /// read from the observed metrics inside `steppedItems`, so the host
+    /// header refreshes with the rail bar instead of holding a stale snapshot.
+    static func badgeText(for metric: VitalsMetricType, metrics: HardwareVitalsInfo) -> String? {
+        switch metric {
+        case .cpu:
+            return "\(Int(metrics.cpuUsage * 100))%"
+        case .gpu:
+            return "\(Int(metrics.gpuUsage * 100))%"
+        case .ram:
+            return "\(Int(metrics.memoryUsage * 100))%"
+        case .power:
+            return "\(metrics.batteryLevel)%"
+        case .network:
+            let speed = metrics.networkDownSpeed + metrics.networkUpSpeed
+            if speed >= 1_048_576.0 {
+                return String(format: "%.1fM/s", speed / 1_048_576.0)
+            }
+            return String(format: "%.0fK/s", speed / 1024.0)
+        case .disk:
+            return String(format: "vitals.diskFreeG".localized, Int(metrics.diskFreeGB))
+        }
+    }
+
+    /// The compact graph needs ~40pt; below that the row's badge is the whole
+    /// story and a squeezed graph would overlap its own footer.
+    public func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 40.0 }
+
+    /// The mini chart that rides the chip's row. A tall chip shows the full
+    /// graph in its body instead — two charts of the same reading is noise.
+    public func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView? {
         let metricKey = subItemId.replacingOccurrences(of: "vitals-", with: "")
         guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
-        let isPinned = context.isItemPinned(subItemId)
-        let state: ItemDrawerState = (context.isExpanded || isPinned) ? .expandedDrawer : .dockedFlush
+        let bodyH = PurahSteppedCardMetrics.bodyHeight(cardHeight: context.slotHeight)
+        guard bodyH < steppedDrawerMinimumBodyHeight(subItemId: subItemId) else { return nil }
+        let color = VitalsColorResolver.color(
+            for: metric, vitals: state.metrics, thresholds: state.thresholds, palette: context.palette
+        )
         return AnyView(
-            VitalsItemDrawerView(
+            VitalsRowSparkline(metric: metric, color: color, palette: context.palette)
+        )
+    }
+
+    public func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView? {
+        let metricKey = subItemId.replacingOccurrences(of: "vitals-", with: "")
+        guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
+        return AnyView(
+            VitalsFocusedDrawerView(
                 metric: metric,
-                edge: context.edge,
-                state: state,
-                isPinned: isPinned,
-                height: context.slotHeight,
-                store: context.store,
-                onTogglePin: {
-                    withAnimation(PurahMotionPolicy.pin) {
-                        context.togglePin(subItemId)
-                    }
-                }
+                availableHeight: context.slotHeight,
+                showsHeader: false,
+                store: context.store
             )
         )
     }
