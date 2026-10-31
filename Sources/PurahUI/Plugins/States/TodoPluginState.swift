@@ -81,7 +81,10 @@ public final class TodoPluginState: Sendable {
 
         isSyncing = true
         let fetched = await SystemRemindersSyncService.shared.fetchReminders(scope: scope)
-        self.todos = fetched
+        // Tasks written while access was denied are not in the fetch. Dropping
+        // them here deleted every one the moment permission was granted.
+        let localOnly = todos.filter { $0.id.hasPrefix(TodoItem.localIdPrefix) }
+        self.todos = fetched + localOnly
         self.isUsingRealReminders = true
         self.save()
         if let targetStore {
@@ -230,7 +233,9 @@ public final class TodoPluginState: Sendable {
     }
 
     public func addTodo(title: String, store: PurahWorkspaceStore? = nil) {
-        let item = TodoItem(title: title, isCompleted: false)
+        // Locally-owned: a later sync replaces the list with what Reminders
+        // returned, and this task is not in there (see `TodoItem.localIdPrefix`).
+        let item = TodoItem(id: TodoItem.localIdPrefix + UUID().uuidString, title: title, isCompleted: false)
         todos.append(item)
         save()
         let targetStore = store ?? boundStore

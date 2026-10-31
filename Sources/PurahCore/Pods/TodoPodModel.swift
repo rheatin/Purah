@@ -2,6 +2,15 @@
 import Foundation
 
 public struct TodoItem: Identifiable, Codable, Sendable {
+    /// Id prefix for tasks that exist only in this pod.
+    ///
+    /// A sync fetches Reminders and replaces the list, so an item EventKit has
+    /// never heard of is indistinguishable from an item deleted in
+    /// Reminders.app — it disappears. Tasks written while Reminders access was
+    /// denied are exactly that case, so they carry this prefix and every sync
+    /// carries them through.
+    public static let localIdPrefix = "local-"
+
     public let id: String
     public var title: String
     public var listTitle: String
