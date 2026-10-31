@@ -42,20 +42,31 @@ public struct TodoPlugin: PurahPodPlugin {
         AnyView(TodoPluginSettingsView(state: state, store: store))
     }
 
-    /// Open / Completed live in the header so the drawer body keeps its full
-    /// height for tasks. Nothing else in the pod reads this flag: the rail
-    /// chips and the pod's minimum height still describe what is open.
-    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+    /// Open / Completed are two icon toggles in the header's control group,
+    /// beside the gear and pin: the filled glyph is the view you are in. They
+    /// cost the drawer body nothing, and nothing else in the pod reads the
+    /// flag — the rail chips and the pod's minimum height still describe what
+    /// is open.
+    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
         AnyView(
-            PurahSegmentedTabs(
-                segments: [
-                    .init(false, title: "todo.tab.open".localized),
-                    .init(true, title: "todo.tab.done".localized)
-                ],
-                selection: state.showsCompleted,
-                tint: context.accentColor
-            ) { showsCompletedTab in
-                state.showsCompleted = showsCompletedTab
+            PurahHeaderGroup {
+                PurahHeaderButton(
+                    systemImage: state.showsCompleted ? "circle" : "circle.fill",
+                    help: "todo.tab.open".localized,
+                    tint: context.accentColor,
+                    isActive: !state.showsCompleted
+                ) {
+                    state.showsCompleted = false
+                }
+
+                PurahHeaderButton(
+                    systemImage: state.showsCompleted ? "checkmark.circle.fill" : "checkmark.circle",
+                    help: "todo.tab.done".localized,
+                    tint: context.accentColor,
+                    isActive: state.showsCompleted
+                ) {
+                    state.showsCompleted = true
+                }
             }
         )
     }
