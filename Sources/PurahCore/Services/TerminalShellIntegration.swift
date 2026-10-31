@@ -30,6 +30,42 @@ public enum TerminalShellIntegration {
         set { tailSlot.withLock { $0 = newValue } }
     }
 
+    /// A command the shell started and has now finished.
+    ///
+    /// The shell sends three fields: what it ran (the first word only — the
+    /// rest can carry a secret), the exit status, and how long it took.
+    public struct TerminalCommandCompletion: Sendable, Equatable {
+        public let command: String
+        public let status: Int32
+        public let milliseconds: Int
+
+        public init(command: String, status: Int32, milliseconds: Int) {
+            self.command = command
+            self.status = status
+            self.milliseconds = milliseconds
+        }
+
+        /// Decodes the form the shell posts to `/v1/done`.
+        ///
+        /// Tolerant on purpose: a shell that sends only `status` still earns a
+        /// notification, and a missing status reads as success rather than
+        /// inventing a failure.
+        public init(form: [String: String]) {
+            self.command = form["cmd"] ?? ""
+            self.status = Int32(form["status"] ?? "") ?? 0
+            self.milliseconds = max(0, Int(form["ms"] ?? "") ?? 0)
+        }
+    }
+
+    private static let completionSlot = OSAllocatedUnfairLock<(@Sendable (TerminalCommandCompletion) -> Void)?>(initialState: nil)
+
+    /// Called when a shell reports a finished command. Set by the terminal
+    /// plugin; nil means nobody is showing the result, so it is dropped.
+    public static var onCommandCompletion: (@Sendable (TerminalCommandCompletion) -> Void)? {
+        get { completionSlot.withLock { $0 } }
+        set { completionSlot.withLock { $0 = newValue } }
+    }
+
     /// Installs the files and brings the listener up ahead of time.
     ///
     /// `NWListener` reports readiness asynchronously, and `prepare` has to wait
@@ -61,6 +97,12 @@ public enum TerminalShellIntegration {
                     // output would pull the answer toward fixing that instead.
                     recentOutput: mode == .explain ? await terminalTail?() : nil
                 )
+            }
+        }
+        if bridge.onCommandFinished == nil {
+            bridge.onCommandFinished = { form in
+                let completion = TerminalCommandCompletion(form: form)
+                completionSlot.withLock { $0 }?(completion)
             }
         }
         _ = ZshSuggestionIntegration.installIfNeeded()

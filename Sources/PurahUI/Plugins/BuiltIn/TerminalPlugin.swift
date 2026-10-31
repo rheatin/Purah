@@ -48,9 +48,17 @@ public struct TerminalPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
+        // The shell reports finished commands over the loopback bridge; this is
+        // the only place that knows both the bridge and the pod's state.
+        TerminalShellIntegration.onCommandCompletion = { completion in
+            Task { @MainActor in
+                state.recordCommandCompletion(completion)
+            }
+        }
     }
 
     public func onUnmount(store: PurahWorkspaceStore) {
+        TerminalShellIntegration.onCommandCompletion = nil
         state.unmount(store: store)
     }
 
@@ -86,6 +94,7 @@ public struct TerminalRailBarPluginView: View {
 
     public var body: some View {
         let radius = min(context.railWidth / 2, 4)
+        let dotSize = min(context.railWidth - 2, 5)
         ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: radius)
                 .fill(context.accentColor.opacity(0.85))
@@ -96,9 +105,23 @@ public struct TerminalRailBarPluginView: View {
                     .fill(Color.green)
                     .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
                     .padding(.bottom, 4)
+            } else if state.hasUnseenCommandResult, let result = state.lastCommandResult {
+                // A command ended while you were somewhere else. Green or red
+                // by exit status; cleared when the drawer is opened.
+                let dotColor: Color = result.status == 0 ? .green : Color(hex: "#F87171")
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: dotSize, height: dotSize)
+                    .shadow(color: dotColor.opacity(0.9), radius: 3)
+                    .padding(.bottom, 4)
+                    .help(result.status == 0
+                          ? String(format: "terminal.done.ok".localized, result.command)
+                          : String(format: "terminal.done.failed".localized, result.command, result.status))
+                    .transition(.opacity)
             }
         }
         .frame(width: context.railWidth, height: context.slotHeight)
+        .animation(PurahMotionPolicy.surface, value: state.hasUnseenCommandResult)
     }
 }
 

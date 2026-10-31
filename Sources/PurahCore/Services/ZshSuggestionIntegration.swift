@@ -224,11 +224,40 @@ public enum ZshSuggestionIntegration {
       }
 
       # precmd keeps the last exit status and command line for `???`.
+      typeset -g __purah_cmd_start=""
+      typeset -g __purah_cmd_name=""
+
+      # preexec marks the start of a command the person actually ran. Without
+      # it every precmd would look like a finished command, including the one
+      # that runs before the very first prompt.
+      __purah_preexec() {
+        __purah_cmd_start="${EPOCHREALTIME//[.,]/}"
+        __purah_cmd_name="${1%%[[:space:]]*}"
+      }
+
       __purah_precmd() {
         __purah_last_status=$?
         __purah_last_command="$(fc -ln -1 2>/dev/null)"
         __purah_last_command="${__purah_last_command##[[:space:]]#}"
+
+        # Tell Purah the command is over so its pod can report the result
+        # while you are looking at something else. Fire-and-forget: no curl, no
+        # listener, no answer must never delay the prompt.
+        if [[ -n "$__purah_cmd_start" ]]; then
+          local __purah_ms=$(( (${EPOCHREALTIME//[.,]/} - __purah_cmd_start) / 1000 ))
+          __purah_cmd_start=""
+          if command -v curl >/dev/null 2>&1; then
+            /usr/bin/curl -sS -m 2 -X POST \\
+              -H "Authorization: Bearer $PURAH_BRIDGE_TOKEN" \\
+              --data-urlencode "cmd=$__purah_cmd_name" \\
+              --data-urlencode "status=$__purah_last_status" \\
+              --data-urlencode "ms=$__purah_ms" \\
+              "http://127.0.0.1:$PURAH_AI_PORT/v1/done" >/dev/null 2>&1 &!
+          fi
+          __purah_cmd_name=""
+        fi
       }
+      autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook preexec __purah_preexec
       autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook precmd __purah_precmd
 
       __purah_ask() {

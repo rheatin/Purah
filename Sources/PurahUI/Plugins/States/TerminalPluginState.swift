@@ -17,6 +17,38 @@ public final class TerminalPluginState: Sendable {
         TerminalManager.shared.shellName
     }
 
+    /// What the last finished command was, and how it went.
+    ///
+    /// The shell reports this from its `precmd` hook (see
+    /// `TerminalShellIntegration`), because only the shell knows when a command
+    /// is over — the terminal just sees bytes. The rail bar shows it until the
+    /// drawer is opened, so a long build can finish while you are elsewhere.
+    public struct CommandResult: Sendable, Equatable {
+        public let command: String
+        public let status: Int32
+        public let milliseconds: Int
+        public let finishedAt: Date
+    }
+
+    public var lastCommandResult: CommandResult?
+    public var hasUnseenCommandResult: Bool = false
+
+    public func recordCommandCompletion(_ completion: TerminalShellIntegration.TerminalCommandCompletion) {
+        lastCommandResult = CommandResult(
+            command: completion.command,
+            status: completion.status,
+            milliseconds: completion.milliseconds,
+            finishedAt: Date()
+        )
+        hasUnseenCommandResult = true
+    }
+
+    /// The dot clears once the person has seen the drawer the result belongs
+    /// to — the same rule alerts follow, rather than a timer nobody can trust.
+    public func acknowledgeCommandResult() {
+        hasUnseenCommandResult = false
+    }
+
     public var isProcessRunning: Bool {
         TerminalManager.shared.isProcessRunning
     }

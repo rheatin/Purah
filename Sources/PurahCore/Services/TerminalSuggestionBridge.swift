@@ -29,6 +29,13 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
     /// service. Kept as a hook so this file has no AI dependency.
     public var onSuggest: (@Sendable (_ mode: CommandSuggestionMode, _ form: [String: String]) async throws -> CommandSuggestion)?
 
+    /// Raised when a shell reports that a command it started has finished.
+    ///
+    /// Fire-and-forget from the shell's side: it never reads the reply, so this
+    /// hook is synchronous and must not block. The shell's `precmd` runs before
+    /// every prompt, and a slow handler there would be felt as a slow prompt.
+    public var onCommandFinished: (@Sendable ([String: String]) -> Void)?
+
     private let queue = DispatchQueue(label: "app.purah.terminal.suggestion-bridge")
     private let lock = NSLock()
     private var listener: NWListener?
@@ -117,7 +124,9 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                 http.respond(status: 400, body: Self.failure("Malformed request."))
                 return
             }
-            guard request.method == "POST", request.path == "/v1/suggest" else {
+            guard request.method == "POST",
+                  request.path == "/v1/suggest" || request.path == "/v1/done"
+            else {
                 http.respond(status: 404, body: Self.failure("Not found."))
                 return
             }
@@ -126,6 +135,13 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                 return
             }
             let form = Self.parseForm(request.body)
+
+            if request.path == "/v1/done" {
+                self.onCommandFinished?(form)
+                http.respond(status: 200, body: "ok\n")
+                return
+            }
+
             let mode = CommandSuggestionMode(rawValue: form["mode"] ?? "") ?? .suggest
 
             guard let onSuggest = self.onSuggest else {

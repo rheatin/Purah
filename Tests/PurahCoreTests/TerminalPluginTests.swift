@@ -9,6 +9,31 @@ import Foundation
 @MainActor
 @Suite("Persistent Terminal Plugin Tests", .serialized)
 struct TerminalPluginTests {
+    @Test("A finished-command form decodes tolerantly")
+    func testTerminalCommandCompletionForm() {
+        let ok = TerminalShellIntegration.TerminalCommandCompletion(
+            form: ["cmd": "make", "status": "0", "ms": "1234"]
+        )
+        #expect(ok.command == "make")
+        #expect(ok.status == 0)
+        #expect(ok.milliseconds == 1234)
+
+        // A shell that sends only the status still earns a notification.
+        let failed = TerminalShellIntegration.TerminalCommandCompletion(
+            form: ["cmd": "false", "status": "1"]
+        )
+        #expect(failed.command == "false")
+        #expect(failed.status == 1)
+        #expect(failed.milliseconds == 0)
+
+        // Garbage reads as success, not as an invented failure.
+        let junk = TerminalShellIntegration.TerminalCommandCompletion(
+            form: ["cmd": "", "status": "abc", "ms": "-5"]
+        )
+        #expect(junk.status == 0)
+        #expect(junk.milliseconds == 0)
+    }
+
     @Test("TerminalPlugin manifest and capability specifications meet ergonomic guidelines")
     func testTerminalPluginManifestAndCapabilities() throws {
         let registry = PluginRegistry.shared
