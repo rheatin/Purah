@@ -138,7 +138,7 @@ public final class ScriptRunwayService {
         // to zsh leaves the running command behind — so "Stop" used to report
         // success while the script kept going. Kill the whole tree.
         if let process = activeProcess, process.isRunning {
-            Self.terminateTree(rootedAt: process.processIdentifier)
+            Self.terminateTree(process)
         }
         activeProcess = nil
         isRunning = false
@@ -147,12 +147,25 @@ public final class ScriptRunwayService {
         SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
     }
 
-    /// Sends SIGTERM to a process and everything it started, children first.
-    nonisolated static func terminateTree(rootedAt pid: pid_t) {
+    /// Sends SIGTERM to a process and everything it started, children first,
+    /// then SIGKILL to whatever is still there a second later.
+    ///
+    /// SIGTERM is a request. A command that traps or ignores it kept running,
+    /// which also kept the output pipe open — and the reader waited for an EOF
+    /// that never came, so "Stop" left the run wedged.
+    nonisolated static func terminateTree(_ process: Process) {
+        let pid = process.processIdentifier
         for child in descendantPIDs(of: pid).reversed() {
             kill(child, SIGTERM)
         }
         kill(pid, SIGTERM)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+            guard process.isRunning else { return }
+            for child in descendantPIDs(of: pid).reversed() {
+                kill(child, SIGKILL)
+            }
+            kill(pid, SIGKILL)
+        }
     }
 
     nonisolated static func descendantPIDs(of pid: pid_t) -> [pid_t] {
@@ -330,7 +343,7 @@ public final class ScriptRunwayService {
                         try? await Task.sleep(for: .seconds(ScriptRunwayService.executionTimeout))
                         if task.isRunning {
                             // Same reason as Stop: the shell is not the command.
-                            ScriptRunwayService.terminateTree(rootedAt: task.processIdentifier)
+                            ScriptRunwayService.terminateTree(task)
                             return true
                         }
                         return false
@@ -342,9 +355,24 @@ public final class ScriptRunwayService {
                 }
 
                 pipe.fileHandleForReading.readabilityHandler = nil
-                let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
-                if !remaining.isEmpty {
-                    _ = accumulator.append(remaining)
+                // `readDataToEndOfFile` waits for every writer to close. A
+                // command that backgrounded a child leaves that child holding
+                // this pipe open after the script is gone, so there is no EOF
+                // to wait for and the run never finishes. Drain what is there,
+                // with a deadline.
+                let fd = pipe.fileHandleForReading.fileDescriptor
+                _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+                let drainDeadline = Date().addingTimeInterval(1)
+                var buffer = [UInt8](repeating: 0, count: 8192)
+                while Date() < drainDeadline {
+                    let count = read(fd, &buffer, buffer.count)
+                    if count > 0 {
+                        _ = accumulator.append(Data(buffer[0..<count]))
+                    } else if count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK) {
+                        break
+                    } else {
+                        usleep(10_000)
+                    }
                 }
 
                 if didTimeout {
