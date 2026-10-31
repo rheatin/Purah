@@ -708,11 +708,12 @@ public struct AIAssistantRoleWorkbenchView: View {
         VStack(alignment: .leading, spacing: 6) {
             // 1. Top 3-in-1 Compact Status Bar (24pt when collapsed, spring-expands to ~96pt when isEditingSource)
             topStatusBar
-                // The `/` menu floats out of this card and down over the answer,
-                // which is a *later* sibling — so it painted on top of the menu
-                // and the panel read as transparent. Lift the card only while
-                // the menu is open.
-                .zIndex(state.isSlashMenuVisible ? 10 : 0)
+                // The `/` menu floats out of this card and down over the
+                // answer, the action row and the refine bar — every one of
+                // them a *later* sibling that painted on top. A transient
+                // popup belongs above all of them, so this is not 10: an
+                // equal value loses to the later sibling.
+                .zIndex(state.isSlashMenuVisible ? 100 : 0)
 
             // 2. Center Main Output Stage (80%+ of vertical height)
             centerOutputStage
@@ -763,10 +764,6 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             // 4. Bottom Action & Spring-Expanding Refine Bar (24pt when collapsed, spring-expands to ~78pt when isRefiningOutput)
             bottomRefineBar
-                // Same lift as the source card: the menu floats above this bar
-                // and anything drawn after it would otherwise paint over its
-                // header strip.
-                .zIndex(state.isSlashMenuVisible ? 10 : 0)
         }
     }
 
