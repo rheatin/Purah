@@ -8,6 +8,7 @@ public struct GeneralSettingsView: View {
     public let store: PurahWorkspaceStore
 
     @State private var showingResetAlert = false
+    @State private var showingOnboardingAlert = false
     @State private var statusMessage: String?
     @State private var isErrorMessage = false
     /// Bound straight to the updater's key so the toggle and the launch check
@@ -134,7 +135,9 @@ public struct GeneralSettingsView: View {
                             }
                             Spacer()
                             Button {
-                                store.startInteractiveOnboarding(clearAllPods: true)
+                                // The guide turns every pod off and the current
+                                // layout is not kept, so this is not a "replay".
+                                showingOnboardingAlert = true
                             } label: {
                                 HStack(spacing: 5) {
                                     Image(systemName: "sparkles")
@@ -281,6 +284,17 @@ public struct GeneralSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("general.config.resetConfirmMessage".localized)
+        }
+        .alert(
+            "general.startup.onboarding.confirmTitle".localized,
+            isPresented: $showingOnboardingAlert
+        ) {
+            Button("general.startup.onboarding.button".localized) {
+                store.startInteractiveOnboarding(clearAllPods: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("general.startup.onboarding.confirmMessage".localized)
         }
     }
 

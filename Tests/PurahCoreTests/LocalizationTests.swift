@@ -114,7 +114,8 @@ struct LocalizationTests {
             // -2: the finished-command strings went with the terminal's rail
             // dot. The notification is the host's pod glow, which names no
             // command, so nothing asks for `terminal.done.*` any more.
-            .traditionalChinese: 578,
+            // +2: the onboarding guide now asks before it replaces the layout.
+            .traditionalChinese: 580,
             .japanese: 71,
             .korean: 71,
             .french: 71,
