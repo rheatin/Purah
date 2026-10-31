@@ -185,7 +185,7 @@ public struct CalendarItemDrawerView: View {
                                     .purahBadge(size: 8, weight: .heavy, design: .rounded)
                             }
                             .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 2.5)
                             .background(Capsule().fill(calColor))
                             .foregroundColor(calColor.highContrastInk)
                             .shadow(color: calColor.opacity(0.6), radius: 3)
@@ -197,7 +197,7 @@ public struct CalendarItemDrawerView: View {
                                     .font(.system(size: 8, weight: .heavy, design: .rounded))
                             }
                             .padding(.horizontal, 5.5)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 2.5)
                             .background(Capsule().fill(Color.orange))
                             .foregroundColor(Color.slateInk)
                             .shadow(color: Color.orange.opacity(0.45), radius: 3)
@@ -206,10 +206,10 @@ public struct CalendarItemDrawerView: View {
                                 Image(systemName: "checkmark")
                                 Text("calendar.status.ended".localized)
                             }
-                            .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                            .font(.system(size: 8, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary.opacity(0.6))
                             .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
+                            .padding(.vertical, 2.5)
                             .background(Capsule().fill(Color.primary.opacity(0.04)))
                         }
                     }
@@ -256,10 +256,10 @@ public struct CalendarItemDrawerView: View {
                     HStack(spacing: 3) {
                         Circle().fill(calColor.highContrastInk).frame(width: 3.5, height: 3.5)
                         Text("calendar.status.now".localized)
-                            .purahBadge(size: 7.5, weight: .heavy, design: .rounded)
+                            .purahBadge(size: 8, weight: .heavy, design: .rounded)
                     }
                     .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
+                    .padding(.vertical, 2.5)
                     .background(Capsule().fill(calColor))
                     .foregroundColor(calColor.highContrastInk)
                 } else if isImminent {
@@ -270,7 +270,7 @@ public struct CalendarItemDrawerView: View {
                             .font(.system(size: 8, weight: .heavy, design: .rounded))
                     }
                     .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 2.5)
                     .background(Capsule().fill(Color.orange))
                     .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
@@ -279,10 +279,10 @@ public struct CalendarItemDrawerView: View {
                         Image(systemName: "checkmark")
                         Text("calendar.status.ended".localized)
                     }
-                    .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 8, weight: .semibold, design: .rounded))
                     .foregroundColor(.secondary.opacity(0.6))
                     .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
+                    .padding(.vertical, 2.5)
                     .background(Capsule().fill(Color.primary.opacity(0.04)))
                 }
 
@@ -360,7 +360,7 @@ public struct CalendarItemDrawerView: View {
                             .purahBadge(size: 8, weight: .heavy, design: .rounded)
                     }
                     .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
+                    .padding(.vertical, 2.5)
                     .background(Capsule().fill(calColor))
                     .foregroundColor(calColor.highContrastInk)
                 } else if isImminent {
@@ -371,7 +371,7 @@ public struct CalendarItemDrawerView: View {
                             .purahBadge(size: 8, weight: .heavy, design: .rounded)
                     }
                     .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 2.5)
                     .background(Capsule().fill(Color.orange))
                     .foregroundColor(Color.slateInk)
                     .shadow(color: Color.orange.opacity(0.45), radius: 3)
@@ -380,10 +380,10 @@ public struct CalendarItemDrawerView: View {
                         Image(systemName: "checkmark")
                         Text("calendar.status.ended".localized)
                     }
-                    .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 8, weight: .semibold, design: .rounded))
                     .foregroundColor(.secondary.opacity(0.6))
                     .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
+                    .padding(.vertical, 2.5)
                     .background(Capsule().fill(Color.primary.opacity(0.04)))
                 }
 
