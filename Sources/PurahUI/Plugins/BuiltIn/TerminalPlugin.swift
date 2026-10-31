@@ -100,14 +100,9 @@ public struct TerminalRailBarPluginView: View {
                 .fill(context.accentColor.opacity(0.85))
                 .frame(width: context.railWidth, height: context.slotHeight)
 
-            if state.isProcessRunning {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
-                    .padding(.bottom, 4)
-            } else if state.hasUnseenCommandResult, let result = state.lastCommandResult {
-                // A command ended while you were somewhere else. Green or red
-                // by exit status; cleared when the drawer is opened.
+            // The result outranks the idle "shell is alive" dot: both sit at
+            // the same spot, and the one that is news is the one to show.
+            if state.hasUnseenCommandResult, let result = state.lastCommandResult {
                 let dotColor: Color = result.status == 0 ? .green : Color(hex: "#F87171")
                 Circle()
                     .fill(dotColor)
@@ -118,6 +113,11 @@ public struct TerminalRailBarPluginView: View {
                           ? String(format: "terminal.done.ok".localized, result.command)
                           : String(format: "terminal.done.failed".localized, result.command, result.status))
                     .transition(.opacity)
+            } else if state.isProcessRunning {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
+                    .padding(.bottom, 4)
             }
         }
         .frame(width: context.railWidth, height: context.slotHeight)
