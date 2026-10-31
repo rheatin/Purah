@@ -414,7 +414,7 @@ public final class ClipboardHoverPreviewController {
         }
     }
 
-    public func show(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat) {
+    public func show(item: ClipboardItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat, dwell: TimeInterval = 0.12) {
         if pinnedItemId != nil {
             return
         }
@@ -439,7 +439,7 @@ public final class ClipboardHoverPreviewController {
         }
         showWorkItem = work
         // Intentional crisp dwell (120ms) guarantees prompt display as soon as user rests cursor on card
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwell, execute: work)
     }
 
     public func show(shelfFile: ShelfFileItem, edge: MountEdge, palette: ThemePalette, drawerWidth: CGFloat = 360.0) {
