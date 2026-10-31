@@ -105,13 +105,15 @@ fi
 
 # 1. Compile Swift package
 #
-# Strict concurrency is declared per target in Package.swift rather than passed
-# here: `-Xswiftc` reaches every target in the graph including the vendored
-# SwiftTerm, which is Swift 5 code and cannot satisfy it.
+# Strict concurrency and warnings-as-errors are declared per target in
+# Package.swift rather than passed here: `-Xswiftc` reaches every target in
+# the graph including the vendored SwiftTerm, which is Swift 5 code and cannot
+# satisfy them, and a command-line flag is part of the build fingerprint — one
+# bare `swift build` would re-dirty the whole cache. Keep this invocation
+# flag-free so every tool produces the same build plan.
 BUILD_FLAGS=(
     -c "$CONFIGURATION"
     --disable-sandbox
-    -Xswiftc -warnings-as-errors
 )
 
 echo -e "${CYAN}📦 Compiling Swift modules (PurahCore, PurahUI, PurahApp)...${RESET}"

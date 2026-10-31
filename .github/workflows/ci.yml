@@ -49,17 +49,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      # `-warnings-as-errors` is the whole point of running this in CI: the
-      # release script has always enforced it, but only once per release, so a
-      # warning introduced mid-cycle survived until the next tag.
-      #
-      # `-strict-concurrency=complete` is NOT passed here. A `-Xswiftc` flag
-      # applies to every target in the graph, including the vendored SwiftTerm,
-      # which is Swift 5 code that cannot satisfy it — that produced 1,050
-      # errors in a dependency nobody is editing. It is declared per target in
-      # `Package.swift` instead, where it reaches only first-party code.
+      # Both `-warnings-as-errors` and `-strict-concurrency=complete` are
+      # declared per target in `Package.swift`, where they reach only
+      # first-party code — a `-Xswiftc` flag on the command line applies to
+      # every target in the graph, including the vendored SwiftTerm, which is
+      # Swift 5 code that cannot satisfy them (that once produced 1,050 errors
+      # in a dependency nobody was editing). A command-line flag is also part
+      # of the build fingerprint, so one invocation without it re-dirties the
+      # entire graph — SwiftTerm included — and the next flagged build
+      # recompiles it from scratch. Never pass build flags here.
       - name: Build (warnings as errors)
-        run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
+        run: swift build --disable-sandbox
 
       # Tests are NOT run with `-warnings-as-errors`: test code legitimately
       # uses constructs (force-unwrapping fixtures, unused bindings) that the
