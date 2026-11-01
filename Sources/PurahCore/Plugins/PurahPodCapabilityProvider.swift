@@ -21,6 +21,13 @@ public protocol PurahPodCapabilityProvider: Sendable {
     /// Return nil to fall back to the base layout engine's text-length estimation.
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
 
+    /// Width of one stepped chip's card, when it is not the composite width.
+    ///
+    /// The click-through hit box is built from this, so a chip that draws
+    /// narrower than `adaptiveDrawerWidth` cannot claim desktop it does not
+    /// cover. Return nil when the chip uses the composite width.
+    func steppedDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
+
     /// Autonomously declared preferred drawer height when operating in Expanded drawer mode.
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
 
@@ -64,6 +71,7 @@ public extension PurahPodCapabilityProvider {
     func hasPinnedChild(store: PurahWorkspaceStore) -> Bool { false }
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { false }
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { nil }
+    func steppedDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { nil }
 
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         max(minimumDrawerHeight(store: store) * 1.5, 240.0)

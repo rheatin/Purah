@@ -139,6 +139,9 @@ public struct ClipboardPlugin: PurahPodPlugin {
     }
     public func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 280.0 }
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 380.0 }
+    /// A clipboard chip is a drawer-sized card, but it is drawn at 290 so the
+    /// hover preview can sit beside it instead of on top of it.
+    public func steppedDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 290.0 }
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
         store.pinnedDrawerItemIds.contains { $0.hasPrefix("clipboard-") }
     }
@@ -278,7 +281,10 @@ public struct ClipboardItemDrawerView: View {
             return Color(hex: "#FF9F0A")
         }()
         let barW = CGFloat(store.railBarWidth)
-        let drawerW = store.effectiveDrawerWidth(baseWidth: 290.0, podId: "clipboard")
+        // Same declared width the click-through hit box uses, so the card and
+        // its interactive area cannot drift apart.
+        let drawerW: CGFloat = store.capabilityProvider(for: "clipboard")?
+            .steppedDrawerWidth(store: store) ?? 290.0
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Pure physical in-rail capsule (co-planar, NO icons)

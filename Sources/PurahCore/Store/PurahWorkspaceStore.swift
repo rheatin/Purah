@@ -2854,7 +2854,11 @@ public final class PurahWorkspaceStore {
                         let minY = max(bottomOfCardY - 6.0, 0.0)
                         let maxY = min(topOfCardY + 6.0, totalHeight)
 
-                        let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
+                        // A chip may draw narrower than the composite drawer;
+                        // its hit box has to be the card, not the composite.
+                        let steppedW = provider.steppedDrawerWidth(store: self).map(Double.init)
+                            ?? effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id)
+                        let drawerW = min(steppedW + corridor, windowWidth)
                         let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                         frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
                     }
