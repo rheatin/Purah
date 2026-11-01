@@ -123,7 +123,13 @@ public enum CommandRiskClassifier {
             guard let head = arguments.first else { continue }
 
             // `sh -c "…"` runs whatever is in the quotes; the strip above removed it.
-            if ["sh", "bash", "zsh"].contains(head), arguments.dropFirst().contains("-c") {
+            // The interpreter may be reached by path (`/bin/sh`) or carry its
+            // flag in a cluster (`zsh -lc`).
+            let headName = (head as NSString).lastPathComponent
+            if ["sh", "bash", "zsh"].contains(headName),
+               arguments.dropFirst().contains(where: {
+                   $0.hasPrefix("-") && !$0.hasPrefix("--") && $0.contains("c")
+               }) {
                 return .dangerous
             }
             if dangerousCommands.contains(head) { return .dangerous }

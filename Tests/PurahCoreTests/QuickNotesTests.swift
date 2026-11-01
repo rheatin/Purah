@@ -66,6 +66,28 @@ struct QuickNotesTests {
         #expect(!FileManager.default.fileExists(atPath: oldFile.path))
     }
 
+    @Test("A corrupt index does not let the sweep delete the note files")
+    func testCorruptIndexDoesNotSweepNotes() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_notes_corrupt_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = ScopedPluginStorage(pluginId: "test-notes-corrupt-\(UUID().uuidString)")
+        let fileStorage = PurahPluginFileStorage(pluginId: "test-notes-corrupt", customBaseDirectory: tempDir)
+
+        // A note on disk whose index cannot be read: what a half-written index
+        // leaves behind. The sweep must not read the seeded scratchpad as the
+        // whole collection and delete the note.
+        let noteURL = fileStorage.dataDirectory.appendingPathComponent("Kept.md")
+        try? "# Kept\nbody".write(to: noteURL, atomically: true, encoding: .utf8)
+        try? Data("{ not json".utf8).write(to: fileStorage.dataDirectory.appendingPathComponent("index.json"))
+
+        let state = NotesPluginState(storage: storage, fileStorage: fileStorage)
+        state.saveToDisk()
+
+        #expect(FileManager.default.fileExists(atPath: noteURL.path))
+    }
+
     @Test("NotesPluginState manages tags, notes, and syncs physical markdown files")
     func testNotesPluginStateLifecycle() {
         let tempDir = FileManager.default.temporaryDirectory

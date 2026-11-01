@@ -32,6 +32,9 @@ public final class PluginJITCompiler {
         // new secret does not have to remember to use the `PURAH_` prefix.
         let allowedEnvironmentKeys: Set<String> = [
             "PATH", "HOME", "TMPDIR", "USER", "SHELL", "SDKROOT", "LANG", "LC_ALL",
+            // The toolchain the person selected in Xcode, so a plugin builds
+            // against the SDK the app was built with.
+            "DEVELOPER_DIR",
         ]
         process.environment = ProcessInfo.processInfo.environment.filter {
             allowedEnvironmentKeys.contains($0.key)

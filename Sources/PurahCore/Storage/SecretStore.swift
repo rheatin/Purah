@@ -197,11 +197,17 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
         if FileManager.default.fileExists(atPath: fileURL.path) {
             // Without `.usingNewMetadataOnly` the replacement inherits the old
             // file's permissions, which may still be the 0644 the umask made.
-            _ = try? FileManager.default.replaceItemAt(
-                fileURL,
-                withItemAt: temporaryURL,
-                options: .usingNewMetadataOnly
-            )
+            do {
+                _ = try FileManager.default.replaceItemAt(
+                    fileURL,
+                    withItemAt: temporaryURL,
+                    options: .usingNewMetadataOnly
+                )
+            } catch {
+                // A silent failure here leaves the previous secrets in place
+                // while the caller believes the write landed.
+                DiagnosticLogger.shared.warn("Secrets", "Could not replace the secrets file: \(error.localizedDescription)")
+            }
         } else {
             try? FileManager.default.moveItem(at: temporaryURL, to: fileURL)
         }
