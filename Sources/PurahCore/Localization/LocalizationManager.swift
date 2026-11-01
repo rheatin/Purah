@@ -327,13 +327,13 @@ public final class LocalizationManager {
 
             // Dynamic Alerts
             "interaction.alerts.dynamic.title": "Attention Alert Dynamic",
-            "alert.style.breathingBeacon": "Breathing Beacon",
+            "alert.style.breathingBeacon": "Beacon Bar",
             "alert.style.sonarWave": "Sonar Ripple",
             "alert.style.subtleGlow": "Subtle Glow",
             "alert.style.off": "Off",
-            "alert.style.breathingBeacon.subtitle": "Physical 18pt breathing extrusion with beacon dot",
-            "alert.style.sonarWave.subtitle": "Outward expanding luminous sonar wave",
-            "alert.style.subtleGlow.subtitle": "Classic optical shadow glow",
+            "alert.style.breathingBeacon.subtitle": "A tinted pill shorter than the pod, double-flashing continuously",
+            "alert.style.sonarWave.subtitle": "Three staggered pill ripples expanding from the rail",
+            "alert.style.subtleGlow.subtitle": "A slow, soft bloom around the rail bar",
             "alert.style.off.subtitle": "Disable attention animations",
 
             // Multi-Display & Layout Simulator
@@ -1266,13 +1266,13 @@ public final class LocalizationManager {
 
             // 动态视觉提醒
             "interaction.alerts.dynamic.title": "动态视觉提醒动效",
-            "alert.style.breathingBeacon": "呼吸信标",
+            "alert.style.breathingBeacon": "信标条",
             "alert.style.sonarWave": "声呐涟漪",
             "alert.style.subtleGlow": "微光光晕",
             "alert.style.off": "关闭",
-            "alert.style.breathingBeacon.subtitle": "物理 18pt 呼吸伸缩搭配信标圆点",
-            "alert.style.sonarWave.subtitle": "向外层层扩散的光学声呐波纹",
-            "alert.style.subtleGlow.subtitle": "经典优雅边缘投影呼吸光晕",
+            "alert.style.breathingBeacon.subtitle": "比 pod 略短的色调药丸条，持续双闪",
+            "alert.style.sonarWave.subtitle": "三道错峰扩散的胶囊涟漪",
+            "alert.style.subtleGlow.subtitle": "缓慢柔和的边缘光晕",
             "alert.style.off.subtitle": "完全静默视觉警示动效",
 
             // 多显示器与布局
@@ -2000,6 +2000,14 @@ public final class LocalizationManager {
             "interaction.trigger.liveMeter.suppressedFling": "🛡️ 防誤觸攔截生效！檢測到高速劃過邊緣 (%d px/s)，已阻止誤彈窗！",
             "interaction.trigger.liveMeter.opened": "✅ 門禁通過 — 抽屜已彈出！移開滑鼠即可重新鎖定門禁再次測試。",
             "interaction.alerts.card": "動態視覺提醒動效",
+            "alert.style.breathingBeacon": "信標條",
+            "alert.style.sonarWave": "聲吶漣漪",
+            "alert.style.subtleGlow": "微光光暈",
+            "alert.style.off": "關閉",
+            "alert.style.breathingBeacon.subtitle": "比 pod 略短的色調藥丸條，持續雙閃",
+            "alert.style.sonarWave.subtitle": "三道錯峰擴散的膠囊漣漪",
+            "alert.style.subtleGlow.subtitle": "緩慢柔和的邊緣光暈",
+            "alert.style.off.subtitle": "完全靜默視覺警示動效",
             "interaction.sensory.card": "感官反饋（聲音通知與觸控板震感）",
             "interaction.hotkeys.card": "全域快捷鍵與凍結模式",
             "interaction.hotkeys.freeze.title": "全域邊緣軌凍結快捷鍵",

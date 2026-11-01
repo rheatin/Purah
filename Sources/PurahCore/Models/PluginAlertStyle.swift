@@ -11,7 +11,7 @@ public enum PluginAlertStyle: String, CaseIterable, Identifiable, Codable, Senda
 
     public var displayName: String {
         switch self {
-        case .breathingBeacon: return "Breathing Beacon"
+        case .breathingBeacon: return "Beacon Bar"
         case .sonarWave: return "Sonar Ripple"
         case .subtleGlow: return "Subtle Glow"
         case .off: return "Off"
@@ -20,9 +20,9 @@ public enum PluginAlertStyle: String, CaseIterable, Identifiable, Codable, Senda
 
     public var subtitle: String {
         switch self {
-        case .breathingBeacon: return "Physical 18pt breathing extrusion with beacon dot"
-        case .sonarWave: return "Outward expanding luminous sonar wave"
-        case .subtleGlow: return "Classic optical shadow glow"
+        case .breathingBeacon: return "A tinted pill shorter than the pod, double-flashing continuously"
+        case .sonarWave: return "Three staggered pill ripples expanding from the rail"
+        case .subtleGlow: return "A slow, soft bloom around the rail bar"
         case .off: return "Disable attention animations"
         }
     }

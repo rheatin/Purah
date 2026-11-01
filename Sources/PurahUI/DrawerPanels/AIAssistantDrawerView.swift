@@ -4,6 +4,14 @@ import AppKit
 import UniformTypeIdentifiers
 import PurahCore
 
+private struct AIContentColumnWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Composite Full Drawer View
 public struct AIAssistantDrawerView: View {
     @Bindable public var state: AIAssistantPluginState
@@ -56,6 +64,7 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isRoleRunning: Bool = false
     @State private var isSteppedDropTargeted: Bool = false
     @State private var isContentHovered: Bool = false
+    @State private var measuredContentWidth: CGFloat? = nil
     @State private var currentStreamTask: Task<Void, Never>? = nil
     @State private var currentRunID = UUID()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -103,19 +112,18 @@ public struct AIAssistantSteppedDrawerView: View {
         let inlineToolsWidth = showsInlineTools ? 32 + 12 * scale : 0
         let contentW = max(drawerW - 30 - iconSize - 12 * scale - headerToolsWidth - inlineToolsWidth, 1)
         let previewItem = ClipboardItem(id: "ai-\(role.id)", type: .text(roleOutput))
+        let previewFont = NSFont.systemFont(ofSize: font)
         let isPreviewAvailable: Bool = {
             guard !isRoleRunning, !roleOutput.isEmpty else { return false }
-            // Measure with the same 2pt line spacing the Text is drawn with:
-            // without it an answer one line past the card's limit measured as
-            // "fits", so the ellipsis was on screen but the eye stayed dim.
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.lineSpacing = 2
-            let h = (roleOutput as NSString).boundingRect(
-                with: CGSize(width: contentW, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [.font: NSFont.systemFont(ofSize: font), .paragraphStyle: paragraph]
-            ).height
-            return h > cardH - 4
+            // The arithmetic estimate is only the pre-measurement fallback.
+            // Once SwiftUI reports the content column's real width, use that.
+            return AIChipTextOverflow.isTruncated(
+                text: roleOutput,
+                width: measuredContentWidth ?? contentW,
+                font: previewFont,
+                lineSpacing: 2,
+                maxLines: maxLines
+            )
         }()
         // A pointer already resting on the card never re-fires onHover, so a run
         // that finishes under the cursor would never open the preview.
@@ -239,10 +247,32 @@ public struct AIAssistantSteppedDrawerView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(isSteppedDropTargeted ? roleColor.opacity(0.14) : Color.clear)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isSteppedDropTargeted ? roleColor.opacity(0.14) : Color.clear)
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: AIContentColumnWidthPreferenceKey.self,
+                                    value: proxy.size.width
+                                )
+                            }
+                        }
                     )
+                    .onPreferenceChange(AIContentColumnWidthPreferenceKey.self) { width in
+                        measuredContentWidth = width
+                    }
                     .onHover { hovering in
+                        isContentHovered = hovering
+                        refreshPreview(hovering)
+                    }
+                    .onContinuousHover { phase in
+                        let hovering: Bool
+                        switch phase {
+                        case .active:
+                            hovering = true
+                        case .ended:
+                            hovering = false
+                        }
                         isContentHovered = hovering
                         refreshPreview(hovering)
                     }

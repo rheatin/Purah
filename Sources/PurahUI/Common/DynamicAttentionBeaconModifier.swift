@@ -11,6 +11,7 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
     public let baseWidth: CGFloat
     public let color: Color
     public let alertStyle: PluginAlertStyle
+    public let haloLimit: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -19,13 +20,15 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
         edge: MountEdge,
         baseWidth: CGFloat,
         color: Color,
-        alertStyle: PluginAlertStyle
+        alertStyle: PluginAlertStyle,
+        haloLimit: CGFloat
     ) {
         self.isAlerting = isAlerting
         self.edge = edge
         self.baseWidth = baseWidth
         self.color = color
         self.alertStyle = alertStyle
+        self.haloLimit = haloLimit
     }
 
     public func body(content: Content) -> some View {
@@ -44,7 +47,8 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                             edge: edge,
                             baseWidth: baseWidth,
                             color: color,
-                            alertStyle: alertStyle
+                            alertStyle: alertStyle,
+                            haloLimit: haloLimit
                         )
                         .frame(width: baseWidth)
                     }
@@ -63,7 +67,8 @@ public extension View {
         edge: MountEdge,
         baseWidth: CGFloat,
         color: Color,
-        alertStyle: PluginAlertStyle
+        alertStyle: PluginAlertStyle,
+        haloLimit: CGFloat
     ) -> some View {
         self.modifier(
             DynamicAttentionBeaconModifier(
@@ -71,9 +76,27 @@ public extension View {
                 edge: edge,
                 baseWidth: baseWidth,
                 color: color,
-                alertStyle: alertStyle
+                alertStyle: alertStyle,
+                haloLimit: haloLimit
             )
         )
+    }
+}
+
+/// Horizontal alpha falloff for the baked alert bloom.
+///
+/// `offset` is normalized over the halo's complete inward reach: zero at the
+/// screen edge and one at the furthest point the docked alert canvas can show.
+enum PurahAlertHaloProfile {
+    static func alpha(atNormalizedOffset offset: Double) -> Double {
+        guard offset.isFinite else { return 0 }
+        if offset <= 0 { return 1 }
+        if offset >= 1 { return 0 }
+
+        // Smootherstep complement: opaque at the bezel, exactly zero at the
+        // limit, and monotonic in between.
+        let inverse = 1 - offset
+        return inverse * inverse * (3 - 2 * inverse)
     }
 }
 
@@ -99,12 +122,14 @@ struct PurahAlertBeaconView: NSViewRepresentable {
     let baseWidth: CGFloat
     let color: Color
     let alertStyle: PluginAlertStyle
+    let haloLimit: CGFloat
 
     func makeNSView(context: Context) -> AlertBeaconLayerView {
         let view = AlertBeaconLayerView()
         view.configure(
             edge: edge,
             baseWidth: baseWidth,
+            haloLimit: haloLimit,
             tint: NSColor(color),
             style: alertStyle
         )
@@ -115,6 +140,7 @@ struct PurahAlertBeaconView: NSViewRepresentable {
         view.configure(
             edge: edge,
             baseWidth: baseWidth,
+            haloLimit: haloLimit,
             tint: NSColor(color),
             style: alertStyle
         )
@@ -124,14 +150,18 @@ struct PurahAlertBeaconView: NSViewRepresentable {
 /// Backing view for one alert pulse. Transparent, click-through, and never a
 /// hit-test target — the rail's zero-block click-through depends on it.
 final class AlertBeaconLayerView: NSView {
-    private let glowInner = CALayer()
-    private let glowOuter = CALayer()
-    private let beaconDot = CALayer()
-    private let sonarRing = CAShapeLayer()
+    private(set) var glowInner = CALayer()
+    private(set) var glowOuter = CALayer()
+    private(set) var beaconBloom = CALayer()
+    private(set) var beaconBar = CALayer()
+    private(set) var sonarRings: [CAShapeLayer] = (0..<3).map { _ in CAShapeLayer() }
+    private(set) var beaconBloomCoreFrame = CGRect.zero
+    private(set) var beaconBloomHaloLimit: CGFloat = 0
 
     private var style: PluginAlertStyle = .off
     private var edge: MountEdge = .left
     private var baseWidth: CGFloat = 8
+    private var haloLimit: CGFloat = 40
     private var tint: NSColor = .systemPink
 
     /// Blur radius of the inner and outer halo, in points. These are the
@@ -140,10 +170,12 @@ final class AlertBeaconLayerView: NSView {
     /// bloom, so the falloff is rendered once at its average.
     private static let innerBlur: CGFloat = 6
     private static let outerBlur: CGFloat = 11
+    private static let beaconBloomInset: CGFloat = 3
+    private static let beaconBloomBlur: CGFloat = 8
+    private static let beaconBloomOpacity: CGFloat = 0.40
 
-    /// Half of the 1.8s breathing cycle. `sinePulse` in the old implementation
-    /// was `(sin(t * 3.49) + 1) / 2`, i.e. a 1.80s period.
-    private static let halfCycle: CFTimeInterval = 0.9
+    private static let beaconBarPeriod: CFTimeInterval = 2.0
+    private static let sonarCycle: CFTimeInterval = 3.6
 
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
@@ -159,18 +191,23 @@ final class AlertBeaconLayerView: NSView {
         // Core Animation inverts opacity for us via `autoreverses`; the static
         // values below are the midpoints of the old sine ramps.
         glowInner.opacity = 0.55
-        glowOuter.opacity = 0.38
-        beaconDot.opacity = 0.92
+        glowOuter.opacity = 0.50
+        beaconBloom.opacity = 0.0
+        beaconBar.opacity = 0.0
 
         for glow in [glowInner, glowOuter] {
             glow.masksToBounds = false
             layer?.addSublayer(glow)
         }
-        beaconDot.masksToBounds = false
-        layer?.addSublayer(beaconDot)
-        sonarRing.fillColor = nil
-        sonarRing.lineWidth = 1.5
-        layer?.addSublayer(sonarRing)
+        beaconBloom.masksToBounds = false
+        layer?.addSublayer(beaconBloom)
+        beaconBar.masksToBounds = false
+        layer?.addSublayer(beaconBar)
+        for ring in sonarRings {
+            ring.fillColor = nil
+            ring.lineWidth = 1.6
+            layer?.addSublayer(ring)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -178,25 +215,31 @@ final class AlertBeaconLayerView: NSView {
     func configure(
         edge: MountEdge,
         baseWidth: CGFloat,
+        haloLimit: CGFloat,
         tint: NSColor,
         style: PluginAlertStyle
     ) {
-        let needsRebuild = self.style != style
-            || self.edge != edge
+        let safeHaloLimit = haloLimit.isFinite ? max(haloLimit, 0) : 0
+        let styleChanged = self.style != style
+        let geometryChanged = self.edge != edge
             || self.baseWidth != baseWidth
-            || self.tint != tint
+            || self.haloLimit != safeHaloLimit
+        let tintChanged = self.tint != tint
 
         self.edge = edge
         self.baseWidth = baseWidth
+        self.haloLimit = safeHaloLimit
         self.tint = tint
 
-        if self.style != style {
+        if styleChanged {
             self.style = style
             applyStyleVisibility()
         }
-        if needsRebuild {
+        if styleChanged || geometryChanged || tintChanged {
             needsLayout = true
             layoutSubtreeIfNeeded()
+        }
+        if styleChanged || geometryChanged {
             restartAnimations()
         }
     }
@@ -223,43 +266,68 @@ final class AlertBeaconLayerView: NSView {
         // The bitmap carries its own transparent margin so the bloom is not
         // clipped at the layer bounds.
         configureHalo(glowInner, rect: anchored(width + 6), cornerRadius: min(width / 2, 4) + 2,
-                      blur: Self.innerBlur, opacity: 0.80)
+                      blur: Self.innerBlur, opacity: 0.80, baseWidth: width, haloLimit: haloLimit)
         configureHalo(glowOuter, rect: anchored(width + 14), cornerRadius: min(width / 2, 4) + 4,
-                      blur: Self.outerBlur, opacity: 0.55)
+                      blur: Self.outerBlur, opacity: 0.55, baseWidth: width, haloLimit: haloLimit)
 
-        // The beacon dot sits just outside the bar, on the screen side:
-        // the SwiftUI version offset it by `±(baseWidth + 4)` from the
-        // rail-aligned edge of a base-width frame.
-        let dotSize: CGFloat = 4
-        let dotX = edge == .left ? width + 4 : -4 - dotSize
-        beaconDot.frame = CGRect(
-            x: dotX,
-            y: height / 2 - dotSize / 2,
-            width: dotSize,
-            height: dotSize
+        let barHeight = height * 0.72
+        beaconBar.frame = CGRect(
+            x: edge == .left ? width + 4 : -(width + 4) - width,
+            y: (height - barHeight) / 2,
+            width: width,
+            height: barHeight
         )
-        beaconDot.cornerRadius = dotSize / 2
-        beaconDot.shadowRadius = 3
-        beaconDot.shadowOpacity = 0.9
-        beaconDot.backgroundColor = NSColor.white.cgColor
-        beaconDot.shadowColor = solidColor
-
-        sonarRing.path = CGPath(
-            roundedRect: CGRect(x: 0, y: 0, width: width, height: height),
-            cornerWidth: min(width / 2, 4),
-            cornerHeight: min(width / 2, 4),
+        beaconBar.cornerRadius = width / 2
+        beaconBar.backgroundColor = beaconBarFillColor
+        beaconBar.shadowColor = solidColor
+        beaconBar.shadowRadius = 6
+        beaconBar.shadowOpacity = 0.55
+        beaconBar.shadowOffset = .zero
+        beaconBar.shadowPath = CGPath(
+            roundedRect: beaconBar.bounds,
+            cornerWidth: width / 2,
+            cornerHeight: width / 2,
             transform: nil
         )
-        // Anchor at the rail's outer (screen) edge so the ring expands inward
-        // across the desktop, exactly as the edge-aligned SwiftUI stack did.
-        // `anchorPoint` must be set before `frame`: `frame` is derived from it,
-        // so setting it afterwards would shift the ring.
-        sonarRing.anchorPoint = CGPoint(x: edge == .right ? 1.0 : 0.0, y: 0.5)
-        sonarRing.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        sonarRing.strokeColor = solidColor
-        sonarRing.shadowColor = solidColor
-        sonarRing.shadowOpacity = 0.6
-        sonarRing.shadowRadius = 4
+
+        beaconBloomCoreFrame = beaconBar.frame.insetBy(
+            dx: -Self.beaconBloomInset,
+            dy: -Self.beaconBloomInset
+        )
+        let barInnerX = edge == .left ? beaconBar.frame.maxX : beaconBar.frame.minX
+        let bloomCanvasEdgeX = edge == .left
+            ? PurahRailCanvas.alertWidth
+            : -PurahRailCanvas.alertWidth
+        beaconBloomHaloLimit = max(abs(bloomCanvasEdgeX - barInnerX), 0)
+        configureHalo(
+            beaconBloom,
+            rect: beaconBloomCoreFrame,
+            cornerRadius: width / 2 + Self.beaconBloomInset,
+            blur: Self.beaconBloomBlur,
+            opacity: Self.beaconBloomOpacity,
+            baseWidth: width,
+            haloLimit: beaconBloomHaloLimit,
+            maskAnchorX: barInnerX,
+            maskLimitX: bloomCanvasEdgeX
+        )
+
+        for ring in sonarRings {
+            ring.path = CGPath(
+                roundedRect: CGRect(x: 0, y: 0, width: width, height: height),
+                cornerWidth: width / 2,
+                cornerHeight: width / 2,
+                transform: nil
+            )
+            // Anchor at the rail's outer (screen) edge so each ripple expands
+            // inward across the desktop. Set the anchor before the frame:
+            // `frame` is derived from it.
+            ring.anchorPoint = CGPoint(x: edge == .right ? 1.0 : 0.0, y: 0.5)
+            ring.frame = CGRect(x: 0, y: 0, width: width, height: height)
+            ring.strokeColor = solidColor
+            ring.shadowColor = solidColor
+            ring.shadowOpacity = 0.6
+            ring.shadowRadius = 4
+        }
 
         CATransaction.commit()
 
@@ -276,16 +344,48 @@ final class AlertBeaconLayerView: NSView {
         rect: CGRect,
         cornerRadius: CGFloat,
         blur: CGFloat,
-        opacity: CGFloat
+        opacity: CGFloat,
+        baseWidth: CGFloat,
+        haloLimit: CGFloat,
+        maskAnchorX: CGFloat? = nil,
+        maskLimitX: CGFloat? = nil
     ) {
-        let padding = ceil(blur * 2.5)
+        let resolvedMaskAnchorX: CGFloat
+        let resolvedMaskLimitX: CGFloat
+        if let maskAnchorX, let maskLimitX {
+            resolvedMaskAnchorX = maskAnchorX
+            resolvedMaskLimitX = maskLimitX
+        } else {
+            // Rail halos grow inward from the screen edge. Beacon blooms pass
+            // their own bar edge so they can fade before the alert canvas ends.
+            resolvedMaskAnchorX = edge == .left ? rect.minX : rect.maxX
+            let railReach = max(baseWidth, 0) + max(haloLimit, 0)
+            resolvedMaskLimitX = edge == .left
+                ? rect.minX + railReach
+                : rect.maxX - railReach
+        }
+
+        // The bitmap must reach the horizontal limit so the baked mask can
+        // finish at zero instead of clipping a still-visible gradient at the
+        // image edge.
+        let maskMinX = min(resolvedMaskAnchorX, resolvedMaskLimitX)
+        let maskMaxX = max(resolvedMaskAnchorX, resolvedMaskLimitX)
+        let requiredReach = max(
+            max(rect.minX - maskMinX, maskMaxX - rect.maxX),
+            0
+        )
+        let padding = max(ceil(blur * 2.5), ceil(requiredReach) + 2)
         let renderRect = rect.insetBy(dx: -padding, dy: -padding)
         halo.frame = renderRect
+        let bitmapMaskAnchorX = resolvedMaskAnchorX - renderRect.minX
+        let bitmapMaskLimitX = resolvedMaskLimitX - renderRect.minX
 
         let key = HaloKey(
             width: rect.width, height: rect.height,
             cornerRadius: cornerRadius, blur: blur,
-            padding: padding, color: solidColor, opacity: opacity
+            padding: padding, color: solidColor, opacity: opacity,
+            edgeRaw: edge.rawValue, baseWidth: baseWidth, haloLimit: haloLimit,
+            maskAnchorX: resolvedMaskAnchorX, maskLimitX: resolvedMaskLimitX
         )
         if let cached = HaloCache.shared.image(for: key) {
             halo.contents = cached
@@ -298,20 +398,30 @@ final class AlertBeaconLayerView: NSView {
             cornerRadius: cornerRadius,
             blur: blur,
             color: tint,
-            opacity: opacity
+            opacity: opacity,
+            edge: edge,
+            baseWidth: baseWidth,
+            haloLimit: haloLimit,
+            maskAnchorX: bitmapMaskAnchorX,
+            maskLimitX: bitmapMaskLimitX
         ) else { return }
         HaloCache.shared.store(image, for: key)
         halo.contents = image
         halo.contentsScale = HaloCache.scale
     }
 
-    private static func renderHalo(
+    static func renderHalo(
         size: CGSize,
         inset: CGFloat,
         cornerRadius: CGFloat,
         blur: CGFloat,
         color: NSColor,
-        opacity: CGFloat
+        opacity: CGFloat,
+        edge: MountEdge,
+        baseWidth: CGFloat,
+        haloLimit: CGFloat,
+        maskAnchorX: CGFloat? = nil,
+        maskLimitX: CGFloat? = nil
     ) -> CGImage? {
         let scale = HaloCache.scale
         let pixelW = Int((size.width * scale).rounded(.up))
@@ -347,51 +457,185 @@ final class AlertBeaconLayerView: NSView {
         ])
         // CIGaussianBlur grows the extent; crop back so the layer's frame still
         // matches the layout above.
-        return ciContext.createCGImage(blurred.cropped(to: ci.extent), from: ci.extent)
+        guard let blurredImage = ciContext.createCGImage(
+            blurred.cropped(to: ci.extent),
+            from: ci.extent
+        ) else { return nil }
+        return applyHaloMask(
+            to: blurredImage,
+            size: size,
+            inset: inset,
+            edge: edge,
+            baseWidth: baseWidth,
+            haloLimit: haloLimit,
+            maskAnchorX: maskAnchorX,
+            maskLimitX: maskLimitX
+        )
+    }
+
+    private static func applyHaloMask(
+        to image: CGImage,
+        size: CGSize,
+        inset: CGFloat,
+        edge: MountEdge,
+        baseWidth: CGFloat,
+        haloLimit: CGFloat,
+        maskAnchorX: CGFloat?,
+        maskLimitX: CGFloat?
+    ) -> CGImage? {
+        let scale = HaloCache.scale
+        guard let maskContext = CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        maskContext.scaleBy(x: scale, y: scale)
+        let bounds = CGRect(origin: .zero, size: size)
+        let coreWidth = max(size.width - inset * 2, 0)
+        let screenEdgeX: CGFloat
+        let limitX: CGFloat
+        if let maskAnchorX, let maskLimitX {
+            screenEdgeX = maskAnchorX
+            limitX = maskLimitX
+        } else {
+            screenEdgeX = edge == .left ? inset : inset + coreWidth
+            let totalReach = max(baseWidth, 0) + max(haloLimit, 0)
+            limitX = edge == .left ? screenEdgeX + totalReach : screenEdgeX - totalReach
+        }
+
+        guard let horizontal = horizontalMaskGradient() else { return nil }
+        maskContext.drawLinearGradient(
+            horizontal,
+            start: CGPoint(x: screenEdgeX, y: 0),
+            end: CGPoint(x: limitX, y: 0),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        )
+
+        // The vertical ends fade as well, so the bloom does not terminate in
+        // two square corners when it is drawn beside a short chip.
+        let fade = min(6, max(size.height * 0.2, 0.5))
+        let fadeFraction = min(max(fade / max(size.height, 1), 0.001), 0.499)
+        let verticalLocations: [CGFloat] = [0, fadeFraction, 1 - fadeFraction, 1]
+        let clear = CGColor(gray: 1, alpha: 0)
+        let solid = CGColor(gray: 1, alpha: 1)
+        let gray = CGColorSpaceCreateDeviceGray()
+        let vertical = verticalLocations.withUnsafeBufferPointer { locations in
+            CGGradient(
+                colorsSpace: gray,
+                colors: [clear, solid, solid, clear] as CFArray,
+                locations: locations.baseAddress
+            )
+        }
+        guard let vertical else { return nil }
+        maskContext.setBlendMode(.destinationIn)
+        maskContext.drawLinearGradient(
+            vertical,
+            start: CGPoint(x: 0, y: 0),
+            end: CGPoint(x: 0, y: size.height),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        )
+        guard let mask = maskContext.makeImage() else { return nil }
+
+        guard let outputContext = CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        outputContext.scaleBy(x: scale, y: scale)
+        outputContext.draw(image, in: bounds)
+        outputContext.setBlendMode(.destinationIn)
+        outputContext.draw(mask, in: bounds)
+        return outputContext.makeImage()
+    }
+
+    private static func horizontalMaskGradient() -> CGGradient? {
+        let sampleCount = 32
+        let gray = CGColorSpaceCreateDeviceGray()
+        var colors: [CGColor] = []
+        var locations: [CGFloat] = []
+        colors.reserveCapacity(sampleCount + 1)
+        locations.reserveCapacity(sampleCount + 1)
+        for index in 0...sampleCount {
+            let offset = Double(index) / Double(sampleCount)
+            let alpha = PurahAlertHaloProfile.alpha(atNormalizedOffset: offset)
+            colors.append(CGColor(gray: 1, alpha: CGFloat(alpha)))
+            locations.append(CGFloat(offset))
+        }
+        return locations.withUnsafeBufferPointer { pointers in
+            CGGradient(
+                colorsSpace: gray,
+                colors: colors as CFArray,
+                locations: pointers.baseAddress
+            )
+        }
     }
 
     private var solidColor: CGColor {
         (tint.usingColorSpace(.sRGB) ?? tint).cgColor
     }
 
+    private var beaconBarFillColor: CGColor {
+        let color = tint.usingColorSpace(.sRGB) ?? tint
+        let fraction: CGFloat = 0.55
+        return NSColor(
+            srgbRed: color.redComponent + (1 - color.redComponent) * fraction,
+            green: color.greenComponent + (1 - color.greenComponent) * fraction,
+            blue: color.blueComponent + (1 - color.blueComponent) * fraction,
+            alpha: color.alphaComponent
+        ).cgColor
+    }
+
     private func applyStyleVisibility() {
-        let showsGlow = style == .subtleGlow || style == .breathingBeacon
-        let showsDot = style == .breathingBeacon
+        let showsGlow = style == .subtleGlow
+        let showsBeaconBar = style == .breathingBeacon
         let showsSonar = style == .sonarWave
 
         glowInner.isHidden = !showsGlow
         glowOuter.isHidden = !showsGlow
-        beaconDot.isHidden = !showsDot
-        sonarRing.isHidden = !showsSonar
+        beaconBloom.isHidden = !showsBeaconBar
+        beaconBar.isHidden = !showsBeaconBar
+        for ring in sonarRings {
+            ring.isHidden = !showsSonar
+        }
     }
 
     private func restartAnimations() {
-        for l in [glowInner, glowOuter, beaconDot, sonarRing] {
+        let layers: [CALayer] = [glowInner, glowOuter, beaconBloom, beaconBar]
+            + sonarRings.map { $0 as CALayer }
+        for l in layers {
             l.removeAllAnimations()
         }
         guard style != .off else { return }
 
         switch style {
         case .subtleGlow:
-            addPulse(to: glowInner, from: 0.45, to: 1.0)
-            addPulse(to: glowOuter, from: 0.40, to: 1.0)
+            addPulse(to: glowInner, from: 0.55, to: 0.85, duration: 2.0)
+            addPulse(to: glowOuter, from: 0.50, to: 0.80, duration: 2.0)
         case .breathingBeacon:
-            addPulse(to: glowInner, from: 0.55, to: 1.0)
-            addPulse(to: beaconDot, from: 0.85, to: 1.0)
+            addBeaconBarBlink()
         case .sonarWave:
-            addSonarRipple()
+            addSonarRipples()
         case .off:
             break
         }
     }
 
     /// Opacity pulse with `autoreverses`, so one animation covers the full
-    /// 1.8s cycle and the render server interpolates it without waking us.
+    /// cycle and the render server interpolates it without waking us.
     private func addPulse(
         to layer: CALayer,
         from: Float,
         to: Float,
-        duration: CFTimeInterval = AlertBeaconLayerView.halfCycle
+        duration: CFTimeInterval
     ) {
         let anim = CABasicAnimation(keyPath: "opacity")
         anim.fromValue = from
@@ -405,31 +649,62 @@ final class AlertBeaconLayerView: NSView {
         layer.add(anim, forKey: "pulse")
     }
 
-    /// Expanding ring: `rippleWidth` grew by 26pt while alpha fell to zero over
-    /// one 1.8s cycle, drawn from the rail edge.
-    private func addSonarRipple() {
-        let grow = (baseWidth + 26) / max(baseWidth, 1)
+    private func addBeaconBarBlink() {
+        let blink = CAKeyframeAnimation(keyPath: "opacity")
+        blink.values = [0.0, 1.0, 0.35, 1.0, 0.0, 0.0]
+        blink.keyTimes = [0.0, 0.05, 0.10, 0.15, 0.225, 1.0]
+        blink.duration = Self.beaconBarPeriod
+        blink.repeatCount = .infinity
+        blink.timingFunction = CAMediaTimingFunction(name: .linear)
+        blink.isRemovedOnCompletion = false
+        for layer in [beaconBloom, beaconBar] {
+            layer.opacity = 0.0
+            layer.add(blink, forKey: "blink")
+        }
+    }
 
-        let anim = CABasicAnimation(keyPath: "opacity")
-        anim.fromValue = 0.55
-        anim.toValue = 0.0
-        anim.duration = Self.halfCycle * 2
-        anim.repeatCount = .infinity
-        anim.timingFunction = CAMediaTimingFunction(name: .linear)
-        anim.isRemovedOnCompletion = false
+    /// Three staggered pill ripples. Each spends the full 3.6s cycle expanding
+    /// and fading, while the next ring begins one third of a cycle later.
+    private func addSonarRipples() {
+        let grow = (baseWidth + haloLimit * 0.9) / max(baseWidth, 1)
+        let start = CACurrentMediaTime()
 
-        let scale = CABasicAnimation(keyPath: "transform.scale.x")
-        scale.fromValue = 1.0
-        scale.toValue = grow
-        scale.duration = Self.halfCycle * 2
-        scale.repeatCount = .infinity
-        scale.timingFunction = CAMediaTimingFunction(name: .linear)
-        scale.isRemovedOnCompletion = false
+        for (index, ring) in sonarRings.enumerated() {
+            let beginTime = start + Double(index) * Self.sonarCycle / 3
 
-        // Anchor and frame come from `layout()`; only the curves live here.
-        sonarRing.opacity = 0.0
-        sonarRing.add(anim, forKey: "ripple")
-        sonarRing.add(scale, forKey: "grow")
+            let opacity = CABasicAnimation(keyPath: "opacity")
+            opacity.fromValue = 0.65
+            opacity.toValue = 0.0
+            opacity.duration = Self.sonarCycle
+            opacity.beginTime = beginTime
+            opacity.repeatCount = .infinity
+            opacity.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            opacity.isRemovedOnCompletion = false
+
+            let scale = CABasicAnimation(keyPath: "transform.scale.x")
+            scale.fromValue = 1.0
+            scale.toValue = grow
+            scale.duration = Self.sonarCycle
+            scale.beginTime = beginTime
+            scale.repeatCount = .infinity
+            scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            scale.isRemovedOnCompletion = false
+
+            let width = CABasicAnimation(keyPath: "lineWidth")
+            width.fromValue = 1.6
+            width.toValue = 0.6
+            width.duration = Self.sonarCycle
+            width.beginTime = beginTime
+            width.repeatCount = .infinity
+            width.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            width.isRemovedOnCompletion = false
+
+            ring.opacity = 0.0
+            ring.transform = CATransform3DIdentity
+            ring.add(opacity, forKey: "ripple")
+            ring.add(scale, forKey: "grow")
+            ring.add(width, forKey: "line")
+        }
     }
 }
 
@@ -447,6 +722,11 @@ private struct HaloKey: Hashable {
     let padding: CGFloat
     let color: CGColor
     let opacity: CGFloat
+    let edgeRaw: String
+    let baseWidth: CGFloat
+    let haloLimit: CGFloat
+    let maskAnchorX: CGFloat
+    let maskLimitX: CGFloat
 }
 
 @MainActor

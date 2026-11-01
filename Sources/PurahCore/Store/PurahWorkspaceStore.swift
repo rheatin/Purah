@@ -1473,6 +1473,15 @@ public final class PurahWorkspaceStore {
         return false
     }
 
+    /// True when any enabled pod on either rail currently demands attention.
+    ///
+    /// Reading through `isPodAlerting` keeps this in sync with plugin alerts,
+    /// calendar events, vitals thresholds, and the shared acknowledgment set.
+    public var isAnyRailAlerting: Bool {
+        guard alertStyle != .off else { return false }
+        return pods.contains { $0.isEnabled && isPodAlerting(podId: $0.id) }
+    }
+
     public func acknowledgeAllAlerts(forPodId podId: String) {
         acknowledgedAlertIds.insert(podId)
         if podId == "calendar" {

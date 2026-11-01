@@ -44,7 +44,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
             Menu {
                 ForEach(VitalsMetricType.allCases) { metric in
                     Button {
-                        state.headerMetric = metric
+                        state.setHeaderMetric(metric)
                     } label: {
                         HStack {
                             Label(metric.displayName, systemImage: metric.systemIcon)
