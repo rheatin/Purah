@@ -1,13 +1,15 @@
 // Sources/PurahApp/WindowControllers/AmbientRailWindow.swift
 import AppKit
 import SwiftUI
+import Observation
 import PurahCore
 import PurahUI
 
 @MainActor
 public final class AmbientRailWindow: NSPanel {
-    public static let maxCanvasWidth: CGFloat = 580.0
-    public static let compactCanvasWidth: CGFloat = 28.0
+    public static let maxCanvasWidth = PurahRailCanvas.maxWidth
+    public static let compactCanvasWidth = PurahRailCanvas.compactWidth
+    public static let alertCanvasWidth = PurahRailCanvas.alertWidth
 
     public override var canBecomeKey: Bool {
         true // Allow key window status for text editing in notes
@@ -28,9 +30,14 @@ public final class AmbientRailWindow: NSPanel {
         self.store = store
 
         // Coordinate positioning:
-        // Starts in ultra-lightweight compact canvas (28pt) to save ~20MB framebuffer memory when docked.
+        // Starts in the smallest canvas the current alert state needs. A quiet
+        // docked rail stays at 28pt; an already-alerting rail gets the halo
+        // budget from its first frame.
         let visibleRect = screen.visibleFrame
-        let initialWidth = Self.compactCanvasWidth
+        let initialWidth = PurahRailCanvas.width(
+            isExpanded: false,
+            isAlerting: store.isAnyRailAlerting
+        )
         let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - initialWidth)
         let frame = NSRect(x: x, y: visibleRect.minY, width: initialWidth, height: visibleRect.height)
 
@@ -59,6 +66,7 @@ public final class AmbientRailWindow: NSPanel {
         hostingView.layerContentsPlacement = (edge == .right) ? .topRight : .topLeft
         hostingView.layer?.contentsGravity = (edge == .right) ? .topRight : .topLeft
         self.contentView = hostingView
+        armAlertCanvasObservation()
     }
 
     public func setExpanded(_ expanded: Bool) {
@@ -69,7 +77,10 @@ public final class AmbientRailWindow: NSPanel {
 
     public func updateFrame(display: Bool = true) {
         let visibleRect = targetScreen.visibleFrame
-        let targetWidth = isExpanded ? Self.maxCanvasWidth : Self.compactCanvasWidth
+        let targetWidth = PurahRailCanvas.width(
+            isExpanded: isExpanded,
+            isAlerting: store.isAnyRailAlerting
+        )
         let x = (edge == .left) ? visibleRect.minX : (visibleRect.maxX - targetWidth)
         let newFrame = NSRect(x: x, y: visibleRect.minY, width: targetWidth, height: visibleRect.height)
         if self.frame != newFrame {
@@ -77,6 +88,20 @@ public final class AmbientRailWindow: NSPanel {
             CATransaction.setDisableActions(true)
             self.setFrame(newFrame, display: display)
             CATransaction.commit()
+        }
+    }
+
+    /// Observation is one-shot, so each alert-state change re-arms it after
+    /// applying the new canvas width. The window stays click-through throughout.
+    private func armAlertCanvasObservation() {
+        withObservationTracking {
+            _ = store.isAnyRailAlerting
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateFrame(display: true)
+                self.armAlertCanvasObservation()
+            }
         }
     }
 

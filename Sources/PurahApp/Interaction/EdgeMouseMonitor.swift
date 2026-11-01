@@ -1204,6 +1204,10 @@ public final class EdgeMouseMonitor {
             return true
         }
 
+        // This path is only reached after a drawer is active or pinned above.
+        // Either state expands the canvas to maxCanvasWidth before interaction;
+        // the docked alert canvas is wider than compact but still entirely
+        // click-through, so it never participates in drawer hit testing.
         let windowW = Double(AmbientRailWindow.maxCanvasWidth)
 
         // Fast-path 2: Trivial horizontal rejection - if point is outside the maximum canvas boundary, return false instantly!

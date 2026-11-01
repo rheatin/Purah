@@ -323,7 +323,8 @@ public struct AmbientRailStripView: View {
                     edge: edge,
                     baseWidth: railWidth,
                     color: color,
-                    alertStyle: store.alertStyle
+                    alertStyle: store.alertStyle,
+                    haloLimit: PurahRailCanvas.haloLimit(baseWidth: railWidth)
                 )
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
@@ -590,7 +591,8 @@ public struct RailPagePortalView: View {
                 edge: edge,
                 baseWidth: portalWidth,
                 color: effectiveColor,
-                alertStyle: alertStyle
+                alertStyle: alertStyle,
+                haloLimit: PurahRailCanvas.haloLimit(baseWidth: portalWidth)
             )
             .shadow(color: effectiveColor.opacity(isHovered ? 0.75 : (isAlerting ? 0.65 : 0.25)), radius: (isHovered || isAlerting) ? 6 : 2)
             .contentShape(Rectangle())

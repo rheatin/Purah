@@ -58,6 +58,9 @@ struct MultiDisplayTests {
     func testDynamicRailWindowCanvasExpansionAndCollapse() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let store = PurahWorkspaceStore()
+        // This test isolates canvas expansion; an imminent event would
+        // intentionally widen the docked alert canvas to 48pt.
+        store.alertStyle = .off
         let window = AmbientRailWindow(edge: .right, screen: screen, store: store)
 
         // 1. Initial docked state must be compact 28pt to minimize framebuffer memory footprint

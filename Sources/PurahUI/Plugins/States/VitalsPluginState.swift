@@ -18,7 +18,7 @@ public final class VitalsPluginState: Sendable {
     public var dashboardTab: VitalsDashboardTab = .overview
     /// Which reading the header pill reports. Picking one is the header's job;
     /// the drawer's own numbers stay unchanged.
-    public var headerMetric: VitalsMetricType = .cpu
+    public var headerMetric: VitalsMetricType
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -54,6 +54,11 @@ public final class VitalsPluginState: Sendable {
         storage.set(clamped, forKey: "maxRailMetrics")
     }
 
+    public func setHeaderMetric(_ metric: VitalsMetricType) {
+        headerMetric = metric
+        storage.set(metric.rawValue, forKey: "headerMetric")
+    }
+
     public init(storage: (any PurahPluginStorage)? = nil) {
         let resolvedStorage: any PurahPluginStorage
         if let storage = storage {
@@ -70,7 +75,17 @@ public final class VitalsPluginState: Sendable {
         } else {
             self.isDecomposed = true
         }
-        self.enabledMetrics = resolvedStorage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) ?? [.cpu, .ram, .power, .disk]
+        let savedMetrics = resolvedStorage.codable(
+            forKey: "enabledMetrics",
+            as: [VitalsMetricType].self
+        ) ?? [.cpu, .ram, .power, .disk]
+        self.enabledMetrics = savedMetrics
+        let storedHeader = resolvedStorage.string(forKey: "headerMetric")
+        let resolvedHeader = Self.resolveHeaderMetric(stored: storedHeader, enabledMetrics: savedMetrics)
+        self.headerMetric = resolvedHeader
+        if storedHeader != resolvedHeader.rawValue {
+            resolvedStorage.set(resolvedHeader.rawValue, forKey: "headerMetric")
+        }
         // Missing means "never configured" → the default of four. A stored value
         // is clamped into the current range, because a settings file written
         // while the slider went up to 6 must not keep the rail at 6 now that
@@ -132,12 +147,14 @@ public final class VitalsPluginState: Sendable {
         if let metrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) {
             self.enabledMetrics = metrics
         }
+        reconcileHeaderMetric()
         if let thresh = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) {
             self.thresholds = thresh
         }
     }
 
     public func save() {
+        reconcileHeaderMetric()
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(enabledMetrics, forKey: "enabledMetrics")
         storage.setCodable(thresholds, forKey: "thresholds")
@@ -162,6 +179,7 @@ public final class VitalsPluginState: Sendable {
         self.thresholds = store._vitalsThresholds
         self.isDecomposed = store._isVitalsDecomposed
         self.enabledMetrics = store._vitalsEnabledMetrics
+        reconcileHeaderMetric()
         HardwareVitalsService.shared.startMonitoring()
     }
 
@@ -172,5 +190,25 @@ public final class VitalsPluginState: Sendable {
         if boundStore === store {
             boundStore = nil
         }
+    }
+
+    private func reconcileHeaderMetric() {
+        let resolved = Self.resolveHeaderMetric(
+            stored: headerMetric.rawValue,
+            enabledMetrics: enabledMetrics
+        )
+        headerMetric = resolved
+        storage.set(resolved.rawValue, forKey: "headerMetric")
+    }
+
+    private static func resolveHeaderMetric(
+        stored: String?,
+        enabledMetrics: [VitalsMetricType]
+    ) -> VitalsMetricType {
+        let decoded = stored.flatMap(VitalsMetricType.init(rawValue:))
+        if let decoded, enabledMetrics.contains(decoded) {
+            return decoded
+        }
+        return enabledMetrics.first ?? .cpu
     }
 }
