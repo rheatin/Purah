@@ -133,8 +133,10 @@ struct AlertBeaconRenderingTests {
             haloLimit: haloLimit
         ))
         let leftLimitX = Int(((inset + baseWidth + haloLimit) * bitmapScale).rounded(.down))
-        #expect(alpha(in: left, x: leftLimitX, y: left.height / 2) == 0)
-        #expect(alpha(in: left, x: left.width - 1, y: left.height / 2) == 0)
+        let leftMiddleY = left.height / 2
+        let leftLastX = left.width - 1
+        #expect(alpha(in: left, x: leftLimitX, y: leftMiddleY) == 0)
+        #expect(alpha(in: left, x: leftLastX, y: leftMiddleY) == 0)
 
         let right = try #require(AlertBeaconLayerView.renderHalo(
             size: size,
@@ -148,8 +150,9 @@ struct AlertBeaconRenderingTests {
             haloLimit: haloLimit
         ))
         let rightLimitX = Int(((inset + coreWidth - baseWidth - haloLimit) * bitmapScale).rounded(.down))
-        #expect(alpha(in: right, x: rightLimitX, y: right.height / 2) == 0)
-        #expect(alpha(in: right, x: 0, y: right.height / 2) == 0)
+        let rightMiddleY = right.height / 2
+        #expect(alpha(in: right, x: rightLimitX, y: rightMiddleY) == 0)
+        #expect(alpha(in: right, x: 0, y: rightMiddleY) == 0)
     }
 
     private var sourceURL: URL {
@@ -273,7 +276,8 @@ struct AlertBeaconRenderingTests {
             #expect(grow.repeatCount == .infinity)
             #expect(grow.duration == 3.6)
             let scale = try #require(grow.toValue as? NSNumber).doubleValue
-            #expect(abs(scale - (8.0 + 40.0 * 0.9) / 8.0) < 0.001)
+            let expectedScale: Double = (8.0 + 40.0 * 0.9) / 8.0
+            #expect(abs(scale - expectedScale) < 0.001)
             beginTimes.append(grow.beginTime)
 
             let fade = try #require(ring.animation(forKey: "ripple") as? CABasicAnimation)
@@ -284,8 +288,11 @@ struct AlertBeaconRenderingTests {
             #expect(width.toValue as? Double == 0.6)
         }
         beginTimes.sort()
-        #expect(abs((beginTimes[1] - beginTimes[0]) - 1.2) < 0.01)
-        #expect(abs((beginTimes[2] - beginTimes[1]) - 1.2) < 0.01)
+        let expectedGap: CFTimeInterval = 1.2
+        let firstGap = beginTimes[1] - beginTimes[0]
+        let secondGap = beginTimes[2] - beginTimes[1]
+        #expect(abs(firstGap - expectedGap) < 0.01)
+        #expect(abs(secondGap - expectedGap) < 0.01)
     }
 
     @Test("Beacon Bar is a tinted double-flashing pill with no halos; subtle glow has halos only")
@@ -302,11 +309,13 @@ struct AlertBeaconRenderingTests {
         let barIndex = try #require(sublayers.firstIndex { $0 === breathing.beaconBar })
         #expect(bloomIndex < barIndex, "the bloom must render behind the Beacon Bar")
 
-        let expectedHeight = 64.0 * 0.72
-        #expect(abs(breathing.beaconBar.frame.minX - (8 + 4)) < 0.001)
+        let expectedHeight: CGFloat = 64 * 0.72
+        let expectedLeftMinX: CGFloat = 8 + 4
+        let expectedMinY: CGFloat = (64 - expectedHeight) / 2
+        #expect(abs(breathing.beaconBar.frame.minX - expectedLeftMinX) < 0.001)
         #expect(breathing.beaconBar.frame.width == 8)
         #expect(abs(breathing.beaconBar.frame.height - expectedHeight) < 0.001)
-        #expect(abs(breathing.beaconBar.frame.minY - (64 - expectedHeight) / 2) < 0.001)
+        #expect(abs(breathing.beaconBar.frame.minY - expectedMinY) < 0.001)
         #expect(breathing.beaconBar.cornerRadius == 4)
         #expect(breathing.beaconBar.shadowRadius == 6)
         #expect(breathing.beaconBar.shadowOpacity == 0.55)
@@ -315,10 +324,14 @@ struct AlertBeaconRenderingTests {
         #expect(breathing.beaconBloom.opacity == 0)
 
         let bloomFrame = breathing.beaconBloomCoreFrame
-        #expect(abs(bloomFrame.minX - (breathing.beaconBar.frame.minX - 3)) < 0.001)
-        #expect(abs(bloomFrame.minY - (breathing.beaconBar.frame.minY - 3)) < 0.001)
-        #expect(abs(bloomFrame.width - (breathing.beaconBar.frame.width + 6)) < 0.001)
-        #expect(abs(bloomFrame.height - (breathing.beaconBar.frame.height + 6)) < 0.001)
+        let expectedBloomMinX: CGFloat = breathing.beaconBar.frame.minX - 3
+        let expectedBloomMinY: CGFloat = breathing.beaconBar.frame.minY - 3
+        let expectedBloomWidth: CGFloat = breathing.beaconBar.frame.width + 6
+        let expectedBloomHeight: CGFloat = breathing.beaconBar.frame.height + 6
+        #expect(abs(bloomFrame.minX - expectedBloomMinX) < 0.001)
+        #expect(abs(bloomFrame.minY - expectedBloomMinY) < 0.001)
+        #expect(abs(bloomFrame.width - expectedBloomWidth) < 0.001)
+        #expect(abs(bloomFrame.height - expectedBloomHeight) < 0.001)
         let bloomContents = try #require(breathing.beaconBloom.contents)
         #expect(CFGetTypeID(bloomContents as CFTypeRef) == CGImage.typeID)
 
@@ -348,16 +361,25 @@ struct AlertBeaconRenderingTests {
         #expect(!glow.glowOuter.isHidden)
         let inner = try #require(glow.glowInner.animation(forKey: "pulse") as? CABasicAnimation)
         let outer = try #require(glow.glowOuter.animation(forKey: "pulse") as? CABasicAnimation)
+        let innerFrom = (inner.fromValue as? Float) ?? 0
+        let innerTo = (inner.toValue as? Float) ?? 0
+        let outerFrom = (outer.fromValue as? Float) ?? 0
+        let outerTo = (outer.toValue as? Float) ?? 0
+        let expectedInnerFrom: Float = 0.55
+        let expectedInnerTo: Float = 0.85
+        let expectedOuterFrom: Float = 0.50
+        let expectedOuterTo: Float = 0.80
         #expect(inner.duration == 2.0)
-        #expect(abs(((inner.fromValue as? Float) ?? 0) - 0.55) < 0.001)
-        #expect(abs(((inner.toValue as? Float) ?? 0) - 0.85) < 0.001)
+        #expect(abs(innerFrom - expectedInnerFrom) < 0.001)
+        #expect(abs(innerTo - expectedInnerTo) < 0.001)
         #expect(outer.duration == 2.0)
-        #expect(abs(((outer.fromValue as? Float) ?? 0) - 0.50) < 0.001)
-        #expect(abs(((outer.toValue as? Float) ?? 0) - 0.80) < 0.001)
+        #expect(abs(outerFrom - expectedOuterFrom) < 0.001)
+        #expect(abs(outerTo - expectedOuterTo) < 0.001)
 
         let right = makeView(style: .breathingBeacon, edge: .right, baseWidth: 8)
         #expect(!right.beaconBloom.isHidden)
-        #expect(abs(right.beaconBar.frame.minX - (-(8 + 4) - 8)) < 0.001)
+        let expectedRightMinX: CGFloat = -(8 + 4) - 8
+        #expect(abs(right.beaconBar.frame.minX - expectedRightMinX) < 0.001)
 
         let off = makeView(style: .off, edge: .left, baseWidth: 8)
         #expect(off.beaconBloom.isHidden)
@@ -394,7 +416,8 @@ struct AlertBeaconRenderingTests {
         for ring in sonar.sonarRings {
             let grow = try #require(ring.animation(forKey: "grow") as? CABasicAnimation)
             let ringScale = try #require(grow.toValue as? NSNumber).doubleValue
-            #expect(baseWidth * ringScale <= maximumWidth)
+            let ringWidth = baseWidth * ringScale
+            #expect(ringWidth <= maximumWidth)
         }
     }
 
@@ -428,8 +451,10 @@ struct AlertBeaconRenderingTests {
                 ? view.beaconBar.frame.maxX
                 : abs(view.beaconBar.frame.minX)
 
-            #expect(abs(innerEdge - (baseWidth + 4 + baseWidth)) < 0.001)
-            #expect(abs(view.beaconBloomHaloLimit - 28) < 0.001)
+            let expectedInnerEdge: CGFloat = baseWidth + 4 + baseWidth
+            let expectedBloomLimit: CGFloat = 28
+            #expect(abs(innerEdge - expectedInnerEdge) < 0.001)
+            #expect(abs(view.beaconBloomHaloLimit - expectedBloomLimit) < 0.001)
             #expect(
                 innerEdge + view.beaconBloomHaloLimit
                     <= PurahRailCanvas.alertWidth
@@ -477,8 +502,10 @@ struct AlertBeaconRenderingTests {
         let (inner, _) = try halos(of: view)
         let padding = (inner.frame.width - 14.0) / 2
         let visible = inner.frame.insetBy(dx: padding, dy: padding)
-        #expect(abs(visible.minX - (-6)) < 0.001, "got minX \(visible.minX)")
-        #expect(abs(visible.maxX - 8) < 0.001, "got maxX \(visible.maxX)")
+        let expectedMinX: CGFloat = -6
+        let expectedMaxX: CGFloat = 8
+        #expect(abs(visible.minX - expectedMinX) < 0.001, "got minX \(visible.minX)")
+        #expect(abs(visible.maxX - expectedMaxX) < 0.001, "got maxX \(visible.maxX)")
     }
 
     @Test("Halo contents are a real blurred bitmap, not a flat fill")
