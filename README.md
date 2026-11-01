@@ -51,6 +51,7 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 - **💾 Configuration Backup & Restore**: Export, import, and factory-reset your entire workspace layout, shortcuts, and plugin preferences as portable JSON files.
 - **💻 Edge Interactive Terminal**: Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with full VT100/Xterm emulation, 1-click `cd` to active Finder folder, live font scaling, and Starship / Nerd Font glyphs.
 - **🌊 60 / 120 FPS Fluid Waveform**: Metal GPU-driven audio visualizer that pulses naturally along the screen edge.
+- **🔔 Three Alert Styles**: `Beacon Bar` (a tinted pill flashing beside the pod), `Sonar Wave` (three staggered ripples), and `Subtle Glow` (a slow ambient bloom). Every style is Core Animation on the render server, so an alerting rail costs ~0.01% CPU instead of redrawing a SwiftUI view every frame — and the rail canvas widens while a pod is alerting, so the glow fades out naturally instead of ending on a hard window edge.
 - **🖥 Multi-Display Adaptive**: Follows your cursor across displays while suppressing accidental triggers when crossing screen borders.
 
 ---
@@ -59,8 +60,8 @@ It runs quietly in the background without stealing focus or cluttering your Dock
 
 | Plugin | Icon | Description |
 | :--- | :---: | :--- |
-| **AI Assistant** | `sparkles` | Multi-provider AI workbench supporting On-Device Apple Intelligence (`FoundationModels`), Local CLI Agents (`claude`, `codex`, `ollama`, custom), and OpenAI / Anthropic / Ollama HTTP APIs. Features frontmost selection capture, 50/50 split drop zones (New Session vs. Follow-up), inline diff polishing, custom role prompts, built-in local file skills, and MCP server integration. |
-| **Hardware Vitals** | `waveform.path.ecg` | Deep Darwin/IOKit telemetry across a unified 2x2 overview grid (CPU User/Sys/LoadAvg/Thermal, GPU, RAM App/Wired/Compressed/Swap, Battery Health/Cycles), full-width Network I/O card, Disk R/W throughput, and full Process Inspector. |
+| **AI Assistant** | `sparkles` | Multi-provider AI workbench supporting On-Device Apple Intelligence (`FoundationModels`), Local CLI Agents (`claude`, `codex`, `ollama`, custom), and OpenAI / Anthropic / Ollama HTTP APIs. Features frontmost selection capture, 50/50 split drop zones (New Session vs. Follow-up), inline diff polishing, custom role prompts, built-in local file skills, and MCP server integration. A decomposed role chip answers inline; when the answer is longer than the chip, hover it to read the full text in a floating preview instead of losing it to the ellipsis. |
+| **Hardware Vitals** | `waveform.path.ecg` | Deep Darwin/IOKit telemetry across a unified 2x2 overview grid (CPU User/Sys/LoadAvg/Thermal, GPU, RAM App/Wired/Compressed/Swap, Battery Health/Cycles), full-width Network I/O card, Disk R/W throughput, and full Process Inspector. The header pill chooses which metric the rail gauge draws, and that choice is remembered across launches. |
 | **Drop Shelf** | `tray.fill` | Desktop staging shelf with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, and pinned interactive floating sidecar preview (`👁`). |
 | **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, pinned interactive floating sidecar preview (`👁`), color preview, image caching, and fuzzy search. |
 | **Quick Notes** | `note.text` | Typora-style live Markdown & resizable tables, one-tag filing and instant search, image paste, and 1-click `.md` export. |
@@ -115,11 +116,11 @@ Purah is designed to stay completely out of your way until intentionally summone
 - **`⌃⌥E` (Control + Option + E)**: Global **1:1 Live Desktop Rail Sculptor** toggle (customizable in Settings). Sculpt, resize, stack/unstack, and move modules directly on your live desktop bezel.
 
 #### Anti-Accidental Touch & Anti-Loss Details
-- **Edge Summon**: Slide your cursor to the 14px physical screen bezel to pop out the corresponding drawer.
+- **Edge Summon**: Slide your cursor to the **8pt** physical screen bezel (configurable 4–16pt) to pop out the corresponding drawer.
 - **Swipe Rejection**: Rapid flings across screen edges or moving between displays are ignored to prevent accidental popups.
-- **Resistance Breakthrough**: Pushing deliberately against the outer bezel immediately opens the drawer with 0ms delay.
-- **Exit Grace Window**: A brief 150ms buffer prevents drawers from collapsing if your cursor momentarily slips off while reaching for corner buttons.
-- **Catch Corridor**: An invisible catch buffer extends past the card edge, ensuring drawers stay open even during fast cursor movements.
+- **Resistance Breakthrough**: Pushing deliberately against the outer bezel (36px of accumulated motion by default) immediately opens the drawer with 0ms delay.
+- **Exit Grace Window**: A **280ms** buffer (balanced default; 180ms agile / 400ms deliberate, configurable 100–600ms) prevents drawers from collapsing if your cursor momentarily slips off while reaching for corner buttons.
+- **Catch Corridor**: An invisible **+50pt** catch buffer (configurable) extends past the card edge, ensuring drawers stay open even during fast cursor movements.
 
 ---
 
