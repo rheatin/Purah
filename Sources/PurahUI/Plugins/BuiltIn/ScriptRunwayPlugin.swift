@@ -780,8 +780,8 @@ public struct ScriptsPluginSettingsView: View {
                                     Image(systemName: action.showNotification ? "bell.fill" : "bell.slash")
                                         .font(.system(size: 9))
                                         .foregroundColor(action.showNotification ? .secondary : .secondary.opacity(0.35))
-                                        .help(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
-                                        .accessibilityLabel(action.showNotification ? "Toast notification enabled" : "Silent execution (Toast disabled)")
+                                        .help(action.showNotification ? "scripts.notifyOn".localized : "scripts.notifyOff".localized)
+                                        .accessibilityLabel(action.showNotification ? "scripts.notifyOn".localized : "scripts.notifyOff".localized)
 
                                     Button {
                                         withAnimation(PurahMotionPolicy.microLight) {

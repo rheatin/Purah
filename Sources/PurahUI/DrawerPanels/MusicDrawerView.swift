@@ -129,6 +129,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.previous".localized)
+                        .accessibilityLabel("music.previous".localized)
 
                         Button {
                             state.togglePlayPause(store: store)
@@ -145,6 +146,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(HeroPlayPauseButtonStyle())
                         .help("music.playPause".localized)
+                        .accessibilityLabel("music.playPause".localized)
 
                         Button {
                             state.nextTrack(store: store)
@@ -156,6 +158,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.next".localized)
+                        .accessibilityLabel("music.next".localized)
                     }
                 }
 
@@ -218,6 +221,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.previous".localized)
+                        .accessibilityLabel("music.previous".localized)
 
                         Button {
                             state.togglePlayPause(store: store)
@@ -234,6 +238,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(HeroPlayPauseButtonStyle())
                         .help("music.playPause".localized)
+                        .accessibilityLabel("music.playPause".localized)
 
                         Button {
                             state.nextTrack(store: store)
@@ -245,6 +250,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.next".localized)
+                        .accessibilityLabel("music.next".localized)
                     }
                 }
 
@@ -393,6 +399,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -4))
                 .help("music.previous".localized)
+                .accessibilityLabel("music.previous".localized)
                 .onHover { isBackwardHovered = $0 }
 
                 Button {
@@ -412,6 +419,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
                 .help("music.playPause".localized)
+                .accessibilityLabel("music.playPause".localized)
 
                 Button {
                     state.nextTrack(store: store)
@@ -427,6 +435,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 4))
                 .help("music.next".localized)
+                .accessibilityLabel("music.next".localized)
                 .onHover { isForwardHovered = $0 }
             }
             .frame(maxWidth: .infinity)
@@ -557,6 +566,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
                 .help("music.previous".localized)
+                .accessibilityLabel("music.previous".localized)
 
                 Button {
                     state.togglePlayPause(store: store)
@@ -575,6 +585,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
                 .help("music.playPause".localized)
+                .accessibilityLabel("music.playPause".localized)
 
                 Button {
                     state.nextTrack(store: store)
@@ -586,6 +597,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 5))
                 .help("music.next".localized)
+                .accessibilityLabel("music.next".localized)
             }
             .frame(maxWidth: .infinity)
         }
@@ -866,6 +878,21 @@ public struct NativeMediaProgressBar: View {
                         onSeek(final)
                     }
             )
+            // A pointer-drag-only control has no keyboard path; VoiceOver's
+            // adjustable action is the equivalent, in 2% steps.
+            .accessibilityElement()
+            .accessibilityLabel("music.progress".localized)
+            .accessibilityValue("\(Int(progress * 100))%")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    onSeek(min(progress + 0.02, 1.0))
+                case .decrement:
+                    onSeek(max(progress - 0.02, 0.0))
+                @unknown default:
+                    break
+                }
+            }
         }
         .frame(height: height)
     }

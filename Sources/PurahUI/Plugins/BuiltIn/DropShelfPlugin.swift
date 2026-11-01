@@ -76,7 +76,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
         let pasteboard = NSPasteboard(name: .drag)
         if ShelfStashDropDelegate.ingestPasteboard(pasteboard, state: state, store: context.store) {
             if let latest = state.files.first {
-                context.showToast("Stashed \(latest.name)", "tray.and.arrow.down.fill")
+                context.showToast(String(format: "shelf.stashed".localized, latest.name), "tray.and.arrow.down.fill")
             }
             return true
         }
@@ -100,7 +100,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
                             }
                             state.addFile(url: fileURL)
                             context.performHaptic(.alignment)
-                            context.showToast("Stashed \(fileURL.lastPathComponent)", "tray.and.arrow.down.fill")
+                            context.showToast(String(format: "shelf.stashed".localized, fileURL.lastPathComponent), "tray.and.arrow.down.fill")
                         }
                     }
                 }
@@ -110,7 +110,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
                         Task { @MainActor in
                             if let item = state.addDroppedImageData(data) {
                                 context.performHaptic(.alignment)
-                                context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
+                                context.showToast(String(format: "shelf.stashed".localized, item.name), "tray.and.arrow.down.fill")
                             }
                         }
                     }
@@ -122,7 +122,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
                             if let scheme = url.scheme?.lowercased(), (scheme == "http" || scheme == "https") {
                                 if let item = state.addDroppedWebLink(url) {
                                     context.performHaptic(.alignment)
-                                    context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
+                                    context.showToast(String(format: "shelf.stashed".localized, item.name), "tray.and.arrow.down.fill")
                                 }
                             } else {
                                 if ShelfDragSession.shared.carriesAny(of: [url]) {
@@ -130,7 +130,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
                                 }
                                 state.addFile(url: url)
                                 context.performHaptic(.alignment)
-                                context.showToast("Stashed \(url.lastPathComponent)", "tray.and.arrow.down.fill")
+                                context.showToast(String(format: "shelf.stashed".localized, url.lastPathComponent), "tray.and.arrow.down.fill")
                             }
                         }
                     }
@@ -141,7 +141,7 @@ public struct DropShelfPlugin: PurahPodPlugin {
                         Task { @MainActor in
                             if let item = state.addDroppedTextSnippet(text) {
                                 context.performHaptic(.alignment)
-                                context.showToast("Stashed \(item.name)", "tray.and.arrow.down.fill")
+                                context.showToast(String(format: "shelf.stashed".localized, item.name), "tray.and.arrow.down.fill")
                             }
                         }
                     }
