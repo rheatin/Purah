@@ -44,6 +44,19 @@ public enum TerminalShellIntegration {
         set { completionSlot.withLock { $0 = newValue } }
     }
 
+    /// Called when the shell has started a command (`preexec`).
+    ///
+    /// The shell process stays alive between commands, so "a command is
+    /// running" cannot be read off the process; this is the only signal that
+    /// knows the difference. The terminal plugin turns it into the host's
+    /// activity sweep.
+    private static let startSlot = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+
+    public static var onCommandStarted: (@Sendable () -> Void)? {
+        get { startSlot.withLock { $0 } }
+        set { startSlot.withLock { $0 = newValue } }
+    }
+
     /// Installs the files and brings the listener up ahead of time.
     ///
     /// `NWListener` reports readiness asynchronously, and `prepare` has to wait
@@ -80,6 +93,11 @@ public enum TerminalShellIntegration {
         if bridge.onCommandFinished == nil {
             bridge.onCommandFinished = { _ in
                 completionSlot.withLock { $0 }?()
+            }
+        }
+        if bridge.onCommandStarted == nil {
+            bridge.onCommandStarted = {
+                startSlot.withLock { $0 }?()
             }
         }
         _ = ZshSuggestionIntegration.installIfNeeded()

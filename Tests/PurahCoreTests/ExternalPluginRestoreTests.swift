@@ -8,7 +8,7 @@ import Foundation
 /// down is subtle: without restoration, the pod looks orphaned at startup and
 /// `pruneOrphanedPods` deletes the user's layout as if the plugin had been
 /// uninstalled.
-@Suite("External Plugin Restore")
+@Suite("External Plugin Restore", .serialized)
 @MainActor
 struct ExternalPluginRestoreTests {
 
@@ -58,30 +58,61 @@ struct ExternalPluginRestoreTests {
                    "Build Examples/PurahExamplePlugin first"))
     func testRestoreKeepsPod() throws {
         let dylib = try #require(Self.builtExampleDylib)
-        let loader = PluginDynamicLoader.shared
+        let previousProcess = PluginDynamicLoader()
         let defaults = UserDefaults(suiteName: "test_restore_pod_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         // Simulate a previous launch that loaded the plugin and laid it out.
-        let first = try loader.loadPlugin(from: dylib)
+        let first = try previousProcess.loadPlugin(from: dylib)
         let pluginId = first.manifest.id
         store.pods.append(first.manifest.makeDefaultSlotPod(isEnabled: true))
-        loader.rememberInstalled(path: dylib.path, for: pluginId)
+        previousProcess.rememberInstalled(path: dylib.path, for: pluginId)
         store.marketManager.install(id: pluginId)
         // Simulate process death: the dylib handle is released, but nothing
         // calls `unregister` (that is the explicit-uninstall path, and it
         // deliberately forgets the persisted path).
-        loader.unloadPlugin(id: pluginId)
+        previousProcess.unloadPlugin(id: pluginId)
+        let relaunchedProcess = PluginDynamicLoader()
         defer {
             PluginRegistry.shared.unregister(id: pluginId, store: store)
-            loader.forgetInstalled(pluginId: pluginId)
+            PluginRegistry.shared.unregisterCatalog(id: pluginId)
+            relaunchedProcess.forgetInstalled(pluginId: pluginId)
+            relaunchedProcess.unloadPlugin(id: pluginId)
         }
 
         // Next launch: restore first, then bind — the order AppDelegate uses.
-        loader.restoreInstalledPlugins(into: store)
+        relaunchedProcess.restoreInstalledPlugins(into: store)
         PluginRegistry.shared.bindStore(store)
 
         #expect(PluginRegistry.shared.plugin(for: pluginId) != nil)
         #expect(store.pods.contains { $0.id == pluginId })
+    }
+
+    @Test("Reloading an already mapped dylib path fails instead of using stale code",
+          .enabled(if: ExternalPluginRestoreTests.builtExampleDylib != nil,
+                   "Build Examples/PurahExamplePlugin first"))
+    func testReloadSamePathRequiresRestart() throws {
+        let source = try #require(Self.builtExampleDylib)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-plugin-reload-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let copied = directory.appendingPathComponent(source.lastPathComponent)
+        try FileManager.default.copyItem(at: source, to: copied)
+
+        let loader = PluginDynamicLoader.shared
+        let plugin = try loader.loadPlugin(from: copied)
+        loader.unloadPlugin(id: plugin.manifest.id)
+
+        do {
+            _ = try loader.loadPlugin(from: copied)
+            Issue.record("Reloading a resident path must not report success")
+        } catch let error as PluginDynamicLoadError {
+            guard case .restartRequired = error else {
+                Issue.record("Expected restartRequired, got \(error)")
+                return
+            }
+        }
     }
 }

@@ -129,6 +129,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.previous".localized)
+                        .accessibilityLabel("music.previous".localized)
 
                         Button {
                             state.togglePlayPause(store: store)
@@ -145,6 +146,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(HeroPlayPauseButtonStyle())
                         .help("music.playPause".localized)
+                        .accessibilityLabel("music.playPause".localized)
 
                         Button {
                             state.nextTrack(store: store)
@@ -156,6 +158,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.next".localized)
+                        .accessibilityLabel("music.next".localized)
                     }
                 }
 
@@ -218,6 +221,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.previous".localized)
+                        .accessibilityLabel("music.previous".localized)
 
                         Button {
                             state.togglePlayPause(store: store)
@@ -234,6 +238,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(HeroPlayPauseButtonStyle())
                         .help("music.playPause".localized)
+                        .accessibilityLabel("music.playPause".localized)
 
                         Button {
                             state.nextTrack(store: store)
@@ -245,6 +250,7 @@ public struct MusicDrawerView: View {
                         }
                         .buttonStyle(.plain)
                         .help("music.next".localized)
+                        .accessibilityLabel("music.next".localized)
                     }
                 }
 
@@ -393,6 +399,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -4))
                 .help("music.previous".localized)
+                .accessibilityLabel("music.previous".localized)
                 .onHover { isBackwardHovered = $0 }
 
                 Button {
@@ -412,6 +419,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
                 .help("music.playPause".localized)
+                .accessibilityLabel("music.playPause".localized)
 
                 Button {
                     state.nextTrack(store: store)
@@ -427,6 +435,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 4))
                 .help("music.next".localized)
+                .accessibilityLabel("music.next".localized)
                 .onHover { isForwardHovered = $0 }
             }
             .frame(maxWidth: .infinity)
@@ -557,6 +566,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: -5))
                 .help("music.previous".localized)
+                .accessibilityLabel("music.previous".localized)
 
                 Button {
                     state.togglePlayPause(store: store)
@@ -575,6 +585,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(HeroPlayPauseButtonStyle())
                 .help("music.playPause".localized)
+                .accessibilityLabel("music.playPause".localized)
 
                 Button {
                     state.nextTrack(store: store)
@@ -586,6 +597,7 @@ public struct MusicDrawerView: View {
                 }
                 .buttonStyle(MediaNudgeButtonStyle(nudgeOffset: 5))
                 .help("music.next".localized)
+                .accessibilityLabel("music.next".localized)
             }
             .frame(maxWidth: .infinity)
         }
@@ -866,6 +878,21 @@ public struct NativeMediaProgressBar: View {
                         onSeek(final)
                     }
             )
+            // A pointer-drag-only control has no keyboard path; VoiceOver's
+            // adjustable action is the equivalent, in 2% steps.
+            .accessibilityElement()
+            .accessibilityLabel("music.progress".localized)
+            .accessibilityValue("\(Int(progress * 100))%")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    onSeek(min(progress + 0.02, 1.0))
+                case .decrement:
+                    onSeek(max(progress - 0.02, 0.0))
+                @unknown default:
+                    break
+                }
+            }
         }
         .frame(height: height)
     }
@@ -935,6 +962,14 @@ public struct LyricsDisplayView: View {
     public let palette: ThemePalette
     public let maxHeight: CGFloat
     public let onSeek: (Double) -> Void
+
+    private static let timestampRegex = try? NSRegularExpression(
+        pattern: "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\]",
+        options: []
+    )
+    private static let parseCacheLock = NSLock()
+    nonisolated(unsafe) private static var cachedLyricsRaw: String?
+    nonisolated(unsafe) private static var cachedLyricsParsed: [ParsedLyricLine] = []
 
     private var parsedLines: [ParsedLyricLine] {
         Self.parseLyrics(rawLyrics)
@@ -1037,9 +1072,17 @@ public struct LyricsDisplayView: View {
     }
 
     public static func parseLyrics(_ raw: String) -> [ParsedLyricLine] {
+        Self.parseCacheLock.lock()
+        if Self.cachedLyricsRaw == raw {
+            let cached = Self.cachedLyricsParsed
+            Self.parseCacheLock.unlock()
+            return cached
+        }
+        Self.parseCacheLock.unlock()
+
         let rawLines = raw.components(separatedBy: .newlines)
         var parsed: [ParsedLyricLine] = []
-        let regex = try? NSRegularExpression(pattern: "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\]", options: [])
+        let regex = Self.timestampRegex
 
         var lineId = 0
         for line in rawLines {
@@ -1076,7 +1119,12 @@ public struct LyricsDisplayView: View {
             }
         }
 
-        return parsed.sorted(by: { $0.time < $1.time })
+        let sorted = parsed.sorted(by: { $0.time < $1.time })
+        Self.parseCacheLock.lock()
+        Self.cachedLyricsRaw = raw
+        Self.cachedLyricsParsed = sorted
+        Self.parseCacheLock.unlock()
+        return sorted
     }
 
     public static func activeLyricLine(in raw: String, at currentTime: Double) -> String? {

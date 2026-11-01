@@ -147,6 +147,12 @@ extension PurahWorkspaceStore {
         if let legacyData = defaults.data(forKey: "purah.vitals.thresholds") {
             if let decoded = try? JSONDecoder().decode(VitalsColorThresholds.self, from: legacyData) {
                 ScopedPluginStorage(pluginId: "vitals", defaults: defaults).setCodable(decoded, forKey: "thresholds")
+            } else {
+                defaults.set(legacyData, forKey: "purah.vitals.thresholds.corrupt")
+                DiagnosticLogger.shared.warn(
+                    "Workspace",
+                    "purah.vitals.thresholds could not be decoded; the original is kept under purah.vitals.thresholds.corrupt"
+                )
             }
             defaults.removeObject(forKey: "purah.vitals.thresholds")
         }

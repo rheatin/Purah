@@ -11,16 +11,20 @@ import PurahCore
 @MainActor
 public final class ShelfThumbnailCache {
     public static let shared = ShelfThumbnailCache()
-    private var cache: [String: NSImage] = [:]
+    private let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 300
+        return cache
+    }()
 
     public init() {}
 
     public func cachedThumbnail(for path: String, size: CGSize? = nil) -> NSImage? {
         if let size {
             let key = "\(Int(size.width))x\(Int(size.height))_\(path)"
-            if let img = cache[key] { return img }
+            if let img = cache.object(forKey: key as NSString) { return img }
         }
-        return cache[path]
+        return cache.object(forKey: path as NSString)
     }
 
     @MainActor
@@ -31,7 +35,7 @@ public final class ShelfThumbnailCache {
     ) {
         let path = url.standardizedFileURL.path
         let key = "\(Int(size.width))x\(Int(size.height))_\(path)"
-        if let existing = cache[key] {
+        if let existing = cache.object(forKey: key as NSString) {
             completion(existing)
             return
         }
@@ -49,9 +53,9 @@ public final class ShelfThumbnailCache {
             let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
             let image = representation?.nsImage
             if let image {
-                self.cache[key] = image
+                self.cache.setObject(image, forKey: key as NSString)
                 if size.width <= 32 {
-                    self.cache[path] = image
+                    self.cache.setObject(image, forKey: path as NSString)
                 }
             }
             completion(image)
@@ -1554,7 +1558,7 @@ public struct ShelfFileRowView: View {
                     .accessibilityLabel("dropshelf.airdrop".localized)
 
                     Button(action: onReveal) {
-                        Image(systemName: "magnifyingglass")
+                        Image(systemName: "folder.fill")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.gray.opacity(1.0))
                             .frame(width: 18, height: 18)
@@ -1621,6 +1625,21 @@ public struct ShelfFileRowView: View {
         .accessibilityLabel("dropshelf.doubleClickHint".localized)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        // The row's controls only exist while the pointer is on it, which
+        // leaves keyboard and VoiceOver users no way to reach them. A context
+        // menu adds that path without changing the resting row.
+        .contextMenu {
+            Button {
+                onReveal()
+            } label: {
+                Label("dropshelf.reveal".localized, systemImage: "folder")
+            }
+            Button(role: .destructive) {
+                onRemove()
+            } label: {
+                Label("dropshelf.remove".localized, systemImage: "trash")
+            }
+        }
         .onChange(of: isRowHovered) { _, hovered in
             if hovered {
                 if !isDragging {

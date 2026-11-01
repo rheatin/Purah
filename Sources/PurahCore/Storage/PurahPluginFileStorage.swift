@@ -56,6 +56,18 @@ public struct PurahPluginFileStorage: Sendable {
         })
     }
 
+    public static func isValidPluginId(_ id: String) -> Bool {
+        guard !id.isEmpty,
+              id.count <= 64,
+              !id.hasPrefix("."),
+              !id.contains(".."),
+              !id.contains("/") else { return false }
+        let allowed = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+        )
+        return id.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
     public init(pluginId: String, customBaseDirectory: URL? = nil) {
         self.pluginId = pluginId
         let base = customBaseDirectory

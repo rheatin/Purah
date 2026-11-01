@@ -248,7 +248,7 @@ public struct TodoPlugin: PurahPodPlugin {
                             .transition(.opacity)
                     }
                 },
-                footerCaption: "Reminders",
+                footerCaption: "todo.reminders".localized,
                 actionIcon: "arrow.up.forward.app",
                 actionTitle: "todo.overview.openApp".localized,
                 onAction: {

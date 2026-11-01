@@ -11,7 +11,6 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
     public let baseWidth: CGFloat
     public let color: Color
     public let alertStyle: PluginAlertStyle
-    public let onHoverDismiss: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -20,15 +19,13 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
         edge: MountEdge,
         baseWidth: CGFloat,
         color: Color,
-        alertStyle: PluginAlertStyle,
-        onHoverDismiss: @escaping () -> Void = {}
+        alertStyle: PluginAlertStyle
     ) {
         self.isAlerting = isAlerting
         self.edge = edge
         self.baseWidth = baseWidth
         self.color = color
         self.alertStyle = alertStyle
-        self.onHoverDismiss = onHoverDismiss
     }
 
     public func body(content: Content) -> some View {
@@ -53,23 +50,20 @@ public struct DynamicAttentionBeaconModifier: ViewModifier {
                     }
                 }
             }
-            .onHover { isHovered in
-                if isHovered && isAlerting {
-                    SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-                    onHoverDismiss()
-                }
-            }
     }
 }
 
 public extension View {
+    /// An alert keeps glowing until the drawer opens. There is deliberately no
+    /// hover dismissal: hovering the rail already opens the drawer, so a
+    /// separate "the cursor looked at me" signal only cleared the alert a
+    /// fraction of a second before the drawer did it anyway.
     func dynamicAttentionBeacon(
         isAlerting: Bool,
         edge: MountEdge,
         baseWidth: CGFloat,
         color: Color,
-        alertStyle: PluginAlertStyle,
-        onHoverDismiss: @escaping () -> Void = {}
+        alertStyle: PluginAlertStyle
     ) -> some View {
         self.modifier(
             DynamicAttentionBeaconModifier(
@@ -77,8 +71,7 @@ public extension View {
                 edge: edge,
                 baseWidth: baseWidth,
                 color: color,
-                alertStyle: alertStyle,
-                onHoverDismiss: onHoverDismiss
+                alertStyle: alertStyle
             )
         )
     }

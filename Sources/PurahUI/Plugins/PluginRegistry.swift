@@ -122,8 +122,10 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     }
 
     public func unregister(id: String, store: PurahWorkspaceStore? = nil) {
+        let isDynamicallyLoaded = PluginDynamicLoader.shared.isDynamicallyLoaded(id: id)
         stopPolling(for: id)
         PluginDynamicLoader.shared.forgetInstalled(pluginId: id)
+        PluginDynamicLoader.shared.unloadPlugin(id: id)
         if let _ = registeredPlugins.removeValue(forKey: id) {
             let targetStore = store ?? boundStore
             if let targetStore {
@@ -132,6 +134,12 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
             } else {
                 mountedPluginIds.remove(id)
             }
+        }
+        // A built-in implementation stays in the catalog so the market can
+        // install it again in this session. A dynamic implementation is tied
+        // to the mapped image we just retired, so its catalog entry must go.
+        if isDynamicallyLoaded {
+            unregisterCatalog(id: id)
         }
     }
 
