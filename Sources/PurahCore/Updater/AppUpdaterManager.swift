@@ -364,9 +364,10 @@ public final class AppUpdaterManager {
     /// `false` for an ad-hoc build: its signature is only a checksum over the
     /// bundle, and anyone can produce one. The update still installs, but the
     /// dialog says so instead of implying a stronger guarantee than exists.
-    /// Starts as the explicit test override (if one was supplied), then is
-    /// resolved from the bundle before an installable update is published.
-    /// Rendering the dialog therefore never spawns `codesign` from its body.
+    /// Starts as the explicit test override (if one was supplied); otherwise
+    /// it stays `false` until the bundle is resolved off-main before an
+    /// installable update is published. Initialization never runs `codesign`.
+    /// Rendering the dialog therefore never spawns a child process either.
     public private(set) var hasVerifiedPublisher: Bool
 
     public init(
@@ -385,7 +386,7 @@ public final class AppUpdaterManager {
         self.openURL = openURL
         self.defaults = defaults
         self.checkDeadline = checkDeadline
-        self.hasVerifiedPublisher = expectedTeamIdentifier != nil
+        self.hasVerifiedPublisher = explicitTeamIdentifier != nil
 
         // Never inherit another test's or the person's answer in a test run.
         if !PurahWorkspaceStore.isTestingEnvironment,
