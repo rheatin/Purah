@@ -1554,7 +1554,7 @@ public struct ShelfFileRowView: View {
                     .accessibilityLabel("dropshelf.airdrop".localized)
 
                     Button(action: onReveal) {
-                        Image(systemName: "magnifyingglass")
+                        Image(systemName: "folder.fill")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.gray.opacity(1.0))
                             .frame(width: 18, height: 18)
@@ -1621,6 +1621,21 @@ public struct ShelfFileRowView: View {
         .accessibilityLabel("dropshelf.doubleClickHint".localized)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        // The row's controls only exist while the pointer is on it, which
+        // leaves keyboard and VoiceOver users no way to reach them. A context
+        // menu adds that path without changing the resting row.
+        .contextMenu {
+            Button {
+                onReveal()
+            } label: {
+                Label("dropshelf.reveal".localized, systemImage: "folder")
+            }
+            Button(role: .destructive) {
+                onRemove()
+            } label: {
+                Label("dropshelf.remove".localized, systemImage: "trash")
+            }
+        }
         .onChange(of: isRowHovered) { _, hovered in
             if hovered {
                 if !isDragging {
