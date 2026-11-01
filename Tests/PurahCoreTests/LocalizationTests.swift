@@ -116,7 +116,8 @@ struct LocalizationTests {
             // command, so nothing asks for `terminal.done.*` any more.
             // +2: the onboarding guide now asks before it replaces the layout.
             // +1: the vitals sparkline names its click-to-cycle hint.
-            .traditionalChinese: 581,
+            // +8: Traditional Chinese now covers the alert style titles and subtitles.
+            .traditionalChinese: 589,
             .japanese: 71,
             .korean: 71,
             .french: 71,

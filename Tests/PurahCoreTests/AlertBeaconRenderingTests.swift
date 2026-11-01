@@ -65,6 +65,7 @@ struct AlertBeaconRenderingTests {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
+        disableLiveSystemAlertPods(in: store)
         let podId = try #require(store.pods.first(where: \.isEnabled)?.id)
 
         #expect(!store.isAnyRailAlerting)
@@ -87,6 +88,7 @@ struct AlertBeaconRenderingTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let screen = try #require(NSScreen.main ?? NSScreen.screens.first)
         let store = PurahWorkspaceStore(userDefaults: defaults)
+        disableLiveSystemAlertPods(in: store)
         let podId = try #require(store.pods.first(where: \.isEnabled)?.id)
         let window = AmbientRailWindow(edge: .right, screen: screen, store: store)
         defer { window.close() }
@@ -575,6 +577,14 @@ struct AlertBeaconRenderingTests {
         for _ in 0..<200 {
             if condition() { return }
             try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func disableLiveSystemAlertPods(in store: PurahWorkspaceStore) {
+        // Calendar and Vitals can source alerts from live system services.
+        let liveSystemPodIds: Set<String> = ["calendar", "vitals"]
+        for pod in store.pods where liveSystemPodIds.contains(pod.id) && pod.isEnabled {
+            store.togglePodEnabled(id: pod.id)
         }
     }
 
