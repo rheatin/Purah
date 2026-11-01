@@ -62,7 +62,9 @@ public struct TerminalPlugin: PurahPodPlugin {
         TerminalShellIntegration.onCommandCompletion = { [weak store, weak state] in
             Task { @MainActor in
                 state?.setCommandRunning(false)
-                guard let store, store.activeDrawerPodId != "terminal" else { return }
+                guard let store,
+                      store.activeDrawerPodId != "terminal",
+                      !store.isItemPinned(id: "terminal") else { return }
                 store.triggerAlert(id: "terminal")
             }
         }

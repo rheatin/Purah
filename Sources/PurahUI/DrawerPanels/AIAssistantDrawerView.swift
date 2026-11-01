@@ -141,30 +141,9 @@ public struct AIAssistantSteppedDrawerView: View {
                     .frame(width: barW, height: slotH)
 
                 if isRoleRunning {
-                    TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
-                        let t = timeline.date.timeIntervalSinceReferenceDate
-                        let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
-                        let spotH = max(slotH * 0.28, 14.0)
-                        let spotY = progress * (slotH + spotH) - spotH
-
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: .clear, location: 0.0),
-                                        .init(color: .white.opacity(0.85), location: 0.5),
-                                        .init(color: .clear, location: 1.0)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .frame(width: barW, height: spotH)
-                            .offset(y: spotY)
-                            .clipped()
-                    }
-                    .frame(width: barW, height: slotH)
-                    .clipped()
+                    PurahActivitySweepView(isAnimated: !reduceMotion)
+                        .frame(width: barW, height: slotH)
+                        .allowsHitTesting(false)
                 }
             }
             .frame(width: barW, height: slotH)

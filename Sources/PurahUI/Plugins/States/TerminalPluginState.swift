@@ -3,6 +3,7 @@ import SwiftUI
 import AppKit
 import Foundation
 import Observation
+import Combine
 import PurahCore
 
 @Observable
@@ -12,6 +13,7 @@ public final class TerminalPluginState: Sendable {
     public var fontSize: Double
     public let storage: any PurahPluginStorage
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
+    @ObservationIgnored private var processRunningCancellable: AnyCancellable?
 
     public var shellName: String {
         TerminalManager.shared.shellName
@@ -85,6 +87,15 @@ public final class TerminalPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
+        processRunningCancellable?.cancel()
+        processRunningCancellable = TerminalManager.shared.$isProcessRunning
+            .removeDuplicates()
+            .sink { [weak self] isRunning in
+                guard !isRunning else { return }
+                MainActor.assumeIsolated {
+                    self?.setCommandRunning(false)
+                }
+            }
         if !store._terminalFontFamily.isEmpty {
             self.fontFamily = store._terminalFontFamily
         }
@@ -94,6 +105,8 @@ public final class TerminalPluginState: Sendable {
     }
 
     public func unmount(store: PurahWorkspaceStore) {
+        processRunningCancellable?.cancel()
+        processRunningCancellable = nil
         isCommandRunning = false
         TerminalManager.shared.stopProcess()
         save()
