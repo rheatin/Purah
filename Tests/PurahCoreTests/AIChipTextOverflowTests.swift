@@ -1,6 +1,7 @@
 // Tests/PurahCoreTests/AIChipTextOverflowTests.swift
 import Testing
 import AppKit
+import PurahCore
 @testable import PurahUI
 
 @MainActor
@@ -89,6 +90,70 @@ struct AIChipTextOverflowTests {
             font: font,
             lineSpacing: 2,
             maxLines: 0
+        ))
+    }
+
+    @Test("TextKit line height includes the paragraph spacing")
+    func testLineHeightIncludesSpacing() {
+        for cardHeight in [CGFloat(62), 63, 64, 65] {
+            let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardHeight)
+            let font = NSFont.systemFont(ofSize: 10 * scale)
+            let lineHeight = AIChipTextOverflow.lineHeight(font: font, lineSpacing: 2)
+            let minimumLineHeight = font.pointSize * 1.25
+
+            #expect(lineHeight > minimumLineHeight)
+        }
+    }
+
+    @Test("Reported geometry truncates a four-line answer")
+    func testReportedGeometryTruncatesFourLineAnswer() throws {
+        let cardHeight: CGFloat = 62
+        let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardHeight)
+        let font = NSFont.systemFont(ofSize: 10 * scale)
+        let text = (1...4).map { "Line \($0)" }.joined(separator: "\n")
+        let lineCount = try #require(AIChipTextOverflow.lineCount(
+            text: text,
+            width: 390,
+            font: font,
+            lineSpacing: 2
+        ))
+        let lineHeight = AIChipTextOverflow.lineHeight(font: font, lineSpacing: 2)
+        let availableHeight = cardHeight - 4
+        let maxLines = max(1, Int(floor(availableHeight / lineHeight)))
+
+        #expect(lineCount == 4)
+        #expect(AIChipTextOverflow.isTruncated(
+            text: text,
+            width: 390,
+            font: font,
+            lineSpacing: 2,
+            maxLines: maxLines
+        ))
+    }
+
+    @Test("Reported geometry does not truncate a two-line answer")
+    func testReportedGeometryFitsTwoLineAnswer() throws {
+        let cardHeight: CGFloat = 62
+        let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardHeight)
+        let font = NSFont.systemFont(ofSize: 10 * scale)
+        let text = "Line 1\nLine 2"
+        let lineCount = try #require(AIChipTextOverflow.lineCount(
+            text: text,
+            width: 390,
+            font: font,
+            lineSpacing: 2
+        ))
+        let lineHeight = AIChipTextOverflow.lineHeight(font: font, lineSpacing: 2)
+        let availableHeight = cardHeight - 4
+        let maxLines = max(1, Int(floor(availableHeight / lineHeight)))
+
+        #expect(lineCount == 2)
+        #expect(!AIChipTextOverflow.isTruncated(
+            text: text,
+            width: 390,
+            font: font,
+            lineSpacing: 2,
+            maxLines: maxLines
         ))
     }
 }

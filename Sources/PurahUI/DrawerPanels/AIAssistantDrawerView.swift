@@ -12,6 +12,14 @@ private struct AIContentColumnWidthPreferenceKey: PreferenceKey {
     }
 }
 
+private struct AIContentColumnHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Composite Full Drawer View
 public struct AIAssistantDrawerView: View {
     @Bindable public var state: AIAssistantPluginState
@@ -65,6 +73,7 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isSteppedDropTargeted: Bool = false
     @State private var isContentHovered: Bool = false
     @State private var measuredContentWidth: CGFloat? = nil
+    @State private var measuredContentHeight: CGFloat? = nil
     @State private var currentStreamTask: Task<Void, Never>? = nil
     @State private var currentRunID = UUID()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -102,8 +111,10 @@ public struct AIAssistantSteppedDrawerView: View {
         let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardH)
         let iconSize = 26 * scale
         let font = 10 * scale
-        let lineH = font * 1.25 + 2
-        let maxLines = max(1, Int(floor((cardH - 4) / lineH)))
+        let previewFont = NSFont.systemFont(ofSize: font)
+        let availableHeight = max(measuredContentHeight ?? (cardH - 4), 0)
+        let lineH = AIChipTextOverflow.lineHeight(font: previewFont, lineSpacing: 2)
+        let maxLines = max(1, Int(floor(availableHeight / lineH)))
         let isPreviewPinned = ClipboardHoverPreviewController.shared.isPinned(id: "ai-\(role.id)")
         // The eye stays mounted while its panel is pinned: clearing the answer
         // would otherwise unmount the only control that can unpin it.
@@ -112,7 +123,6 @@ public struct AIAssistantSteppedDrawerView: View {
         let inlineToolsWidth = showsInlineTools ? 32 + 12 * scale : 0
         let contentW = max(drawerW - 30 - iconSize - 12 * scale - headerToolsWidth - inlineToolsWidth, 1)
         let previewItem = ClipboardItem(id: "ai-\(role.id)", type: .text(roleOutput))
-        let previewFont = NSFont.systemFont(ofSize: font)
         let isPreviewAvailable: Bool = {
             guard !isRoleRunning, !roleOutput.isEmpty else { return false }
             // The arithmetic estimate is only the pre-measurement fallback.
@@ -251,15 +261,23 @@ public struct AIAssistantSteppedDrawerView: View {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(isSteppedDropTargeted ? roleColor.opacity(0.14) : Color.clear)
                             GeometryReader { proxy in
-                                Color.clear.preference(
-                                    key: AIContentColumnWidthPreferenceKey.self,
-                                    value: proxy.size.width
-                                )
+                                Color.clear
+                                    .preference(
+                                        key: AIContentColumnWidthPreferenceKey.self,
+                                        value: proxy.size.width
+                                    )
+                                    .preference(
+                                        key: AIContentColumnHeightPreferenceKey.self,
+                                        value: proxy.size.height
+                                    )
                             }
                         }
                     )
                     .onPreferenceChange(AIContentColumnWidthPreferenceKey.self) { width in
                         measuredContentWidth = width
+                    }
+                    .onPreferenceChange(AIContentColumnHeightPreferenceKey.self) { height in
+                        measuredContentHeight = height > 0 ? height : nil
                     }
                     .onHover { hovering in
                         isContentHovered = hovering

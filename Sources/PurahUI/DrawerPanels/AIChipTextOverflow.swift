@@ -8,6 +8,39 @@ import Foundation
 /// fragments and the paragraph spacing applied by `Text(lineSpacing:)`, so an
 /// answer that visibly ends in an ellipsis can still measure as fitting.
 enum AIChipTextOverflow {
+    static func lineHeight(font: NSFont, lineSpacing: CGFloat) -> CGFloat {
+        guard font.pointSize > 0, lineSpacing.isFinite else { return 0 }
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = max(0, lineSpacing)
+        paragraph.lineBreakMode = .byWordWrapping
+
+        let textStorage = NSTextStorage(
+            string: "A",
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraph
+            ]
+        )
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            size: CGSize(width: 1_000_000, height: CGFloat.greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        textContainer.maximumNumberOfLines = 1
+        textContainer.lineBreakMode = NSLineBreakMode.byWordWrapping
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let glyphIndex = layoutManager.glyphRange(for: textContainer).location
+        let fragmentHeight = layoutManager.lineFragmentRect(
+            forGlyphAt: glyphIndex,
+            effectiveRange: nil
+        ).height
+        return fragmentHeight + max(0, lineSpacing)
+    }
+
     static func lineCount(
         text: String,
         width: CGFloat,
