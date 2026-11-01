@@ -62,6 +62,25 @@ struct ActivitySweepRenderingTests {
         #expect(anim.duration == 1.4)
     }
 
+    @Test("A size change keeps the sweep at its current phase")
+    func testResizePreservesPhase() async throws {
+        let view = makeView(isAnimated: true)
+        let original = try #require(
+            view.layer?.sublayers?.first?.animation(forKey: "sweep") as? CABasicAnimation
+        )
+        #expect(original.timeOffset == 0)
+
+        try await Task.sleep(for: .milliseconds(220))
+        view.frame = CGRect(x: 0, y: 0, width: 8, height: 160)
+        view.layoutSubtreeIfNeeded()
+
+        let resized = try #require(
+            view.layer?.sublayers?.first?.animation(forKey: "sweep") as? CABasicAnimation
+        )
+        #expect(resized.timeOffset > 0.1 * resized.duration)
+        #expect(resized.repeatCount == .infinity)
+    }
+
     @Test("The band starts above the bar and ends below it")
     func testBandTravel() throws {
         let view = makeView(isAnimated: true)

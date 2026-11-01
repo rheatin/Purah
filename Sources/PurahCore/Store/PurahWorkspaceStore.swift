@@ -2819,12 +2819,13 @@ public final class PurahWorkspaceStore {
                 var matchedSubItem = false
                 for idx in 0..<count {
                     let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
-                    let subId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: pod.id) : provider.subItemId(at: idx, store: self)
+                    let smartFoldID = PurahPluginSubItem.moreItemsID(forPod: pod.id)
+                    let subId = isSmartFoldSlot ? smartFoldID : provider.subItemId(at: idx, store: self)
                     guard let subId = subId else { continue }
                     let itemActive = (activeDrawerItemId == subId)
-                        || (isSmartFoldSlot && PurahPluginSubItem.isMoreItemsID(activeDrawerItemId ?? ""))
+                        || (isSmartFoldSlot && activeDrawerItemId == smartFoldID)
                     let itemPinned = isItemPinned(id: subId)
-                        || (isSmartFoldSlot && pinnedDrawerItemIds.contains(where: PurahPluginSubItem.isMoreItemsID))
+                        || (isSmartFoldSlot && isItemPinned(id: smartFoldID))
 
                     if itemActive || itemPinned {
                         matchedSubItem = true

@@ -61,6 +61,7 @@ final class ActivitySweepLayerView: NSView {
 
     private var lastSize: CGSize = .zero
     private var lastAnimated: Bool?
+    private var animationEpoch: CFTimeInterval = 0
 
     /// One traversal per 1.4s, the period the AI Assistant's own sweep used.
     private static let cycle: CFTimeInterval = 1.4
@@ -109,6 +110,7 @@ final class ActivitySweepLayerView: NSView {
         let size = bounds.size
         let sizeChanged = size != lastSize
         let animationChanged = lastAnimated != isAnimated
+        let animationMissing = band.animation(forKey: Self.animationKey) == nil
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -117,15 +119,30 @@ final class ActivitySweepLayerView: NSView {
         band.cornerRadius = min(size.width / 2, 4)
         CATransaction.commit()
 
-        guard sizeChanged || animationChanged || band.animation(forKey: Self.animationKey) == nil else {
+        guard sizeChanged || animationChanged || animationMissing else {
             return
         }
+        let phase = animationChanged ? 0 : currentAnimationPhase()
         lastSize = size
         lastAnimated = isAnimated
-        restartAnimation()
+        installAnimation(phase: phase)
     }
 
-    private func restartAnimation() {
+    /// A size change must update the from/to endpoints without snapping the
+    /// presentation position back to the top. The epoch lets a rebuilt
+    /// animation pick up at the same fraction of its 1.4s cycle.
+    private func currentAnimationPhase() -> Double {
+        guard isAnimated,
+              lastAnimated == true,
+              animationEpoch > 0,
+              band.animation(forKey: Self.animationKey) != nil else {
+            return 0
+        }
+        let elapsed = max(CACurrentMediaTime() - animationEpoch, 0)
+        return elapsed.truncatingRemainder(dividingBy: Self.cycle) / Self.cycle
+    }
+
+    private func installAnimation(phase: Double) {
         band.removeAnimation(forKey: Self.animationKey)
 
         let width = bounds.width
@@ -138,6 +155,7 @@ final class ActivitySweepLayerView: NSView {
         guard isAnimated, height > 0 else {
             // Reduce Motion: one still band, faint enough to read as status
             // rather than as a frozen frame of a moving thing.
+            animationEpoch = 0
             band.opacity = 0.45
             band.position = CGPoint(x: width / 2, y: height / 2)
             return
@@ -153,7 +171,9 @@ final class ActivitySweepLayerView: NSView {
         anim.repeatCount = .infinity
         anim.timingFunction = CAMediaTimingFunction(name: .linear)
         anim.isRemovedOnCompletion = false
+        anim.timeOffset = phase * Self.cycle
         band.position = CGPoint(x: width / 2, y: height + bandH / 2)
         band.add(anim, forKey: Self.animationKey)
+        animationEpoch = CACurrentMediaTime() - phase * Self.cycle
     }
 }
