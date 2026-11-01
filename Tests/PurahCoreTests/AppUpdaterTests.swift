@@ -1,8 +1,11 @@
 // Tests/PurahCoreTests/AppUpdaterTests.swift
 import Testing
 import Foundation
+import AppKit
+import SwiftUI
 @testable import PurahCore
 @testable import PurahApp
+@testable import PurahUI
 
 @Suite("App Updater & Version Tests")
 @MainActor
@@ -82,10 +85,158 @@ struct AppUpdaterTests {
         }
     }
 
+    private final class SequencedJSONProvider: UpdateManifestProviding, @unchecked Sendable {
+        private let lock = NSLock()
+        private var callCount = 0
+        private let delays: [TimeInterval]
+        private let json: [Data]
+
+        init(delays: [TimeInterval], json: [Data]) {
+            self.delays = delays
+            self.json = json
+        }
+
+        func fetchLatestRelease() async throws -> (data: Data, statusCode: Int) {
+            let index = lock.withLock {
+                let current = callCount
+                callCount += 1
+                return current
+            }
+            let delay = index < delays.count ? delays[index] : 0
+            try await Task.sleep(for: .seconds(delay))
+            let payload = json[min(index, json.count - 1)]
+            return (payload, 200)
+        }
+    }
+
     private static func manifestJSON(version: String) -> Data {
         Data("""
         {"version":"\(version)","releaseNotes":"Probe","downloadURL":"https://example.com/Purah.zip"}
         """.utf8)
+    }
+
+    private static func manifestJSON(version: String, sha256: String?) -> Data {
+        let digest = sha256.map { ",\"sha256\":\"\($0)\"" } ?? ""
+        return Data("""
+        {"version":"\(version)","releaseNotes":"Release \(version)","downloadURL":"https://example.com/Purah.zip"\(digest)}
+        """.utf8)
+    }
+
+    @MainActor
+    private final class UpdaterStateProbeView: NSView {
+        var observedState: UpdateCheckState = .idle
+    }
+
+    @MainActor
+    private final class UpdaterStateProbeBox {
+        weak var view: UpdaterStateProbeView?
+    }
+
+    private struct UpdaterStateProbe: NSViewRepresentable {
+        let state: UpdateCheckState
+        let box: UpdaterStateProbeBox
+
+        func makeNSView(context: Context) -> UpdaterStateProbeView {
+            let view = UpdaterStateProbeView()
+            view.observedState = state
+            box.view = view
+            return view
+        }
+
+        func updateNSView(_ view: UpdaterStateProbeView, context: Context) {
+            view.observedState = state
+        }
+    }
+
+    private struct HostedUpdaterProbe: View {
+        let updater: AppUpdaterManager
+        let probe: UpdaterStateProbeBox
+
+        var body: some View {
+            UpdaterStateProbe(state: updater.state, box: probe)
+                .frame(width: 1, height: 1)
+                .opacity(0.001)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private static func waitUntil(
+        timeout: TimeInterval = 2,
+        condition: @MainActor () -> Bool
+    ) async throws -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    @Test("A hosted observable refreshes from checking to update available")
+    func testHostedObservableRefreshesFromCheckingToUpdateAvailable() async throws {
+        let suite = "updater_hosted_refresh_\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let provider = SequencedJSONProvider(
+            delays: [0],
+            json: [Self.manifestJSON(version: "2.1.0", sha256: String(repeating: "ab", count: 32))]
+        )
+        let updater = AppUpdaterManager(
+            currentVersion: "2.0.0",
+            manifestProvider: provider,
+            bundleURL: URL(fileURLWithPath: "/tmp/purah-updater-test-bundle-does-not-exist"),
+            expectedTeamIdentifier: nil,
+            defaults: defaults,
+            checkDeadline: 5
+        )
+        updater.state = .checking
+
+        let probe = UpdaterStateProbeBox()
+        let hosting = NSHostingView(
+            rootView: HostedUpdaterProbe(updater: updater, probe: probe)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 380),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        defer {
+            window.contentView = nil
+        }
+
+        let checkingObserved = try await Self.waitUntil {
+            probe.view?.observedState == .checking
+        }
+        #expect(checkingObserved)
+
+        await updater.checkForUpdates(force: true)
+        let refreshed = try await Self.waitUntil {
+            if case .updateAvailable = updater.state {
+                guard case .updateAvailable = probe.view?.observedState else {
+                    return false
+                }
+                return !updater.isChecking
+            }
+            return false
+        }
+        #expect(refreshed)
+    }
+
+    @Test("The updater dialog cannot resolve code signing in its body")
+    func testUpdaterDialogDoesNotResolveSigningInBody() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/PurahUI/Updater/AppUpdateDialogView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        #expect(!source.contains("expectedTeamIdentifier"))
+        #expect(!source.contains("CodeSigning"))
     }
 
     @Test("A check that never reports leaves .checking on the deadline")
@@ -120,14 +271,19 @@ struct AppUpdaterTests {
         )
 
         _ = Task { await updater.checkForUpdates(force: true) }
-        try await Task.sleep(for: .milliseconds(300))
+        let checkStarted = try await Self.waitUntil { updater.isChecking }
+        #expect(checkStarted)
+        let watchdogReleased = try await Self.waitUntil {
+            updater.isChecking == false
+        }
+        #expect(watchdogReleased, "the watchdog must release the abandoned check")
 
         // The watchdog has freed the state; the person presses the button.
         await updater.checkForUpdates(force: true)
         #expect(updater.state != .checking)
 
         let settled = updater.state
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(600))
 
         // The first check's reply landed 0.5s in. It asked about a version of
         // the question nobody is showing any more, so it must not repaint.
