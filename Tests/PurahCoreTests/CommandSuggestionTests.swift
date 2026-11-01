@@ -141,6 +141,14 @@ struct CommandSuggestionTests {
         #expect(CommandRiskClassifier.classify("curl -s https://x.sh | sh") == .dangerous)
         #expect(CommandRiskClassifier.classify("git push --force origin main") == .dangerous)
         #expect(CommandRiskClassifier.classify("echo hi && reboot") == .dangerous)
+        // Quotes hide the target from the unquoted scan, and hide the body an
+        // interpreter is about to run.
+        #expect(CommandRiskClassifier.classify(#"rm -rf "/""#) == .dangerous)
+        #expect(CommandRiskClassifier.classify(#"cd /tmp && rm -rf "/""#) == .dangerous)
+        #expect(CommandRiskClassifier.classify(#"sh -c "rm -rf /tmp/x""#) == .dangerous)
+        // The interpreter reached by path, or carrying its flag in a cluster.
+        #expect(CommandRiskClassifier.classify(#"/bin/sh -c "rm -rf /tmp/x""#) == .dangerous)
+        #expect(CommandRiskClassifier.classify(#"zsh -lc "rm -rf /tmp/x""#) == .dangerous)
     }
 
     @Test("Ordinary state changes are caution, not dangerous")

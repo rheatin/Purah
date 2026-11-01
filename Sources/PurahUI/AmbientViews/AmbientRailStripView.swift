@@ -208,6 +208,10 @@ public struct AmbientRailStripView: View {
 
     // MARK: - Plugin Pod Alert Helpers
     private func isPluginPodAlerting(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext) -> Bool {
+        // A working pod already shows the sweep; a second, unrelated pulse on
+        // top of it says "look at me" while the plugin is mid-task, which is
+        // exactly when the person is least able to look.
+        guard plugin.activity(store: store) != .working else { return false }
         if store.isPodAlerting(podId: pod.id) {
             return true
         }
@@ -218,6 +222,8 @@ public struct AmbientRailStripView: View {
         return false
     }
 
+    /// Opening the drawer is the acknowledgment. Nothing else needs to ask
+    /// the person whether they saw the alert.
     private func acknowledgePluginPodAlerts(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext) {
         store.acknowledgeAllAlerts(forPodId: pod.id)
         for sub in plugin.steppedItems(context: context) where sub.state == .alerting {
@@ -303,19 +309,22 @@ public struct AmbientRailStripView: View {
         )
 
         let isPodAlerting = (store.alertStyle != .off) && isPluginPodAlerting(plugin: plugin, pod: pod, context: barContext)
+        let podActivity = plugin.activity(store: store)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             plugin.makeRailBarView(context: barContext)
                 .frame(width: railWidth, height: barSlotH)
+                .dynamicActivitySweep(
+                    isWorking: podActivity == .working,
+                    baseWidth: railWidth
+                )
                 .dynamicAttentionBeacon(
                     isAlerting: isPodAlerting,
                     edge: edge,
                     baseWidth: railWidth,
                     color: color,
                     alertStyle: store.alertStyle
-                ) {
-                    acknowledgePluginPodAlerts(plugin: plugin, pod: pod, context: barContext)
-                }
+                )
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)
                 .contentShape(Rectangle())
                 // The rail bar is an icon-only, gesture-driven target; without

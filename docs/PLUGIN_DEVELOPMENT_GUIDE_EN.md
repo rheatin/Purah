@@ -8,7 +8,7 @@ Purah adopts a modular, decoupled, and strictly type-safe plugin architecture. I
 ## 1. Architectural Overview & Golden Rules
 
 Purah is organized into three decoupled Swift packages and targets:
-- **`PurahCore`**: Foundational models, ergonomic automatic layout engine (`ErgonomicAutoLayoutEngine`), system integrations, and isolated storage engines (`ScopedPluginStorage`, `PurahPluginFileStorage`, `PurahDiskRepository`).
+- **`PurahCore`**: Foundational models, ergonomic automatic layout (`PurahWorkspaceStore.resolvedPhysicalLayout` + `SpringConstraintSolver`), system integrations, and isolated storage engines (`ScopedPluginStorage`, `PurahPluginFileStorage`, `PurahDiskRepository`).
 - **`PurahUI`**: SwiftUI view system, plugin protocols (`PurahPodPlugin`, `PurahPodCapabilityProvider`), runtime context (`PurahPluginContext`), pod presentation kits, and theme management.
 - **`PurahApp`**: AppKit borderless panel lifecycle (`AmbientRailWindow`), edge trigger monitors (`EdgeMouseMonitor`), and multi-screen coordinators.
 

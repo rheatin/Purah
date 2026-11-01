@@ -272,17 +272,18 @@ public final class SystemClipboardSyncService {
 
     public func copyToPasteboard(_ item: ClipboardItem) {
         let pb = NSPasteboard.general
-        pb.clearContents()
 
         switch item.type {
         case .text(let text):
+            pb.clearContents()
             pb.setString(text, forType: .string)
         case .color(let hex, _, _, _, _):
+            pb.clearContents()
             pb.setString(hex.uppercased(), forType: .string)
         case .image(let path, _, _, _, _):
-            if let imgData = try? Data(contentsOf: URL(fileURLWithPath: path)) {
-                pb.setData(imgData, forType: .png)
-            }
+            guard let imgData = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return }
+            pb.clearContents()
+            pb.setData(imgData, forType: .png)
         }
         lastChangeCount = pb.changeCount
     }

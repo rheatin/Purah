@@ -16,6 +16,10 @@ public enum PluginDynamicLoadError: LocalizedError, Sendable {
     case unsignedPlugin(String)
     /// A plugin with this id is already registered.
     case duplicatePluginId(String)
+    /// The current process already mapped this path; `dlopen` would return the
+    /// cached image rather than the rebuilt dylib.
+    case restartRequired(String)
+    case invalidPluginId(String)
     /// A C entry point returned NULL.
     case nullEntryPoint(String)
 
@@ -37,6 +41,10 @@ public enum PluginDynamicLoadError: LocalizedError, Sendable {
             return "Plugin is not signed: \(detail)"
         case .duplicatePluginId(let id):
             return "A plugin with id '\(id)' is already loaded."
+        case .restartRequired(let path):
+            return "Purah already loaded \(path) in this process. Rebuild the plugin, quit Purah, and launch it again to load the new image."
+        case .invalidPluginId(let id):
+            return "Plugin id '\(id)' is invalid."
         case .nullEntryPoint(let symbol):
             return "Plugin entry point '\(symbol)' returned null."
         }
@@ -743,6 +751,9 @@ public final class PluginDynamicLoader {
 
     private var loadedHandles: [String: UnsafeMutableRawPointer] = [:]
     private var loadedDylibPaths: [String: String] = [:]
+    /// `unloadPlugin` deliberately keeps images mapped. Track their canonical
+    /// paths so a second `dlopen` cannot silently return that cached image.
+    private var residentDylibPaths: Set<String> = []
 
     /// Persisted `pluginId → dylib path` for plugins loaded through
     /// `Dev: Load Package...`. Without this the plugin existed only for the
@@ -757,7 +768,9 @@ public final class PluginDynamicLoader {
     /// what it learned here.
     private var steppedItemCache: [String: [PurahPluginSubItem]] = [:]
 
-    private init() {
+    /// Production uses `shared`. A fresh instance models a fresh process in
+    /// tests that need an empty resident-image set.
+    init() {
         installedDylibPaths = UserDefaults.standard.dictionary(forKey: installedPathsKey) as? [String: String] ?? [:]
     }
 
@@ -947,6 +960,13 @@ public final class PluginDynamicLoader {
         guard FileManager.default.fileExists(atPath: path) else {
             throw PluginDynamicLoadError.fileNotFound(path)
         }
+        let canonicalPath = URL(fileURLWithPath: path)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+            .path
+        guard !residentDylibPaths.contains(canonicalPath) else {
+            throw PluginDynamicLoadError.restartRequired(canonicalPath)
+        }
 
         // Trust gate before executing any code from the image: a plugin runs
         // in-process with full user privileges, so a corrupted dylib must
@@ -966,6 +986,7 @@ public final class PluginDynamicLoader {
             let errorMsg = dlerror().map { String(cString: $0) } ?? "Unknown dlopen error"
             throw PluginDynamicLoadError.dlopenFailed(errorMsg)
         }
+        residentDylibPaths.insert(canonicalPath)
 
         try verifyABIVersion(handle: handle, path: path)
 
@@ -979,7 +1000,10 @@ public final class PluginDynamicLoader {
 
             let unmanaged = Unmanaged<AnyObject>.fromOpaque(rawInstance)
             if let plugin = unmanaged.takeRetainedValue() as? any PurahPodPlugin {
-                try rejectDuplicate(id: plugin.manifest.id)
+                guard PurahPluginFileStorage.isValidPluginId(plugin.manifest.id) else {
+                    throw PluginDynamicLoadError.invalidPluginId(plugin.manifest.id)
+                }
+                try rejectDuplicate(id: plugin.manifest.id, path: path)
                 if let bridgeSym = dlsym(handle, "purahSetHostActionBridge") {
                     typealias SetBridgeFunc = @convention(c) (PurahABIHostActionCallback) -> Void
                     let setBridgeFn = unsafeBitCast(bridgeSym, to: SetBridgeFunc.self)
@@ -1003,7 +1027,10 @@ public final class PluginDynamicLoader {
                   let manifest = try? JSONDecoder().decode(PurahPluginManifest.self, from: jsonData) else {
                 throw PluginDynamicLoadError.invalidPluginType
             }
-            try rejectDuplicate(id: manifest.id)
+            guard PurahPluginFileStorage.isValidPluginId(manifest.id) else {
+                throw PluginDynamicLoadError.invalidPluginId(manifest.id)
+            }
+            try rejectDuplicate(id: manifest.id, path: path)
 
             if let bridgeSym = dlsym(handle, "purahSetHostActionBridge") {
                 typealias SetBridgeFunc = @convention(c) (PurahABIHostActionCallback) -> Void
@@ -1154,8 +1181,9 @@ public final class PluginDynamicLoader {
         }
     }
 
-    private func rejectDuplicate(id: String) throws {
-        guard loadedHandles[id] == nil else {
+    private func rejectDuplicate(id: String, path: String) throws {
+        if (loadedHandles[id] != nil || PluginRegistry.shared.catalogPlugin(for: id) != nil),
+           loadedDylibPaths[id] != path {
             throw PluginDynamicLoadError.duplicatePluginId(id)
         }
     }

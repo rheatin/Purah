@@ -258,6 +258,15 @@ public enum ZshSuggestionIntegration {
         __purah_cmd_name="${1%%[[:space:]]*}"
         __purah_now_ms
         __purah_cmd_start="$__purah_now"
+
+        # Tell Purah a command is running, so its pod shows the activity
+        # sweep until the matching precmd. Backgrounded like the completion
+        # ping: the command must not wait for the loopback round trip.
+        if [[ -n "$PURAH_AI_PORT" ]] && command -v curl >/dev/null 2>&1; then
+          /usr/bin/curl -sS -m 2 -X POST \\
+            -H "Authorization: Bearer $PURAH_BRIDGE_TOKEN" \\
+            "http://127.0.0.1:$PURAH_AI_PORT/v1/start" >/dev/null 2>&1 &!
+        fi
       }
 
       __purah_precmd() {

@@ -50,6 +50,42 @@ struct TerminalPluginTests {
         #expect(form["ms"] == "10000")
     }
 
+    @Test("A shell's /v1/start POST reaches the start hook")
+    func testCommandStartedReachesTheHook() async throws {
+        // The pod's activity sweep is driven by this signal, so the route and
+        // the bearer check matter as much as they do for completion.
+        let bridge = TerminalSuggestionBridge()
+        defer { bridge.stop() }
+
+        let started = LockedBox(false)
+        bridge.onCommandStarted = { started.set(true) }
+
+        let endpoint = try #require(bridge.startIfNeeded(), "the bridge did not open a loopback port")
+
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(endpoint.port)/v1/start")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+
+        for _ in 0..<50 where started.get() == false {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(started.get(), "the bridge answered 200 but never called onCommandStarted")
+    }
+
+    @Test("The managed zsh rc pings for started commands, not just finished ones")
+    func testZshRcReportsCommandStart() {
+        // Without the preexec ping the terminal has no "a command is running"
+        // signal at all: the shell process stays alive between commands.
+        let rc = ZshSuggestionIntegration.zshrc
+        #expect(rc.contains("/v1/start"))
+        let preexec = rc.components(separatedBy: "__purah_preexec()").last ?? ""
+        let precmd = preexec.components(separatedBy: "__purah_precmd()").first ?? ""
+        #expect(precmd.contains("/v1/start"), "the start ping belongs in preexec")
+    }
+
     @Test("TerminalPlugin manifest and capability specifications meet ergonomic guidelines")
     func testTerminalPluginManifestAndCapabilities() throws {
         let registry = PluginRegistry.shared

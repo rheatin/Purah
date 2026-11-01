@@ -321,6 +321,7 @@ public final class AppUpdaterManager {
     public let bundleURL: URL
 
     private let explicitTeamIdentifier: String?
+    @ObservationIgnored
     private var teamResolution: TeamResolution = .pending
 
     private enum TeamResolution {
@@ -330,8 +331,9 @@ public final class AppUpdaterManager {
 
     /// The Team ID this build was signed with, or `nil` when ad-hoc.
     ///
-    /// Resolved on first use rather than in `init`: this spawns `codesign`, and
-    /// the manager is constructed long before anyone asks about updates.
+    /// Normally resolved off-main before an installable update is published.
+    /// If a caller asks earlier, the lazy fallback caches the result. It must
+    /// never be reached from a view body because it spawns `codesign`.
     public var expectedTeamIdentifier: String? {
         if let explicitTeamIdentifier { return explicitTeamIdentifier }
         if case .resolved(let cached) = teamResolution { return cached }
@@ -362,7 +364,11 @@ public final class AppUpdaterManager {
     /// `false` for an ad-hoc build: its signature is only a checksum over the
     /// bundle, and anyone can produce one. The update still installs, but the
     /// dialog says so instead of implying a stronger guarantee than exists.
-    public var hasVerifiedPublisher: Bool { expectedTeamIdentifier != nil }
+    /// Starts as the explicit test override (if one was supplied); otherwise
+    /// it stays `false` until the bundle is resolved off-main before an
+    /// installable update is published. Initialization never runs `codesign`.
+    /// Rendering the dialog therefore never spawns a child process either.
+    public private(set) var hasVerifiedPublisher: Bool
 
     public init(
         currentVersion: String = PurahCore.version,
@@ -380,6 +386,7 @@ public final class AppUpdaterManager {
         self.openURL = openURL
         self.defaults = defaults
         self.checkDeadline = checkDeadline
+        self.hasVerifiedPublisher = explicitTeamIdentifier != nil
 
         // Never inherit another test's or the person's answer in a test run.
         if !PurahWorkspaceStore.isTestingEnvironment,
@@ -467,7 +474,12 @@ public final class AppUpdaterManager {
         }
 
         if let release = simulatedRelease {
-            state = availability(of: release)
+            let nextState = availability(of: release)
+            if case .updateAvailable = nextState {
+                await resolvePublisherVerificationIfNeeded()
+                guard generation == checkGeneration else { return }
+            }
+            state = nextState
             return
         }
 
@@ -506,7 +518,12 @@ public final class AppUpdaterManager {
             }
 
             defaults.set(data, forKey: Self.lastManifestDefaultsKey)
-            state = availability(of: release)
+            let nextState = availability(of: release)
+            if case .updateAvailable = nextState {
+                await resolvePublisherVerificationIfNeeded()
+                guard generation == checkGeneration else { return }
+            }
+            state = nextState
         } catch {
             guard generation == checkGeneration else { return }
             DiagnosticLogger.shared.warn(
@@ -533,6 +550,29 @@ public final class AppUpdaterManager {
         }
         let installable = canInstallInPlace && release.normalizedSHA256 != nil
         return installable ? .updateAvailable(release) : .manualUpdateRequired(release)
+    }
+
+    /// Resolve the publisher proof away from the view's render path. Signing is
+    /// a synchronous child process; doing it while SwiftUI evaluates the
+    /// `.updateAvailable` branch can leave that branch uncommitted while the
+    /// model already has the answer.
+    private func resolvePublisherVerificationIfNeeded() async {
+        if explicitTeamIdentifier != nil {
+            hasVerifiedPublisher = true
+            return
+        }
+
+        if case .resolved(let cached) = teamResolution {
+            hasVerifiedPublisher = cached != nil
+            return
+        }
+
+        let bundleURL = self.bundleURL
+        let resolved = await Task.detached(priority: .utility) {
+            CodeSigning.teamIdentifier(ofBundleAt: bundleURL)
+        }.value
+        teamResolution = .resolved(resolved)
+        hasVerifiedPublisher = resolved != nil
     }
 
     public func downloadAndInstall(release: AppReleaseInfo) async {

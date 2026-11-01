@@ -234,7 +234,8 @@ public final class ScriptRunwayService {
         runID: Int,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
-        DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command: \(command.prefix(40))...")
+        let head = command.split(separator: " ").first.map(String.init) ?? ""
+        DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command (\(command.count) chars, head: \(head))")
         let task = Process()
         task.launchPath = executable
         // `argv` lets a caller run a tool directly. Shelling out to do it means
@@ -350,7 +351,6 @@ public final class ScriptRunwayService {
                     }
                     let first = await group.next() ?? false
                     group.cancelAll()
-                    task.terminationHandler = nil
                     return first
                 }
 
@@ -376,7 +376,7 @@ public final class ScriptRunwayService {
                 }
 
                 if didTimeout {
-                    DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after \(Int(ScriptRunwayService.executionTimeout))s: \(command.prefix(40))")
+                    DiagnosticLogger.shared.error("ScriptRunway", "Shell command timed out after \(Int(ScriptRunwayService.executionTimeout))s (\(command.count) chars, head: \(head))")
                     return (false, "Execution timed out after \(Int(ScriptRunwayService.executionTimeout))s")
                 }
 
@@ -398,7 +398,7 @@ public final class ScriptRunwayService {
         script: String,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
-        DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript: \(script.prefix(40))...")
+        DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript (\(script.count) chars)")
         return await Task.detached(priority: .userInitiated) {
             guard let appleScript = NSAppleScript(source: script) else {
                 DiagnosticLogger.shared.error("ScriptRunway", "AppleScript syntax error")

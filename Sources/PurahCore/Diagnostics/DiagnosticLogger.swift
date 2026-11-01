@@ -53,7 +53,7 @@ public final class DiagnosticLogger: Sendable {
         stats.withLock { $0.stalls }
     }
 
-    public init() {
+    private init() {
         self.storage = OSAllocatedUnfairLock(initialState: [])
         self.stats = OSAllocatedUnfairLock(initialState: (stalls: 0, maxStallMs: 0.0))
         log(level: .info, category: "Kernel", message: "DiagnosticLogger initialized")

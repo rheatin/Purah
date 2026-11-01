@@ -14,6 +14,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var preferencesWindow: NSWindow?
     private var updaterWindow: NSWindow?
     private var restorePreferencesAfterSculpting: Bool = false
+    private let railWindowRebuild = RunLoopActionCoalescer()
     private lazy var menuHeaderIcon: NSImage? = {
         if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
            let img = NSImage(contentsOf: iconURL) {
@@ -73,11 +74,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             } else {
                 PluginRegistry.shared.unmountPlugin(id: podId, store: self.store)
             }
-            self.coordinator?.rebuildWindows()
+            self.scheduleRailWindowRebuild()
         }
 
         store.onWindowsRebuildNeeded = { [weak self] in
-            self?.coordinator?.rebuildWindows()
+            self?.scheduleRailWindowRebuild()
         }
 
         store.onLiveRailEditingChanged = { [weak self] isEditing in
@@ -358,6 +359,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         updaterWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func scheduleRailWindowRebuild() {
+        railWindowRebuild.schedule { [weak self] in
+            self?.coordinator?.rebuildWindows()
+        }
     }
 
     @objc private func autoLayout() {

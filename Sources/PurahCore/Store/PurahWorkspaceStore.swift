@@ -918,8 +918,10 @@ public final class PurahWorkspaceStore {
                 onboardingDidToggleDecompose = true
             }
         }
-        // Hover is the only alert-acknowledgment path: touching the rail
-        // quiets the alert; a click always performs the tap action instead.
+        // Opening the drawer is the acknowledgment. It used to be hover, which
+        // was the same moment in almost every case (hovering the rail opens the
+        // drawer) and cleared the alert a frame early; a click still performs
+        // the tap action afterwards.
         acknowledgeAllAlerts(forPodId: podId)
         if let itemId {
             acknowledgeAlert(id: itemId)
@@ -2817,10 +2819,13 @@ public final class PurahWorkspaceStore {
                 var matchedSubItem = false
                 for idx in 0..<count {
                     let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
-                    let subId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: pod.id) : provider.subItemId(at: idx, store: self)
+                    let smartFoldID = PurahPluginSubItem.moreItemsID(forPod: pod.id)
+                    let subId = isSmartFoldSlot ? smartFoldID : provider.subItemId(at: idx, store: self)
                     guard let subId = subId else { continue }
-                    let itemActive = (activeDrawerItemId == subId) || (isSmartFoldSlot && pod.id == "calendar" && activeDrawerItemId == "calendar_more_events")
-                    let itemPinned = isItemPinned(id: subId) || (isSmartFoldSlot && pod.id == "calendar" && isItemPinned(id: "calendar_more_events"))
+                    let itemActive = (activeDrawerItemId == subId)
+                        || (isSmartFoldSlot && activeDrawerItemId == smartFoldID)
+                    let itemPinned = isItemPinned(id: subId)
+                        || (isSmartFoldSlot && isItemPinned(id: smartFoldID))
 
                     if itemActive || itemPinned {
                         matchedSubItem = true
@@ -2852,7 +2857,11 @@ public final class PurahWorkspaceStore {
                         let minY = max(bottomOfCardY - 6.0, 0.0)
                         let maxY = min(topOfCardY + 6.0, totalHeight)
 
-                        let drawerW = min(effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id) + corridor, windowWidth)
+                        // A chip may draw narrower than the composite drawer;
+                        // its hit box has to be the card, not the composite.
+                        let steppedW = provider.steppedDrawerWidth(store: self).map(Double.init)
+                            ?? effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id)
+                        let drawerW = min(steppedW + corridor, windowWidth)
                         let x = (edge == .right) ? (windowWidth - drawerW) : 0.0
                         frames.append(CGRect(x: x, y: minY, width: drawerW, height: maxY - minY))
                     }
@@ -3761,10 +3770,14 @@ public final class PurahWorkspaceStore {
         onboardingDidSwitchTriggerMode = false
         onboardingDidTriggerEdgeDrawer = false
         if clearAllPods {
+            let enabledIds = pods.filter(\.isEnabled).map(\.id)
             for i in pods.indices {
                 pods[i].isEnabled = false
                 pods[i].majorGroupId = nil
                 pods[i].pageIndex = 0
+            }
+            for id in enabledIds {
+                onPodEnabledChanged?(id, false)
             }
             leftRailPage = 0
             rightRailPage = 0

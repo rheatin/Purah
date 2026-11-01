@@ -92,9 +92,12 @@ public enum PurahConfigBackupManager {
     /// Settings a backup may never carry, even though they are not secrets.
     /// Each decides where credentials, prompts or commands are sent: an import
     /// that only switches the provider, or only repoints the endpoint, hands
-    /// the person's stored key and prompt to whoever wrote the file.
+    /// the person's stored key and prompt to whoever wrote the file. The
+    /// plugin path, dylib and MCP server keys name a library to `dlopen` or a
+    /// command to spawn, so an imported file could run code on every launch.
     static let nonImportableFragments = [
         "baseurl", "endpoint", "selectedprovider", "customclipath", "customcliarguments",
+        "pluginpath", "dylib", "mcpserver",
     ]
 
     public static func exportBackupData(

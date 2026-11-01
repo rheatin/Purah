@@ -1116,10 +1116,16 @@ public final class AIAssistantService {
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah-ai-mcp", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
         let url = directory.appendingPathComponent("servers.json")
         do {
             try data.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             return url.path
         } catch {
             return nil

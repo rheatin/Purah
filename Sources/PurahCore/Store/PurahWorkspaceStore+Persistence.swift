@@ -147,6 +147,12 @@ extension PurahWorkspaceStore {
         if let legacyData = defaults.data(forKey: "purah.vitals.thresholds") {
             if let decoded = try? JSONDecoder().decode(VitalsColorThresholds.self, from: legacyData) {
                 ScopedPluginStorage(pluginId: "vitals", defaults: defaults).setCodable(decoded, forKey: "thresholds")
+            } else {
+                defaults.set(legacyData, forKey: "purah.vitals.thresholds.corrupt")
+                DiagnosticLogger.shared.warn(
+                    "Workspace",
+                    "purah.vitals.thresholds could not be decoded; the original is kept under purah.vitals.thresholds.corrupt"
+                )
             }
             defaults.removeObject(forKey: "purah.vitals.thresholds")
         }
@@ -185,11 +191,18 @@ extension PurahWorkspaceStore {
            let style = PluginAlertStyle(rawValue: alertStr) {
             self.alertStyle = style
         }
-        if let quietData = defaults.data(forKey: "purah.quietHours"),
-           let decoded = try? JSONDecoder().decode(QuietHours.self, from: quietData) {
-            // Assign the backing storage directly: the `didSet` would write it
-            // straight back to disk during a load.
-            _quietHours = decoded
+        if let quietData = defaults.data(forKey: "purah.quietHours") {
+            if let decoded = try? JSONDecoder().decode(QuietHours.self, from: quietData) {
+                // Assign the backing storage directly: the `didSet` would write it
+                // straight back to disk during a load.
+                _quietHours = decoded
+            } else {
+                defaults.set(quietData, forKey: "purah.quietHours.corrupt")
+                DiagnosticLogger.shared.warn(
+                    "Workspace",
+                    "purah.quietHours could not be decoded; the original is kept under purah.quietHours.corrupt"
+                )
+            }
         }
         if defaults.object(forKey: "purah.appFocusSettings") != nil {
             // The per-app page rules this build replaced are gone. The blob is
@@ -200,9 +213,16 @@ extension PurahWorkspaceStore {
         if defaults.object(forKey: "purah.isAppProfileSwitchingEnabled") != nil {
             self.isAppProfileSwitchingEnabled = defaults.bool(forKey: "purah.isAppProfileSwitchingEnabled")
         }
-        if let profileData = defaults.data(forKey: "purah.contextProfiles"),
-           let decoded = try? JSONDecoder().decode(ContextProfileStore.self, from: profileData) {
-            _contextProfiles = decoded
+        if let profileData = defaults.data(forKey: "purah.contextProfiles") {
+            if let decoded = try? JSONDecoder().decode(ContextProfileStore.self, from: profileData) {
+                _contextProfiles = decoded
+            } else {
+                defaults.set(profileData, forKey: "purah.contextProfiles.corrupt")
+                DiagnosticLogger.shared.warn(
+                    "Workspace",
+                    "purah.contextProfiles could not be decoded; the original is kept under purah.contextProfiles.corrupt"
+                )
+            }
         }
         if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
             self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")

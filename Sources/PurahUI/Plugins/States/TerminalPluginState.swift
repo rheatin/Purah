@@ -3,6 +3,7 @@ import SwiftUI
 import AppKit
 import Foundation
 import Observation
+import Combine
 import PurahCore
 
 @Observable
@@ -12,6 +13,7 @@ public final class TerminalPluginState: Sendable {
     public var fontSize: Double
     public let storage: any PurahPluginStorage
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
+    @ObservationIgnored private var processRunningCancellable: AnyCancellable?
 
     public var shellName: String {
         TerminalManager.shared.shellName
@@ -19,6 +21,22 @@ public final class TerminalPluginState: Sendable {
 
     public var isProcessRunning: Bool {
         TerminalManager.shared.isProcessRunning
+    }
+
+    /// Whether a command is executing right now, as reported by the shell's
+    /// `preexec`/`precmd` pair.
+    ///
+    /// `isProcessRunning` is not this: the shell process stays alive between
+    /// commands, so it would say "working" for the whole session. Being an
+    /// observed stored property is also the point — the host's rail reads
+    /// `activity(store:)` from its own body, and an observed value is what
+    /// wakes it when the sweep should start or stop.
+    public private(set) var isCommandRunning: Bool = false
+
+    /// Called from the shell bridge; never a view.
+    public func setCommandRunning(_ running: Bool) {
+        guard isCommandRunning != running else { return }
+        isCommandRunning = running
     }
 
     /// The size a fresh install starts at, and what the header's font menu
@@ -69,6 +87,15 @@ public final class TerminalPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
+        processRunningCancellable?.cancel()
+        processRunningCancellable = TerminalManager.shared.$isProcessRunning
+            .removeDuplicates()
+            .sink { [weak self] isRunning in
+                guard !isRunning else { return }
+                MainActor.assumeIsolated {
+                    self?.setCommandRunning(false)
+                }
+            }
         if !store._terminalFontFamily.isEmpty {
             self.fontFamily = store._terminalFontFamily
         }
@@ -78,6 +105,9 @@ public final class TerminalPluginState: Sendable {
     }
 
     public func unmount(store: PurahWorkspaceStore) {
+        processRunningCancellable?.cancel()
+        processRunningCancellable = nil
+        isCommandRunning = false
         TerminalManager.shared.stopProcess()
         save()
         if boundStore === store {

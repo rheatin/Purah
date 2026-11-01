@@ -128,7 +128,19 @@ struct TodoOverviewRow: View {
         .onHover { hovering in
             withAnimation(PurahMotionPolicy.hover) { isHovered = hovering }
         }
-
+        // The row's controls appear on hover, which leaves keyboard and
+        // VoiceOver users with no way to delete. A context menu adds that path
+        // without adding a pixel to the resting row.
+        .contextMenu {
+            Button(role: .destructive) {
+                withAnimation(PurahMotionPolicy.microLight) {
+                    state.remove(id: todo.id)
+                    store._todos.removeAll { $0.id == todo.id }
+                }
+            } label: {
+                Label("todo.delete".localized, systemImage: "trash")
+            }
+        }
     }
 
     @ViewBuilder

@@ -165,7 +165,8 @@ public final class MusicPluginState: Sendable {
             Task { [weak self] in
                 if let art = await SystemMusicSyncService.shared.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
                     await MainActor.run {
-                        if self?.track.title == currentTitle {
+                        if self?.track.title == currentTitle,
+                           self?.track.artist == currentArtist {
                             self?.track.artworkData = art
                             self?.boundStore?._musicTrack.artworkData = art
                         }
@@ -177,7 +178,8 @@ public final class MusicPluginState: Sendable {
             Task { [weak self] in
                 if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
                     await MainActor.run {
-                        if self?.track.title == currentTitle {
+                        if self?.track.title == currentTitle,
+                           self?.track.artist == currentArtist {
                             self?.track.lyrics = lyrResult.plainLyrics
                             self?.track.syncedLyrics = lyrResult.syncedLyrics
                             self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics

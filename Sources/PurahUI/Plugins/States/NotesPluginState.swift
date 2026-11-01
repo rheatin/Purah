@@ -121,12 +121,12 @@ public final class NotesPluginState: Sendable {
         // `loadIndex` returns nil for "no file" and for "could not be read",
         // and quarantines the second. The fallback below is then one synth
         // scratchpad, and a sweep from that state would delete every note
-        // file the person has. One check before and after the load tells the
-        // two apart: the quarantined file is no longer there.
-        let indexPath = fileStorage.dataDirectory.appendingPathComponent("index.json")
-        let indexExistedBeforeLoad = FileManager.default.fileExists(atPath: indexPath.path)
+        // file the person has. Note files on disk with nothing in the index
+        // is that state; a fresh install has none, so the sweep still runs
+        // there and a renamed note's old file is still removed.
         var loadedDocs: [NoteDocument] = fileStorage.loadIndex([NoteDocument].self) ?? []
-        self.sweepDisabled = indexExistedBeforeLoad && !FileManager.default.fileExists(atPath: indexPath.path)
+        self.sweepDisabled = loadedDocs.isEmpty
+            && Self.containsMarkdown(in: fileStorage.dataDirectory)
 
         if loadedDocs.isEmpty {
             let initialDoc = NoteDocument(
@@ -239,6 +239,18 @@ public final class NotesPluginState: Sendable {
             }
         }
         return result
+    }
+
+    /// Whether any Markdown note file is on disk, at the root or under a tag.
+    private static func containsMarkdown(in directory: URL) -> Bool {
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ) else { return false }
+        for case let url as URL in enumerator where url.pathExtension.lowercased() == "md" {
+            return true
+        }
+        return false
     }
 
     /// Deletes `.md` files this index no longer points at.

@@ -34,7 +34,6 @@ public struct MusicRailBarContainerView: View {
         )
         .frame(width: railWidth, height: slotHeight)
         .onAppear {
-            SystemAudioLiveMonitor.shared.start()
             SystemAudioLiveMonitor.shared.latencyOffsetMs = state.rhythmOffsetMs
         }
     }

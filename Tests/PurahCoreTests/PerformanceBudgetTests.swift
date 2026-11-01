@@ -53,44 +53,6 @@ struct PerformanceBudgetTests {
         return samples[samples.count / 2]
     }
 
-    @Test("Layout of a full rail stays well under a frame budget")
-    func testLayoutLatency() {
-        // 12 pods is more than the rails ever hold (the product caps at the
-        // ergonomic minimums), so this is already a worst case.
-        let pods = Self.makePods(count: 12)
-
-        let ms = Self.measure {
-            _ = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .left)
-            _ = ErgonomicAutoLayoutEngine.layout(pods: pods, on: .right)
-        }
-
-        // A layout runs on every resize and every breathing tick. At 60 FPS the
-        // entire frame is 16.7ms; layout must be a small fraction of that.
-        #expect(ms < 4.0, "Layout of 12 pods took \(ms)ms, budget is 4ms")
-        print("Layout 12 pods: \(ms)ms")
-    }
-
-    @Test("Layout cost grows linearly, not quadratically")
-    func testLayoutScaling() {
-        let small = Self.makePods(count: 4)
-        let large = Self.makePods(count: 32)
-
-        let smallMs = Self.measure {
-            _ = ErgonomicAutoLayoutEngine.layout(pods: small, on: .left)
-        }
-        let largeMs = Self.measure {
-            _ = ErgonomicAutoLayoutEngine.layout(pods: large, on: .left)
-        }
-
-        // 8x the pods. Linear would be 8x; the budget allows 30x so that
-        // constant overhead on a tiny sample cannot trip it, while an O(n²)
-        // (which would be ~64x) still fails.
-        let ratio = largeMs / max(smallMs, 0.0001)
-        #expect(ratio < 30.0,
-                "8x more pods cost \(String(format: "%.1f", ratio))x the time — superlinear")
-        print("Layout scaling: 4 pods \(smallMs)ms, 32 pods \(largeMs)ms (ratio \(String(format: "%.1f", ratio))x)")
-    }
-
     @Test("Dragging a pod re-solves the rail cheaply")
     func testDragSolveLatency() {
         // This runs on every mouse-drag frame while the user sculpts a rail.
