@@ -27,7 +27,7 @@ public struct TerminalPlugin: PurahPodPlugin {
     }
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(TerminalRailBarPluginView(context: context, state: state))
+        AnyView(TerminalRailBarPluginView(context: context))
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
@@ -50,17 +50,32 @@ public struct TerminalPlugin: PurahPodPlugin {
         state.mount(store: store)
         // The shell reports finished commands over the loopback bridge. The
         // pod glow is the host's, not ours: raising the pod's alert id is the
-        // whole notification, and hovering the rail or opening the drawer
-        // clears it the same way it clears Calendar's.
-        TerminalShellIntegration.onCommandCompletion = { [weak store] in
+        // whole notification, and opening the drawer clears it the same way it
+        // clears Calendar's.
+        //
+        // Only when the drawer is closed, though: a command that finished in a
+        // drawer the person is looking at needs no "look at me" pulse, which
+        // used to fire on every command they had already read.
+        TerminalShellIntegration.onCommandStarted = { [weak state] in
+            Task { @MainActor in state?.setCommandRunning(true) }
+        }
+        TerminalShellIntegration.onCommandCompletion = { [weak store, weak state] in
             Task { @MainActor in
-                store?.triggerAlert(id: "terminal")
+                state?.setCommandRunning(false)
+                guard let store, store.activeDrawerPodId != "terminal" else { return }
+                store.triggerAlert(id: "terminal")
             }
         }
     }
 
+    /// A running shell command is the pod's work; the host renders the sweep.
+    public func activity(store: PurahWorkspaceStore) -> PurahPodActivity {
+        state.isCommandRunning ? .working : .idle
+    }
+
     public func onUnmount(store: PurahWorkspaceStore) {
         TerminalShellIntegration.onCommandCompletion = nil
+        TerminalShellIntegration.onCommandStarted = nil
         state.unmount(store: store)
     }
 
@@ -84,31 +99,19 @@ public struct TerminalPlugin: PurahPodPlugin {
 
 public struct TerminalRailBarPluginView: View {
     public let context: PurahPluginContext
-    public let state: TerminalPluginState
-    private var manager: TerminalManager {
-        TerminalManager.shared
-    }
 
-    public init(context: PurahPluginContext, state: TerminalPluginState? = nil) {
+    public init(context: PurahPluginContext) {
         self.context = context
-        self.state = state ?? (PluginRegistry.shared.plugin(for: "terminal") as? TerminalPlugin)?.state ?? TerminalPluginState()
     }
 
     public var body: some View {
         let radius = min(context.railWidth / 2, 4)
-        ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: radius)
-                .fill(context.accentColor.opacity(0.85))
-                .frame(width: context.railWidth, height: context.slotHeight)
-
-            if state.isProcessRunning {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: min(context.railWidth - 2, 4), height: min(context.railWidth - 2, 4))
-                    .padding(.bottom, 4)
-            }
-        }
-        .frame(width: context.railWidth, height: context.slotHeight)
+        // The green dot that marked a running command is gone: the host now
+        // draws the activity sweep over this bar, the same one the AI pod
+        // uses, and a second status light beside it said the same thing.
+        RoundedRectangle(cornerRadius: radius)
+            .fill(context.accentColor.opacity(0.85))
+            .frame(width: context.railWidth, height: context.slotHeight)
     }
 }
 

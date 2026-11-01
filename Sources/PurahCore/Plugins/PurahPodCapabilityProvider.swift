@@ -1,6 +1,18 @@
 // Sources/PurahCore/Plugins/PurahPodCapabilityProvider.swift
 import Foundation
 
+/// What a pod is doing right now.
+///
+/// This is a *state* a plugin reports, not a view it draws: the host owns the
+/// rendering (one full-span sweep over the rail bar), so every plugin that
+/// gains a long-running task gets the same visual without copying it, and the
+/// host can keep the alert beacon quiet while the work is still in progress.
+public enum PurahPodActivity: Sendable, Equatable {
+    case idle
+    /// The plugin is mid-task (streaming an answer, running a command).
+    case working
+}
+
 @MainActor
 public protocol PurahPodCapabilityProvider: Sendable {
     var podId: String { get }
@@ -30,6 +42,11 @@ public protocol PurahPodCapabilityProvider: Sendable {
 
     /// Autonomously declared preferred drawer height when operating in Expanded drawer mode.
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
+
+    /// What the pod is doing right now. The host renders `.working` as a sweep
+    /// over the rail bar and suppresses the alert beacon meanwhile, so a
+    /// plugin reports state instead of drawing its own progress view.
+    func activity(store: PurahWorkspaceStore) -> PurahPodActivity
 
     /// Ergonomic policy defining chip height bounds, maximum visible items, and overflow behavior.
     var decomposedPolicy: PurahDecomposedPolicy { get }
@@ -72,6 +89,7 @@ public extension PurahPodCapabilityProvider {
     func ownsSubItemId(_ itemId: String, store: PurahWorkspaceStore) -> Bool { false }
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { nil }
     func steppedDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { nil }
+    func activity(store: PurahWorkspaceStore) -> PurahPodActivity { .idle }
 
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         max(minimumDrawerHeight(store: store) * 1.5, 240.0)

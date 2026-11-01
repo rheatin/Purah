@@ -35,6 +35,11 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         self.state = state
     }
 
+    /// A streaming answer is the pod's work; the host renders the sweep.
+    public func activity(store: PurahWorkspaceStore) -> PurahPodActivity {
+        state.isStreaming ? .working : .idle
+    }
+
     // MARK: - Views
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(AIRailBarPluginView(state: state, context: context))
@@ -375,12 +380,10 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 }
 
-// MARK: - Pulsing AI Rail Bar View
+// MARK: - AI Rail Bar View
 public struct AIRailBarPluginView: View {
     public let state: AIAssistantPluginState
     public let context: PurahPluginContext
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(state: AIAssistantPluginState, context: PurahPluginContext) {
         self.state = state
@@ -393,39 +396,12 @@ public struct AIRailBarPluginView: View {
         let radius = min(barW / 2, 4)
         let roleColor = Color(hex: state.selectedRole.colorHex)
 
-        ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: radius)
-                .fill(roleColor.opacity(0.88))
-                .frame(width: barW, height: barH)
-
-            if state.isStreaming {
-                TimelineView(PurahMotionPolicy.timelineSchedule(reduceMotion: reduceMotion)) { timeline in
-                    let t = timeline.date.timeIntervalSinceReferenceDate
-                    let progress = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
-                    let spotH = max(barH * 0.28, 14.0)
-                    let spotY = progress * (barH + spotH) - spotH
-
-                    RoundedRectangle(cornerRadius: radius)
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0.0),
-                                    .init(color: .white.opacity(0.85), location: 0.5),
-                                    .init(color: .clear, location: 1.0)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: barW, height: spotH)
-                        .offset(y: spotY)
-                        .clipped()
-                }
-                .frame(width: barW, height: barH)
-                .clipped()
-            }
-        }
-        .frame(width: barW, height: barH)
+        // While a role is streaming, the host draws the activity sweep over
+        // this bar (`activity(store:)` reports `.working`); the bar itself
+        // stays a plain role colour.
+        RoundedRectangle(cornerRadius: radius)
+            .fill(roleColor.opacity(0.88))
+            .frame(width: barW, height: barH)
     }
 }
 

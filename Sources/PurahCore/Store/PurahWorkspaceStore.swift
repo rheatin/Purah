@@ -918,8 +918,10 @@ public final class PurahWorkspaceStore {
                 onboardingDidToggleDecompose = true
             }
         }
-        // Hover is the only alert-acknowledgment path: touching the rail
-        // quiets the alert; a click always performs the tap action instead.
+        // Opening the drawer is the acknowledgment. It used to be hover, which
+        // was the same moment in almost every case (hovering the rail opens the
+        // drawer) and cleared the alert a frame early; a click still performs
+        // the tap action afterwards.
         acknowledgeAllAlerts(forPodId: podId)
         if let itemId {
             acknowledgeAlert(id: itemId)

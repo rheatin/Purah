@@ -36,6 +36,14 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
     /// every prompt, and a slow handler there would be felt as a slow prompt.
     public var onCommandFinished: (@Sendable ([String: String]) -> Void)?
 
+    /// Raised when the shell has started a command (`preexec`).
+    ///
+    /// The pair with `onCommandFinished` is what lets the pod show the host's
+    /// activity sweep while a command runs. The shell process being alive is
+    /// not the same thing — it stays alive between commands — so the running
+    /// state has to come from the shell's own lifecycle.
+    public var onCommandStarted: (@Sendable () -> Void)?
+
     private let queue = DispatchQueue(label: "app.purah.terminal.suggestion-bridge")
     private let lock = NSLock()
     private var listener: NWListener?
@@ -130,7 +138,9 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                 return
             }
             guard request.method == "POST",
-                  request.path == "/v1/suggest" || request.path == "/v1/done"
+                  request.path == "/v1/suggest"
+                    || request.path == "/v1/done"
+                    || request.path == "/v1/start"
             else {
                 http.respond(status: 404, body: Self.failure("Not found."))
                 return
@@ -140,6 +150,12 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                 return
             }
             let form = Self.parseForm(request.body)
+
+            if request.path == "/v1/start" {
+                self.onCommandStarted?()
+                http.respond(status: 200, body: "ok\n")
+                return
+            }
 
             if request.path == "/v1/done" {
                 self.onCommandFinished?(form)
