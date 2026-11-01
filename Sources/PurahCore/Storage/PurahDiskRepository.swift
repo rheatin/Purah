@@ -221,11 +221,12 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
                 let removed = items.remove(at: oldestIdx)
                 prunedCount += 1
                 let indexBytesBefore = Self.fileSize(at: indexURL)
+                let freedFiles = Self.bytesOnDisk(atPaths: removed.assetPaths)
                 onRemoveAssociatedFiles?(removed)
                 saveToDisk()
-                let freedFiles = Self.bytesOnDisk(atPaths: removed.assetPaths)
                 let freedIndex = indexBytesBefore - Self.fileSize(at: indexURL)
-                currentSize = max(0, currentSize - freedFiles - freedIndex)
+                let freedAssociatedFiles = onRemoveAssociatedFiles == nil ? 0 : freedFiles
+                currentSize = max(0, currentSize - freedAssociatedFiles - freedIndex)
             }
         }
 

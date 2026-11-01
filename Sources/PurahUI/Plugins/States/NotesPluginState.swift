@@ -126,7 +126,10 @@ public final class NotesPluginState: Sendable {
         let indexPath = fileStorage.dataDirectory.appendingPathComponent("index.json")
         let indexExistedBeforeLoad = FileManager.default.fileExists(atPath: indexPath.path)
         var loadedDocs: [NoteDocument] = fileStorage.loadIndex([NoteDocument].self) ?? []
-        self.sweepDisabled = indexExistedBeforeLoad && !FileManager.default.fileExists(atPath: indexPath.path)
+        // The seeding block below invents one scratchpad, and a sweep from that
+        // list would delete every note file.
+        self.sweepDisabled = loadedDocs.isEmpty
+            || (indexExistedBeforeLoad && !FileManager.default.fileExists(atPath: indexPath.path))
 
         if loadedDocs.isEmpty {
             let initialDoc = NoteDocument(

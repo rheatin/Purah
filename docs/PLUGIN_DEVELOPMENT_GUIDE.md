@@ -8,7 +8,7 @@ Purah 采用模块化、解耦且强类型安全的插件架构，允许开发�
 ## 1. 架构总览与核心设计原则
 
 Purah 由三大解耦模块构成：
-- **`PurahCore`**：基础数据模型、人机工程学自动排版引擎 (`ErgonomicAutoLayoutEngine`)、系统服务与独立存储 (`ScopedPluginStorage`)。
+- **`PurahCore`**：基础数据模型、人机工程学自动排版 (`PurahWorkspaceStore.resolvedPhysicalLayout` + `SpringConstraintSolver`)、系统服务与独立存储 (`ScopedPluginStorage`)。
 - **`PurahUI`**：SwiftUI 视图体系、插件协议 (`PurahPodPlugin`)、运行时上下文 (`PurahPluginContext`)、插件中心与主题引擎。
 - **`PurahApp`**：AppKit 窗口生命周期 (`AmbientRailWindow`)、高灵敏边缘监视器 (`EdgeMouseMonitor`) 与多屏协调器。
 

@@ -28,8 +28,14 @@ public final class PluginJITCompiler {
         // The manifest and any build-tool plugins run inside `swift build`, so
         // they see this environment. The app's own secrets — the terminal
         // bridge token, the rendered-secrets file path — have no business in a
-        // third-party package's build.
-        process.environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("PURAH_") }
+        // third-party package's build. An allowlist beats a filter because a
+        // new secret does not have to remember to use the `PURAH_` prefix.
+        let allowedEnvironmentKeys: Set<String> = [
+            "PATH", "HOME", "TMPDIR", "USER", "SHELL", "SDKROOT", "LANG", "LC_ALL",
+        ]
+        process.environment = ProcessInfo.processInfo.environment.filter {
+            allowedEnvironmentKeys.contains($0.key)
+        }
 
         let pipe = Pipe()
         process.standardOutput = pipe

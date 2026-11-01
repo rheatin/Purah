@@ -485,36 +485,21 @@ public struct NotesPluginSettingsView: View {
                 }
             }
 
-            // 2. Storage Policy & Physical Markdown Card
-            PurahStoragePolicySection(
-                retention: Binding(
-                    get: { state.retentionPeriod },
-                    set: {
-                        state.retentionPeriod = $0
-                        state.saveToDisk()
-                    }
-                ),
-                quota: Binding(
-                    get: { state.diskQuota },
-                    set: {
-                        state.diskQuota = $0
-                        state.saveToDisk()
-                    }
-                ),
-                autoPrune: Binding(
-                    get: { state.autoPrune },
-                    set: {
-                        state.autoPrune = $0
-                        state.saveToDisk()
-                    }
-                ),
-                fileStorage: state.fileStorage,
-                onClearAll: {
+            // The retention controls that shared this card never ran, but
+            // clearing unstarred notes has no other entry point.
+            HStack {
+                Spacer()
+                PurahClearButton(
+                    title: "Clear Unstarred",
+                    icon: "trash.fill",
+                    isCompact: false,
+                    helpText: "Remove all unstarred notes"
+                ) {
                     state.clearNonFavoriteNotes()
                     store._quickNote = state.noteContent
                     store.savePersistentState()
                 }
-            )
+            }
         }
     }
 

@@ -184,10 +184,27 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(values) else { return }
 
-        // Write atomically, then tighten: `Data.write(options: .atomic)` creates
-        // with the process umask, which is commonly 0644.
-        try? data.write(to: fileURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        // Create the temporary file with restrictive permissions so the
+        // secrets are never briefly world-readable before the atomic replace.
+        let temporaryURL = directory.appendingPathComponent(".secrets-\(UUID().uuidString).tmp")
+        guard FileManager.default.createFile(
+            atPath: temporaryURL.path,
+            contents: data,
+            attributes: [.posixPermissions: 0o600]
+        ) else { return }
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            // Without `.usingNewMetadataOnly` the replacement inherits the old
+            // file's permissions, which may still be the 0644 the umask made.
+            _ = try? FileManager.default.replaceItemAt(
+                fileURL,
+                withItemAt: temporaryURL,
+                options: .usingNewMetadataOnly
+            )
+        } else {
+            try? FileManager.default.moveItem(at: temporaryURL, to: fileURL)
+        }
     }
 
     // MARK: - Migration helpers

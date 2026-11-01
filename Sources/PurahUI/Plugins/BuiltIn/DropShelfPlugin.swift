@@ -336,35 +336,6 @@ public struct ShelfPluginSettingsView: View {
                 }
             }
 
-            // Card 2: Storage Policy Section
-            PurahStoragePolicySection(
-                retention: Binding(
-                    get: { state.retentionPeriod },
-                    set: {
-                        state.retentionPeriod = $0
-                        state.save()
-                    }
-                ),
-                quota: Binding(
-                    get: { state.diskQuota },
-                    set: {
-                        state.diskQuota = $0
-                        state.save()
-                    }
-                ),
-                autoPrune: Binding(
-                    get: { state.autoPrune },
-                    set: {
-                        state.autoPrune = $0
-                        state.save()
-                    }
-                ),
-                fileStorage: state.fileStorage,
-                onClearAll: {
-                    state.clear()
-                    store._shelfFiles = state.files
-                }
-            )
         }
     }
 }

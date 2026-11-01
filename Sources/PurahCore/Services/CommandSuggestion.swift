@@ -102,6 +102,18 @@ public enum CommandRiskClassifier {
             return .dangerous
         }
 
+        // Quotes can hide a rootish target from the unquoted segment scan:
+        // `rm -rf "/"`, and `cd /tmp && rm -rf "/"` puts it in the second segment.
+        for rawSegment in normalised.split(whereSeparator: { ";|&\n()".contains($0) }) {
+            let words = rawSegment.split(separator: " ").map {
+                String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            }
+            let arguments = words.drop { $0.contains("=") }
+            if arguments.first == "rm", arguments.dropFirst().contains(where: { rootishTargets.contains($0) }) {
+                return .dangerous
+            }
+        }
+
         var sawCaution = false
         // `;`, `&&`, `||` and `|` each start a new command, and each has to be
         // judged on its own: the first word is the only one that is a verb.
@@ -110,6 +122,10 @@ public enum CommandRiskClassifier {
             let arguments = words.drop { $0.contains("=") }
             guard let head = arguments.first else { continue }
 
+            // `sh -c "…"` runs whatever is in the quotes; the strip above removed it.
+            if ["sh", "bash", "zsh"].contains(head), arguments.dropFirst().contains("-c") {
+                return .dangerous
+            }
             if dangerousCommands.contains(head) { return .dangerous }
             if head == "rm", arguments.dropFirst().contains(where: { rootishTargets.contains($0) }) {
                 return .dangerous

@@ -18,7 +18,7 @@ Sources/
 ### Module Responsibilities:
 - **`PurahCore`**:
   - `PurahWorkspaceStore`: Primary `@Observable` state container. Handles slot pod layout, active drawer states, and local persistence (`UserDefaults`).
-  - `ErgonomicAutoLayoutEngine`: Mathematical solver calculating optimal non-overlapping vertical ranges (`NormalizedRange`: 0.0 ~ 1.0) along screen edges.
+  - `PurahWorkspaceStore.resolvedPhysicalLayout` + `SpringConstraintSolver`: Resolve non-overlapping vertical ranges (`NormalizedRange`: 0.0 ~ 1.0) along screen edges.
   - `Services`: Native system integrations (`HardwareVitalsService`, `SystemMusicSyncService`, `SystemCalendarSyncService`, `SystemRemindersSyncService`, `ScriptRunwayService`, `AIAssistantService`, `AISettingsSnapshot`, `PurahAIService`, `ScriptDraftService`, `SystemClipboardSyncService`, `LaunchAtLoginService`, `CommandSuggestionService`, `TerminalSuggestionBridge`, `ZshSuggestionIntegration`, and `PurahConfigBackupManager`).
   - `Plugins`: Standard plugin manifest schema (`PurahPluginManifest`).
 - **`PurahUI`**:
@@ -163,7 +163,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - **Compact Clipboard Chips** (`compactClipboardCard`): enforce **$42\text{pt}$ baseline** with configurable `clipboardMaxRailItems` (2~8 items).
    - Infinite downward compression that squashes typography, clips buttons, or shrinks click hitboxes is strictly forbidden. Every single plugin MUST enforce an ergonomic minimum height for both composite and decomposed modes.
 2. **Dynamic Height Budgeting & In-Rail Capacity**:
-   - The layout solver (`ErgonomicAutoLayoutEngine`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts bounded by `calendarMaxRailEvents`, `todoMaxRailTasks`, and `clipboardMaxRailItems`.
+   - The layout solver (`PurahWorkspaceStore.resolvedPhysicalLayout` + `SpringConstraintSolver`) and `PurahWorkspaceStore.minimumDrawerHeight` calculate height dynamically based on active sub-item counts bounded by `calendarMaxRailEvents`, `todoMaxRailTasks`, and `clipboardMaxRailItems`.
    - If multiple pods on the same rail compete for vertical space, each pod's sub-chips hold their ground at their respective tier minimums ($\ge 56\text{pt}$, $\ge 42\text{pt}$, $\ge 40\text{pt}$, or $\ge 32\text{pt}$).
 3. **Trinity Layout & Progressive Overflow Rules (三位一体满轨渐进挤压与自动分页法则 - Mandatory)**:
    - **Sufficient Space (`sumMinRequired <= netAvailable`)**: Pods fill the rail proportionally in static co-planar mode with zero hover expansion or vertical shifting.
