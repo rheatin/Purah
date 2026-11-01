@@ -2819,8 +2819,10 @@ public final class PurahWorkspaceStore {
                     let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
                     let subId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: pod.id) : provider.subItemId(at: idx, store: self)
                     guard let subId = subId else { continue }
-                    let itemActive = (activeDrawerItemId == subId) || (isSmartFoldSlot && pod.id == "calendar" && activeDrawerItemId == "calendar_more_events")
-                    let itemPinned = isItemPinned(id: subId) || (isSmartFoldSlot && pod.id == "calendar" && isItemPinned(id: "calendar_more_events"))
+                    let itemActive = (activeDrawerItemId == subId)
+                        || (isSmartFoldSlot && PurahPluginSubItem.isMoreItemsID(activeDrawerItemId ?? ""))
+                    let itemPinned = isItemPinned(id: subId)
+                        || (isSmartFoldSlot && pinnedDrawerItemIds.contains(where: PurahPluginSubItem.isMoreItemsID))
 
                     if itemActive || itemPinned {
                         matchedSubItem = true
@@ -3761,10 +3763,14 @@ public final class PurahWorkspaceStore {
         onboardingDidSwitchTriggerMode = false
         onboardingDidTriggerEdgeDrawer = false
         if clearAllPods {
+            let enabledIds = pods.filter(\.isEnabled).map(\.id)
             for i in pods.indices {
                 pods[i].isEnabled = false
                 pods[i].majorGroupId = nil
                 pods[i].pageIndex = 0
+            }
+            for id in enabledIds {
+                onPodEnabledChanged?(id, false)
             }
             leftRailPage = 0
             rightRailPage = 0

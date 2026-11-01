@@ -748,7 +748,9 @@ public final class EdgeMouseMonitor {
         } else if isLeftActiveUnpinned {
             if leftExitGraceTask == nil {
                 leftExitGraceTask = Task { @MainActor [weak self] in
-                    defer { self?.leftExitGraceTask = nil }
+                    defer {
+                        if !Task.isCancelled { self?.leftExitGraceTask = nil }
+                    }
                     let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
                     try? await Task.sleep(for: .seconds(graceSec))
                     guard !Task.isCancelled, let self = self else { return }
@@ -772,7 +774,9 @@ public final class EdgeMouseMonitor {
         } else if isRightActiveUnpinned {
             if rightExitGraceTask == nil {
                 rightExitGraceTask = Task { @MainActor [weak self] in
-                    defer { self?.rightExitGraceTask = nil }
+                    defer {
+                        if !Task.isCancelled { self?.rightExitGraceTask = nil }
+                    }
                     let graceSec = self?.store.activeExitGraceSeconds ?? 0.28
                     try? await Task.sleep(for: .seconds(graceSec))
                     guard !Task.isCancelled, let self = self else { return }

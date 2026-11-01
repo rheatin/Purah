@@ -96,16 +96,6 @@ public struct WaveMeterAmbientView: View {
                 }
             }
         }
-        .onAppear {
-            if style == .dynamicWaveform {
-                SystemAudioLiveMonitor.shared.start()
-            }
-        }
-        .onChange(of: style) { _, newStyle in
-            if newStyle == .dynamicWaveform {
-                SystemAudioLiveMonitor.shared.start()
-            }
-        }
     }
 
     // MARK: - Common Time-Anchor Progress Calculation

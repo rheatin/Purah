@@ -278,7 +278,7 @@ public struct ClipboardItemDrawerView: View {
             return Color(hex: "#FF9F0A")
         }()
         let barW = CGFloat(store.railBarWidth)
-        let drawerW: CGFloat = 290.0
+        let drawerW = store.effectiveDrawerWidth(baseWidth: 290.0, podId: "clipboard")
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
             // Pure physical in-rail capsule (co-planar, NO icons)
@@ -286,17 +286,17 @@ public struct ClipboardItemDrawerView: View {
                 .fill(itemColor.opacity(isExpanded ? 0.95 : 0.70))
                 .frame(width: barW, height: isExpanded ? cardH : height)
 
-            steppedCard(cardH: cardH, itemColor: itemColor)
-                .offset(x: isExpanded ? 0 : (edge == .right ? (drawerW + 50) : -(drawerW + 50)))
-                .opacity(isExpanded ? 1.0 : 0.0)
-                .allowsHitTesting(isExpanded)
+            if isExpanded {
+                steppedCard(cardH: cardH, itemColor: itemColor, drawerW: drawerW)
+                    .transition(.move(edge: edge == .right ? .trailing : .leading))
+            }
         }
         .frame(height: isExpanded ? cardH : height)
         .animation(state == .expandedDrawer ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: state)
     }
 
     @ViewBuilder
-    private func steppedCard(cardH: CGFloat, itemColor: Color) -> some View {
+    private func steppedCard(cardH: CGFloat, itemColor: Color, drawerW: CGFloat) -> some View {
         HStack(spacing: 10) {
             if let item = item {
                 switch item.type {
@@ -402,7 +402,7 @@ public struct ClipboardItemDrawerView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(width: 290, height: max(cardH, 44.0))
+        .frame(width: drawerW, height: max(cardH, 44.0))
         .liquidDrawerBackground(
             shape: drawerShape,
             accentColor: itemColor

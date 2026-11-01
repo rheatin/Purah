@@ -16,6 +16,7 @@ public enum PluginDynamicLoadError: LocalizedError, Sendable {
     case unsignedPlugin(String)
     /// A plugin with this id is already registered.
     case duplicatePluginId(String)
+    case invalidPluginId(String)
     /// A C entry point returned NULL.
     case nullEntryPoint(String)
 
@@ -37,6 +38,8 @@ public enum PluginDynamicLoadError: LocalizedError, Sendable {
             return "Plugin is not signed: \(detail)"
         case .duplicatePluginId(let id):
             return "A plugin with id '\(id)' is already loaded."
+        case .invalidPluginId(let id):
+            return "Plugin id '\(id)' is invalid."
         case .nullEntryPoint(let symbol):
             return "Plugin entry point '\(symbol)' returned null."
         }
@@ -979,7 +982,10 @@ public final class PluginDynamicLoader {
 
             let unmanaged = Unmanaged<AnyObject>.fromOpaque(rawInstance)
             if let plugin = unmanaged.takeRetainedValue() as? any PurahPodPlugin {
-                try rejectDuplicate(id: plugin.manifest.id)
+                guard PurahPluginFileStorage.isValidPluginId(plugin.manifest.id) else {
+                    throw PluginDynamicLoadError.invalidPluginId(plugin.manifest.id)
+                }
+                try rejectDuplicate(id: plugin.manifest.id, path: path)
                 if let bridgeSym = dlsym(handle, "purahSetHostActionBridge") {
                     typealias SetBridgeFunc = @convention(c) (PurahABIHostActionCallback) -> Void
                     let setBridgeFn = unsafeBitCast(bridgeSym, to: SetBridgeFunc.self)
@@ -1003,7 +1009,10 @@ public final class PluginDynamicLoader {
                   let manifest = try? JSONDecoder().decode(PurahPluginManifest.self, from: jsonData) else {
                 throw PluginDynamicLoadError.invalidPluginType
             }
-            try rejectDuplicate(id: manifest.id)
+            guard PurahPluginFileStorage.isValidPluginId(manifest.id) else {
+                throw PluginDynamicLoadError.invalidPluginId(manifest.id)
+            }
+            try rejectDuplicate(id: manifest.id, path: path)
 
             if let bridgeSym = dlsym(handle, "purahSetHostActionBridge") {
                 typealias SetBridgeFunc = @convention(c) (PurahABIHostActionCallback) -> Void
@@ -1154,8 +1163,9 @@ public final class PluginDynamicLoader {
         }
     }
 
-    private func rejectDuplicate(id: String) throws {
-        guard loadedHandles[id] == nil else {
+    private func rejectDuplicate(id: String, path: String) throws {
+        if (loadedHandles[id] != nil || PluginRegistry.shared.catalogPlugin(for: id) != nil),
+           loadedDylibPaths[id] != path {
             throw PluginDynamicLoadError.duplicatePluginId(id)
         }
     }

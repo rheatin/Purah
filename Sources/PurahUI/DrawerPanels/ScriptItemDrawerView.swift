@@ -105,7 +105,7 @@ public struct ScriptItemDrawerView: View {
 
     @ViewBuilder
     private func expandedCard(cardH: CGFloat) -> some View {
-        let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0)
+        let effectiveW = store.effectiveDrawerWidth(for: action.name, baseWidth: 280.0, podId: "scripts")
         let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
 
         HStack(spacing: 8) {

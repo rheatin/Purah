@@ -936,6 +936,14 @@ public struct LyricsDisplayView: View {
     public let maxHeight: CGFloat
     public let onSeek: (Double) -> Void
 
+    private static let timestampRegex = try? NSRegularExpression(
+        pattern: "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\]",
+        options: []
+    )
+    private static let parseCacheLock = NSLock()
+    nonisolated(unsafe) private static var cachedLyricsRaw: String?
+    nonisolated(unsafe) private static var cachedLyricsParsed: [ParsedLyricLine] = []
+
     private var parsedLines: [ParsedLyricLine] {
         Self.parseLyrics(rawLyrics)
     }
@@ -1037,9 +1045,17 @@ public struct LyricsDisplayView: View {
     }
 
     public static func parseLyrics(_ raw: String) -> [ParsedLyricLine] {
+        Self.parseCacheLock.lock()
+        if Self.cachedLyricsRaw == raw {
+            let cached = Self.cachedLyricsParsed
+            Self.parseCacheLock.unlock()
+            return cached
+        }
+        Self.parseCacheLock.unlock()
+
         let rawLines = raw.components(separatedBy: .newlines)
         var parsed: [ParsedLyricLine] = []
-        let regex = try? NSRegularExpression(pattern: "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\]", options: [])
+        let regex = Self.timestampRegex
 
         var lineId = 0
         for line in rawLines {
@@ -1076,7 +1092,12 @@ public struct LyricsDisplayView: View {
             }
         }
 
-        return parsed.sorted(by: { $0.time < $1.time })
+        let sorted = parsed.sorted(by: { $0.time < $1.time })
+        Self.parseCacheLock.lock()
+        Self.cachedLyricsRaw = raw
+        Self.cachedLyricsParsed = sorted
+        Self.parseCacheLock.unlock()
+        return sorted
     }
 
     public static func activeLyricLine(in raw: String, at currentTime: Double) -> String? {

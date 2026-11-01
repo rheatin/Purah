@@ -278,7 +278,9 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
                     await MainActor.run {
-                        if let store = store, store._musicTrack.title == title {
+                        if let store = store,
+                           store._musicTrack.title == title,
+                           store._musicTrack.artist == artist {
                             store._musicTrack.artworkData = art
                             self?.onTrackChanged?(store._musicTrack)
                         }
@@ -295,7 +297,9 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
                     await MainActor.run {
-                        if let store = store, store._musicTrack.title == title {
+                        if let store = store,
+                           store._musicTrack.title == title,
+                           store._musicTrack.artist == artist {
                             store._musicTrack.lyrics = lyr.plainLyrics
                             store._musicTrack.syncedLyrics = lyr.syncedLyrics
                             self?.onTrackChanged?(store._musicTrack)
@@ -518,7 +522,9 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let art = await self?.fetchArtwork(title: title, artist: resolvedArtist, album: album) {
                     await MainActor.run {
-                        if let store = store, store._musicTrack.title == title {
+                        if let store = store,
+                           store._musicTrack.title == title,
+                           store._musicTrack.artist == resolvedArtist {
                             store._musicTrack.artworkData = art
                             self?.onTrackChanged?(store._musicTrack)
                         }
@@ -535,7 +541,9 @@ public final class SystemMusicSyncService {
             Task { [weak self, weak store] in
                 if let lyr = await self?.fetchOnlineLyrics(title: title, artist: resolvedArtist) {
                     await MainActor.run {
-                        if let store = store, store._musicTrack.title == title {
+                        if let store = store,
+                           store._musicTrack.title == title,
+                           store._musicTrack.artist == resolvedArtist {
                             store._musicTrack.lyrics = lyr.plainLyrics
                             store._musicTrack.syncedLyrics = lyr.syncedLyrics
                             self?.onTrackChanged?(store._musicTrack)
@@ -614,7 +622,9 @@ public final class SystemMusicSyncService {
 
         if needsArtworkFetch, let art = await fetchArtwork(title: title, artist: artist, album: album) {
             await MainActor.run {
-                if let store = store, store._musicTrack.title == title {
+                if let store = store,
+                   store._musicTrack.title == title,
+                   store._musicTrack.artist == artist {
                     store._musicTrack.artworkData = art
                     onTrackChanged?(store._musicTrack)
                 }
@@ -623,7 +633,9 @@ public final class SystemMusicSyncService {
 
         if needsLyricsFetch, let lyr = await fetchOnlineLyrics(title: title, artist: artist) {
             await MainActor.run {
-                if let store = store, store._musicTrack.title == title {
+                if let store = store,
+                   store._musicTrack.title == title,
+                   store._musicTrack.artist == artist {
                     store._musicTrack.lyrics = lyr.plainLyrics
                     store._musicTrack.syncedLyrics = lyr.syncedLyrics
                     onTrackChanged?(store._musicTrack)

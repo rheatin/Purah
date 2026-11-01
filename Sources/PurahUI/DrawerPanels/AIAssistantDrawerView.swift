@@ -57,6 +57,7 @@ public struct AIAssistantSteppedDrawerView: View {
     @State private var isSteppedDropTargeted: Bool = false
     @State private var isContentHovered: Bool = false
     @State private var currentStreamTask: Task<Void, Never>? = nil
+    @State private var currentRunID = UUID()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(role: AIRolePreset, state: AIAssistantPluginState, context: PurahPluginContext, minChipHeight: CGFloat) {
@@ -342,6 +343,7 @@ public struct AIAssistantSteppedDrawerView: View {
             // this view's state: a run that outlived it could never be shown.
             currentStreamTask?.cancel()
             currentStreamTask = nil
+            currentRunID = UUID()
             ClipboardHoverPreviewController.shared.hide()
         }
     }
@@ -349,6 +351,7 @@ public struct AIAssistantSteppedDrawerView: View {
     private func resetSteppedState() {
         currentStreamTask?.cancel()
         currentStreamTask = nil
+        currentRunID = UUID()
         isRoleRunning = false
         roleInput = ""
         roleOutput = ""
@@ -358,6 +361,7 @@ public struct AIAssistantSteppedDrawerView: View {
     private func stopSteppedRun() {
         currentStreamTask?.cancel()
         currentStreamTask = nil
+        currentRunID = UUID()
         isRoleRunning = false
     }
 
@@ -372,6 +376,8 @@ public struct AIAssistantSteppedDrawerView: View {
     private func runSingleTurn(input: String) {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let runID = UUID()
+        currentRunID = runID
         isRoleRunning = true
         roleOutput = ""
         rawSteppedStream = ""
@@ -449,6 +455,7 @@ public struct AIAssistantSteppedDrawerView: View {
                     systemPromptOverride: systemPrompt,
                     onChunk: { chunk in
                         Task { @MainActor in
+                            guard currentRunID == runID else { return }
                             self.rawSteppedStream += chunk
                             let parsed = AIThinkAndChoicesParser.parse(raw: self.rawSteppedStream)
                             self.roleOutput = parsed.cleanText
@@ -460,7 +467,9 @@ public struct AIAssistantSteppedDrawerView: View {
                     roleOutput = "Error: \(error.localizedDescription)"
                 }
             }
+            guard currentRunID == runID else { return }
             isRoleRunning = false
+            currentStreamTask = nil
         }
     }
 

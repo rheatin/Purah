@@ -11,16 +11,20 @@ import PurahCore
 @MainActor
 public final class ShelfThumbnailCache {
     public static let shared = ShelfThumbnailCache()
-    private var cache: [String: NSImage] = [:]
+    private let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 300
+        return cache
+    }()
 
     public init() {}
 
     public func cachedThumbnail(for path: String, size: CGSize? = nil) -> NSImage? {
         if let size {
             let key = "\(Int(size.width))x\(Int(size.height))_\(path)"
-            if let img = cache[key] { return img }
+            if let img = cache.object(forKey: key as NSString) { return img }
         }
-        return cache[path]
+        return cache.object(forKey: path as NSString)
     }
 
     @MainActor
@@ -31,7 +35,7 @@ public final class ShelfThumbnailCache {
     ) {
         let path = url.standardizedFileURL.path
         let key = "\(Int(size.width))x\(Int(size.height))_\(path)"
-        if let existing = cache[key] {
+        if let existing = cache.object(forKey: key as NSString) {
             completion(existing)
             return
         }
@@ -49,9 +53,9 @@ public final class ShelfThumbnailCache {
             let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
             let image = representation?.nsImage
             if let image {
-                self.cache[key] = image
+                self.cache.setObject(image, forKey: key as NSString)
                 if size.width <= 32 {
-                    self.cache[path] = image
+                    self.cache.setObject(image, forKey: path as NSString)
                 }
             }
             completion(image)

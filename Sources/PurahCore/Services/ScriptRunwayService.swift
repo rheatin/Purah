@@ -351,7 +351,6 @@ public final class ScriptRunwayService {
                     }
                     let first = await group.next() ?? false
                     group.cancelAll()
-                    task.terminationHandler = nil
                     return first
                 }
 
