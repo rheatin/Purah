@@ -227,8 +227,11 @@ public struct PurahPluginContext: Sendable {
             self.showToast = showToast
         } else {
             self.showToast = { [weak store = _store] msg, icon in
-                let text = (icon != nil) ? "\(icon!) \(msg)" : msg
-                store?.onCapacityWarningToast?(text)
+                if let onToast = store?.onToast {
+                    onToast(msg, icon)
+                } else {
+                    store?.onCapacityWarningToast?(msg)
+                }
             }
         }
 

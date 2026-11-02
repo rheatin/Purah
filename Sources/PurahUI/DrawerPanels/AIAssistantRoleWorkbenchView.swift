@@ -2042,8 +2042,11 @@ public struct AIAssistantRoleWorkbenchView: View {
     }
 
     private func showToast(_ message: String, icon: String? = nil) {
-        let text = (icon != nil) ? "\(icon!) \(message)" : message
-        store.onCapacityWarningToast?(text)
+        if let onToast = store.onToast {
+            onToast(message, icon)
+        } else {
+            store.onCapacityWarningToast?(message)
+        }
     }
 
     /// Writes the draft, or returns the reason it could not be written.
