@@ -981,7 +981,7 @@ public struct AISessionHistoryManagerView: View {
                         .font(.system(size: 8.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

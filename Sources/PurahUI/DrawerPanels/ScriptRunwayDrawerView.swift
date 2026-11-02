@@ -60,7 +60,7 @@ public struct ScriptRunwayDrawerView: View {
                                     .font(.system(size: 9, design: .monospaced))
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
-                                    .truncationMode(.middle)
+                                    .truncationMode(.tail)
                             }
 
                             Spacer(minLength: 4)

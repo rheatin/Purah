@@ -206,7 +206,7 @@ public struct ClipboardHoverApertureView: View {
                     .font(.system(size: 9))
                     .foregroundColor(isPinned ? palette.primaryAccent : .secondary.opacity(0.8))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(isPinned || shelfFile == nil ? .tail : .middle)
             }
         }
     }
@@ -263,7 +263,7 @@ public struct ClipboardHoverApertureView: View {
                     .font(.system(size: 9))
                     .foregroundColor(isPinned ? palette.primaryAccent : .secondary.opacity(0.8))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(isPinned || shelfFile == nil ? .tail : .middle)
             }
         }
     }
@@ -306,7 +306,7 @@ public struct ClipboardHoverApertureView: View {
                     .font(.system(size: 9, design: isPinned ? .default : .monospaced))
                     .foregroundColor(isPinned ? palette.primaryAccent : .secondary.opacity(0.75))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(isPinned ? .tail : .middle)
             }
         }
     }
