@@ -117,7 +117,8 @@ struct LocalizationTests {
             // +2: the onboarding guide now asks before it replaces the layout.
             // +1: the vitals sparkline names its click-to-cycle hint.
             // +8: Traditional Chinese now covers the alert style titles and subtitles.
-            .traditionalChinese: 589,
+            // +8: the calendar's Up-Next countdown and Open in Calendar strings.
+            .traditionalChinese: 597,
             .japanese: 71,
             .korean: 71,
             .french: 71,

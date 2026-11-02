@@ -27,9 +27,7 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public func makeRailBarView(context: PurahPluginContext) -> AnyView {
         AnyView(
-            RoundedRectangle(cornerRadius: min(context.railWidth / 2, 4))
-                .fill(context.accentColor.opacity(0.88))
-                .frame(width: context.railWidth, height: context.slotHeight)
+            CalendarRailBarPluginView(context: context, state: state)
         )
     }
 
@@ -210,14 +208,15 @@ public struct CalendarPlugin: PurahPodPlugin {
         }
 
         let now = Date()
-        let sortedEvents = allEvents.sorted(by: CalendarOrdering.railComparator(now: now))
+        let sortedEvents = CalendarPluginState.orderedForRail(allEvents, scope: state.scope, now: now)
 
         let maxLimit = max(state.maxRailEvents, 2)
         var result: [(id: String, title: String)] = []
 
         if sortedEvents.count > maxLimit {
-            let primaryCount = maxLimit - 1
-            let (visible, overflow) = CalendarOrdering.foldIntoRailSlots(sortedEvents, slotCount: primaryCount, now: now)
+            let primaryCount = max(maxLimit - 1, 0)
+            let visible = Array(sortedEvents.prefix(primaryCount))
+            let overflow = Array(sortedEvents.dropFirst(primaryCount))
             result = visible.map { ($0.id, $0.title) }
             let remaining = overflow.count
             let moreTitle = String(format: "calendar.overview.moreEvents".localized, remaining)
@@ -265,7 +264,8 @@ public struct CalendarPlugin: PurahPodPlugin {
         let now = Date()
         let leadTime = state.alertLeadTime
 
-        let sortedEvents = allEvents.sorted(by: CalendarOrdering.railComparator(now: now))
+        let sortedEvents = CalendarPluginState.orderedForRail(allEvents, scope: state.scope, now: now)
+        let upNext = CalendarPluginState.resolveUpNextEvent(in: allEvents, scope: state.scope, now: now)
 
         let maxLimit = max(state.maxRailEvents, 2)
 
@@ -273,8 +273,9 @@ public struct CalendarPlugin: PurahPodPlugin {
         var remainingCount: Int = 0
 
         if sortedEvents.count > maxLimit {
-            let primaryCount = maxLimit - 1
-            let (visible, overflow) = CalendarOrdering.foldIntoRailSlots(sortedEvents, slotCount: primaryCount, now: now)
+            let primaryCount = max(maxLimit - 1, 0)
+            let visible = Array(sortedEvents.prefix(primaryCount))
+            let overflow = Array(sortedEvents.dropFirst(primaryCount))
             visibleEvents = visible
             remainingCount = overflow.count
         } else {
@@ -282,14 +283,23 @@ public struct CalendarPlugin: PurahPodPlugin {
         }
 
         var subItems = visibleEvents.map { event in
+            let isUpNext = event.id == upNext?.id
             let isPast = event.endTime < now
             let isOngoing = event.isOngoing
             let isImminent = event.isImminent(leadTime: leadTime, now: now)
             let isAcknowledged = state.isAlertAcknowledged(id: event.id) || context.store.isAlertAcknowledged(id: event.id)
             let isAlerting = (isOngoing || isImminent) && state.isEventGlowAlertEnabled && !isAcknowledged
             let itemState: RailItemActivityState = isOngoing ? .ongoing : (isAlerting ? .alerting : (isPast ? .inactive : .normal))
+            let eventColor = event.colorHex.flatMap { Color(hex: $0) } ?? context.accentColor
+            let proximityColor = CalendarUpNextStyle.color(
+                for: event,
+                now: now,
+                normalColor: eventColor
+            )
             let badgeText: String? = {
-                if isOngoing {
+                if isUpNext {
+                    return CalendarPluginState.countdownText(for: event, now: now)
+                } else if isOngoing {
                     return "calendar.status.now".localized
                 } else if isImminent {
                     return String(format: "calendar.status.inMinutes".localized, max(Int(ceil(event.startTime.timeIntervalSince(now) / 60.0)), 1))
@@ -310,7 +320,7 @@ public struct CalendarPlugin: PurahPodPlugin {
                 state: itemState,
                 gaugeRatio: nil,
                 gaugeStyle: .none,
-                tintColorHex: event.colorHex,
+                tintColorHex: isUpNext ? (proximityColor.toHex() ?? event.colorHex) : event.colorHex,
                 isPinned: context.isItemPinned(event.id)
             )
         }
@@ -391,7 +401,89 @@ public struct CalendarPlugin: PurahPodPlugin {
     }
 }
 
-// MARK: - Todo Plugin
+// MARK: - Ambient rail expression
+
+public struct CalendarRailBarPluginView: View {
+    public let context: PurahPluginContext
+    public let state: CalendarPluginState
+
+    public init(context: PurahPluginContext, state: CalendarPluginState) {
+        self.context = context
+        self.state = state
+    }
+
+    public var body: some View {
+        let now = Date()
+        let event = observedUpNext(at: now)
+        let normalColor = event?.colorHex.flatMap { Color(hex: $0) } ?? context.accentColor
+        let color = event.map {
+            CalendarUpNextStyle.color(for: $0, now: now, normalColor: normalColor)
+        } ?? normalColor
+        let status = event.map {
+            CalendarUpNextStyle.status(for: $0, now: now)
+        }
+
+        PurahSegmentGaugeBarView(
+            segments: event.map {
+                [PurahGaugeSegment(
+                    id: $0.id,
+                    ratio: state.upNextRailRatio(at: now),
+                    color: color,
+                    isAlerting: status == .danger
+                )]
+            } ?? [],
+            barWidth: context.railWidth,
+            height: context.slotHeight,
+            trackColor: color.opacity(0.25),
+            minimumVisibleFill: 0
+        )
+        .accessibilityLabel(
+            event.flatMap { event in
+                state.upNextCountdownText(at: now).map { "\(event.title), \($0)" }
+            } ?? "calendar.empty.title".localized
+        )
+    }
+
+    private func observedUpNext(at now: Date) -> CalendarEventItem? {
+        // The countdown/intensity pair rides the existing 10s heartbeat, not a
+        // private timer. Reading it here makes SwiftUI observe the change.
+        _ = state.lastAlertTick
+        return state.resolveUpNextEvent(now: now)
+    }
+}
+
+enum CalendarUpNextStyle {
+    /// Inverted deadlines are inclusive at their boundary. `danger` is a hair
+    /// below ten so exactly 10m remains amber, while anything under 10m alerts.
+    static let proximityThreshold = PurahTelemetryThreshold(
+        warning: 30,
+        danger: 9.999_999,
+        isInverted: true
+    )
+
+    static func minutesUntilStart(for event: CalendarEventItem, now: Date) -> Double {
+        if event.startTime <= now && now < event.endTime { return 0 }
+        return max(event.startTime.timeIntervalSince(now) / 60.0, 0)
+    }
+
+    static func status(for event: CalendarEventItem, now: Date) -> TelemetryStatusLevel {
+        proximityThreshold.status(for: minutesUntilStart(for: event, now: now))
+    }
+
+    static func color(
+        for event: CalendarEventItem,
+        now: Date,
+        normalColor: Color
+    ) -> Color {
+        PurahTelemetryMetricResolver.color(
+            for: minutesUntilStart(for: event, now: now),
+            threshold: proximityThreshold,
+            normalColor: normalColor
+        )
+    }
+}
+
+// MARK: - Calendar settings
 
 public struct CalendarPluginSettingsView: View {
     public let state: CalendarPluginState

@@ -9,6 +9,8 @@ import PurahCore
 @Observable
 @MainActor
 public final class CalendarPluginState: Sendable {
+    public typealias EventFetcher = @Sendable (DateInterval) async -> [CalendarEventItem]
+
     public var events: [CalendarEventItem] {
         didSet {
             cachedSubItemHeaders = []
@@ -58,6 +60,7 @@ public final class CalendarPluginState: Sendable {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var syncGeneration: UInt64 = 0
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+    @ObservationIgnored private let eventFetcher: EventFetcher
     /// Calendar permission probe. Tests inject a fixed status so a sync never
     /// depends on the developer machine's TCC state (granted machines took the
     /// async EventKit path and made the rebuild assertions timing-dependent).
@@ -72,10 +75,14 @@ public final class CalendarPluginState: Sendable {
         storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "calendar"),
         permissionStatus: @escaping @MainActor () -> AccessStatus = {
             PermissionManager.status(from: EKEventStore.authorizationStatus(for: .event))
-        }
+        },
+        eventFetcher: EventFetcher? = nil
     ) {
         self.storage = storage
         self.permissionStatus = permissionStatus
+        self.eventFetcher = eventFetcher ?? { interval in
+            await CalendarPluginState.fetchEventKitEvents(in: interval)
+        }
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
         self.alertStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) ?? .subtleGlow
         self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
@@ -157,6 +164,111 @@ public final class CalendarPluginState: Sendable {
         acknowledgedAlertIds.removeAll()
     }
 
+    /// The next actionable meeting: an ongoing non-all-day event first, then
+    /// the earliest future one in the active calendar scope.
+    ///
+    /// All-day events stay in the agenda but can never be "next": they have no
+    /// meaningful countdown start.
+    public var upNextEvent: CalendarEventItem? {
+        _ = lastAlertTick
+        return resolveUpNextEvent(now: Date())
+    }
+
+    public func resolveUpNextEvent(now: Date = Date()) -> CalendarEventItem? {
+        Self.resolveUpNextEvent(in: events, scope: scope, now: now)
+    }
+
+    public static func resolveUpNextEvent(
+        in events: [CalendarEventItem],
+        scope: CalendarTimeScope,
+        now: Date
+    ) -> CalendarEventItem? {
+        let interval = scope.dateInterval(from: now)
+        let candidates = events.filter { event in
+            guard !event.isAllDay else { return false }
+            let isOngoing = event.startTime <= now && now < event.endTime
+            return isOngoing || interval.contains(event.startTime)
+        }
+
+        if let ongoing = candidates
+            .filter({ $0.startTime <= now && now < $0.endTime })
+            .min(by: eventOrder) {
+            return ongoing
+        }
+
+        return candidates
+            .filter { $0.startTime > now }
+            .min(by: eventOrder)
+    }
+
+    /// The single ordering used by the rail: the Up-Next event first, then
+    /// every remaining event by start time. The count still comes from the
+    /// caller, so smart-fold's +N arithmetic does not change.
+    public static func orderedForRail(
+        _ events: [CalendarEventItem],
+        scope: CalendarTimeScope,
+        now: Date
+    ) -> [CalendarEventItem] {
+        let upNext = resolveUpNextEvent(in: events, scope: scope, now: now)
+        let rest = events
+            .filter { $0.id != upNext?.id }
+            .sorted(by: eventOrder)
+        return upNext.map { [$0] + rest } ?? rest
+    }
+
+    public var upNextCountdownText: String? {
+        _ = lastAlertTick
+        return upNextCountdownText(at: Date())
+    }
+
+    public func upNextCountdownText(at now: Date) -> String? {
+        guard let event = resolveUpNextEvent(now: now) else { return nil }
+        return Self.countdownText(for: event, now: now)
+    }
+
+    public static func countdownText(for event: CalendarEventItem, now: Date) -> String {
+        if event.startTime <= now && now < event.endTime {
+            return "calendar.countdown.now".localized
+        }
+
+        let seconds = max(event.startTime.timeIntervalSince(now), 0)
+        guard seconds >= 60 else {
+            return "calendar.countdown.lessThanMinute".localized
+        }
+
+        let totalMinutes = max(Int(ceil(seconds / 60.0)), 1)
+        if totalMinutes < 60 {
+            return String(format: "calendar.countdown.minutes".localized, totalMinutes)
+        }
+        if totalMinutes < 1_440 {
+            let hours = totalMinutes / 60
+            let minutes = totalMinutes % 60
+            if minutes == 0 {
+                return String(format: "calendar.countdown.hours".localized, hours)
+            }
+            return String(format: "calendar.countdown.hoursMinutes".localized, hours, minutes)
+        }
+        return String(format: "calendar.countdown.days".localized, totalMinutes / 1_440)
+    }
+
+    public func upNextMinutesUntilStart(at now: Date) -> Double? {
+        guard let event = resolveUpNextEvent(now: now) else { return nil }
+        if event.startTime <= now && now < event.endTime {
+            return 0
+        }
+        return max(event.startTime.timeIntervalSince(now) / 60.0, 0)
+    }
+
+    /// A 0...1 rail fill: now is full, and an event four hours or more away is
+    /// empty. The composite rail uses this with the shared telemetry colours.
+    public func upNextRailRatio(at now: Date) -> Double {
+        guard let event = resolveUpNextEvent(now: now) else { return 0 }
+        if event.startTime <= now && now < event.endTime { return 1 }
+        let horizon: TimeInterval = 4 * 60 * 60
+        let remaining = max(event.startTime.timeIntervalSince(now), 0)
+        return max(0, 1 - min(remaining / horizon, 1))
+    }
+
     /// Background inspection driving live in-rail attention beacon glow and HUD toast notifications.
     /// Runs periodically without requiring UI interaction or app restarts.
     public func checkUpcomingAlerts(store: PurahWorkspaceStore? = nil, now: Date = Date()) {
@@ -207,7 +319,11 @@ public final class CalendarPluginState: Sendable {
         }
     }
 
-    public func syncEvents(into store: PurahWorkspaceStore? = nil) {
+    @discardableResult
+    public func syncEvents(
+        into store: PurahWorkspaceStore? = nil,
+        completion: (@MainActor @Sendable () -> Void)? = nil
+    ) -> Task<Void, Never>? {
         if let store {
             self.boundStore = store
         }
@@ -233,24 +349,17 @@ public final class CalendarPluginState: Sendable {
             if hasChanged {
                 targetStore?.onWindowsRebuildNeeded?()
             }
-            return
+            completion?()
+            return nil
         }
 
         syncTask?.cancel()
         syncGeneration &+= 1
         let currentGen = syncGeneration
+        let eventFetcher = self.eventFetcher
 
         syncTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let backgroundStore = EKEventStore()
-            backgroundStore.refreshSourcesIfNecessary()
-            let allCalendars = backgroundStore.calendars(for: .event)
-            let predicate = backgroundStore.predicateForEvents(
-                withStart: interval.start,
-                end: interval.end,
-                calendars: allCalendars.isEmpty ? nil : allCalendars
-            )
-            let ekEvents = backgroundStore.events(matching: predicate)
-            let deduplicated = SystemCalendarSyncService.processEvents(ekEvents)
+            let deduplicated = await eventFetcher(interval)
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
@@ -272,8 +381,10 @@ public final class CalendarPluginState: Sendable {
                         targetStore.onWindowsRebuildNeeded?()
                     }
                 }
+                completion?()
             }
         }
+        return syncTask
     }
 
     public func mount(store: PurahWorkspaceStore) {
@@ -288,13 +399,15 @@ public final class CalendarPluginState: Sendable {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.syncEvents()
-                    self?.checkUpcomingAlerts()
+                    self?.syncEvents {
+                        self?.checkUpcomingAlerts()
+                    }
                 }
             }
         }
-        syncEvents(into: store)
-        checkUpcomingAlerts(store: store)
+        syncEvents(into: store) { [weak self] in
+            self?.checkUpcomingAlerts()
+        }
     }
 
     public func unmount(store: PurahWorkspaceStore) {
@@ -337,5 +450,24 @@ public final class CalendarPluginState: Sendable {
             }
         }
         return list
+    }
+
+    private static func eventOrder(_ lhs: CalendarEventItem, _ rhs: CalendarEventItem) -> Bool {
+        if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+        if lhs.endTime != rhs.endTime { return lhs.endTime < rhs.endTime }
+        return lhs.id < rhs.id
+    }
+
+    private nonisolated static func fetchEventKitEvents(in interval: DateInterval) async -> [CalendarEventItem] {
+        let backgroundStore = EKEventStore()
+        backgroundStore.refreshSourcesIfNecessary()
+        let allCalendars = backgroundStore.calendars(for: .event)
+        let predicate = backgroundStore.predicateForEvents(
+            withStart: interval.start,
+            end: interval.end,
+            calendars: allCalendars.isEmpty ? nil : allCalendars
+        )
+        let ekEvents = backgroundStore.events(matching: predicate)
+        return SystemCalendarSyncService.processEvents(ekEvents)
     }
 }

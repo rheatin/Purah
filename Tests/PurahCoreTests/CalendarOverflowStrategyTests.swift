@@ -283,7 +283,7 @@ struct CalendarOverflowStrategyTests {
         let imminentSub = items.first(where: { $0.id == "imminent_1" })
         let pastSub = items.first(where: { $0.id == "past_1" })
 
-        #expect(ongoingSub?.badge == "calendar.status.now".localized)
+        #expect(ongoingSub?.badge == "calendar.countdown.now".localized)
         #expect(ongoingSub?.state == .ongoing)
 
         let expectedMinutes = max(Int(ceil(imminentEvent.startTime.timeIntervalSince(now) / 60.0)), 1)

@@ -387,7 +387,12 @@ public struct CalendarDrawerView: View {
     // MARK: - Full Agenda Event List (Chrono Timeline View)
     @ViewBuilder
     private func agendaListView() -> some View {
+        let now = Date()
         VStack(alignment: .leading, spacing: 8) {
+            if let upNext = observedUpNext(at: now) {
+                nextUpRow(event: upNext, now: now)
+            }
+
             // Chrono Event Cards — the viewport lands on "now" every open
             // A full agenda is a scrollable document; keep the indicators.
             PurahScrollableBody(indicators: .automatic) {
@@ -416,6 +421,92 @@ public struct CalendarDrawerView: View {
             .onAppear { anchorAgendaViewport() }
             .onChange(of: store.calendarScope) { anchorAgendaViewport() }
         }
+    }
+
+    private func observedUpNext(at now: Date) -> CalendarEventItem? {
+        _ = state.lastAlertTick
+        return state.resolveUpNextEvent(now: now)
+    }
+
+    @ViewBuilder
+    private func nextUpRow(event: CalendarEventItem, now: Date) -> some View {
+        let countdown = CalendarPluginState.countdownText(for: event, now: now)
+        let eventColor = event.colorHex.flatMap { Color(hex: $0) } ?? podColor
+        let urgencyColor = CalendarUpNextStyle.color(
+            for: event,
+            now: now,
+            normalColor: eventColor
+        )
+        let actionTitle = event.url == nil
+            ? "calendar.action.openInCalendar".localized
+            : "calendar.action.join".localized
+        let actionIcon = event.url == nil ? "calendar" : "video.fill"
+
+        HStack(spacing: 9) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("calendar.upNext.title".localized)
+                    .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+                    .foregroundColor(urgencyColor)
+                    .textCase(.uppercase)
+
+                Text(event.title)
+                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                HStack(spacing: 6) {
+                    Text(event.timeRangeLabel)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+
+                    Text(countdown)
+                        .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+                        .foregroundColor(urgencyColor)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(urgencyColor.opacity(0.18)))
+                        .fixedSize()
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 4)
+
+            Button {
+                if let url = event.url {
+                    NSWorkspace.shared.open(url)
+                } else {
+                    launchAppleCalendar(at: event.startTime)
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: actionIcon)
+                        .font(.system(size: 9, weight: .bold))
+                    Text(actionTitle)
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(podColor))
+                .foregroundColor(podColor.highContrastInk)
+            }
+            .buttonStyle(.tactile)
+            .help(actionTitle)
+            .accessibilityLabel(actionTitle)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(urgencyColor.opacity(0.09))
+        )
+        .liquidCardBackground(
+            cornerRadius: 8,
+            strokeColor: urgencyColor.opacity(0.55)
+        )
     }
 
     /// First event that has not ended — the "now" boundary in this list.
