@@ -2911,7 +2911,7 @@ public final class PurahWorkspaceStore {
     package var _calendarEvents: [CalendarEventItem] = PurahWorkspaceStore.defaultEvents()
     package var _todos: [TodoItem] = PurahWorkspaceStore.defaultTodos()
     package var _musicTrack: MusicTrackInfo = .init()
-    package var _shelfFiles: [ShelfFileItem] = PurahWorkspaceStore.defaultShelfFiles()
+    package var _shelfFiles: [ShelfFileItem] = []
     package var _quickNote: NoteContent = .init()
     package var _isVitalsDecomposed: Bool {
         get {
@@ -3122,13 +3122,6 @@ public final class PurahWorkspaceStore {
             TodoItem(title: "Update energy waveform telemetry", isCompleted: false),
             TodoItem(title: "Verify multi-display adaptive layout", isCompleted: false),
             TodoItem(title: "Tune Fitts Law flick threshold filtering", isCompleted: false)
-        ]
-    }
-
-    private static func defaultShelfFiles() -> [ShelfFileItem] {
-        [
-            ShelfFileItem(name: "macOS_Workflow_Spec.pdf", sizeDescription: "2.4 MB", fileExtension: "pdf"),
-            ShelfFileItem(name: "Architecture_Diagram.png", sizeDescription: "4.8 MB", fileExtension: "png")
         ]
     }
 

@@ -96,20 +96,35 @@ public final class ShelfPluginState: Sendable {
         self.autoPrune = storage.string(forKey: "autoPrune") != nil ? storage.bool(forKey: "autoPrune") : true
         self.autoRemoveOnDrag = storage.string(forKey: "autoRemoveOnDrag") != nil ? storage.bool(forKey: "autoRemoveOnDrag") : true
 
+        let hasAuthoritativeIndex: Bool
         if let decoded = fileStorage.loadIndex([ShelfFileItem].self) {
             self.files = decoded
+            hasAuthoritativeIndex = true
         } else if let saved = storage.codable(forKey: "stashedFiles", as: [ShelfFileItem].self) {
             self.files = saved
+            hasAuthoritativeIndex = true
         } else {
-            self.files = Self.defaultFiles()
+            self.files = []
+            // A missing/corrupt index may still have live assets behind it.
+            // Without a decoded reference list, deleting "unreferenced" files
+            // could destroy the very content the index was meant to describe.
+            hasAuthoritativeIndex = false
+        }
+        if hasAuthoritativeIndex {
+            cleanupOrphanedAssets()
         }
     }
 
     public func load() {
+        let hasAuthoritativeIndex: Bool
         if let decoded = fileStorage.loadIndex([ShelfFileItem].self) {
             self.files = decoded
+            hasAuthoritativeIndex = true
         } else if let saved = storage.codable(forKey: "stashedFiles", as: [ShelfFileItem].self) {
             self.files = saved
+            hasAuthoritativeIndex = true
+        } else {
+            hasAuthoritativeIndex = false
         }
         if let savedRetention = storage.codable(forKey: "retentionPeriod", as: PurahRetentionPeriod.self) {
             self.retentionPeriod = savedRetention
@@ -122,6 +137,9 @@ public final class ShelfPluginState: Sendable {
         }
         if storage.string(forKey: "autoRemoveOnDrag") != nil {
             self.autoRemoveOnDrag = storage.bool(forKey: "autoRemoveOnDrag")
+        }
+        if hasAuthoritativeIndex {
+            cleanupOrphanedAssets()
         }
     }
 
@@ -334,14 +352,17 @@ public final class ShelfPluginState: Sendable {
     }
 
     /// Removes the item from the shelf after it is dragged out if `autoRemoveOnDrag` is enabled
-    /// and the item is not starred (`isFavorite == false`). Never deletes the user's original file on disk!
+    /// and the item is not starred (`isFavorite == false`).
+    ///
+    /// Shelf-owned files stay on disk for the receiver to finish reading. They
+    /// become orphaned assets and are cleaned up on a later launch.
     ///
     /// Returns `true` when the item was actually removed.
     @discardableResult
     public func handleDragOutCompleted(id: String) -> Bool {
         guard autoRemoveOnDrag else { return false }
         guard let item = files.first(where: { $0.id == id }), !item.isFavorite else { return false }
-        removeFile(id: id)
+        removeFile(id: id, deletingOwnedFile: false)
         return true
     }
 
@@ -351,7 +372,7 @@ public final class ShelfPluginState: Sendable {
         guard autoRemoveOnDrag else { return }
         for id in ids {
             if let item = files.first(where: { $0.id == id }), !item.isFavorite {
-                removeFile(id: id)
+                removeFile(id: id, deletingOwnedFile: false)
             }
             selectedFileIds.remove(id)
             if lastSelectedFileId == id {
@@ -391,10 +412,15 @@ public final class ShelfPluginState: Sendable {
     }
 
     public func removeFile(id: String) {
-        if let item = files.first(where: { $0.id == id }), let path = item.filePath {
-            if path.hasPrefix(fileStorage.baseDirectory.path) {
-                try? FileManager.default.removeItem(atPath: path)
-            }
+        removeFile(id: id, deletingOwnedFile: true)
+    }
+
+    private func removeFile(id: String, deletingOwnedFile: Bool) {
+        if deletingOwnedFile,
+           let item = files.first(where: { $0.id == id }),
+           let path = item.filePath,
+           path.hasPrefix(fileStorage.baseDirectory.path) {
+            try? FileManager.default.removeItem(atPath: path)
         }
         files.removeAll { $0.id == id }
         selectedFileIds.remove(id)
@@ -439,9 +465,10 @@ public final class ShelfPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
-        if !store._shelfFiles.isEmpty && self.files.isEmpty {
-            self.files = store._shelfFiles
-        }
+        // The persisted plugin index is authoritative. The store field is a
+        // compatibility mirror; copying a non-empty mirror back over an empty
+        // shelf revived deleted rows.
+        store._shelfFiles = files
     }
 
     public func unmount(store: PurahWorkspaceStore) {
@@ -451,10 +478,36 @@ public final class ShelfPluginState: Sendable {
         }
     }
 
-    public static func defaultFiles() -> [ShelfFileItem] {
-        [
-            ShelfFileItem(name: "macOS_Workflow_Spec.pdf", sizeDescription: "2.4 MB", fileExtension: "pdf"),
-            ShelfFileItem(name: "Architecture_Diagram.png", sizeDescription: "4.8 MB", fileExtension: "png")
-        ]
+    /// Removes assets that no shelf row references and that are old enough
+    /// that no drag receiver can still be reading them.
+    private func cleanupOrphanedAssets(olderThan maxAge: TimeInterval = 86_400) {
+        let fm = FileManager.default
+        let assets = fileStorage.assetsDirectory
+        guard let urls = try? fm.contentsOfDirectory(
+            at: assets,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let referencedPaths = Set(files.flatMap { item -> [String] in
+            var paths: [String] = []
+            if let path = item.filePath {
+                paths.append(URL(fileURLWithPath: path).standardizedFileURL.path)
+            }
+            if let resolved = item.resolvedURL {
+                paths.append(resolved.standardizedFileURL.path)
+            }
+            return paths
+        })
+
+        let cutoff = Date().addingTimeInterval(-maxAge)
+        for url in urls {
+            let path = url.standardizedFileURL.path
+            guard !referencedPaths.contains(path) else { continue }
+            guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                  let modified = values.contentModificationDate,
+                  modified < cutoff else { continue }
+            try? fm.removeItem(at: url)
+        }
     }
 }
