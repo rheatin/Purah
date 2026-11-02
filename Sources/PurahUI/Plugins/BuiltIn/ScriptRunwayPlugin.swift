@@ -285,6 +285,35 @@ public struct ScriptsPluginSettingsView: View {
             )
     }
 
+    @ViewBuilder
+    private func scriptContentInput(commandType: ScriptCommandType, text: Binding<String>) -> some View {
+        if commandType == .shortcut {
+            customInputCapsule {
+                TextField("macOS Shortcut Name (e.g. Do Not Disturb)", text: text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced))
+            }
+        } else {
+            customInputCapsule {
+                ZStack(alignment: .topLeading) {
+                    if text.wrappedValue.isEmpty {
+                        Text("Command or Script")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextEditor(text: text)
+                        .font(.system(size: 11, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 112, maxHeight: 132)
+                }
+            }
+        }
+    }
+
     // MARK: - Draft From One Sentence
     /// A second way into the same form: describe the job, get the fields
     /// filled in, then read and edit them before saving.
@@ -678,11 +707,7 @@ public struct ScriptsPluginSettingsView: View {
                                 .frame(width: 210)
                             }
 
-                            customInputCapsule {
-                                TextField(newCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $newScriptContent)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 11, design: .monospaced))
-                            }
+                            scriptContentInput(commandType: newCommandType, text: $newScriptContent)
 
                             HStack(spacing: 8) {
                                 customInputCapsule {
@@ -851,11 +876,7 @@ public struct ScriptsPluginSettingsView: View {
                                             .frame(width: 210)
                                         }
 
-                                        customInputCapsule {
-                                            TextField(editCommandType == .shortcut ? "macOS Shortcut Name (e.g. Do Not Disturb)" : "Command or Script", text: $editScriptContent)
-                                                .textFieldStyle(.plain)
-                                                .font(.system(size: 11, design: .monospaced))
-                                        }
+                                        scriptContentInput(commandType: editCommandType, text: $editScriptContent)
 
                                         HStack(spacing: 8) {
                                             customInputCapsule {
