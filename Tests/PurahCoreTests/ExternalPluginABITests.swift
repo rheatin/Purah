@@ -158,16 +158,29 @@ struct ExternalPluginABITests {
             .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    /// End-to-end: run the exact path `Dev: Load Package...` runs, minus the
-    /// `swift build` step. Skips when the example has not been compiled yet
+    private static func isolatedDylibCopy(_ source: URL) throws -> (url: URL, directory: URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-abi-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let copy = directory.appendingPathComponent(source.lastPathComponent)
+        try FileManager.default.copyItem(at: source, to: copy)
+        return (copy, directory)
+    }
+
+    /// End-to-end through the host loader, minus the `swift build` step. Each
+    /// test loads a unique copy because the loader deliberately refuses a
+    /// second load of a path already resident in the process. Skips when the
+    /// example has not been compiled yet
     /// (`cd Examples/PurahExamplePlugin && swift build -c release`).
     @Test("The compiled example plugin dlopens and builds both views",
           .enabled(if: ExternalPluginABITests.builtExampleDylib != nil,
                    "Build Examples/PurahExamplePlugin first"))
     @MainActor
     func testExamplePluginLoadsThroughHostLoader() async throws {
-        let dylib = try #require(Self.builtExampleDylib)
-        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
+        let sourceDylib = try #require(Self.builtExampleDylib)
+        let isolated = try Self.isolatedDylibCopy(sourceDylib)
+        defer { try? FileManager.default.removeItem(at: isolated.directory) }
+        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: isolated.url)
         defer { PluginDynamicLoader.shared.unloadPlugin(id: plugin.manifest.id) }
 
         #expect(plugin.manifest.id == "com.example.focus")
@@ -220,8 +233,10 @@ struct ExternalPluginABITests {
                    "Build Examples/PurahExamplePlugin first"))
     @MainActor
     func testDynamicSteppedMode() async throws {
-        let dylib = try #require(Self.builtExampleDylib)
-        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
+        let sourceDylib = try #require(Self.builtExampleDylib)
+        let isolated = try Self.isolatedDylibCopy(sourceDylib)
+        defer { try? FileManager.default.removeItem(at: isolated.directory) }
+        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: isolated.url)
         defer { PluginDynamicLoader.shared.unloadPlugin(id: plugin.manifest.id) }
 
         let store = PurahWorkspaceStore(
