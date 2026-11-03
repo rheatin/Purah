@@ -154,6 +154,9 @@ public final class PurahWorkspaceStore {
     public var hotKeyShortcut: HotKeyShortcut = .defaultShortcut
     public var sculptorHotKeyShortcut: HotKeyShortcut = .defaultSculptorShortcut
     public var activePreviewScreenFrame: CGRect? = nil
+    /// An open in-drawer dropdown can extend past its drawer card. While it
+    /// does, that transient panel is part of the interactive hit region too.
+    public var activeDropdownScreenFrame: CGRect? = nil
 
     @ObservationIgnored
     public var onDismissPreviewPanel: (@MainActor () -> Void)? = nil
@@ -994,6 +997,7 @@ public final class PurahWorkspaceStore {
         DiagnosticLogger.shared.info("Store", "Active drawer dismissed")
         onDismissPreviewPanel?()
         activePreviewScreenFrame = nil
+        activeDropdownScreenFrame = nil
         pendingHoverPodId = nil
         activeDrawerPodId = nil
         activeDrawerItemId = nil

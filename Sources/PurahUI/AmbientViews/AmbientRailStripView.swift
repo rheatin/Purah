@@ -6,6 +6,8 @@ import PurahCore
 public struct AmbientRailStripView: View {
     public let edge: MountEdge
     public let store: PurahWorkspaceStore
+    @State private var dropdownPanelFrames: [CGRect] = []
+    @State private var hostWindowRef = AmbientRailStripWindowReference()
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -150,6 +152,36 @@ public struct AmbientRailStripView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .left ? .leading : .trailing)
         .ignoresSafeArea()
+        .background(AmbientRailWindowReader { window in
+            hostWindowRef.window = window
+            updateDropdownScreenFrame()
+        })
+        .onPreferenceChange(InDrawerDropdownPanelFramesPreferenceKey.self) { frames in
+            dropdownPanelFrames = frames
+            updateDropdownScreenFrame()
+        }
+        .onDisappear {
+            store.activeDropdownScreenFrame = nil
+        }
+    }
+
+    private func updateDropdownScreenFrame() {
+        guard let frame = InDrawerDropdownFrameMath.union(of: dropdownPanelFrames),
+              let window = hostWindowRef.window,
+              let contentView = window.contentView else {
+            store.activeDropdownScreenFrame = nil
+            return
+        }
+
+        let contentRect = NSRect(
+            x: frame.minX,
+            y: contentView.bounds.height - frame.maxY,
+            width: frame.width,
+            height: frame.height
+        )
+        let windowRect = contentView.convert(contentRect, to: nil)
+        store.activeDropdownScreenFrame = window.convertToScreen(windowRect)
+            .insetBy(dx: -4, dy: -4)
     }
 
     private func makeContext(for pod: SlotPod, totalHeight: CGFloat, isActive: Bool, isPinned: Bool, railWidth: CGFloat) -> PurahPluginContext {
@@ -183,6 +215,7 @@ public struct AmbientRailStripView: View {
                     }
                     store.onDismissPreviewPanel?()
                     store.activePreviewScreenFrame = nil
+                    store.activeDropdownScreenFrame = nil
                     store.invalidateLayoutCache()
                 }
             },
@@ -282,6 +315,7 @@ public struct AmbientRailStripView: View {
                     }
                     store.onDismissPreviewPanel?()
                     store.activePreviewScreenFrame = nil
+                    store.activeDropdownScreenFrame = nil
                     store.invalidateLayoutCache()
                 }
             },
@@ -607,5 +641,33 @@ public struct RailPagePortalView: View {
                 isHovered = hovering
             }
         }
+    }
+}
+
+@MainActor
+private final class AmbientRailStripWindowReference {
+    weak var window: NSWindow?
+}
+
+private final class AmbientRailWindowTrackingView: NSView {
+    var onWindowChange: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChange?(window)
+    }
+}
+
+private struct AmbientRailWindowReader: NSViewRepresentable {
+    let onChange: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> AmbientRailWindowTrackingView {
+        let view = AmbientRailWindowTrackingView()
+        view.onWindowChange = onChange
+        return view
+    }
+
+    func updateNSView(_ nsView: AmbientRailWindowTrackingView, context: Context) {
+        nsView.onWindowChange = onChange
     }
 }

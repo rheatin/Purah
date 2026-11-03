@@ -885,6 +885,7 @@ public final class PluginDynamicLoader {
                 }
                 store.onDismissPreviewPanel?()
                 store.activePreviewScreenFrame = nil
+                store.activeDropdownScreenFrame = nil
                 store.invalidateLayoutCache()
             }
         case "togglePin":

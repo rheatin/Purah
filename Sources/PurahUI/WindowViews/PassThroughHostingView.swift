@@ -17,7 +17,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         var pinnedItemIds: Set<String> = []
         var isDynamicBreathingEnabled: Bool = true
         var currentRailPage: Int = 0
+        var activeDropdownScreenFrame: CGRect? = nil
         var cachedCardFrames: [CGRect] = []
+        var cachedDropdownWindowFrame: CGRect? = nil
         var cachedLayoutItems: [ResolvedPodLayoutItem] = []
         var timestamp: TimeInterval = 0
     }
@@ -66,6 +68,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let pinned = store.pinnedDrawerItemIds
         let isBreathing = store.isDynamicBreathingEnabled
         let page = store.currentRailPage(for: edge)
+        let dropdownScreenFrame = store.activeDropdownScreenFrame
 
         // If bounds and active/pinned state are unchanged, throttle layout re-evaluation to 35ms (approx 30Hz)
         if cache.boundsSize == bounds.size,
@@ -75,6 +78,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
            cache.pinnedItemIds == pinned,
            cache.isDynamicBreathingEnabled == isBreathing,
            cache.currentRailPage == page,
+           cache.activeDropdownScreenFrame == dropdownScreenFrame,
            (now - cache.timestamp) < 0.035 {
             return
         }
@@ -83,6 +87,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let windowW = Double(bounds.width)
         let frames = store.activeDrawerCardFrames(for: edge, totalHeight: totalH, windowWidth: windowW)
         let layout = store.resolvedPhysicalLayout(for: edge, totalHeight: totalH)
+        let dropdownWindowFrame = dropdownScreenFrame.flatMap { screenFrame in
+            window?.convertFromScreen(screenFrame)
+        }
 
         cache = GeometrySnapshotCache(
             boundsSize: bounds.size,
@@ -92,7 +99,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             pinnedItemIds: pinned,
             isDynamicBreathingEnabled: isBreathing,
             currentRailPage: page,
+            activeDropdownScreenFrame: dropdownScreenFrame,
             cachedCardFrames: frames,
+            cachedDropdownWindowFrame: dropdownWindowFrame,
             cachedLayoutItems: layout,
             timestamp: now
         )
@@ -102,6 +111,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         guard !store.isRailsFrozen else { return false }
         updateCacheIfNeeded()
         return cache.cachedCardFrames.contains(where: { $0.contains(point) })
+            || cache.cachedDropdownWindowFrame?.contains(point) == true
     }
 
     public override func scrollWheel(with event: NSEvent) {

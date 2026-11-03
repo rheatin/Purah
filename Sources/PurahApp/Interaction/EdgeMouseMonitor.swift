@@ -1203,6 +1203,9 @@ public final class EdgeMouseMonitor {
         if let previewFrame = store.activePreviewScreenFrame, previewFrame.contains(point) {
             return true
         }
+        if let dropdownFrame = store.activeDropdownScreenFrame, dropdownFrame.contains(point) {
+            return true
+        }
 
         // This path is only reached after a drawer is active or pinned above.
         // Either state expands the canvas to maxCanvasWidth before interaction;

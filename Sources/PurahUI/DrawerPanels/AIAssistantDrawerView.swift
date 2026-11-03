@@ -20,6 +20,25 @@ private struct AIContentColumnHeightPreferenceKey: PreferenceKey {
     }
 }
 
+struct InDrawerDropdownPanelFramesPreferenceKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: [CGRect] = []
+
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+enum InDrawerDropdownFrameMath {
+    static func union(of frames: [CGRect]) -> CGRect? {
+        let validFrames = frames.filter { $0.width > 0 && $0.height > 0 }
+        guard var result = validFrames.first else { return nil }
+        for frame in validFrames.dropFirst() {
+            result = result.union(frame)
+        }
+        return result
+    }
+}
+
 // MARK: - Composite Full Drawer View
 public struct AIAssistantDrawerView: View {
     @Bindable public var state: AIAssistantPluginState
@@ -1174,9 +1193,10 @@ struct InDrawerDropdownOption: Identifiable {
 ///
 /// System `Menu` pops an NSMenu outside the panel: the pointer leaves the card's hit
 /// rectangle, EdgeMouseMonitor starts the exit-grace countdown, and the drawer collapses
-/// with the menu still floating. This control keeps the panel inside the card bounds —
-/// down for top-bar pills, up for bottom-bar pills — so the pointer never leaves the
-/// interactive region while browsing options.
+/// with the menu still floating. This control draws the panel in the drawer's own
+/// hierarchy and reports its transient screen frame to the host, so the pointer stays
+/// in the interactive region even when a short drawer requires the panel to extend
+/// past its card.
 struct InDrawerDropdown<Trigger: View>: View {
     let trigger: Trigger
     let options: [InDrawerDropdownOption]
@@ -1186,6 +1206,12 @@ struct InDrawerDropdown<Trigger: View>: View {
 
     @State private var isExpanded = false
     @State private var hoveringOptionID: String? = nil
+    @State private var isHoveringTrigger = false
+    @State private var isHoveringPanel = false
+    @State private var triggerFrame: CGRect = .zero
+    @State private var panelSize: CGSize = .zero
+    @State private var hoverExitTask: Task<Void, Never>?
+    @State private var clickOutsideMonitor: Any?
 
     init(
         expandsUpward: Bool = false,
@@ -1211,6 +1237,18 @@ struct InDrawerDropdown<Trigger: View>: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { triggerFrame = proxy.frame(in: .global) }
+                    .onChange(of: proxy.frame(in: .global)) { _, frame in
+                        triggerFrame = frame
+                    }
+            }
+        }
+        .onHover { hovering in
+            updatePointerHover(hovering, isPanel: false)
+        }
         // The panel is an overlay so opening it cannot contribute to the
         // trigger's layout size. A layout-sized panel makes the surrounding
         // row reflow the moment the menu appears.
@@ -1218,14 +1256,59 @@ struct InDrawerDropdown<Trigger: View>: View {
             if isExpanded {
                 panel
                     .fixedSize()
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { panelSize = proxy.size }
+                                .onChange(of: proxy.size) { _, size in
+                                    panelSize = size
+                                }
+                        }
+                    }
                     .zIndex(2)
                     .allowsHitTesting(true)
+                    .onHover { hovering in
+                        updatePointerHover(hovering, isPanel: true)
+                    }
                     .transition(.opacity.combined(
                         with: .scale(scale: 0.97, anchor: expandsUpward ? .bottom : .top)
                     ))
             }
         }
         .zIndex(1)
+        .background {
+            Color.clear.preference(
+                key: InDrawerDropdownPanelFramesPreferenceKey.self,
+                value: panelGlobalFrame.map { [$0] } ?? []
+            )
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            if expanded {
+                installClickOutsideMonitor()
+            } else {
+                removeClickOutsideMonitor()
+                panelSize = .zero
+            }
+        }
+        .onDisappear {
+            hoverExitTask?.cancel()
+            hoverExitTask = nil
+            removeClickOutsideMonitor()
+        }
+    }
+
+    private var panelGlobalFrame: CGRect? {
+        guard isExpanded, triggerFrame.width > 0, panelSize.width > 0 else {
+            return nil
+        }
+        return CGRect(
+            x: triggerFrame.minX,
+            y: expandsUpward
+                ? triggerFrame.maxY - panelSize.height - triggerHeight - 2
+                : triggerFrame.minY + triggerHeight + 2,
+            width: panelSize.width,
+            height: panelSize.height
+        )
     }
 
     private func optionRow(_ option: InDrawerDropdownOption) -> some View {
@@ -1291,9 +1374,7 @@ struct InDrawerDropdown<Trigger: View>: View {
     private func optionButton(_ option: InDrawerDropdownOption) -> some View {
         Button {
             option.action()
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
-                isExpanded = false
-            }
+            closeDropdown()
         } label: {
             optionRow(option)
         }
@@ -1301,5 +1382,71 @@ struct InDrawerDropdown<Trigger: View>: View {
         .onHover { hovering in
             hoveringOptionID = hovering ? option.id : nil
         }
+    }
+
+    private func closeDropdown() {
+        hoverExitTask?.cancel()
+        hoverExitTask = nil
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
+            isExpanded = false
+        }
+    }
+
+    private func updatePointerHover(_ hovering: Bool, isPanel: Bool) {
+        if isPanel {
+            isHoveringPanel = hovering
+        } else {
+            isHoveringTrigger = hovering
+        }
+
+        hoverExitTask?.cancel()
+        hoverExitTask = nil
+        guard isExpanded, !isHoveringTrigger, !isHoveringPanel else { return }
+
+        hoverExitTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            closeDropdown()
+        }
+    }
+
+    private func installClickOutsideMonitor() {
+        removeClickOutsideMonitor()
+        clickOutsideMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            guard isExpanded else { return event }
+            if !eventIsInsideDropdown(event) {
+                closeDropdown()
+            }
+            // Passive dismissal: the click still belongs to whatever the
+            // person aimed at inside the drawer.
+            return event
+        }
+    }
+
+    private func removeClickOutsideMonitor() {
+        if let clickOutsideMonitor {
+            NSEvent.removeMonitor(clickOutsideMonitor)
+            self.clickOutsideMonitor = nil
+        }
+    }
+
+    private func eventIsInsideDropdown(_ event: NSEvent) -> Bool {
+        guard let window = event.window, let contentView = window.contentView else {
+            return true
+        }
+        let point = CGPoint(
+            x: event.locationInWindow.x,
+            y: contentView.bounds.height - event.locationInWindow.y
+        )
+        let slop: CGFloat = 6
+        if triggerFrame.width > 0,
+           triggerFrame.insetBy(dx: -slop, dy: -slop).contains(point) {
+            return true
+        }
+        if let panelGlobalFrame,
+           panelGlobalFrame.insetBy(dx: -slop, dy: -slop).contains(point) {
+            return true
+        }
+        return false
     }
 }
