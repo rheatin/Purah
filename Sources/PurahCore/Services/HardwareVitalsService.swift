@@ -839,6 +839,14 @@ public final class HardwareVitalsService {
             friendlyNames[pid] = name
         }
 
+        let pids = allProcessIdentifiers()
+        let processTable = processExecutableTable(for: pids)
+        let appBundles = appBundleInfo(for: processTable)
+        // PID reuse makes a cross-sample name cache unsafe. Resolve once per
+        // sample and reuse that answer for every consumer in this interval.
+        var displayNames: [Int32: String] = [:]
+        displayNames.reserveCapacity(pids.count)
+
         let now = Date()
         let previousCPUTimes = buffer.previousProcessCPUTicks
         let previousResources = buffer.previousProcessResources
@@ -850,10 +858,14 @@ public final class HardwareVitalsService {
         var sampledCPUTimes: [Int32: UInt64] = [:]
         var sampledResources: [Int32: ProcessResourceCounters] = [:]
 
-        for pid in allProcessIdentifiers() {
-            guard let name = processDisplayName(pid: pid, friendlyNames: friendlyNames) else {
-                continue
-            }
+        for pid in pids {
+            let name = displayNames[pid] ?? processDisplayName(
+                pid: pid,
+                friendlyNames: friendlyNames,
+                processTable: processTable,
+                appBundles: appBundles
+            )
+            displayNames[pid] = name
 
             var taskInfo = proc_taskinfo()
             let size = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, Int32(MemoryLayout<proc_taskinfo>.size))
@@ -949,32 +961,90 @@ public final class HardwareVitalsService {
         return []
     }
 
-    private func processDisplayName(pid: Int32, friendlyNames: [Int32: String]) -> String? {
-        if let friendlyName = friendlyNames[pid], !friendlyName.isEmpty {
-            return friendlyName
-        }
+    private func processExecutableTable(
+        for pids: [Int32]
+    ) -> [Int32: ProcessExecutableRecord] {
+        var table: [Int32: ProcessExecutableRecord] = [:]
+        table.reserveCapacity(pids.count)
 
-        var nameBuffer = [CChar](repeating: 0, count: 256)
-        let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
-        if nameLength > 0,
-           let name = cString(from: nameBuffer)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !name.isEmpty {
-            return name
+        for pid in pids {
+            var info = proc_bsdinfo()
+            let size = proc_pidinfo(
+                pid,
+                PROC_PIDTBSDINFO,
+                0,
+                &info,
+                Int32(MemoryLayout<proc_bsdinfo>.size)
+            )
+            let parentPID = size > 0 ? Int32(clamping: info.pbi_ppid) : 0
+            table[pid] = ProcessExecutableRecord(
+                parentPID: parentPID,
+                executablePath: processExecutablePath(pid: pid)
+            )
         }
+        return table
+    }
 
+    private func processExecutablePath(pid: Int32) -> String? {
         var pathBuffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
-        if pathLength > 0,
-           let path = cString(from: pathBuffer),
-           !path.isEmpty {
-            let executableName = URL(fileURLWithPath: path).lastPathComponent
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !executableName.isEmpty {
-                return executableName
-            }
-        }
+        guard pathLength > 0 else { return nil }
+        return cString(from: pathBuffer)
+    }
 
-        return nil
+    private func processNameFromKernel(pid: Int32) -> String? {
+        var nameBuffer = [CChar](repeating: 0, count: 256)
+        let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
+        guard nameLength > 0 else { return nil }
+        return cString(from: nameBuffer)
+    }
+
+    private func appBundleInfo(
+        for processTable: [Int32: ProcessExecutableRecord]
+    ) -> [String: ProcessAppBundleInfo] {
+        var infos: [String: ProcessAppBundleInfo] = [:]
+
+        for record in processTable.values {
+            guard let path = record.executablePath,
+                  let bundlePath = ProcessDisplayNameResolver.appBundlePath(in: path),
+                  infos[bundlePath] == nil else {
+                continue
+            }
+            infos[bundlePath] = Self.appBundleInfo(at: bundlePath)
+        }
+        return infos
+    }
+
+    private static func appBundleInfo(at bundlePath: String) -> ProcessAppBundleInfo {
+        let bundle = Bundle(url: URL(fileURLWithPath: bundlePath))
+        let configuredName = ["CFBundleDisplayName", "CFBundleName"]
+            .compactMap { bundle?.object(forInfoDictionaryKey: $0) as? String }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        let displayName = configuredName
+            ?? URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent
+        let executableName = (bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return ProcessAppBundleInfo(
+            displayName: displayName,
+            executableName: executableName?.isEmpty == true ? nil : executableName
+        )
+    }
+
+    private func processDisplayName(
+        pid: Int32,
+        friendlyNames: [Int32: String],
+        processTable: [Int32: ProcessExecutableRecord],
+        appBundles: [String: ProcessAppBundleInfo]
+    ) -> String {
+        let fallbackName = friendlyNames[pid] ?? processNameFromKernel(pid: pid)
+        return ProcessDisplayNameResolver.resolve(
+            pid: pid,
+            executablePath: processTable[pid]?.executablePath,
+            fallbackName: fallbackName,
+            processTable: processTable,
+            appBundles: appBundles
+        )
     }
 
     private func cString(from buffer: [CChar]) -> String? {

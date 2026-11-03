@@ -963,9 +963,15 @@ public struct HardwareVitalsDrawerView: View {
                         .frame(width: 4.5, height: 4.5)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(proc.name)
-                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Text(proc.name)
+                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                .lineLimit(1)
+                            Text("pid \(proc.id)")
+                                .font(.system(size: 7.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
 
                         GeometryReader { g in
                             ZStack(alignment: .leading) {
