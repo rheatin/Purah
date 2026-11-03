@@ -12,14 +12,73 @@ public struct ProcessInfoItem: Identifiable, Sendable {
     public var cpuPercent: Double
     public var memoryPercent: Double
     public var memoryMB: Double
+    public var networkDownBytesPerSecond: Double
+    public var networkUpBytesPerSecond: Double
+    public var diskReadBytesPerSecond: Double
+    public var diskWriteBytesPerSecond: Double
+    public var energyWatts: Double
 
-    public init(id: Int32, name: String, cpuPercent: Double, memoryPercent: Double, memoryMB: Double = 0.0) {
+    public init(
+        id: Int32,
+        name: String,
+        cpuPercent: Double,
+        memoryPercent: Double,
+        memoryMB: Double = 0.0,
+        networkDownBytesPerSecond: Double = 0.0,
+        networkUpBytesPerSecond: Double = 0.0,
+        diskReadBytesPerSecond: Double = 0.0,
+        diskWriteBytesPerSecond: Double = 0.0,
+        energyWatts: Double = 0.0
+    ) {
         self.id = id
         self.name = name
         self.cpuPercent = cpuPercent
         self.memoryPercent = memoryPercent
         self.memoryMB = memoryMB
+        self.networkDownBytesPerSecond = networkDownBytesPerSecond
+        self.networkUpBytesPerSecond = networkUpBytesPerSecond
+        self.diskReadBytesPerSecond = diskReadBytesPerSecond
+        self.diskWriteBytesPerSecond = diskWriteBytesPerSecond
+        self.energyWatts = energyWatts
     }
+}
+
+struct ProcessResourceCounters: Sendable, Equatable {
+    let diskReadBytes: UInt64
+    let diskWriteBytes: UInt64
+    let energyNanojoules: UInt64
+
+    func rates(since previous: ProcessResourceCounters?, elapsed: TimeInterval) -> ProcessResourceRates {
+        guard let previous, elapsed > 0 else { return .zero }
+
+        let readDelta = diskReadBytes >= previous.diskReadBytes
+            ? diskReadBytes - previous.diskReadBytes
+            : 0
+        let writeDelta = diskWriteBytes >= previous.diskWriteBytes
+            ? diskWriteBytes - previous.diskWriteBytes
+            : 0
+        let energyDelta = energyNanojoules >= previous.energyNanojoules
+            ? energyNanojoules - previous.energyNanojoules
+            : 0
+
+        return ProcessResourceRates(
+            diskReadBytesPerSecond: Double(readDelta) / elapsed,
+            diskWriteBytesPerSecond: Double(writeDelta) / elapsed,
+            energyWatts: Double(energyDelta) / elapsed / 1_000_000_000.0
+        )
+    }
+}
+
+struct ProcessResourceRates: Sendable, Equatable {
+    let diskReadBytesPerSecond: Double
+    let diskWriteBytesPerSecond: Double
+    let energyWatts: Double
+
+    static let zero = ProcessResourceRates(
+        diskReadBytesPerSecond: 0,
+        diskWriteBytesPerSecond: 0,
+        energyWatts: 0
+    )
 }
 
 public struct HardwareVitalsInfo: Sendable {
@@ -161,11 +220,10 @@ private final class CpuTelemetryBuffer: @unchecked Sendable {
     var previousDiskWriteBytes: UInt64?
     var previousDiskTimestamp: Date?
     /// Per-PID CPU accounting. `pti_total_user + pti_total_system` is a
-    /// monotonic nanosecond counter, so a process's share of the CPU is the
-    /// delta since the previous sample divided by the wall-clock delta.
-    /// Deriving it from the raw counter (as the old `% 100` did) produced a
-    /// meaningless number.
-    var previousProcessCPUTimeNs: [Int32: UInt64] = [:]
+    /// monotonic mach-tick counter, so the delta is converted to nanoseconds
+    /// before dividing by the wall-clock delta.
+    var previousProcessCPUTicks: [Int32: UInt64] = [:]
+    var previousProcessResources: [Int32: ProcessResourceCounters] = [:]
     var previousProcessSampleTimestamp: Date?
 
     deinit {
@@ -198,6 +256,10 @@ public final class HardwareVitalsService {
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
     @ObservationIgnored private let hostPort: mach_port_t = mach_host_self()
     @ObservationIgnored private var saveThrottleCounter = 0
+    @ObservationIgnored private let processNetworkSampler: ProcessNetworkSampler
+    @ObservationIgnored private var processNetworkTask: Task<Void, Never>?
+    @ObservationIgnored private var processNetworkSpeeds: [Int32: ProcessNetworkSpeed] = [:]
+    @ObservationIgnored private var isProcessesTabVisible = false
 
     // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Vitals/
     @ObservationIgnored public static let defaultStorageDirectory: URL = {
@@ -262,8 +324,12 @@ public final class HardwareVitalsService {
         return (pCount, eCount)
     }()
 
-    public init(storageDirectory: URL = defaultStorageDirectory) {
+    public init(
+        storageDirectory: URL = defaultStorageDirectory,
+        processNetworkSampler: ProcessNetworkSampler = ProcessNetworkSampler()
+    ) {
         self.storageDirectory = storageDirectory
+        self.processNetworkSampler = processNetworkSampler
         loadHistoryFromDisk()
         // Collect initial baseline snapshot on startup without kicking off continuous kernel polling
         refreshMetrics(includeProcesses: false)
@@ -382,6 +448,7 @@ public final class HardwareVitalsService {
     public func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+        setProcessesTabVisible(false)
         saveHistoryToDisk()
     }
 
@@ -456,7 +523,20 @@ public final class HardwareVitalsService {
         refreshMetrics(includeProcesses: includeProcesses)
     }
 
+    /// `nettop` is visible-work only: the sampler runs while the Processes tab
+    /// is on screen and stops as soon as it leaves the view hierarchy.
+    public func setProcessesTabVisible(_ visible: Bool) {
+        isProcessesTabVisible = visible
+        if visible {
+            startProcessNetworkSampling()
+        } else {
+            stopProcessNetworkSampling()
+        }
+    }
+
     public func killProcess(pid: Int32) {
+        guard pid > 1 else { return }
+
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.forceTerminate()
         } else {
@@ -740,60 +820,245 @@ public final class HardwareVitalsService {
 
     deinit {
         monitorTask?.cancel()
+        processNetworkTask?.cancel()
         mach_port_deallocate(mach_task_self_, hostPort)
     }
 
-    // MARK: - Native Darwin proc_pidinfo & NSWorkspace collection
+    // MARK: - Native Darwin proc_pidinfo process collection
     private func readTopProcessesNative() -> [ProcessInfoItem] {
         let apps = NSWorkspace.shared.runningApplications
         var items: [ProcessInfoItem] = []
         let totalMemBytes = Double(ProcessInfo.processInfo.physicalMemory)
+        let coreCount = ProcessInfo.processInfo.activeProcessorCount
+        var friendlyNames: [Int32: String] = [:]
+        for app in apps {
+            let pid = app.processIdentifier
+            guard pid > 0,
+                  let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty else { continue }
+            friendlyNames[pid] = name
+        }
 
         let now = Date()
-        let previousCPUTimes = buffer.previousProcessCPUTimeNs
+        let previousCPUTimes = buffer.previousProcessCPUTicks
+        let previousResources = buffer.previousProcessResources
         let previousTimestamp = buffer.previousProcessSampleTimestamp
         // First sample after launch has no baseline: report 0% rather than a
         // bogus number, and use the *current* sample as the next baseline.
         let interval = previousTimestamp.map { now.timeIntervalSince($0) } ?? 0
         let hasBaseline = previousTimestamp != nil && interval > 0.05
         var sampledCPUTimes: [Int32: UInt64] = [:]
+        var sampledResources: [Int32: ProcessResourceCounters] = [:]
 
-        for app in apps {
-            let pid = app.processIdentifier
-            guard pid > 0, let name = app.localizedName, !name.isEmpty else { continue }
+        for pid in allProcessIdentifiers() {
+            guard let name = processDisplayName(pid: pid, friendlyNames: friendlyNames) else {
+                continue
+            }
 
             var taskInfo = proc_taskinfo()
             let size = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, Int32(MemoryLayout<proc_taskinfo>.size))
             if size == MemoryLayout<proc_taskinfo>.size {
                 let memBytes = Double(taskInfo.pti_resident_size)
                 let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
-                let totalCPUTimeNs = taskInfo.pti_total_user + taskInfo.pti_total_system
-                sampledCPUTimes[pid] = totalCPUTimeNs
+                let totalCPUTicks = taskInfo.pti_total_user + taskInfo.pti_total_system
+                sampledCPUTimes[pid] = totalCPUTicks
 
-                var cpuPercent = 0.0
-                if hasBaseline, let previous = previousCPUTimes[pid], totalCPUTimeNs >= previous {
-                    let usedSeconds = Double(totalCPUTimeNs - previous) / 1_000_000_000.0
-                    cpuPercent = min(max((usedSeconds / interval) * 100.0, 0.0), 100.0)
-                }
+                let cpuPercent = previousCPUTimes[pid].map {
+                    ProcessCPUPercent.calculate(
+                        previous: $0,
+                        current: totalCPUTicks,
+                        elapsed: interval,
+                        coreCount: coreCount,
+                        tickConversion: ProcessCPUPercent.machTickConversion
+                    )
+                } ?? 0
                 let memoryMB = memBytes / 1_048_576.0
+                let network = processNetworkSpeeds[pid]
+                var resources = ProcessResourceRates.zero
+
+                var usage = rusage_info_v6()
+                let usageResult = withUnsafeMutablePointer(to: &usage) { pointer in
+                    pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                        proc_pid_rusage(pid, RUSAGE_INFO_V6, $0)
+                    }
+                }
+                if usageResult == 0 {
+                    let counters = ProcessResourceCounters(
+                        diskReadBytes: usage.ri_diskio_bytesread,
+                        diskWriteBytes: usage.ri_diskio_byteswritten,
+                        energyNanojoules: usage.ri_energy_nj
+                    )
+                    if hasBaseline {
+                        resources = counters.rates(
+                            since: previousResources[pid],
+                            elapsed: interval
+                        )
+                    }
+                    sampledResources[pid] = counters
+                }
 
                 items.append(ProcessInfoItem(
                     id: pid,
                     name: name,
                     cpuPercent: cpuPercent,
                     memoryPercent: memPercent,
-                    memoryMB: memoryMB
+                    memoryMB: memoryMB,
+                    networkDownBytesPerSecond: network?.downBytesPerSecond ?? 0,
+                    networkUpBytesPerSecond: network?.upBytesPerSecond ?? 0,
+                    diskReadBytesPerSecond: resources.diskReadBytesPerSecond,
+                    diskWriteBytesPerSecond: resources.diskWriteBytesPerSecond,
+                    energyWatts: resources.energyWatts
                 ))
             }
         }
 
         // Keep only live PIDs so the dictionary cannot grow with every process
         // the machine has ever launched.
-        buffer.previousProcessCPUTimeNs = sampledCPUTimes
+        buffer.previousProcessCPUTicks = sampledCPUTimes
+        buffer.previousProcessResources = sampledResources
         buffer.previousProcessSampleTimestamp = now
 
         items.sort { $0.memoryPercent > $1.memoryPercent }
         return items
+    }
+
+    private func allProcessIdentifiers() -> [Int32] {
+        let stride = MemoryLayout<pid_t>.stride
+        let estimatedBytes = Int(proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0))
+        var capacity = max(estimatedBytes, stride * 128)
+
+        for _ in 0..<16 {
+            var pids = [pid_t](repeating: 0, count: capacity / stride)
+            let usedBytes = pids.withUnsafeMutableBytes { buffer in
+                proc_listpids(
+                    UInt32(PROC_ALL_PIDS),
+                    0,
+                    buffer.baseAddress,
+                    Int32(buffer.count)
+                )
+            }
+            guard usedBytes > 0 else { return [] }
+
+            let usedCount = min(Int(usedBytes) / stride, pids.count)
+            if Int(usedBytes) < capacity || usedCount < pids.count {
+                return pids.prefix(usedCount).filter { $0 > 0 }
+            }
+            capacity *= 2
+        }
+
+        return []
+    }
+
+    private func processDisplayName(pid: Int32, friendlyNames: [Int32: String]) -> String? {
+        if let friendlyName = friendlyNames[pid], !friendlyName.isEmpty {
+            return friendlyName
+        }
+
+        var nameBuffer = [CChar](repeating: 0, count: 256)
+        let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
+        if nameLength > 0,
+           let name = cString(from: nameBuffer)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return name
+        }
+
+        var pathBuffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+        if pathLength > 0,
+           let path = cString(from: pathBuffer),
+           !path.isEmpty {
+            let executableName = URL(fileURLWithPath: path).lastPathComponent
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !executableName.isEmpty {
+                return executableName
+            }
+        }
+
+        return nil
+    }
+
+    private func cString(from buffer: [CChar]) -> String? {
+        buffer.withUnsafeBufferPointer { pointer in
+            guard let baseAddress = pointer.baseAddress else { return nil }
+            return String(validatingCString: baseAddress)
+        }
+    }
+
+    private func startProcessNetworkSampling() {
+        guard processNetworkTask == nil else { return }
+
+        processNetworkSpeeds.removeAll()
+        applyProcessNetworkSpeeds([:])
+
+        processNetworkTask = Task { [weak self] in
+            await self?.processNetworkSampler.reset()
+
+            while !Task.isCancelled {
+                guard let self else { break }
+                let speeds = await self.processNetworkSampler.sample()
+                guard !Task.isCancelled, self.isProcessesTabVisible else { break }
+                self.applyProcessNetworkSpeeds(speeds)
+
+                do {
+                    try await Task.sleep(for: .seconds(2))
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    private func stopProcessNetworkSampling() {
+        isProcessesTabVisible = false
+        processNetworkTask?.cancel()
+        processNetworkTask = nil
+    }
+
+    private func applyProcessNetworkSpeeds(_ speeds: [Int32: ProcessNetworkSpeed]) {
+        let appPIDs = Set(
+            NSWorkspace.shared.runningApplications
+                .map(\.processIdentifier)
+                .filter { $0 > 0 }
+        )
+        let attributedSpeeds = attributeNetworkSpeeds(speeds, appPIDs: appPIDs)
+        processNetworkSpeeds = attributedSpeeds.filter { appPIDs.contains($0.key) }
+        guard !metrics.topProcesses.isEmpty else { return }
+
+        var rows = metrics.topProcesses
+        for index in rows.indices {
+            let speed = processNetworkSpeeds[rows[index].id]
+            rows[index].networkDownBytesPerSecond = speed?.downBytesPerSecond ?? 0
+            rows[index].networkUpBytesPerSecond = speed?.upBytesPerSecond ?? 0
+        }
+
+        var updated = metrics
+        updated.topProcesses = rows
+        metrics = updated
+    }
+
+    private func attributeNetworkSpeeds(
+        _ speeds: [Int32: ProcessNetworkSpeed],
+        appPIDs: Set<Int32>
+    ) -> [Int32: ProcessNetworkSpeed] {
+        var parentPIDs: [Int32: Int32] = [:]
+        for pid in speeds.keys {
+            var info = proc_bsdinfo()
+            let size = proc_pidinfo(
+                pid,
+                PROC_PIDTBSDINFO,
+                0,
+                &info,
+                Int32(MemoryLayout<proc_bsdinfo>.size)
+            )
+            guard size > 0 else { continue }
+            parentPIDs[pid] = Int32(clamping: info.pbi_ppid)
+        }
+
+        return ProcessNetworkAttribution.attribute(
+            speeds,
+            parentPIDs: parentPIDs,
+            appPIDs: appPIDs
+        )
     }
 
     // MARK: - Zero-Overhead GPU & Network Telemetry

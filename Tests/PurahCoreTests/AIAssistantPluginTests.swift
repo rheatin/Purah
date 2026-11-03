@@ -2640,4 +2640,43 @@ struct AIAssistantPluginTests {
             #expect(error is CancellationError || Task.isCancelled)
         }
     }
+
+    @Test("A relative custom CLI path is refused as invalidExecutablePath, not launched")
+    func testInvalidExecutablePathSurfacesAsTypedError() async throws {
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".purah-invalid-cli-\(UUID().uuidString)", isDirectory: true)
+        let script = directory.appendingPathComponent("fake-cli.sh")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try "#!/bin/zsh\nexit 0\n"
+            .write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: script.path
+        )
+
+        // `resolveCLIPath` accepts this because it is executable relative to
+        // the current directory; the launch boundary is the one that must
+        // refuse a non-absolute path before Foundation hands it to `exec`.
+        let relativePath = "\(directory.lastPathComponent)/\(script.lastPathComponent)"
+        do {
+            _ = try await AIAssistantService.shared.streamChat(
+                messages: [AIChatMessage(role: .user, content: "go")],
+                provider: .localCLI,
+                cliExecutable: .custom,
+                customCLIPath: relativePath,
+                customCLIArguments: "{prompt}"
+            )
+            Issue.record("A relative executable path must not be launched")
+        } catch let error as AIAssistantError {
+            guard case .invalidExecutablePath(let reported) = error else {
+                Issue.record("Expected .invalidExecutablePath, got \(error)")
+                return
+            }
+            #expect(reported == relativePath)
+            #expect(error.localizedDescription == "CLI executable path '\(relativePath)' is invalid.")
+        } catch {
+            Issue.record("Expected AIAssistantError, got \(error)")
+        }
+    }
 }

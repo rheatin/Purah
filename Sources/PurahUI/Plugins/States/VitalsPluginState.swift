@@ -19,6 +19,9 @@ public final class VitalsPluginState: Sendable {
     /// Which reading the header pill reports. Picking one is the header's job;
     /// the drawer's own numbers stay unchanged.
     public var headerMetric: VitalsMetricType
+    /// Which metric the Processes inspector sorts and draws. Like
+    /// `headerMetric`, this is a control selection, not disposable view state.
+    public var processSortMetric: ProcessSortMetric
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -59,6 +62,11 @@ public final class VitalsPluginState: Sendable {
         storage.set(metric.rawValue, forKey: "headerMetric")
     }
 
+    public func setProcessSortMetric(_ metric: ProcessSortMetric) {
+        processSortMetric = metric
+        storage.set(metric.rawValue, forKey: "processSortMetric")
+    }
+
     public init(storage: (any PurahPluginStorage)? = nil) {
         let resolvedStorage: any PurahPluginStorage
         if let storage = storage {
@@ -85,6 +93,12 @@ public final class VitalsPluginState: Sendable {
         self.headerMetric = resolvedHeader
         if storedHeader != resolvedHeader.rawValue {
             resolvedStorage.set(resolvedHeader.rawValue, forKey: "headerMetric")
+        }
+        let storedProcessSort = resolvedStorage.string(forKey: "processSortMetric")
+        let resolvedProcessSort = storedProcessSort.flatMap(ProcessSortMetric.init(rawValue:)) ?? .cpu
+        self.processSortMetric = resolvedProcessSort
+        if storedProcessSort != resolvedProcessSort.rawValue {
+            resolvedStorage.set(resolvedProcessSort.rawValue, forKey: "processSortMetric")
         }
         // Missing means "never configured" → the default of four. A stored value
         // is clamped into the current range, because a settings file written
@@ -148,6 +162,7 @@ public final class VitalsPluginState: Sendable {
             self.enabledMetrics = metrics
         }
         reconcileHeaderMetric()
+        reconcileProcessSortMetric()
         if let thresh = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) {
             self.thresholds = thresh
         }
@@ -155,6 +170,7 @@ public final class VitalsPluginState: Sendable {
 
     public func save() {
         reconcileHeaderMetric()
+        reconcileProcessSortMetric()
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(enabledMetrics, forKey: "enabledMetrics")
         storage.setCodable(thresholds, forKey: "thresholds")
@@ -199,6 +215,12 @@ public final class VitalsPluginState: Sendable {
         )
         headerMetric = resolved
         storage.set(resolved.rawValue, forKey: "headerMetric")
+    }
+
+    private func reconcileProcessSortMetric() {
+        let resolved = ProcessSortMetric(rawValue: processSortMetric.rawValue) ?? .cpu
+        processSortMetric = resolved
+        storage.set(resolved.rawValue, forKey: "processSortMetric")
     }
 
     private static func resolveHeaderMetric(

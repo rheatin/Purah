@@ -37,6 +37,23 @@ struct ProcessLaunchSanitizerTests {
         ])
     }
 
+    @Test("Environment collisions resolve deterministically from sorted raw keys")
+    func environmentCollisionIsDeterministic() {
+        let first = ProcessLaunchSanitizer.environment([
+            "A\u{0}B": "from-nul-key",
+            "AB": "from-clean-key"
+        ])
+        let second = ProcessLaunchSanitizer.environment([
+            "AB": "from-clean-key",
+            "A\u{0}B": "from-nul-key"
+        ])
+
+        // Sorting raw keys makes the last sanitized collision predictable
+        // regardless of the dictionary's insertion or iteration order.
+        #expect(first["AB"] == "from-clean-key")
+        #expect(second["AB"] == "from-clean-key")
+    }
+
     @Test("Executable paths must be absolute and free of U+0000")
     func validatesExecutablePaths() {
         #expect(ProcessLaunchSanitizer.executablePath("/bin/zsh") == "/bin/zsh")
@@ -44,4 +61,5 @@ struct ProcessLaunchSanitizerTests {
         #expect(ProcessLaunchSanitizer.executablePath("bin/zsh") == nil)
         #expect(ProcessLaunchSanitizer.executablePath("/bin/z\u{0}sh") == nil)
     }
+
 }

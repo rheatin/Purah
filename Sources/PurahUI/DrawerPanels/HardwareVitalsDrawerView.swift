@@ -30,12 +30,90 @@ public enum VitalsDashboardTab: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+struct ProcessBarWidths: Equatable, Sendable {
+    let first: Double
+    let second: Double
+
+    var total: Double { first + second }
+
+    static let zero = ProcessBarWidths(first: 0, second: 0)
+}
+
+enum ProcessBarSplitter {
+    static func width(
+        value: Double,
+        scale: Double,
+        trackWidth: Double,
+        minimumNonZeroWidth: Double = 2
+    ) -> Double {
+        let value = finiteNonNegative(value)
+        let trackWidth = finiteNonNegative(trackWidth)
+        let scale = finiteNonNegative(scale)
+        guard value > 0, trackWidth > 0, scale > 0 else { return 0 }
+
+        let proportional = trackWidth * min(value / scale, 1)
+        let minimum = min(finiteNonNegative(minimumNonZeroWidth), trackWidth)
+        return min(trackWidth, max(proportional, minimum))
+    }
+
+    static func widths(
+        first: Double,
+        second: Double,
+        scale: Double,
+        trackWidth: Double,
+        minimumNonZeroWidth: Double = 2
+    ) -> ProcessBarWidths {
+        let first = finiteNonNegative(first)
+        let second = finiteNonNegative(second)
+        let totalValue = first + second
+        let trackWidth = finiteNonNegative(trackWidth)
+        let scale = finiteNonNegative(scale)
+        guard totalValue > 0, trackWidth > 0, scale > 0 else { return .zero }
+
+        let minimum = min(finiteNonNegative(minimumNonZeroWidth), trackWidth)
+        let nonzeroCount = (first > 0 ? 1.0 : 0.0) + (second > 0 ? 1.0 : 0.0)
+        let proportional = trackWidth * min(totalValue / scale, 1)
+        let totalWidth = min(
+            trackWidth,
+            max(proportional, minimum * nonzeroCount)
+        )
+
+        guard first > 0, second > 0 else {
+            return first > 0
+                ? ProcessBarWidths(first: totalWidth, second: 0)
+                : ProcessBarWidths(first: 0, second: totalWidth)
+        }
+
+        let effectiveMinimum = min(minimum, totalWidth / 2)
+        let distributable = max(totalWidth - effectiveMinimum * 2, 0)
+        let firstWidth = effectiveMinimum + distributable * (first / totalValue)
+        let secondWidth = totalWidth - firstWidth
+        return ProcessBarWidths(first: firstWidth, second: secondWidth)
+    }
+
+    private static func finiteNonNegative(_ value: Double) -> Double {
+        value.isFinite ? max(value, 0) : 0
+    }
+}
+
+private enum ProcessMetricThresholds {
+    static let cpuWarningPercent = 20.0
+    static let cpuDangerPercent = 50.0
+    static let memoryWarningPercent = 5.0
+    static let memoryDangerPercent = 10.0
+    static let networkWarningBytesPerSecond = 5.0 * 1_048_576.0
+    static let networkDangerBytesPerSecond = 20.0 * 1_048_576.0
+    static let diskWarningBytesPerSecond = 10.0 * 1_048_576.0
+    static let diskDangerBytesPerSecond = 50.0 * 1_048_576.0
+    static let powerWarningWatts = 1.0
+    static let powerDangerWatts = 5.0
+}
+
 // MARK: - Composite Full Drawer View
 public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
-    @State private var sortProcessesByCPU: Bool = true
     @State private var isPulsing: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -136,6 +214,7 @@ public struct HardwareVitalsDrawerView: View {
         }
         .onDisappear {
             vitals.isDrawerVisible = false
+            vitals.setProcessesTabVisible(false)
         }
     }
 
@@ -238,7 +317,11 @@ public struct HardwareVitalsDrawerView: View {
                     case .processes:
                         processesTabContent(
                             metrics: metrics,
-                            cpuColor: cpuColor
+                            cpuColor: cpuColor,
+                            ramColor: ramColor,
+                            netColor: netColor,
+                            diskColor: diskColor,
+                            powerColor: powerColor
                         )
                     }
                 }
@@ -581,16 +664,18 @@ public struct HardwareVitalsDrawerView: View {
                             Text("CPU \(String(format: "%.1f", proc.cpuPercent))% · \(String(format: "%.0f", proc.memoryMB))MB")
                                 .font(.system(size: 8.5, design: .monospaced))
                                 .foregroundColor(.secondary)
-                            Button("Kill") {
-                                vitals.killProcess(pid: proc.id)
+                            if proc.id != 1 {
+                                Button("Kill") {
+                                    vitals.killProcess(pid: proc.id)
+                                }
+                                .font(.system(size: 7.5, weight: .semibold))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(palette.dangerAccent.opacity(0.12))
+                                .foregroundColor(palette.dangerAccent)
+                                .cornerRadius(4)
+                                .buttonStyle(.tactile)
                             }
-                            .font(.system(size: 7.5, weight: .semibold))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(palette.dangerAccent.opacity(0.12))
-                            .foregroundColor(palette.dangerAccent)
-                            .cornerRadius(4)
-                            .buttonStyle(.tactile)
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -808,50 +893,73 @@ public struct HardwareVitalsDrawerView: View {
     @ViewBuilder
     private func processesTabContent(
         metrics: HardwareVitalsInfo,
-        cpuColor: Color
+        cpuColor: Color,
+        ramColor: Color,
+        netColor: Color,
+        diskColor: Color,
+        powerColor: Color
     ) -> some View {
-        let sorted = sortProcessesByCPU ?
-            metrics.topProcesses.sorted(by: { $0.cpuPercent > $1.cpuPercent }) :
-            metrics.topProcesses.sorted(by: { $0.memoryPercent > $1.memoryPercent })
+        let metric = state.processSortMetric
+        let visibleRows = ProcessInspectorRanking.ranked(
+            metrics.topProcesses,
+            by: metric,
+            limit: 12
+        )
+
+        // The bar is a relative ranking inside the visible list; the number
+        // carries the absolute truth. A zero value stays a zero-width bar.
+        let largest = visibleRows.map { metric.value(for: $0) }.max() ?? 0
+        let scale = max(largest, 0.000_001)
 
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(String(format: "vitals.processInspector".localized, sorted.count))
+                Text(String(format: "vitals.processInspector".localized, metrics.topProcesses.count))
                     .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer()
                 HStack(spacing: 2) {
-                    Button {
-                        sortProcessesByCPU = true
-                    } label: {
-                        Text("CPU")
-                            .font(.system(size: 7.5, weight: sortProcessesByCPU ? .bold : .medium, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(sortProcessesByCPU ? palette.primaryAccent.opacity(0.18) : Color.clear)
-                            .foregroundColor(sortProcessesByCPU ? palette.primaryAccent : .secondary)
-                            .cornerRadius(4)
+                    ForEach(ProcessSortMetric.allCases) { candidate in
+                        Button {
+                            state.setProcessSortMetric(candidate)
+                        } label: {
+                            Text(candidate.title)
+                                .font(.system(
+                                    size: 7.5,
+                                    weight: metric == candidate ? .bold : .medium,
+                                    design: .monospaced
+                                ))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1.5)
+                                .background(metric == candidate ? palette.primaryAccent.opacity(0.18) : Color.clear)
+                                .foregroundColor(metric == candidate ? palette.primaryAccent : .secondary)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        sortProcessesByCPU = false
-                    } label: {
-                        Text("MEM")
-                            .font(.system(size: 7.5, weight: !sortProcessesByCPU ? .bold : .medium, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(!sortProcessesByCPU ? palette.primaryAccent.opacity(0.18) : Color.clear)
-                            .foregroundColor(!sortProcessesByCPU ? palette.primaryAccent : .secondary)
-                            .cornerRadius(4)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
 
-            ForEach(sorted) { proc in
+            ForEach(visibleRows) { proc in
+                let alarmColor = processAlarmColor(proc, metric: metric)
+                let statusColor = alarmColor ?? processBaseColor(
+                    metric: metric,
+                    cpuColor: cpuColor,
+                    ramColor: ramColor,
+                    netColor: netColor,
+                    diskColor: diskColor,
+                    powerColor: powerColor
+                )
+                let split = processBarSplit(for: proc, metric: metric)
+                let splitColors = processBarSplitColors(
+                    metric: metric,
+                    netColor: netColor,
+                    diskColor: diskColor
+                )
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(proc.cpuPercent > 50 ? palette.dangerAccent : (proc.cpuPercent > 20 ? VitalsColorResolver.warningYellow : cpuColor))
+                        .fill(statusColor)
                         .frame(width: 4.5, height: 4.5)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -862,9 +970,39 @@ public struct HardwareVitalsDrawerView: View {
                         GeometryReader { g in
                             ZStack(alignment: .leading) {
                                 Capsule().fill(Color.primary.opacity(0.06))
-                                Capsule()
-                                    .fill(proc.cpuPercent > 50 ? palette.dangerAccent : cpuColor)
-                                    .frame(width: max(g.size.width * CGFloat(min(proc.cpuPercent / 100.0, 1.0)), 2))
+                                if let split, let splitColors, alarmColor == nil {
+                                    let widths = ProcessBarSplitter.widths(
+                                        first: split.first,
+                                        second: split.second,
+                                        scale: scale,
+                                        trackWidth: g.size.width
+                                    )
+                                    HStack(spacing: 0) {
+                                        Rectangle()
+                                            .fill(splitColors.0)
+                                            .frame(
+                                                width: CGFloat(widths.first),
+                                                height: g.size.height
+                                            )
+                                        Rectangle()
+                                            .fill(splitColors.1)
+                                            .frame(
+                                                width: CGFloat(widths.second),
+                                                height: g.size.height
+                                            )
+                                    }
+                                    .frame(width: CGFloat(widths.total), height: g.size.height, alignment: .leading)
+                                    .clipShape(Capsule())
+                                } else {
+                                    let width = ProcessBarSplitter.width(
+                                        value: metric.value(for: proc),
+                                        scale: scale,
+                                        trackWidth: g.size.width
+                                    )
+                                    Capsule()
+                                        .fill(statusColor)
+                                        .frame(width: CGFloat(width))
+                                }
                             }
                         }
                         .frame(height: 2.5)
@@ -873,26 +1011,32 @@ public struct HardwareVitalsDrawerView: View {
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("CPU \(String(format: "%.1f", proc.cpuPercent))%")
+                        Text(primaryProcessValue(for: proc, metric: metric))
                             .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                             .foregroundColor(.primary)
-                        Text("\(String(format: "%.0f", proc.memoryMB)) MB")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Text(secondaryProcessValue(for: proc, metric: metric))
                             .font(.system(size: 7.5, design: .monospaced))
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
 
-                    Button {
-                        vitals.killProcess(pid: proc.id)
-                    } label: {
-                        Text("vitals.kill".localized)
-                            .font(.system(size: 7.5, weight: .semibold))
-                            .padding(.horizontal, 4.5)
-                            .padding(.vertical, 1.5)
-                            .background(palette.dangerAccent.opacity(0.12))
-                            .foregroundColor(palette.dangerAccent)
-                            .cornerRadius(4)
+                    if proc.id != 1 {
+                        Button {
+                            vitals.killProcess(pid: proc.id)
+                        } label: {
+                            Text("vitals.kill".localized)
+                                .font(.system(size: 7.5, weight: .semibold))
+                                .padding(.horizontal, 4.5)
+                                .padding(.vertical, 1.5)
+                                .background(palette.dangerAccent.opacity(0.12))
+                                .foregroundColor(palette.dangerAccent)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.tactile)
                     }
-                    .buttonStyle(.tactile)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3.5)
@@ -901,10 +1045,176 @@ public struct HardwareVitalsDrawerView: View {
             }
         }
         .onAppear {
+            vitals.setProcessesTabVisible(true)
             Task {
                 await vitals.refreshMetricsAsync(includeProcesses: true)
             }
         }
+        .onDisappear {
+            vitals.setProcessesTabVisible(false)
+        }
+    }
+
+    private func processAlarmColor(
+        _ process: ProcessInfoItem,
+        metric: ProcessSortMetric
+    ) -> Color? {
+        switch metric {
+        case .cpu:
+            if process.cpuPercent > ProcessMetricThresholds.cpuDangerPercent {
+                return palette.dangerAccent
+            }
+            if process.cpuPercent > ProcessMetricThresholds.cpuWarningPercent {
+                return VitalsColorResolver.warningYellow
+            }
+        case .memory:
+            if process.memoryPercent > ProcessMetricThresholds.memoryDangerPercent {
+                return palette.dangerAccent
+            }
+            if process.memoryPercent > ProcessMetricThresholds.memoryWarningPercent {
+                return VitalsColorResolver.warningYellow
+            }
+        case .network:
+            let total = process.networkDownBytesPerSecond + process.networkUpBytesPerSecond
+            if total > ProcessMetricThresholds.networkDangerBytesPerSecond {
+                return palette.dangerAccent
+            }
+            if total > ProcessMetricThresholds.networkWarningBytesPerSecond {
+                return VitalsColorResolver.warningYellow
+            }
+        case .disk:
+            let total = process.diskReadBytesPerSecond + process.diskWriteBytesPerSecond
+            if total > ProcessMetricThresholds.diskDangerBytesPerSecond {
+                return palette.dangerAccent
+            }
+            if total > ProcessMetricThresholds.diskWarningBytesPerSecond {
+                return VitalsColorResolver.warningYellow
+            }
+        case .power:
+            if process.energyWatts > ProcessMetricThresholds.powerDangerWatts {
+                return palette.dangerAccent
+            }
+            if process.energyWatts > ProcessMetricThresholds.powerWarningWatts {
+                return VitalsColorResolver.warningYellow
+            }
+        }
+        return nil
+    }
+
+    private func processBaseColor(
+        metric: ProcessSortMetric,
+        cpuColor: Color,
+        ramColor: Color,
+        netColor: Color,
+        diskColor: Color,
+        powerColor: Color
+    ) -> Color {
+        switch metric {
+        case .cpu:
+            return cpuColor
+        case .memory:
+            return ramColor
+        case .network:
+            return netColor
+        case .disk:
+            return diskColor
+        case .power:
+            return powerColor
+        }
+    }
+
+    private func processBarSplit(
+        for process: ProcessInfoItem,
+        metric: ProcessSortMetric
+    ) -> (first: Double, second: Double)? {
+        switch metric {
+        case .network:
+            return (
+                process.networkDownBytesPerSecond,
+                process.networkUpBytesPerSecond
+            )
+        case .disk:
+            return (
+                process.diskReadBytesPerSecond,
+                process.diskWriteBytesPerSecond
+            )
+        case .cpu, .memory, .power:
+            return nil
+        }
+    }
+
+    private func processBarSplitColors(
+        metric: ProcessSortMetric,
+        netColor: Color,
+        diskColor: Color
+    ) -> (Color, Color)? {
+        switch metric {
+        case .network:
+            return (netColor, Color(hex: "#0A84FF"))
+        case .disk:
+            return (diskColor, Color(hex: "#FF9F0A"))
+        case .cpu, .memory, .power:
+            return nil
+        }
+    }
+
+    private func primaryProcessValue(for process: ProcessInfoItem, metric: ProcessSortMetric) -> String {
+        switch metric {
+        case .cpu:
+            return "CPU \(String(format: "%.1f", process.cpuPercent))%"
+        case .memory:
+            return "\(formatProcessMemory(process.memoryMB)) · \(Int(process.memoryPercent.rounded()))%"
+        case .network:
+            if process.networkUpBytesPerSecond > process.networkDownBytesPerSecond {
+                return "↑ \(formatProcessSpeed(process.networkUpBytesPerSecond))"
+            }
+            return "↓ \(formatProcessSpeed(process.networkDownBytesPerSecond))"
+        case .disk:
+            if process.diskWriteBytesPerSecond > process.diskReadBytesPerSecond {
+                return "W \(formatProcessSpeed(process.diskWriteBytesPerSecond))"
+            }
+            return "R \(formatProcessSpeed(process.diskReadBytesPerSecond))"
+        case .power:
+            return String(format: "%.2f W", process.energyWatts)
+        }
+    }
+
+    private func secondaryProcessValue(for process: ProcessInfoItem, metric: ProcessSortMetric) -> String {
+        switch metric {
+        case .cpu:
+            return formatProcessMemory(process.memoryMB)
+        case .memory:
+            return "CPU \(String(format: "%.1f", process.cpuPercent))%"
+        case .network:
+            let other = process.networkUpBytesPerSecond > process.networkDownBytesPerSecond
+                ? "↓ \(formatProcessSpeed(process.networkDownBytesPerSecond))"
+                : "↑ \(formatProcessSpeed(process.networkUpBytesPerSecond))"
+            return "\(other) · \(formatProcessMemory(process.memoryMB))"
+        case .disk:
+            let other = process.diskWriteBytesPerSecond > process.diskReadBytesPerSecond
+                ? "R \(formatProcessSpeed(process.diskReadBytesPerSecond))"
+                : "W \(formatProcessSpeed(process.diskWriteBytesPerSecond))"
+            return "\(other) · CPU \(String(format: "%.1f", process.cpuPercent))%"
+        case .power:
+            return "CPU \(String(format: "%.1f", process.cpuPercent))%"
+        }
+    }
+
+    private func formatProcessMemory(_ megabytes: Double) -> String {
+        if megabytes >= 1_024 {
+            return String(format: "%.1f GB", megabytes / 1_024)
+        }
+        return String(format: "%.0f MB", megabytes)
+    }
+
+    private func formatProcessSpeed(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond >= 1_048_576 {
+            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576)
+        }
+        if bytesPerSecond >= 1_024 {
+            return String(format: "%.0fK/s", bytesPerSecond / 1_024)
+        }
+        return String(format: "%.0fB/s", bytesPerSecond)
     }
 
     // MARK: - Reusable UI Helpers
@@ -1144,16 +1454,18 @@ public struct VitalsFocusedDrawerView: View {
                             .font(.system(size: 7.5, design: .rounded))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
-                        Button("Kill") {
-                            vitals.killProcess(pid: top.id)
+                        if top.id != 1 {
+                            Button("Kill") {
+                                vitals.killProcess(pid: top.id)
+                            }
+                            .font(.system(size: 7.5, weight: .bold))
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 0.5)
+                            .background(palette.dangerAccent.opacity(0.18))
+                            .foregroundColor(palette.dangerAccent)
+                            .cornerRadius(2.5)
+                            .buttonStyle(.tactile)
                         }
-                        .font(.system(size: 7.5, weight: .bold))
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 0.5)
-                        .background(palette.dangerAccent.opacity(0.18))
-                        .foregroundColor(palette.dangerAccent)
-                        .cornerRadius(2.5)
-                        .buttonStyle(.tactile)
                     } else {
                         Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Ld \(String(format: "%.1f", metrics.loadAverage1m))")
                             .font(.system(size: 7.5, design: .monospaced))
@@ -1212,16 +1524,18 @@ public struct VitalsFocusedDrawerView: View {
                             .font(.system(size: 7.5, design: .rounded))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
-                        Button("Kill") {
-                            vitals.killProcess(pid: top.id)
+                        if top.id != 1 {
+                            Button("Kill") {
+                                vitals.killProcess(pid: top.id)
+                            }
+                            .font(.system(size: 7.5, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(palette.dangerAccent.opacity(0.18))
+                            .foregroundColor(palette.dangerAccent)
+                            .cornerRadius(4)
+                            .buttonStyle(.tactile)
                         }
-                        .font(.system(size: 7.5, weight: .bold))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(palette.dangerAccent.opacity(0.18))
-                        .foregroundColor(palette.dangerAccent)
-                        .cornerRadius(4)
-                        .buttonStyle(.tactile)
                     } else {
                         Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Ld \(String(format: "%.1f", metrics.loadAverage1m))")
                             .font(.system(size: 7.5, design: .monospaced))
