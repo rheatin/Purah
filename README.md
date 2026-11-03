@@ -18,16 +18,6 @@
 
 English &nbsp;|&nbsp; [**简体中文 (Chinese)**](README_CN.md)
 
-<br />
-
-<!-- ═════════════════════ DEMO SHOWCASE ═════════════════════ -->
-<p align="center">
-  <img src="assets/purah-showcase-30s.gif" width="880" alt="Purah macOS Interactive Demo" style="border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.35);" />
-  <br />
-  <sub>🎬 <em>100% Real macOS screen recording edited with video-shotcraft &middot; <a href="assets/purah-showcase-30s.mp4">Watch 1080p Video with Audio</a></em></sub>
-</p>
-<!-- ═══════════════════════════════════════════════════════════ -->
-
 </div>
 
 ---
@@ -39,6 +29,94 @@ English &nbsp;|&nbsp; [**简体中文 (Chinese)**](README_CN.md)
 **Purah** is an ultra-lightweight ambient desktop companion for macOS. Sitting silently as non-intrusive ambient strips along the physical borders of your screen, Purah activates when your cursor glides to the display bezel—springing interactive cards inward toward the center with physical, co-planar fluidity.
 
 It runs quietly in the background without stealing focus or cluttering your Dock, guaranteeing **100% click-through pass-through** to underlying apps and code editors.
+
+---
+
+### 🎬 See it in motion
+
+Thirteen real screen recordings — no mockups, no motion graphics. Each clip is the shipping app, captured on a 1470 × 956 display.
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/12-ai-action.gif" width="400" alt="AI Assistant drafting a calendar entry from one sentence" />
+      <br />
+      <sub><b>AI · One sentence, one entry</b><br />The model proposes; the card shows exactly what Save will write.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/13-ai-polish.gif" width="400" alt="AI polish showing a word-by-word diff" />
+      <br />
+      <sub><b>AI · Polish with a diff</b><br />Every word it changed is marked, so you keep what you meant.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/02-ai.gif" width="400" alt="Typing ?? in the terminal to write a shell command" />
+      <br />
+      <sub><b>Terminal · <code>??</code></b><br />Describe the task; Purah writes the command and never runs it.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/03-scripts.gif" width="400" alt="Script Runway drafting a zsh action from one sentence" />
+      <br />
+      <sub><b>Script Runway</b><br />Describe a job in one sentence; review the zsh it drafts.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/01-music.gif" width="400" alt="Music waveform visualizer on the screen edge" />
+      <br />
+      <sub><b>Music</b><br />A 60 / 120 FPS Metal visualizer driven live by Apple Music.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/11-vitals.gif" width="400" alt="Hardware Vitals process inspector" />
+      <br />
+      <sub><b>Hardware Vitals</b><br />CPU, memory, thermal, disk, battery — and who is using the machine.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/04-clipboard.gif" width="400" alt="Smart Clipboard history with formats and search" />
+      <br />
+      <sub><b>Smart Clipboard</b><br />Color formats, pretty-printed JSON, instant fuzzy search.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/05-notes.gif" width="400" alt="Quick Notes live Markdown editor" />
+      <br />
+      <sub><b>Quick Notes</b><br />Live Markdown, autosaved as you type.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/06-shelf.gif" width="400" alt="Drop Shelf gathering files into one archive" />
+      <br />
+      <sub><b>Drop Shelf</b><br />Gather, pack, send — drop two folders in and get one archive.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/08-calendar.gif" width="400" alt="Calendar agenda with one-click meeting join" />
+      <br />
+      <sub><b>Calendar</b><br />The next meeting, one click away.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/10-sculptor.gif" width="400" alt="Rail Sculptor dragging three pods into one stack" />
+      <br />
+      <sub><b>Rail Sculptor</b><br />Drag three pods together and they become one stack.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/07-alerts.gif" width="400" alt="Breathing Beacon alert beside a pod" />
+      <br />
+      <sub><b>Alerts · Breathing Beacon</b><br />A physical pill that double-flashes beside the pod.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <img src="assets/demos/09-toast.gif" width="400" alt="Reminder toast rising from the bottom edge of the screen" />
+      <br />
+      <sub><b>Reminder Toast</b><br />The moment an event starts, a capsule rises from the screen's bottom edge.</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 

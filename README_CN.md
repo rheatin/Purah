@@ -18,16 +18,6 @@
 
 [**English**](README.md) &nbsp;|&nbsp; 简体中文
 
-<br />
-
-<!-- ═════════════════════ DEMO SHOWCASE ═════════════════════ -->
-<p align="center">
-  <img src="assets/purah-showcase-30s.gif" width="880" alt="Purah macOS 交互演示" style="border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.35);" />
-  <br />
-  <sub>🎬 <em>使用 video-shotcraft 运镜剪辑的 100% 真机屏幕实录 &middot; <a href="assets/purah-showcase-30s.mp4">查看 1080p 原声视频</a></em></sub>
-</p>
-<!-- ═══════════════════════════════════════════════════════════ -->
-
 </div>
 
 ---
@@ -39,6 +29,94 @@
 **Purah (普尔亚)** 是一款超轻量的 macOS 桌面环境交互内核。平时它以细微的环境色条静谧贴附在屏幕物理最边缘，当鼠标滑向屏幕边框时，对应模块以自然的物理共面动效从屏幕边缘向中央平滑弹开。
 
 Purah 纯粹驻留后台运行，不占据 Dock 栏，不抢夺输入焦点，并保证抽屉之外的透明区域对下层窗口与代码编辑器 **100% 穿透点击**。
+
+---
+
+### 🎬 真机动效
+
+十三段真实录屏，没有一张 Mockup，也没有动效渲染稿。每一段都是在 1470 × 956 的屏幕上录下的线上版本。
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/12-ai-action.gif" width="400" alt="AI 助手用一句话起草日程" />
+      <br />
+      <sub><b>AI · 一句话成事</b><br />模型只提议，卡片写清楚保存后会是什么。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/13-ai-polish.gif" width="400" alt="AI 润色的逐词对比" />
+      <br />
+      <sub><b>AI · 逐词对比</b><br />改过的每一处都标出来，你想说的原意不会丢。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/02-ai.gif" width="400" alt="在终端输入 ?? 生成命令" />
+      <br />
+      <sub><b>终端 · <code>??</code></b><br />描述任务，Purah 写出命令，从不替你执行。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/03-scripts.gif" width="400" alt="脚本跑道用一句话起草 zsh 脚本" />
+      <br />
+      <sub><b>脚本跑道</b><br />描述一句话，得到一条脚本，逐行过目再保存。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/01-music.gif" width="400" alt="屏幕边缘的音乐波形" />
+      <br />
+      <sub><b>音乐律动</b><br />Metal 驱动的 60 / 120 FPS 波形，跟随 Apple Music 实时起伏。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/11-vitals.gif" width="400" alt="硬件体征进程洞察" />
+      <br />
+      <sub><b>硬件体征</b><br />CPU、内存、温度、磁盘、电量，以及谁在消耗机器。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/04-clipboard.gif" width="400" alt="智能剪贴板的历史与搜索" />
+      <br />
+      <sub><b>智能剪贴板</b><br />颜色格式、JSON 美化、模糊搜索，一触即得。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/05-notes.gif" width="400" alt="即时便签的实时 Markdown 编辑器" />
+      <br />
+      <sub><b>即时便签</b><br />边写边渲染的 Markdown，落笔即存。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/06-shelf.gif" width="400" alt="Drop Shelf 把文件归拢成压缩包" />
+      <br />
+      <sub><b>Drop Shelf</b><br />两个文件夹拖在一起，收拢、打包、发送。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/08-calendar.gif" width="400" alt="日历的下一个会议与一键加入" />
+      <br />
+      <sub><b>日历</b><br />下一个会议：距离、时间、一键 Join。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/10-sculptor.gif" width="400" alt="导轨塑形器把三个 pod 拖成一层" />
+      <br />
+      <sub><b>导轨塑形器</b><br />分层的三个 pod，拖到一起就是一层。</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/demos/07-alerts.gif" width="400" alt="呼吸信标提醒动效" />
+      <br />
+      <sub><b>提醒 · 呼吸信标</b><br />贴在 pod 旁边、持续双闪的实体药丸。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <img src="assets/demos/09-toast.gif" width="400" alt="从屏幕下沿浮起的提醒 Toast" />
+      <br />
+      <sub><b>提醒 Toast</b><br />事件开始时，屏幕下沿浮起一枚胶囊。</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
