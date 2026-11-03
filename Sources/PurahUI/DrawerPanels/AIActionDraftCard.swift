@@ -69,14 +69,14 @@ struct AIActionDraftCard: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(accentColor.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(accentColor.opacity(isSaved ? 0.20 : 0.38), lineWidth: 1)
-        )
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(accentColor.opacity(0.10))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(accentColor.opacity(isSaved ? 0.20 : 0.38), lineWidth: 1)
+            }
+        }
         .task(id: draft.id) {
             containers = draft.kind == .event
                 ? SystemCalendarSyncService.shared.writableContainerTitles()
@@ -116,23 +116,31 @@ struct AIActionDraftCard: View {
     @ViewBuilder
     private var destinationControl: some View {
         if containers.count > 1 {
-            Menu {
-                ForEach(containers, id: \.self) { name in
-                    Button(name) { chosen = name }
+            InDrawerDropdown(
+                expandsUpward: true,
+                triggerHeight: 11,
+                panelWidth: 180,
+                options: containers.map { name in
+                    InDrawerDropdownOption(
+                        id: name,
+                        title: name,
+                        systemIcon: nil,
+                        isSelected: name == target
+                    ) {
+                        chosen = name
+                    }
                 }
-            } label: {
+            ) {
                 HStack(spacing: 2) {
                     Text(target ?? "")
                         .lineLimit(1)
+                        .truncationMode(.tail)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 6, weight: .bold))
                 }
                 .font(.system(size: 8.5, design: .monospaced))
                 .foregroundColor(accentColor.opacity(0.85))
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
         } else if let target {
             Text(target)
                 .font(.system(size: 8.5, design: .monospaced))

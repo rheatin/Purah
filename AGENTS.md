@@ -203,10 +203,15 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - Interactive buttons (Pin, Run, Toggle, Actions) **MUST NEVER hug the outer floating boundary**.
    - Stepped drawer cards enforce an `18pt ~ 22pt` inset padding on the floating edge (`trailing` on Left Rail, `leading` on Right Rail), while composite drawer cards use `8pt` symmetric padding paired with the configurable `+20pt ~ +90pt` horizontal catch corridor (`±6pt` vertical margin) so content area is maximized.
    - This prevents natural cursor momentum from accidentally overshooting past the card and prematurely collapsing the drawer.
-3. **Dual-Rail Symmetric Catch Corridor (+20pt ~ +90pt Configurable Invisible Buffer)**:
+3. **An In-Card Menu Is an Overlay, Never a Layout Child (`InDrawerDropdown`)**:
+   - A control that expands a panel inside a card must contribute **only the trigger's** size to layout. `.overlay` the panel on the trigger (with `fixedSize()` on the trigger alone); a panel that sits in the same `ZStack`/`VStack` as its trigger is sized to the panel the instant it opens, so the row reflows and the whole card shifts. Reflow happens even though the panel looks like it floats, because `.offset` moves drawing, not layout.
+   - The panel may leave the card's bounds and must paint above everything it crosses. A card's border is decoration: draw the fill **and** the stroke in `.background { ZStack { … } }`, never as `.overlay(stroke)` — an overlay always composites above the card's content, so a 1pt line ends up drawn across the open menu.
+   - A dropdown in the AI action-draft card is how the person picks the destination calendar: the panel is anchored to its own trigger row (`expandsUpward`), so the choice being made stays visible while the list is open.
+
+4. **Dual-Rail Symmetric Catch Corridor (+20pt ~ +90pt Configurable Invisible Buffer)**:
    - `PassThroughHostingView` and `EdgeMouseMonitor` expand the interactive hit-test bounding box by `+20pt ~ +90pt` (default `+50pt`, configurable) beyond the outer floating edge of the card, and `±6pt` vertically.
    - Mouse overshoots within this corridor remain interactive and preserve drawer state.
-4. **Comprehensive Edge Sensitivity & Calibration Model (双模初次触发门禁)**:
+5. **Comprehensive Edge Sensitivity & Calibration Model (双模初次触发门禁)**:
    - **Strict Edge Anti-Accidental Touch Band (8pt 极致防误触物理带宽)**: The rail trigger zone strictly equals `railBarWidth` (8pt default, configurable 4pt ~ 16pt) with zero overhang into the desktop. Transparent desktop area beyond `railBarWidth` 100% returns `nil` in hitTest, ensuring zero interference with IDE scrollbars, browser sidebars, or window controls.
    - **Initial Hover Dwell (抗微颤悬停驻留门禁 - SuperCorners 模型)**: When cursor lands on a pod within the rail band, dwell timer begins. Hand micro-jitters do not reset the timer; when dwell duration (e.g. 150ms balanced / 0ms agile) elapses, the drawer glides open smoothly.
    - **Push Force Resistance Barrier (推力阻力结界模型 - Barrier/Input Leap/Loop 模型)**: Solves the macOS coordinate-clamping problem at screen borders by accumulating hardware relative motion deltas (`PushForceAccumulator`). Continuous pressing against the bezel (22px agile / 36px balanced / 55px deliberate, customizable 20~120px) shatters the resistance barrier and pops open the drawer with 0ms latency. Inward retreat immediately resets the accumulator.

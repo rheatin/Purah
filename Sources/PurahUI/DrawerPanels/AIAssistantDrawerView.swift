@@ -1202,19 +1202,22 @@ struct InDrawerDropdown<Trigger: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: (expandsUpward ? Alignment.bottomLeading : Alignment.topLeading)) {
-            Button {
-                withAnimation(PurahMotionPolicy.microLight) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                trigger
+        Button {
+            withAnimation(PurahMotionPolicy.microLight) {
+                isExpanded.toggle()
             }
-            .buttonStyle(.plain)
-            .zIndex(1)
-
+        } label: {
+            trigger
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        // The panel is an overlay so opening it cannot contribute to the
+        // trigger's layout size. A layout-sized panel makes the surrounding
+        // row reflow the moment the menu appears.
+        .overlay(alignment: expandsUpward ? .bottomLeading : .topLeading) {
             if isExpanded {
                 panel
+                    .fixedSize()
                     .zIndex(2)
                     .allowsHitTesting(true)
                     .transition(.opacity.combined(
@@ -1222,7 +1225,7 @@ struct InDrawerDropdown<Trigger: View>: View {
                     ))
             }
         }
-        .fixedSize()
+        .zIndex(1)
     }
 
     private func optionRow(_ option: InDrawerDropdownOption) -> some View {
