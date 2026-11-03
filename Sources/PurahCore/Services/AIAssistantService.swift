@@ -23,6 +23,7 @@ public enum AIAssistantError: LocalizedError, Sendable {
     case invalidEndpoint
     case missingApiKey(provider: String)
     case cliNotFound(executable: String)
+    case invalidExecutablePath(String)
     case processExecutionFailed(exitCode: Int32, errorOutput: String)
     case invalidResponse(statusCode: Int)
     case parsingError(String)
@@ -35,6 +36,8 @@ public enum AIAssistantError: LocalizedError, Sendable {
             return "Missing API key for \(provider)."
         case .cliNotFound(let executable):
             return "CLI executable '\(executable)' not found in standard search paths."
+        case .invalidExecutablePath(let path):
+            return "CLI executable path '\(path)' is invalid."
         case .processExecutionFailed(let exitCode, let errorOutput):
             return "Process execution failed with exit code \(exitCode): \(errorOutput)"
         case .invalidResponse(let statusCode):
@@ -1477,6 +1480,14 @@ public final class AIAssistantService {
         onSessionID: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
+        // Foundation's Process.run raises an Objective-C exception for U+0000
+        // in executable paths, arguments, or the environment. Swift cannot
+        // catch that exception, so sanitize before any launch.
+        guard let executablePath = ProcessLaunchSanitizer.executablePath(executablePath) else {
+            throw AIAssistantError.invalidExecutablePath(executablePath)
+        }
+        let arguments = ProcessLaunchSanitizer.argumentList(arguments)
+
         let processBox = SafeProcessBox()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -1492,11 +1503,11 @@ public final class AIAssistantService {
                     process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
                     process.arguments = arguments
 
-                var env = ProcessInfo.processInfo.environment
-                env["TERM"] = "dumb"
-                env["NO_COLOR"] = "1"
-                env["CI"] = "1"
-                process.environment = env
+                    var env = ProcessInfo.processInfo.environment
+                    env["TERM"] = "dumb"
+                    env["NO_COLOR"] = "1"
+                    env["CI"] = "1"
+                    process.environment = ProcessLaunchSanitizer.environment(env)
 
                 let stdinPipe = Pipe()
                 process.standardInput = stdinPipe

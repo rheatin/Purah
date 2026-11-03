@@ -104,9 +104,10 @@ public enum AIAttachmentEncoder {
             body = try? String(contentsOfFile: path, encoding: .utf8)
         }
         guard let content = body, !content.isEmpty else { return nil }
-        let clipped = content.count > maxInlineChars
-            ? String(content.prefix(maxInlineChars)) + "\n… (truncated)"
-            : content
+        let sanitized = ProcessLaunchSanitizer.argument(content)
+        let clipped = sanitized.count > maxInlineChars
+            ? String(sanitized.prefix(maxInlineChars)) + "\n… (truncated)"
+            : sanitized
         return "File: \(attachment.name)\n```\n\(clipped)\n```"
     }
 

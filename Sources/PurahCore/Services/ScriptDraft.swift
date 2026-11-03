@@ -163,9 +163,12 @@ public enum ScriptDraftCheck {
         defer { try? FileManager.default.removeItem(at: path) }
 
         let errorOutput: String = await Task.detached(priority: .userInitiated) {
+            guard let executablePath = ProcessLaunchSanitizer.executablePath("/bin/zsh") else {
+                return "interpreter path is invalid"
+            }
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-n", path.path]
+            process.executableURL = URL(fileURLWithPath: executablePath)
+            process.arguments = ProcessLaunchSanitizer.argumentList(["-n", path.path])
             process.standardInput = FileHandle.nullDevice
             let pipe = Pipe()
             process.standardError = pipe

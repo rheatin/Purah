@@ -104,8 +104,12 @@ public enum CLITemplateProbe {
     /// easily does.
     private static func runHelpBounded(path: String, arguments: [String], timeout: TimeInterval) async -> HelpOutcome {
         await Task.detached(priority: .userInitiated) {
+            guard let executablePath = ProcessLaunchSanitizer.executablePath(path) else {
+                return HelpOutcome(text: "CLI path is invalid.", exitCode: -1, didTimeOut: false)
+            }
+            let arguments = ProcessLaunchSanitizer.argumentList(arguments)
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: path)
+            process.executableURL = URL(fileURLWithPath: executablePath)
             process.arguments = arguments
 
             let tempDir = FileManager.default.temporaryDirectory

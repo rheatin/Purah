@@ -42,6 +42,22 @@ struct AIAttachmentEncoderTests {
         #expect(expansion.images.isEmpty)
     }
 
+    @Test("Inlined file text cannot carry U+0000 into a CLI argument")
+    func testInlinedTextStripsNul() {
+        let attachment = AIAttachmentItem(
+            name: "sample.txt",
+            kind: .text,
+            textPreview: "before\u{0}after"
+        )
+        let expansion = AIAttachmentEncoder.expand(
+            message("", attachments: [attachment]),
+            modelAcceptsImages: false
+        )
+
+        #expect(expansion.text.contains("beforeafter"))
+        #expect(!expansion.text.contains("\u{0}"))
+    }
+
     @Test("An image becomes base64 wire content for a vision model")
     func testImageEncoded() throws {
         // 1x1 PNG.

@@ -21,9 +21,12 @@ public final class PluginJITCompiler {
         arguments: [String],
         currentDirectoryURL: URL
     ) async throws -> (status: Int32, output: String) {
+        guard let executablePath = ProcessLaunchSanitizer.executablePath(executableURL.path) else {
+            throw PluginDynamicLoadError.compilationFailed("Swift executable path is invalid.")
+        }
         let process = Process()
-        process.executableURL = executableURL
-        process.arguments = arguments
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = ProcessLaunchSanitizer.argumentList(arguments)
         process.currentDirectoryURL = currentDirectoryURL
         // The manifest and any build-tool plugins run inside `swift build`, so
         // they see this environment. The app's own secrets — the terminal
@@ -36,9 +39,10 @@ public final class PluginJITCompiler {
             // against the SDK the app was built with.
             "DEVELOPER_DIR",
         ]
-        process.environment = ProcessInfo.processInfo.environment.filter {
+        let environment = ProcessInfo.processInfo.environment.filter {
             allowedEnvironmentKeys.contains($0.key)
         }
+        process.environment = ProcessLaunchSanitizer.environment(environment)
 
         let pipe = Pipe()
         process.standardOutput = pipe

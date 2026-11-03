@@ -258,16 +258,23 @@ public final class ShelfPluginState: Sendable {
         }
         guard !sourcePaths.isEmpty else { return nil }
 
+        guard let zipPath = ProcessLaunchSanitizer.executablePath("/usr/bin/zip") else {
+            return nil
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.arguments = ["-j", "-q", destZipURL.path] + sourcePaths
+        process.executableURL = URL(fileURLWithPath: zipPath)
+        process.arguments = ProcessLaunchSanitizer.argumentList(
+            ["-j", "-q", destZipURL.path] + sourcePaths
+        )
         try? process.run()
         process.waitUntilExit()
 
         if !FileManager.default.fileExists(atPath: destZipURL.path) {
             let fallbackProcess = Process()
-            fallbackProcess.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-            fallbackProcess.arguments = ["-r", "-q", destZipURL.path] + sourcePaths
+            fallbackProcess.executableURL = URL(fileURLWithPath: zipPath)
+            fallbackProcess.arguments = ProcessLaunchSanitizer.argumentList(
+                ["-r", "-q", destZipURL.path] + sourcePaths
+            )
             try? fallbackProcess.run()
             fallbackProcess.waitUntilExit()
         }

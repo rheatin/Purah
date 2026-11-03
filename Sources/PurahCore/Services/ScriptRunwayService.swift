@@ -234,14 +234,23 @@ public final class ScriptRunwayService {
         runID: Int,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
-        let head = command.split(separator: " ").first.map(String.init) ?? ""
-        DiagnosticLogger.shared.info("ScriptRunway", "Executing shell command (\(command.count) chars, head: \(head))")
+        let sanitizedCommand = ProcessLaunchSanitizer.argument(command)
+        let sanitizedArgv = argv.map(ProcessLaunchSanitizer.argumentList)
+        guard let sanitizedExecutable = ProcessLaunchSanitizer.executablePath(executable) else {
+            return (false, "interpreter path is invalid")
+        }
+
+        let head = sanitizedCommand.split(separator: " ").first.map(String.init) ?? ""
+        DiagnosticLogger.shared.info(
+            "ScriptRunway",
+            "Executing shell command (\(sanitizedCommand.count) chars, head: \(head))"
+        )
         let task = Process()
-        task.launchPath = executable
+        task.launchPath = sanitizedExecutable
         // `argv` lets a caller run a tool directly. Shelling out to do it means
         // quoting whatever the tool takes, and a shortcut named `Daily "Standup"`
         // then fails with a shell error instead of running.
-        task.arguments = argv ?? ["-c", command]
+        task.arguments = sanitizedArgv ?? ["-c", sanitizedCommand]
 
         let pipe = Pipe()
         task.standardOutput = pipe

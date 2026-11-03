@@ -226,9 +226,12 @@ private extension UpdateCheckState {
 /// the same tool the install script uses keeps the two answers identical.
 public enum CodeSigning {
     public static func teamIdentifier(ofBundleAt url: URL) -> String? {
+        guard let executablePath = ProcessLaunchSanitizer.executablePath("/usr/bin/codesign") else {
+            return nil
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["-dv", "--verbose=4", url.path]
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = ProcessLaunchSanitizer.argumentList(["-dv", "--verbose=4", url.path])
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -689,9 +692,16 @@ public final class AppUpdaterManager {
             return
         }
 
+        guard let executablePath = ProcessLaunchSanitizer.executablePath("/bin/bash") else {
+            try? FileManager.default.removeItem(at: scriptURL)
+            state = .failed(error: "Could not start the update: interpreter path is invalid.")
+            return
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path, teamID]
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = ProcessLaunchSanitizer.argumentList([
+            scriptURL.path, "\(currentPID)", archiveURL.path, currentBundleURL.path, teamID
+        ])
 
         // Quitting when the installer never started would leave the user with
         // no app and no explanation — the same dead end as the Team ID bug,
