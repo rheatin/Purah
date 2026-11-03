@@ -54,6 +54,9 @@ public enum AIActionWriteError: LocalizedError, Equatable {
     case accessDenied
     case noWritableContainer(String?)
     case saveFailed(String)
+    /// EventKit accepted the write but the read-back could not confirm it.
+    /// "Could not save" would be a stronger claim than the evidence supports.
+    case unconfirmed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -64,6 +67,8 @@ public enum AIActionWriteError: LocalizedError, Equatable {
                 ?? "There is no writable calendar or list to save into."
         case .saveFailed(let reason):
             return "Could not save: \(reason)"
+        case .unconfirmed(let message):
+            return message
         }
     }
 }

@@ -199,11 +199,16 @@ public final class SystemRemindersSyncService {
         reminder.title = title
         reminder.notes = notes
         reminder.calendar = target
+        let expectedDue: DateComponents?
         if let dueDate {
-            reminder.dueDateComponents = Calendar.current.dateComponents(
+            let components = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute],
                 from: dueDate
             )
+            reminder.dueDateComponents = components
+            expectedDue = components
+        } else {
+            expectedDue = nil
         }
 
         do {
@@ -211,7 +216,19 @@ public final class SystemRemindersSyncService {
         } catch {
             throw AIActionWriteError.saveFailed(error.localizedDescription)
         }
-        return reminder.calendarItemIdentifier
+
+        let identifier = reminder.calendarItemIdentifier
+        guard AIActionWriteVerification.hasIdentifier(identifier),
+              let fetched = eventStore.calendarItem(withIdentifier: identifier) as? EKReminder,
+              AIActionWriteVerification.matchesReminder(
+                  expectedTitle: title,
+                  expectedDue: expectedDue,
+                  fetchedTitle: fetched.title,
+                  fetchedDue: fetched.dueDateComponents
+              ) else {
+            throw AIActionWriteError.unconfirmed(AIActionWriteVerification.reminderUnconfirmedMessage)
+        }
+        return identifier
     }
 
     /// Toggles completion in the real Reminders store.

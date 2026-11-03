@@ -154,7 +154,20 @@ public final class SystemCalendarSyncService {
         } catch {
             throw AIActionWriteError.saveFailed(error.localizedDescription)
         }
-        return event.eventIdentifier ?? ""
+
+        guard let identifier = event.eventIdentifier,
+              AIActionWriteVerification.hasIdentifier(identifier),
+              let fetched = store.event(withIdentifier: identifier),
+              AIActionWriteVerification.matchesEvent(
+                  expectedTitle: title,
+                  expectedStart: start,
+                  expectedAllDay: allDay,
+                  fetchedTitle: fetched.title,
+                  fetchedStart: fetched.startDate
+              ) else {
+            throw AIActionWriteError.unconfirmed(AIActionWriteVerification.eventUnconfirmedMessage)
+        }
+        return identifier
     }
 
     private func writableStore() -> EKEventStore {
