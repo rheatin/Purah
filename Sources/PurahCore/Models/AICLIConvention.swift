@@ -45,7 +45,11 @@ public extension AICLIExecutable {
                 sessionIDSource: .claudeStreamJSON
             )
         case .codex:
-            return CLIConvention(fresh: "exec {prompt}")
+            return CLIConvention(
+                fresh: "exec --json --skip-git-repo-check {prompt}",
+                resumed: "exec resume {session} --json --skip-git-repo-check {prompt}",
+                sessionIDSource: .codexJSONLines
+            )
         case .pi:
             return CLIConvention(fresh: "-p {prompt}")
         case .custom:

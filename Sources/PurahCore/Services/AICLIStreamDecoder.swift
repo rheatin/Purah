@@ -46,6 +46,20 @@ public enum AICLIStreamDecoder {
             return text.isEmpty ? nil : .text(text)
         case "result":
             return .finished
+        case "thread.started":
+            guard let id = object["thread_id"] as? String, !id.isEmpty else { return nil }
+            return .session(id)
+        case "item.completed":
+            guard let item = object["item"] as? [String: Any],
+                  let kind = item["type"] as? String,
+                  let text = item["text"] as? String,
+                  !text.isEmpty
+            else { return nil }
+            if kind == "agent_message" { return .text(text) }
+            if kind == "reasoning" { return .text("<think>\(text)</think>") }
+            return nil
+        case "turn.completed":
+            return .finished
         default:
             return nil
         }

@@ -910,6 +910,24 @@ struct AIAssistantPluginTests {
         )
         #expect(resumed == ["--resume", "abc-123", "--output-format", "stream-json", "--verbose", "-p", "And now shorter"])
 
+        let codexFresh = AIAssistantService.resolveCLIArguments(
+            executable: .codex,
+            cliPath: "/opt/homebrew/bin/codex",
+            promptText: "hi"
+        )
+        #expect(codexFresh == ["exec", "--json", "--skip-git-repo-check", "hi"])
+
+        let codexResumed = AIAssistantService.resolveCLIArguments(
+            executable: .codex,
+            cliPath: "/opt/homebrew/bin/codex",
+            promptText: "again",
+            resumeSessionId: "abc"
+        )
+        #expect(
+            codexResumed
+                == ["exec", "resume", "abc", "--json", "--skip-git-repo-check", "again"]
+        )
+
         // A hand-written template is the user's own invocation; do not edit it.
         let templated = AIAssistantService.resolveCLIArguments(
             executable: .claude,
@@ -948,7 +966,7 @@ struct AIAssistantPluginTests {
         )
         #expect(sessionArgs == ["--resume", "abc", "-p", "hi"])
 
-        #expect(AICLIExecutable.codex.convention.resumed == nil)
+        #expect(AICLIExecutable.codex.convention.sessionIDSource == .codexJSONLines)
         #expect(AICLIExecutable.claude.convention.sessionIDSource == .claudeStreamJSON)
     }
 

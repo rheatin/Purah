@@ -34,6 +34,38 @@ struct AICLIStreamDecoderTests {
         #expect(AICLIStreamDecoder.decode(line: #"{"type":"result","result":"done","is_error":false}"#) == .finished)
     }
 
+    @Test("Codex reports its thread and answer")
+    func testCodexThreadAndAnswer() {
+        #expect(
+            AICLIStreamDecoder.decode(
+                line: #"{"type":"thread.started","thread_id":"abc-123"}"#
+            ) == .session("abc-123")
+        )
+        #expect(
+            AICLIStreamDecoder.decode(
+                line: #"{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"hello"}}"#
+            ) == .text("hello")
+        )
+        #expect(
+            AICLIStreamDecoder.decode(line: #"{"type":"turn.completed","usage":{"input_tokens":1}}"#)
+                == .finished
+        )
+    }
+
+    @Test("Codex lifecycle events are skipped and reasoning stays hidden")
+    func testCodexLifecycleAndReasoning() {
+        #expect(
+            AICLIStreamDecoder.decode(
+                line: #"{"type":"item.started","item":{"id":"item_1","type":"command_execution"}}"#
+            ) == nil
+        )
+        #expect(
+            AICLIStreamDecoder.decode(
+                line: #"{"type":"item.completed","item":{"id":"item_2","type":"reasoning","text":"why"}}"#
+            ) == .text("<think>why</think>")
+        )
+    }
+
     @Test("Anything else — unknown types, partial events, junk — is skipped")
     func testUnknown() {
         #expect(AICLIStreamDecoder.decode(line: #"{"type":"stream_event","event":{}}"#) == nil)

@@ -941,7 +941,15 @@ public final class AIAssistantService {
         func launch(_ args: [String]) async throws -> String {
             let filename = (cliPath as NSString).lastPathComponent.lowercased()
             let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
-            let isNDJSON = isOpenCodeFamily || (args.contains("json") || args.contains("--format"))
+            let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasCustomTemplate = trimmedCustomArgs != nil
+                && !trimmedCustomArgs!.isEmpty
+                && trimmedCustomArgs != "{prompt}"
+            let isNDJSON = isOpenCodeFamily
+                || (hasCustomTemplate && (args.contains("json") || args.contains("--format")))
+            let decodeStreamEvents = hasCustomTemplate
+                ? args.contains("stream-json")
+                : executable.convention.sessionIDSource != .none
 
             // When a run hangs, the first question is always "what did we
             // actually pass?". Answering that from a diagnostics report beats
@@ -955,7 +963,7 @@ public final class AIAssistantService {
                 executablePath: cliPath,
                 arguments: args,
                 isNDJSON: isNDJSON,
-                decodeStreamEvents: args.contains("stream-json"),
+                decodeStreamEvents: decodeStreamEvents,
                 onSessionID: onSessionID,
                 onChunk: onChunk
             )
