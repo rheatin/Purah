@@ -928,6 +928,21 @@ struct AIAssistantPluginTests {
                 == ["exec", "resume", "abc", "--json", "--skip-git-repo-check", "again"]
         )
 
+        let piFresh = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "hi"
+        )
+        #expect(piFresh == ["-nt", "-p", "hi"])
+
+        let piResumed = AIAssistantService.resolveCLIArguments(
+            executable: .pi,
+            cliPath: "/opt/homebrew/bin/pi",
+            promptText: "hi",
+            resumeSessionId: "abc"
+        )
+        #expect(piResumed == ["-nt", "-p", "--session-id", "abc", "hi"])
+
         // A hand-written template is the user's own invocation; do not edit it.
         let templated = AIAssistantService.resolveCLIArguments(
             executable: .claude,
@@ -968,6 +983,17 @@ struct AIAssistantPluginTests {
 
         #expect(AICLIExecutable.codex.convention.sessionIDSource == .codexJSONLines)
         #expect(AICLIExecutable.claude.convention.sessionIDSource == .claudeStreamJSON)
+        #expect(AICLIExecutable.pi.convention.sessionIDSource == .callerSupplied)
+        #expect(AICLIExecutable.pi.convention.sessionIDSource.reportsSessionIDInOutput == false)
+        #expect(AICLIExecutable.claude.convention.sessionIDSource.reportsSessionIDInOutput == true)
+
+        let existingSession = AIAssistantService.callerSuppliedSessionID(existing: "abc")
+        #expect(existingSession == "abc")
+        let firstSession = AIAssistantService.callerSuppliedSessionID(existing: nil)
+        let secondSession = AIAssistantService.callerSuppliedSessionID(existing: nil)
+        #expect(!firstSession.isEmpty)
+        #expect(!secondSession.isEmpty)
+        #expect(firstSession != secondSession)
     }
 
     @Test("AIAssistantService resolves OpenAI, Ollama, and Anthropic endpoint URLs properly")

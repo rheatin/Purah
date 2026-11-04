@@ -917,6 +917,11 @@ public final class AIAssistantService {
             ? inputText
             : "Conversation so far:\n\(transcript)\n\nUser Input:\n\(inputText)"
         let resumeID = resumeSessionId.flatMap { $0.isEmpty ? nil : $0 }
+        let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasCustomTemplate = trimmedCustomArgs != nil
+            && !trimmedCustomArgs!.isEmpty
+            && trimmedCustomArgs != "{prompt}"
+        let sessionIDSource = hasCustomTemplate ? SessionIDSource.none : executable.convention.sessionIDSource
 
         let effectiveSystemPrompt = systemPromptOverride ?? lastMsg?.systemPromptOverride ?? lastMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
 
@@ -941,15 +946,11 @@ public final class AIAssistantService {
         func launch(_ args: [String]) async throws -> String {
             let filename = (cliPath as NSString).lastPathComponent.lowercased()
             let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
-            let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasCustomTemplate = trimmedCustomArgs != nil
-                && !trimmedCustomArgs!.isEmpty
-                && trimmedCustomArgs != "{prompt}"
             let isNDJSON = isOpenCodeFamily
                 || (hasCustomTemplate && (args.contains("json") || args.contains("--format")))
             let decodeStreamEvents = hasCustomTemplate
                 ? args.contains("stream-json")
-                : executable.convention.sessionIDSource != .none
+                : sessionIDSource.reportsSessionIDInOutput
 
             // When a run hangs, the first question is always "what did we
             // actually pass?". Answering that from a diagnostics report beats
@@ -967,6 +968,27 @@ public final class AIAssistantService {
                 onSessionID: onSessionID,
                 onChunk: onChunk
             )
+        }
+
+        if sessionIDSource == .callerSupplied {
+            // A caller-supplied id that already exists means the CLI holds the
+            // turns; only the first turn (and a fallback after a dead session)
+            // needs the transcript replayed.
+            let isContinuation = resumeID != nil
+            let sessionID = Self.callerSuppliedSessionID(existing: resumeID)
+            onSessionID?(sessionID)
+            do {
+                return try await launch(arguments(for: isContinuation ? inputText : withHistory, resuming: sessionID))
+            } catch {
+                if error is CancellationError { throw error }
+                let replacementID = Self.callerSuppliedSessionID(existing: nil)
+                onSessionID?(replacementID)
+                DiagnosticLogger.shared.warn(
+                    "AI",
+                    "Caller-supplied session \(sessionID) failed; starting \(replacementID)"
+                )
+                return try await launch(arguments(for: withHistory, resuming: replacementID))
+            }
         }
 
         guard let resumeID else {
@@ -988,6 +1010,13 @@ public final class AIAssistantService {
             )
             return try await launch(arguments(for: withHistory, resuming: nil))
         }
+    }
+
+    nonisolated static func callerSuppliedSessionID(existing: String?) -> String {
+        if let existing, !existing.isEmpty {
+            return existing
+        }
+        return UUID().uuidString.lowercased()
     }
 
     /// The turns before the current one, flattened for a CLI that starts fresh

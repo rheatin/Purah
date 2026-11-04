@@ -4,6 +4,16 @@ public enum SessionIDSource: Sendable, Equatable {
     case none
     case claudeStreamJSON
     case codexJSONLines
+    /// The host chooses the id before launch; the CLI does not report it.
+    case callerSupplied
+
+    /// Whether the CLI writes its session id to stdout for the host to decode.
+    public var reportsSessionIDInOutput: Bool {
+        switch self {
+        case .claudeStreamJSON, .codexJSONLines: return true
+        case .none, .callerSupplied: return false
+        }
+    }
 }
 
 public struct CLIConvention: Sendable, Equatable {
@@ -51,7 +61,11 @@ public extension AICLIExecutable {
                 sessionIDSource: .codexJSONLines
             )
         case .pi:
-            return CLIConvention(fresh: "-p {prompt}")
+            return CLIConvention(
+                fresh: "-p {prompt}",
+                resumed: "-p --session-id {session} {prompt}",
+                sessionIDSource: .callerSupplied
+            )
         case .custom:
             return CLIConvention(fresh: "{prompt}")
         }
