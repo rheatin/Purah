@@ -4,7 +4,7 @@ The order below is not "what would be fun to build". It is the order in which
 things stop a stranger from using Purah, then stop them from trusting it, then
 stop them from keeping it.
 
-Last reviewed: 2026-10-30 (v0.7.4)
+Last reviewed: 2026-11-04 (v0.7.15)
 
 ---
 
@@ -13,11 +13,11 @@ Last reviewed: 2026-10-30 (v0.7.4)
 | Area | State |
 |---|---|
 | Features | 10 built-in plugins; the feature set is deeper than most tools in this space |
-| Quality | 870+ tests, strict concurrency, source-level guards for tooltips and motion tokens |
+| Quality | 1,074 tests, strict concurrency, source-level guards for tooltips and motion tokens |
 | Distribution | Self-signed, on a self-hosted Homebrew tap. Grants survive updates and `brew` installs cleanly; **a DMG download from the website still hits Gatekeeper** |
 | Ecosystem | Complete plugin ABI and a developer guide, but the marketplace ships only the built-ins and the only install path is Developer Mode |
 | Trust | Permission matrix, risk classification, checksums, signature verification — but **nothing is said at install time** |
-| Resources | ~184 MB resident, ~2.4% idle CPU measured. That is the gap between the tagline and the product |
+| Resources | ~156 MB resident, ~1.1–1.2% idle CPU measured. The Vitals drawer used to add ~6.3% while it was open; it now adds ~1.7–1.9% (v0.7.15) |
 | Diagnostics | No crash reporter and no telemetry. When it breaks, the only report is the user's description |
 
 ---
@@ -72,8 +72,10 @@ Last reviewed: 2026-10-30 (v0.7.4)
 
 - [ ] **2.1 Energy and memory budget** — measure an idle baseline, fail CI when
       it regresses, then hunt the resident timers and always-mounted views.
-      The tagline is "ultra-lightweight"; 184 MB has to be earned or the
-      tagline has to change.
+      The tagline is "ultra-lightweight"; ~156 MB has to be earned or the
+      tagline has to change. A drawer that adds 6% while it is open is the
+      same problem in miniature — v0.7.15 fixed the one case that was
+      measured, not the class.
 - [ ] **2.2 Localization** — zh-Hant is complete; ja/ko/fr/de/es carry 70–90
       keys and fall back to English partway. Either finish them or drop them
       from the language picker. Shipping a half-translated language is worse
