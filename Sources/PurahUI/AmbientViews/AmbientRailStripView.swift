@@ -652,9 +652,46 @@ private final class AmbientRailStripWindowReference {
 private final class AmbientRailWindowTrackingView: NSView {
     var onWindowChange: ((NSWindow?) -> Void)?
 
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil || newWindow != window {
+            removeWindowObservers()
+        }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        observeWindowChanges()
         onWindowChange?(window)
+    }
+
+    /// `viewDidMoveToWindow` only fires on entry/exit. A menu stays open while
+    /// the same rail window is repositioned, so its screen-relative frame must
+    /// be recomputed when that window moves or lands on another display.
+    private func observeWindowChanges() {
+        removeWindowObservers()
+        guard let window else { return }
+        let center = NotificationCenter.default
+        center.addObserver(
+            self,
+            selector: #selector(windowFrameOrScreenDidChange(_:)),
+            name: NSWindow.didMoveNotification,
+            object: window
+        )
+        center.addObserver(
+            self,
+            selector: #selector(windowFrameOrScreenDidChange(_:)),
+            name: NSWindow.didChangeScreenNotification,
+            object: window
+        )
+    }
+
+    private func removeWindowObservers() {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func windowFrameOrScreenDidChange(_ notification: Notification) {
+        onWindowChange?(notification.object as? NSWindow ?? window)
     }
 }
 
