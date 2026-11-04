@@ -27,6 +27,16 @@ struct CLITemplateProbeTests {
       serve    Start the local HTTP server
     """
 
+    private let optimusHelp = """
+    Commands:
+      optimus run [message..]     run Optimus with a message
+      optimus [project]           start the Optimus TUI
+
+    Options:
+          --prompt                        prompt to use                                         [string]
+          --append-system-prompt          text to add at the end of the system prompt            [string]
+    """
+
     @Test("A prompt flag in the help table becomes the top template")
     func infersPromptFlag() throws {
         let candidates = CLITemplateProbe.inferTemplates(from: flagStyleHelp)
@@ -49,6 +59,12 @@ struct CLITemplateProbeTests {
         // `serve` is not in the answering vocabulary: offering it would start a
         // server and hang the drawer.
         #expect(!candidates.contains { $0.template.hasPrefix("serve") })
+    }
+
+    @Test("Optimus' program-prefixed run subcommand is recognized")
+    func infersPrefixedSubcommand() {
+        let candidates = CLITemplateProbe.inferTemplates(from: optimusHelp)
+        #expect(candidates.contains { $0.template == "run {prompt}" })
     }
 
     @Test("A documented JSON flag yields one structured variant, ranked below the base")
@@ -122,6 +138,15 @@ struct CLITemplateProbeTests {
     func recognisesKnownFamilies() {
         #expect(CLITemplateProbe.knownFamily(for: "/opt/homebrew/bin/claude")?.template == "-p {prompt}")
         #expect(CLITemplateProbe.knownFamily(for: "/usr/local/bin/codex-0.9")?.template == "exec {prompt}")
+        #expect(
+            CLITemplateProbe.knownFamily(for: "/usr/local/bin/optimus")?.template
+                == "run --thinking --format json {prompt}"
+        )
+        #expect(
+            CLITemplateProbe.knownFamily(
+                for: "\(NSHomeDirectory())/.optimus/bin/.optimus"
+            )?.template == "run --thinking --format json {prompt}"
+        )
         // A short name has to match exactly: these are ordinary words.
         #expect(CLITemplateProbe.knownFamily(for: "/bin/pi")?.template == "-p {prompt}")
         #expect(CLITemplateProbe.knownFamily(for: "/usr/bin/pip") == nil)

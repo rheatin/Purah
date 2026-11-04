@@ -203,13 +203,15 @@ public enum CLITemplateProbe {
         ("pi", KnownFamily(family: "Pi", template: "-p {prompt}")),
         ("codex", KnownFamily(family: "Codex", template: "exec {prompt}")),
         ("opencode", KnownFamily(family: "opencode", template: "run {prompt}")),
+        ("optimus", KnownFamily(family: "Optimus", template: "run --thinking --format json {prompt}")),
         ("gemini", KnownFamily(family: "Gemini CLI", template: "-p {prompt}")),
         ("aider", KnownFamily(family: "Aider", template: "--message {prompt}")),
         ("ollama", KnownFamily(family: "Ollama", template: "run llama3.2 {prompt}")),
     ]
 
     public static func knownFamily(for executablePath: String) -> KnownFamily? {
-        let name = (executablePath as NSString).lastPathComponent.lowercased()
+        let basename = (executablePath as NSString).lastPathComponent.lowercased()
+        let name = basename.trimmingCharacters(in: CharacterSet(charactersIn: "."))
         // A short name has to match exactly: "pi" is a prefix of "pip", "pilot"
         // and a dozen other things that are not AI agents.
         return knownFamilies.first { entry in
@@ -280,13 +282,25 @@ public enum CLITemplateProbe {
                 }
             }
 
-            // A subcommand that answers and exits: a bare word at the start of
-            // an entry, with no dash.
-            let firstWord = line.split(separator: " ").first.map(String.init) ?? ""
-            if !firstWord.hasPrefix("-"), firstWord.count >= 2, firstWord.count <= 20,
-               promptSubcommandPreference.contains(firstWord) {
-                let rank = promptSubcommandPreference.firstIndex(of: firstWord) ?? 9
-                add("\(firstWord) {prompt}", reason: line, score: 4 - min(rank, 3))
+            // A subcommand that answers and exits. Some CLIs print the bare
+            // command in a table, while others repeat the program name first.
+            func addSubcommand(_ command: String) {
+                guard command.count >= 2, command.count <= 20,
+                      promptSubcommandPreference.contains(command)
+                else { return }
+                let rank = promptSubcommandPreference.firstIndex(of: command) ?? 9
+                add("\(command) {prompt}", reason: line, score: 4 - min(rank, 3))
+            }
+
+            let words = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            if let firstWord = words.first {
+                addSubcommand(firstWord)
+            }
+            for index in words.indices.dropFirst() {
+                guard index + 1 < words.count,
+                      isPositionalPlaceholder(words[index + 1])
+                else { continue }
+                addSubcommand(words[index])
             }
         }
 
@@ -330,6 +344,11 @@ public enum CLITemplateProbe {
         }
         guard !names.isEmpty else { return nil }
         return names.first(where: { $0.hasPrefix("--") }) ?? names.first
+    }
+
+    static func isPositionalPlaceholder(_ token: String) -> Bool {
+        (token.hasPrefix("[") && token.hasSuffix("]"))
+            || (token.hasPrefix("<") && token.hasSuffix(">"))
     }
 
     static func fallbackCandidates() -> [CLITemplateCandidate] {

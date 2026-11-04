@@ -840,6 +840,13 @@ struct AIAssistantPluginTests {
         )
         #expect(args2 == ["run", "--thinking", "--format", "json", "Explain SwiftUI"])
 
+        let hiddenOptimus = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: "\(NSHomeDirectory())/.optimus/bin/.optimus",
+            promptText: "hi"
+        )
+        #expect(hiddenOptimus == ["run", "--thinking", "--format", "json", "hi"])
+
         // 3. Executable is .custom with path pointing to opencode/optimus and custom template lacking 'run'
         let args3 = AIAssistantService.resolveCLIArguments(
             executable: .custom,

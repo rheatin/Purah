@@ -944,8 +944,7 @@ public final class AIAssistantService {
         }
 
         func launch(_ args: [String]) async throws -> String {
-            let filename = (cliPath as NSString).lastPathComponent.lowercased()
-            let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+            let isOpenCodeFamily = Self.isOpenCodeFamily(cliPath: cliPath)
             let isNDJSON = isOpenCodeFamily
                 || (hasCustomTemplate && (args.contains("json") || args.contains("--format")))
             let decodeStreamEvents = hasCustomTemplate
@@ -1043,6 +1042,12 @@ public final class AIAssistantService {
         return turns.reversed().joined(separator: "\n\n")
     }
 
+    nonisolated static func isOpenCodeFamily(cliPath: String) -> Bool {
+        let filename = (cliPath as NSString).lastPathComponent.lowercased()
+        let normalized = filename.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return normalized.hasPrefix("opencode") || normalized.hasPrefix("optimus")
+    }
+
     public nonisolated static func resolveCLIArguments(
         executable: AICLIExecutable,
         cliPath: String,
@@ -1094,7 +1099,7 @@ public final class AIAssistantService {
             }
         }
 
-        let isOpenCodeFamily = filename.hasPrefix("opencode") || filename.hasPrefix("optimus")
+        let isOpenCodeFamily = Self.isOpenCodeFamily(cliPath: cliPath)
         if isOpenCodeFamily {
             if !hasCustomTemplate {
                 if args.first != "run" {
