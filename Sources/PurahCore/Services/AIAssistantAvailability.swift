@@ -50,7 +50,7 @@ public struct AIAssistantAvailability: Sendable, Equatable {
             return AIAssistantAvailability(provider: provider, state: .ready)
 
         case .localCLI:
-            let cli = AICLIExecutable(rawValue: storage.string(forKey: "selectedCLI") ?? "") ?? .claude
+            let cli = AICLIExecutable.resolved(fromStored: storage.string(forKey: "selectedCLI"))
             let path = AIAssistantService.shared.resolveCLIPath(
                 for: cli,
                 customPath: storage.string(forKey: "customCLIPath")

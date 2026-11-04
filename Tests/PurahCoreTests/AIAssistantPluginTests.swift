@@ -39,19 +39,45 @@ struct AIAssistantPluginTests {
         #expect(AICLIExecutable.codex.rawValue == "codex")
         #expect(AICLIExecutable.codex.defaultSubcommand == ["exec"])
 
-        #expect(AICLIExecutable.ollama.rawValue == "ollama")
-        #expect(AICLIExecutable.ollama.defaultSubcommand == ["run", "llama3.2"])
-
         #expect(AICLIExecutable.custom.rawValue == "custom")
         #expect(AICLIExecutable.custom.displayName == "Custom CLI")
         #expect(AICLIExecutable.custom.defaultSubcommand == ["{prompt}"])
-        #expect(AICLIExecutable.allCases.count == 5)
+        #expect(AICLIExecutable.allCases.count == 4)
+
+        #expect(AICLIExecutable.resolved(fromStored: "ollama") == .custom)
+        #expect(AICLIExecutable.resolved(fromStored: "nonsense") == .claude)
 
         #expect(AIProviderKind.appleIntelligence.shortTitle == "Apple Intel")
         #expect(AIProviderKind.localCLI.shortTitle == "Local CLI")
         #expect(AIProviderKind.httpOpenAI.shortTitle == "OpenAI")
         #expect(AIProviderKind.httpAnthropic.shortTitle == "Claude")
         #expect(AIProviderKind.httpOllama.shortTitle == "Ollama")
+    }
+
+    @Test("A stored ollama CLI migrates to the invocation it used to produce")
+    func testOllamaCLIMigration() {
+        let isolated = UserDefaults(suiteName: "test_ollama_migration_\(UUID().uuidString)")!
+        let storage = ScopedPluginStorage(pluginId: "ai_migration", defaults: isolated)
+        storage.set("ollama", forKey: "selectedCLI")
+
+        let state = AIAssistantPluginState(storage: storage)
+
+        #expect(state.selectedCLI == .custom)
+        #expect(storage.string(forKey: "selectedCLI") == AICLIExecutable.custom.rawValue)
+        #expect(state.customCLIArguments == "run llama3.2 {prompt}")
+        // Either a real absolute path or nothing at all — never a bare name,
+        // which resolves to nothing when the CLI is launched.
+        #expect(state.customCLIPath.isEmpty || state.customCLIPath.hasPrefix("/"))
+
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .custom,
+            cliPath: state.customCLIPath,
+            customCLIArguments: state.customCLIArguments,
+            promptText: "list files"
+        )
+        // The removed preset produced ["run", "llama3.2", prompt]; the migrated
+        // template has to produce exactly that.
+        #expect(args == ["run", "llama3.2", "list files"])
     }
 
     @Test("AIQuickActionType system prompts and transformation flags")
@@ -2322,7 +2348,7 @@ struct AIAssistantPluginTests {
         // These have no way to resolve a skill name. Inlining the body is the
         // only delivery that works; telling them to "invoke the skill" would
         // leave the instructions unread.
-        for cli in [AICLIExecutable.codex, .ollama, .custom] {
+        for cli in [AICLIExecutable.codex, .custom] {
             #expect(AIAssistantService.skillDelivery(for: .localCLI, cli: cli) == .inlineBody,
                     "\(cli.displayName) cannot resolve a skill by name")
         }

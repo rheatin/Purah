@@ -13,7 +13,7 @@ struct AIPermissionBridgeTests {
     func testSettingsPathIsClaudeOnly() {
         // Codex `exec` has no host-answerable approval channel at all, so
         // handing it a hook file would be pretending it does.
-        for executable in [AICLIExecutable.codex, .pi, .ollama, .custom] {
+        for executable in [AICLIExecutable.codex, .pi, .custom] {
             #expect(AIAssistantService.permissionSettingsPath(for: executable) == nil,
                     "\(executable.rawValue) must not be given permission routing")
         }

@@ -219,6 +219,34 @@ public final class AIAssistantService {
         return detected
     }
 
+    /// Where a CLI is looked for when only its name is known.
+    ///
+    /// One list, used both to resolve a known CLI and to turn a stored bare
+    /// name into a real path (the removed Ollama preset's migration). Two
+    /// copies would drift, and only one of them would keep working.
+    public nonisolated static let cliSearchDirectories: [String] = [
+        "\(NSHomeDirectory())/.local/bin",
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "\(NSHomeDirectory())/.npm-global/bin",
+        "\(NSHomeDirectory())/.cargo/bin",
+        "\(NSHomeDirectory())/.optimus/bin",
+        "/usr/bin"
+    ]
+
+    /// The absolute path of an executable found in the usual places.
+    ///
+    /// A bare name only: a string containing `/` is the caller's own path and
+    /// is not rewritten behind their back.
+    public nonisolated static func locateExecutable(named name: String) -> String? {
+        guard !name.isEmpty, !name.contains("/") else { return nil }
+        for dir in cliSearchDirectories {
+            let path = (dir as NSString).appendingPathComponent(name)
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
+        }
+        return nil
+    }
+
     public func resolveCLIPath(for executable: AICLIExecutable, customPath: String? = nil) -> String? {
         if let custom = customPath?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
             let expanded = (custom as NSString).expandingTildeInPath
@@ -233,15 +261,7 @@ public final class AIAssistantService {
             return nil
         }
         let namesToTry: [String] = [executable.executableName]
-        let candidateDirs = [
-            "\(NSHomeDirectory())/.local/bin",
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "\(NSHomeDirectory())/.npm-global/bin",
-            "\(NSHomeDirectory())/.cargo/bin",
-            "\(NSHomeDirectory())/.optimus/bin",
-            "/usr/bin"
-        ]
+        let candidateDirs = Self.cliSearchDirectories
         let fm = FileManager.default
         for dir in candidateDirs {
             for name in namesToTry {
@@ -1011,9 +1031,6 @@ public final class AIAssistantService {
                 args = ["-p", promptText]
             case .codex:
                 args = ["exec", promptText]
-            case .ollama:
-                let selectedModel = model?.isEmpty == false ? model! : "llama3.2"
-                args = ["run", selectedModel, promptText]
             case .custom:
                 args = [promptText]
             }
@@ -2022,7 +2039,7 @@ public final class AIAssistantService {
         switch cli {
         case .claude, .pi:
             return .nativeCommand
-        case .codex, .ollama, .custom:
+        case .codex, .custom:
             return .inlineBody
         }
     }

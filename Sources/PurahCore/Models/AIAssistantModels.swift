@@ -77,7 +77,6 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
     case claude = "claude"
     case pi = "pi"
     case codex = "codex"
-    case ollama = "ollama"
     case custom = "custom"
 
     public var id: String { rawValue }
@@ -88,7 +87,6 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return "Claude CLI"
         case .pi: return "Pi (AI Agent)"
         case .codex: return "Codex CLI"
-        case .ollama: return "Ollama CLI"
         case .custom: return "Custom CLI"
         }
     }
@@ -98,9 +96,20 @@ public enum AICLIExecutable: String, Codable, CaseIterable, Sendable, Identifiab
         case .claude: return ["-p"]
         case .pi: return ["-p"]
         case .codex: return ["exec"]
-        case .ollama: return ["run", "llama3.2"]
         case .custom: return ["{prompt}"]
         }
+    }
+
+    /// Every reader of the stored selection goes through here.
+    ///
+    /// The `"ollama"` spelling belonged to a CLI preset that no longer exists;
+    /// a stored value from before the removal must land on the same invocation
+    /// it used to produce (`ollama run llama3.2 {prompt}`), not on an empty
+    /// custom CLI that cannot run.
+    public static func resolved(fromStored raw: String?) -> AICLIExecutable {
+        guard let raw, !raw.isEmpty else { return .claude }
+        if raw == "ollama" { return .custom }
+        return AICLIExecutable(rawValue: raw) ?? .claude
     }
 }
 

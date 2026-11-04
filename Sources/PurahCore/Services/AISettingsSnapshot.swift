@@ -24,7 +24,7 @@ public struct AISettingsSnapshot: Sendable, Equatable {
     ) -> AISettingsSnapshot {
         let provider = AIProviderKind(rawValue: storage.string(forKey: "selectedProvider") ?? "")
             ?? .appleIntelligence
-        let cli = AICLIExecutable(rawValue: storage.string(forKey: "selectedCLI") ?? "") ?? .claude
+        let cli = AICLIExecutable.resolved(fromStored: storage.string(forKey: "selectedCLI"))
 
         let apiKey: String? = {
             switch provider {

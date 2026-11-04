@@ -693,15 +693,23 @@ public final class AIAssistantPluginState: Sendable {
             self.selectedProvider = .appleIntelligence
         }
 
-        if let cliStr = storage.string(forKey: "selectedCLI") {
-            if let cli = AICLIExecutable(rawValue: cliStr) {
-                self.selectedCLI = cli
-            } else {
-                self.selectedCLI = .custom
+        // Preserve the invocation produced by the removed Ollama preset.
+        if storage.string(forKey: "selectedCLI") == "ollama" {
+            storage.set(AICLIExecutable.custom.rawValue, forKey: "selectedCLI")
+
+            let storedPath = storage.string(forKey: "customCLIPath") ?? ""
+            // An absolute path, because a custom CLI is launched from one and
+            // a bare "ollama" would resolve to nothing at launch time.
+            if storedPath.isEmpty, let ollama = AIAssistantService.locateExecutable(named: "ollama") {
+                storage.set(ollama, forKey: "customCLIPath")
             }
-        } else {
-            self.selectedCLI = .claude
+
+            let storedArguments = storage.string(forKey: "customCLIArguments") ?? ""
+            if storedArguments.isEmpty || storedArguments == "{prompt}" {
+                storage.set("run llama3.2 {prompt}", forKey: "customCLIArguments")
+            }
         }
+        self.selectedCLI = AICLIExecutable.resolved(fromStored: storage.string(forKey: "selectedCLI"))
 
         self.customCLIPath = storage.string(forKey: "customCLIPath") ?? ""
         self.customCLIArguments = storage.string(forKey: "customCLIArguments") ?? "{prompt}"
