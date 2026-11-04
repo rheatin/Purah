@@ -940,6 +940,16 @@ struct AIAssistantPluginTests {
             prompt: "Inline test"
         )
         #expect(inlinePrompt == ["--prompt=Inline test", "--verbose"])
+
+        let sessionArgs = AIAssistantService.parseArgumentsTemplate(
+            template: "--resume {session} -p {prompt}",
+            prompt: "hi",
+            session: "abc"
+        )
+        #expect(sessionArgs == ["--resume", "abc", "-p", "hi"])
+
+        #expect(AICLIExecutable.codex.convention.resumed == nil)
+        #expect(AICLIExecutable.claude.convention.sessionIDSource == .claudeStreamJSON)
     }
 
     @Test("AIAssistantService resolves OpenAI, Ollama, and Anthropic endpoint URLs properly")

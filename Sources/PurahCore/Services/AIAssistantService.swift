@@ -285,7 +285,11 @@ public final class AIAssistantService {
         return nil
     }
 
-    public nonisolated static func parseArgumentsTemplate(template: String, prompt: String) -> [String] {
+    public nonisolated static func parseArgumentsTemplate(
+        template: String,
+        prompt: String,
+        session: String? = nil
+    ) -> [String] {
         let trimmed = template.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [prompt] }
 
@@ -321,11 +325,12 @@ public final class AIAssistantService {
         var replacedAny = false
         var args: [String] = []
         for token in tokens {
-            if token.contains("{prompt}") {
-                args.append(token.replacingOccurrences(of: "{prompt}", with: prompt))
+            let tokenWithSession = token.replacingOccurrences(of: "{session}", with: session ?? "")
+            if tokenWithSession.contains("{prompt}") {
+                args.append(tokenWithSession.replacingOccurrences(of: "{prompt}", with: prompt))
                 replacedAny = true
             } else {
-                args.append(token)
+                args.append(tokenWithSession)
             }
         }
         if !replacedAny {
@@ -1024,16 +1029,7 @@ public final class AIAssistantService {
             let template = hasCustomTemplate ? trimmedCustomArgs! : "{prompt}"
             args = parseArgumentsTemplate(template: template, prompt: promptText)
         } else {
-            switch executable {
-            case .claude:
-                args = ["-p", promptText]
-            case .pi:
-                args = ["-p", promptText]
-            case .codex:
-                args = ["exec", promptText]
-            case .custom:
-                args = [promptText]
-            }
+            args = executable.convention.arguments(prompt: promptText, session: resumeSessionId)
         }
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
@@ -1084,17 +1080,6 @@ public final class AIAssistantService {
         // hook in the settings file is what turns each gate into a banner.
         if executable == .claude, canRoutePermissions, let permissionSettingsPath {
             args.insert(contentsOf: ["--settings", permissionSettingsPath, "--permission-mode", "manual"], at: 0)
-        }
-
-        // `stream-json` is the only output mode that reports the session id,
-        // and `--print` refuses it without `--verbose`. Resuming then makes the
-        // CLI's own record the conversation, so the prompt no longer has to
-        // carry a lossy text replay of it.
-        if executable == .claude, canRoutePermissions {
-            args.insert(contentsOf: ["--output-format", "stream-json", "--verbose"], at: 0)
-            if let resumeSessionId, !resumeSessionId.isEmpty {
-                args.insert(contentsOf: ["--resume", resumeSessionId], at: 0)
-            }
         }
 
         if executable == .claude, canRoutePermissions, let mcpConfigPath {
