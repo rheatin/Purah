@@ -169,8 +169,6 @@ private enum ProcessSamplingWorker {
                 Int32(MemoryLayout<proc_taskinfo>.size)
             )
             if size == MemoryLayout<proc_taskinfo>.size {
-                let memBytes = Double(taskInfo.pti_resident_size)
-                let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
                 let totalCPUTicks = taskInfo.pti_total_user + taskInfo.pti_total_system
                 sampledCPUTimes[pid] = totalCPUTicks
 
@@ -183,7 +181,6 @@ private enum ProcessSamplingWorker {
                         tickConversion: ProcessCPUPercent.machTickConversion
                     )
                 } ?? 0
-                let memoryMB = memBytes / 1_048_576.0
                 let network = input.networkSpeeds[pid]
                 var resources = ProcessResourceRates.zero
 
@@ -193,6 +190,14 @@ private enum ProcessSamplingWorker {
                         proc_pid_rusage(pid, RUSAGE_INFO_V6, $0)
                     }
                 }
+                // Activity Monitor's Memory column is `phys_footprint`, not
+                // RSS. Reporting resident size made Purah claim 156 MB while
+                // the system said 46 MB for the same process.
+                let memoryBytes = usageResult == 0
+                    ? Double(usage.ri_phys_footprint)
+                    : Double(taskInfo.pti_resident_size)
+                let memPercent = min(max((memoryBytes / totalMemBytes) * 100.0, 0.0), 100.0)
+                let memoryMB = memoryBytes / 1_048_576.0
                 if usageResult == 0 {
                     let counters = ProcessResourceCounters(
                         diskReadBytes: usage.ri_diskio_bytesread,
