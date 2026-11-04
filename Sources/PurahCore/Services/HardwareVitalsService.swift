@@ -81,6 +81,267 @@ struct ProcessResourceRates: Sendable, Equatable {
     )
 }
 
+/// Immutable process-sampling state. The expensive process walk runs off the
+/// main actor, so it carries this snapshot in and returns a new one instead of
+/// reading or mutating the service's observable state off-main.
+private struct ProcessSamplingSnapshot: Sendable {
+    let previousCPUTicks: [Int32: UInt64]
+    let previousResources: [Int32: ProcessResourceCounters]
+    let previousTimestamp: Date?
+}
+
+private struct ProcessNameCacheEntry: Sendable, Equatable {
+    let executablePath: String
+    let name: String
+}
+
+private struct ProcessSamplingInput: Sendable {
+    let snapshot: ProcessSamplingSnapshot
+    let nameCache: [Int32: ProcessNameCacheEntry]
+    let bundleCache: [String: ProcessAppBundleInfo]
+    let friendlyNames: [Int32: String]
+    let networkSpeeds: [Int32: ProcessNetworkSpeed]
+}
+
+private struct ProcessSamplingOutput: Sendable {
+    let items: [ProcessInfoItem]
+    let cpuTicks: [Int32: UInt64]
+    let resources: [Int32: ProcessResourceCounters]
+    let timestamp: Date
+    let nameCache: [Int32: ProcessNameCacheEntry]
+    let bundleCache: [String: ProcessAppBundleInfo]
+}
+
+/// The process walk is intentionally outside the main-actor service. It reads
+/// kernel state and immutable snapshots only, and returns a value for the main
+/// actor to publish.
+private enum ProcessSamplingWorker {
+    static func sample(_ input: ProcessSamplingInput) -> ProcessSamplingOutput {
+        let pids = allProcessIdentifiers()
+        let processTable = processExecutableTable(for: pids)
+        let appBundles = updateAppBundleCache(input.bundleCache, processTable: processTable)
+
+        let now = Date()
+        let previousCPUTimes = input.snapshot.previousCPUTicks
+        let previousResources = input.snapshot.previousResources
+        let previousTimestamp = input.snapshot.previousTimestamp
+        // The first sample has no baseline: report 0% rather than a bogus
+        // number, and use the current sample as the next baseline.
+        let interval = previousTimestamp.map { now.timeIntervalSince($0) } ?? 0
+        let hasBaseline = previousTimestamp != nil && interval > 0.05
+        let totalMemBytes = Double(ProcessInfo.processInfo.physicalMemory)
+        let coreCount = ProcessInfo.processInfo.activeProcessorCount
+
+        var items: [ProcessInfoItem] = []
+        items.reserveCapacity(pids.count)
+        var sampledCPUTimes: [Int32: UInt64] = [:]
+        var sampledResources: [Int32: ProcessResourceCounters] = [:]
+        var names: [Int32: ProcessNameCacheEntry] = [:]
+        names.reserveCapacity(pids.count)
+
+        for pid in pids {
+            let executablePath = processTable[pid]?.executablePath
+            let name: String
+            if let cached = input.nameCache[pid],
+               cached.executablePath == (executablePath ?? "") {
+                name = cached.name
+            } else {
+                let fallbackName = input.friendlyNames[pid] ?? processNameFromKernel(pid: pid)
+                name = ProcessDisplayNameResolver.resolve(
+                    pid: pid,
+                    executablePath: executablePath,
+                    fallbackName: fallbackName,
+                    processTable: processTable,
+                    appBundles: appBundles
+                )
+            }
+            names[pid] = ProcessNameCacheEntry(
+                executablePath: executablePath ?? "",
+                name: name
+            )
+
+            var taskInfo = proc_taskinfo()
+            let size = proc_pidinfo(
+                pid,
+                PROC_PIDTASKINFO,
+                0,
+                &taskInfo,
+                Int32(MemoryLayout<proc_taskinfo>.size)
+            )
+            if size == MemoryLayout<proc_taskinfo>.size {
+                let memBytes = Double(taskInfo.pti_resident_size)
+                let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
+                let totalCPUTicks = taskInfo.pti_total_user + taskInfo.pti_total_system
+                sampledCPUTimes[pid] = totalCPUTicks
+
+                let cpuPercent = previousCPUTimes[pid].map {
+                    ProcessCPUPercent.calculate(
+                        previous: $0,
+                        current: totalCPUTicks,
+                        elapsed: interval,
+                        coreCount: coreCount,
+                        tickConversion: ProcessCPUPercent.machTickConversion
+                    )
+                } ?? 0
+                let memoryMB = memBytes / 1_048_576.0
+                let network = input.networkSpeeds[pid]
+                var resources = ProcessResourceRates.zero
+
+                var usage = rusage_info_v6()
+                let usageResult = withUnsafeMutablePointer(to: &usage) { pointer in
+                    pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                        proc_pid_rusage(pid, RUSAGE_INFO_V6, $0)
+                    }
+                }
+                if usageResult == 0 {
+                    let counters = ProcessResourceCounters(
+                        diskReadBytes: usage.ri_diskio_bytesread,
+                        diskWriteBytes: usage.ri_diskio_byteswritten,
+                        energyNanojoules: usage.ri_energy_nj
+                    )
+                    if hasBaseline {
+                        resources = counters.rates(
+                            since: previousResources[pid],
+                            elapsed: interval
+                        )
+                    }
+                    sampledResources[pid] = counters
+                }
+
+                items.append(ProcessInfoItem(
+                    id: pid,
+                    name: name,
+                    cpuPercent: cpuPercent,
+                    memoryPercent: memPercent,
+                    memoryMB: memoryMB,
+                    networkDownBytesPerSecond: network?.downBytesPerSecond ?? 0,
+                    networkUpBytesPerSecond: network?.upBytesPerSecond ?? 0,
+                    diskReadBytesPerSecond: resources.diskReadBytesPerSecond,
+                    diskWriteBytesPerSecond: resources.diskWriteBytesPerSecond,
+                    energyWatts: resources.energyWatts
+                ))
+            }
+        }
+
+        items.sort { $0.memoryPercent > $1.memoryPercent }
+        return ProcessSamplingOutput(
+            items: items,
+            cpuTicks: sampledCPUTimes,
+            resources: sampledResources,
+            timestamp: now,
+            nameCache: names,
+            bundleCache: appBundles
+        )
+    }
+
+    private static func allProcessIdentifiers() -> [Int32] {
+        let stride = MemoryLayout<pid_t>.stride
+        let estimatedBytes = Int(proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0))
+        var capacity = max(estimatedBytes, stride * 128)
+
+        for _ in 0..<16 {
+            var pids = [pid_t](repeating: 0, count: capacity / stride)
+            let usedBytes = pids.withUnsafeMutableBytes { buffer in
+                proc_listpids(
+                    UInt32(PROC_ALL_PIDS),
+                    0,
+                    buffer.baseAddress,
+                    Int32(buffer.count)
+                )
+            }
+            guard usedBytes > 0 else { return [] }
+
+            let usedCount = min(Int(usedBytes) / stride, pids.count)
+            if Int(usedBytes) < capacity || usedCount < pids.count {
+                return pids.prefix(usedCount).filter { $0 > 0 }
+            }
+            capacity *= 2
+        }
+
+        return []
+    }
+
+    private static func processExecutableTable(
+        for pids: [Int32]
+    ) -> [Int32: ProcessExecutableRecord] {
+        var table: [Int32: ProcessExecutableRecord] = [:]
+        table.reserveCapacity(pids.count)
+
+        for pid in pids {
+            var info = proc_bsdinfo()
+            let size = proc_pidinfo(
+                pid,
+                PROC_PIDTBSDINFO,
+                0,
+                &info,
+                Int32(MemoryLayout<proc_bsdinfo>.size)
+            )
+            let parentPID = size > 0 ? Int32(clamping: info.pbi_ppid) : 0
+            table[pid] = ProcessExecutableRecord(
+                parentPID: parentPID,
+                executablePath: processExecutablePath(pid: pid)
+            )
+        }
+        return table
+    }
+
+    private static func processExecutablePath(pid: Int32) -> String? {
+        var pathBuffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+        guard pathLength > 0 else { return nil }
+        return cString(from: pathBuffer)
+    }
+
+    private static func processNameFromKernel(pid: Int32) -> String? {
+        var nameBuffer = [CChar](repeating: 0, count: 256)
+        let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
+        guard nameLength > 0 else { return nil }
+        return cString(from: nameBuffer)
+    }
+
+    private static func updateAppBundleCache(
+        _ cache: [String: ProcessAppBundleInfo],
+        processTable: [Int32: ProcessExecutableRecord]
+    ) -> [String: ProcessAppBundleInfo] {
+        var infos = cache
+        for record in processTable.values {
+            guard let path = record.executablePath,
+                  let bundlePath = ProcessDisplayNameResolver.appBundlePath(in: path),
+                  infos[bundlePath] == nil else {
+                continue
+            }
+            infos[bundlePath] = appBundleInfo(at: bundlePath)
+        }
+        return infos
+    }
+
+    private static func appBundleInfo(at bundlePath: String) -> ProcessAppBundleInfo {
+        let bundle = Bundle(url: URL(fileURLWithPath: bundlePath))
+        let configuredName = ["CFBundleDisplayName", "CFBundleName"]
+            .compactMap { bundle?.object(forInfoDictionaryKey: $0) as? String }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        let displayName = configuredName
+            ?? ProcessDisplayNameResolver.lastPathComponent(
+                of: (bundlePath as NSString).deletingPathExtension
+            )
+            ?? bundlePath
+        let executableName = (bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return ProcessAppBundleInfo(
+            displayName: displayName,
+            executableName: executableName?.isEmpty == true ? nil : executableName
+        )
+    }
+
+    private static func cString(from buffer: [CChar]) -> String? {
+        buffer.withUnsafeBufferPointer { pointer in
+            guard let baseAddress = pointer.baseAddress else { return nil }
+            return String(validatingCString: baseAddress)
+        }
+    }
+}
+
 public struct HardwareVitalsInfo: Sendable {
     public var cpuUsage: Double // 0.0 ~ 1.0
     public var gpuUsage: Double // 0.0 ~ 1.0
@@ -225,6 +486,12 @@ private final class CpuTelemetryBuffer: @unchecked Sendable {
     var previousProcessCPUTicks: [Int32: UInt64] = [:]
     var previousProcessResources: [Int32: ProcessResourceCounters] = [:]
     var previousProcessSampleTimestamp: Date?
+    /// A process keeps its name until its executable changes or its PID is
+    /// reused; this turns the per-sample name walk into a path comparison.
+    var processNames: [Int32: ProcessNameCacheEntry] = [:]
+    /// Bundle display names are immutable for an app's lifetime, so read the
+    /// Info.plist once per bundle rather than once per process sample.
+    var appBundles: [String: ProcessAppBundleInfo] = [:]
 
     deinit {
         if let prev = previousCpuInfo {
@@ -260,6 +527,8 @@ public final class HardwareVitalsService {
     @ObservationIgnored private var processNetworkTask: Task<Void, Never>?
     @ObservationIgnored private var processNetworkSpeeds: [Int32: ProcessNetworkSpeed] = [:]
     @ObservationIgnored private var isProcessesTabVisible = false
+    @ObservationIgnored private var processSamplingTask: Task<Void, Never>?
+    @ObservationIgnored private var processSamplingGeneration = 0
 
     // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Vitals/
     @ObservationIgnored public static let defaultStorageDirectory: URL = {
@@ -430,7 +699,7 @@ public final class HardwareVitalsService {
                 // signal, not a clock, so once every five ticks is plenty unless
                 // someone is actually looking at the drawer.
                 self.refreshMetrics(
-                    includeProcesses: self.isDrawerVisible && (self.saveThrottleCounter % 3 == 0),
+                    includeProcesses: self.isProcessesTabVisible && (self.saveThrottleCounter % 3 == 0),
                     includeGPU: self.isDrawerVisible || self.saveThrottleCounter % 5 == 0
                 )
                 // The history is redrawn from memory; the file is a crash
@@ -448,6 +717,9 @@ public final class HardwareVitalsService {
     public func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+        processSamplingTask?.cancel()
+        processSamplingTask = nil
+        processSamplingGeneration += 1
         setProcessesTabVisible(false)
         saveHistoryToDisk()
     }
@@ -461,7 +733,6 @@ public final class HardwareVitalsService {
         let diskIO = readDiskIOThroughput()
         let battery = readBatteryInfo()
         let net = readNetworkThroughputDetailed()
-        let top = includeProcesses ? readTopProcessesNative() : metrics.topProcesses
         let thermal = readThermalStateLabel()
 
         metrics = HardwareVitalsInfo(
@@ -477,7 +748,7 @@ public final class HardwareVitalsService {
             powerSource: battery.source,
             networkDownSpeed: net.down,
             networkUpSpeed: net.up,
-            topProcesses: top,
+            topProcesses: metrics.topProcesses,
             cpuUserUsage: cpuBreakdown.userUsage,
             cpuSystemUsage: cpuBreakdown.sysUsage,
             cpuIdleUsage: cpuBreakdown.idleUsage,
@@ -517,19 +788,41 @@ public final class HardwareVitalsService {
         appendHistory(&networkUpHistory, point: VitalsHistoryPoint(timestamp: now, value: upRatio))
         let diskRatio = disk.totalGB > 0 ? (disk.totalGB - disk.freeGB) / disk.totalGB : 0.5
         appendHistory(&diskHistory, point: VitalsHistoryPoint(timestamp: now, value: diskRatio))
+
+        // The rail only needs the cheap metrics above. The 580-process walk
+        // runs in the background and publishes on a later main-actor turn.
+        if includeProcesses {
+            requestProcessRefresh()
+        }
     }
 
+    /// Like `refreshMetrics`, but waits for the background process sample so
+    /// callers that explicitly ask for a fresh list (tests, the Process
+    /// Inspector opening) can observe it before returning.
     public func refreshMetricsAsync(includeProcesses: Bool = false) async {
         refreshMetrics(includeProcesses: includeProcesses)
+        if includeProcesses {
+            // An explicit async refresh is a request for a fresh list even
+            // when its caller has not yet toggled the inspector-visible flag.
+            requestProcessRefresh(force: true)
+            if let processSamplingTask {
+                await processSamplingTask.value
+            }
+        }
     }
 
     /// `nettop` is visible-work only: the sampler runs while the Processes tab
     /// is on screen and stops as soon as it leaves the view hierarchy.
     public func setProcessesTabVisible(_ visible: Bool) {
+        guard isProcessesTabVisible != visible else { return }
         isProcessesTabVisible = visible
         if visible {
             startProcessNetworkSampling()
+            requestProcessRefresh(force: true)
         } else {
+            processSamplingTask?.cancel()
+            processSamplingTask = nil
+            processSamplingGeneration += 1
             stopProcessNetworkSampling()
         }
     }
@@ -548,6 +841,65 @@ public final class HardwareVitalsService {
             guard !Task.isCancelled else { return }
             self?.refreshMetrics(includeProcesses: true)
         }
+    }
+
+    /// Kick a background process sample. The drawer keeps rendering the last
+    /// published list, so this can take as long as the process table needs.
+    private func requestProcessRefresh(force: Bool = false) {
+        guard force || isProcessesTabVisible else { return }
+        guard processSamplingTask == nil else { return }
+
+        let friendlyNames = Dictionary(
+            uniqueKeysWithValues: NSWorkspace.shared.runningApplications.compactMap { app -> (Int32, String)? in
+                let pid = app.processIdentifier
+                guard pid > 0,
+                      let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !name.isEmpty else { return nil }
+                return (pid, name)
+            }
+        )
+        let input = ProcessSamplingInput(
+            snapshot: ProcessSamplingSnapshot(
+                previousCPUTicks: buffer.previousProcessCPUTicks,
+                previousResources: buffer.previousProcessResources,
+                previousTimestamp: buffer.previousProcessSampleTimestamp
+            ),
+            nameCache: buffer.processNames,
+            bundleCache: buffer.appBundles,
+            friendlyNames: friendlyNames,
+            networkSpeeds: processNetworkSpeeds
+        )
+
+        processSamplingGeneration += 1
+        let generation = processSamplingGeneration
+        processSamplingTask = Task { [weak self] in
+            let output = await Self.sampleProcessesInBackground(input)
+            guard !Task.isCancelled,
+                  let self,
+                  self.processSamplingGeneration == generation else { return }
+            self.publishProcessSample(output)
+        }
+    }
+
+    private nonisolated static func sampleProcessesInBackground(
+        _ input: ProcessSamplingInput
+    ) async -> ProcessSamplingOutput {
+        await Task.detached(priority: .utility) {
+            ProcessSamplingWorker.sample(input)
+        }.value
+    }
+
+    private func publishProcessSample(_ output: ProcessSamplingOutput) {
+        processSamplingTask = nil
+        buffer.previousProcessCPUTicks = output.cpuTicks
+        buffer.previousProcessResources = output.resources
+        buffer.previousProcessSampleTimestamp = output.timestamp
+        buffer.processNames = output.nameCache
+        buffer.appBundles = output.bundleCache
+
+        var updated = metrics
+        updated.topProcesses = output.items
+        metrics = updated
     }
 
     // MARK: - Mach Kernel & System APIs (100% Native C/Darwin, zero overhead)
@@ -821,237 +1173,8 @@ public final class HardwareVitalsService {
     deinit {
         monitorTask?.cancel()
         processNetworkTask?.cancel()
+        processSamplingTask?.cancel()
         mach_port_deallocate(mach_task_self_, hostPort)
-    }
-
-    // MARK: - Native Darwin proc_pidinfo process collection
-    private func readTopProcessesNative() -> [ProcessInfoItem] {
-        let apps = NSWorkspace.shared.runningApplications
-        var items: [ProcessInfoItem] = []
-        let totalMemBytes = Double(ProcessInfo.processInfo.physicalMemory)
-        let coreCount = ProcessInfo.processInfo.activeProcessorCount
-        var friendlyNames: [Int32: String] = [:]
-        for app in apps {
-            let pid = app.processIdentifier
-            guard pid > 0,
-                  let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !name.isEmpty else { continue }
-            friendlyNames[pid] = name
-        }
-
-        let pids = allProcessIdentifiers()
-        let processTable = processExecutableTable(for: pids)
-        let appBundles = appBundleInfo(for: processTable)
-        // PID reuse makes a cross-sample name cache unsafe. Resolve once per
-        // sample and reuse that answer for every consumer in this interval.
-        var displayNames: [Int32: String] = [:]
-        displayNames.reserveCapacity(pids.count)
-
-        let now = Date()
-        let previousCPUTimes = buffer.previousProcessCPUTicks
-        let previousResources = buffer.previousProcessResources
-        let previousTimestamp = buffer.previousProcessSampleTimestamp
-        // First sample after launch has no baseline: report 0% rather than a
-        // bogus number, and use the *current* sample as the next baseline.
-        let interval = previousTimestamp.map { now.timeIntervalSince($0) } ?? 0
-        let hasBaseline = previousTimestamp != nil && interval > 0.05
-        var sampledCPUTimes: [Int32: UInt64] = [:]
-        var sampledResources: [Int32: ProcessResourceCounters] = [:]
-
-        for pid in pids {
-            let name = displayNames[pid] ?? processDisplayName(
-                pid: pid,
-                friendlyNames: friendlyNames,
-                processTable: processTable,
-                appBundles: appBundles
-            )
-            displayNames[pid] = name
-
-            var taskInfo = proc_taskinfo()
-            let size = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, Int32(MemoryLayout<proc_taskinfo>.size))
-            if size == MemoryLayout<proc_taskinfo>.size {
-                let memBytes = Double(taskInfo.pti_resident_size)
-                let memPercent = min(max((memBytes / totalMemBytes) * 100.0, 0.0), 100.0)
-                let totalCPUTicks = taskInfo.pti_total_user + taskInfo.pti_total_system
-                sampledCPUTimes[pid] = totalCPUTicks
-
-                let cpuPercent = previousCPUTimes[pid].map {
-                    ProcessCPUPercent.calculate(
-                        previous: $0,
-                        current: totalCPUTicks,
-                        elapsed: interval,
-                        coreCount: coreCount,
-                        tickConversion: ProcessCPUPercent.machTickConversion
-                    )
-                } ?? 0
-                let memoryMB = memBytes / 1_048_576.0
-                let network = processNetworkSpeeds[pid]
-                var resources = ProcessResourceRates.zero
-
-                var usage = rusage_info_v6()
-                let usageResult = withUnsafeMutablePointer(to: &usage) { pointer in
-                    pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
-                        proc_pid_rusage(pid, RUSAGE_INFO_V6, $0)
-                    }
-                }
-                if usageResult == 0 {
-                    let counters = ProcessResourceCounters(
-                        diskReadBytes: usage.ri_diskio_bytesread,
-                        diskWriteBytes: usage.ri_diskio_byteswritten,
-                        energyNanojoules: usage.ri_energy_nj
-                    )
-                    if hasBaseline {
-                        resources = counters.rates(
-                            since: previousResources[pid],
-                            elapsed: interval
-                        )
-                    }
-                    sampledResources[pid] = counters
-                }
-
-                items.append(ProcessInfoItem(
-                    id: pid,
-                    name: name,
-                    cpuPercent: cpuPercent,
-                    memoryPercent: memPercent,
-                    memoryMB: memoryMB,
-                    networkDownBytesPerSecond: network?.downBytesPerSecond ?? 0,
-                    networkUpBytesPerSecond: network?.upBytesPerSecond ?? 0,
-                    diskReadBytesPerSecond: resources.diskReadBytesPerSecond,
-                    diskWriteBytesPerSecond: resources.diskWriteBytesPerSecond,
-                    energyWatts: resources.energyWatts
-                ))
-            }
-        }
-
-        // Keep only live PIDs so the dictionary cannot grow with every process
-        // the machine has ever launched.
-        buffer.previousProcessCPUTicks = sampledCPUTimes
-        buffer.previousProcessResources = sampledResources
-        buffer.previousProcessSampleTimestamp = now
-
-        items.sort { $0.memoryPercent > $1.memoryPercent }
-        return items
-    }
-
-    private func allProcessIdentifiers() -> [Int32] {
-        let stride = MemoryLayout<pid_t>.stride
-        let estimatedBytes = Int(proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0))
-        var capacity = max(estimatedBytes, stride * 128)
-
-        for _ in 0..<16 {
-            var pids = [pid_t](repeating: 0, count: capacity / stride)
-            let usedBytes = pids.withUnsafeMutableBytes { buffer in
-                proc_listpids(
-                    UInt32(PROC_ALL_PIDS),
-                    0,
-                    buffer.baseAddress,
-                    Int32(buffer.count)
-                )
-            }
-            guard usedBytes > 0 else { return [] }
-
-            let usedCount = min(Int(usedBytes) / stride, pids.count)
-            if Int(usedBytes) < capacity || usedCount < pids.count {
-                return pids.prefix(usedCount).filter { $0 > 0 }
-            }
-            capacity *= 2
-        }
-
-        return []
-    }
-
-    private func processExecutableTable(
-        for pids: [Int32]
-    ) -> [Int32: ProcessExecutableRecord] {
-        var table: [Int32: ProcessExecutableRecord] = [:]
-        table.reserveCapacity(pids.count)
-
-        for pid in pids {
-            var info = proc_bsdinfo()
-            let size = proc_pidinfo(
-                pid,
-                PROC_PIDTBSDINFO,
-                0,
-                &info,
-                Int32(MemoryLayout<proc_bsdinfo>.size)
-            )
-            let parentPID = size > 0 ? Int32(clamping: info.pbi_ppid) : 0
-            table[pid] = ProcessExecutableRecord(
-                parentPID: parentPID,
-                executablePath: processExecutablePath(pid: pid)
-            )
-        }
-        return table
-    }
-
-    private func processExecutablePath(pid: Int32) -> String? {
-        var pathBuffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
-        guard pathLength > 0 else { return nil }
-        return cString(from: pathBuffer)
-    }
-
-    private func processNameFromKernel(pid: Int32) -> String? {
-        var nameBuffer = [CChar](repeating: 0, count: 256)
-        let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
-        guard nameLength > 0 else { return nil }
-        return cString(from: nameBuffer)
-    }
-
-    private func appBundleInfo(
-        for processTable: [Int32: ProcessExecutableRecord]
-    ) -> [String: ProcessAppBundleInfo] {
-        var infos: [String: ProcessAppBundleInfo] = [:]
-
-        for record in processTable.values {
-            guard let path = record.executablePath,
-                  let bundlePath = ProcessDisplayNameResolver.appBundlePath(in: path),
-                  infos[bundlePath] == nil else {
-                continue
-            }
-            infos[bundlePath] = Self.appBundleInfo(at: bundlePath)
-        }
-        return infos
-    }
-
-    private static func appBundleInfo(at bundlePath: String) -> ProcessAppBundleInfo {
-        let bundle = Bundle(url: URL(fileURLWithPath: bundlePath))
-        let configuredName = ["CFBundleDisplayName", "CFBundleName"]
-            .compactMap { bundle?.object(forInfoDictionaryKey: $0) as? String }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
-        let displayName = configuredName
-            ?? URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent
-        let executableName = (bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return ProcessAppBundleInfo(
-            displayName: displayName,
-            executableName: executableName?.isEmpty == true ? nil : executableName
-        )
-    }
-
-    private func processDisplayName(
-        pid: Int32,
-        friendlyNames: [Int32: String],
-        processTable: [Int32: ProcessExecutableRecord],
-        appBundles: [String: ProcessAppBundleInfo]
-    ) -> String {
-        let fallbackName = friendlyNames[pid] ?? processNameFromKernel(pid: pid)
-        return ProcessDisplayNameResolver.resolve(
-            pid: pid,
-            executablePath: processTable[pid]?.executablePath,
-            fallbackName: fallbackName,
-            processTable: processTable,
-            appBundles: appBundles
-        )
-    }
-
-    private func cString(from buffer: [CChar]) -> String? {
-        buffer.withUnsafeBufferPointer { pointer in
-            guard let baseAddress = pointer.baseAddress else { return nil }
-            return String(validatingCString: baseAddress)
-        }
     }
 
     private func startProcessNetworkSampling() {

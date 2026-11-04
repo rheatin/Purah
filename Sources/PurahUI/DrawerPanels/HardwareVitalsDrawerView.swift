@@ -114,9 +114,6 @@ public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
 
-    @State private var isPulsing: Bool = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     private var vitals: HardwareVitalsService {
         HardwareVitalsService.shared
     }
@@ -200,17 +197,9 @@ public struct HardwareVitalsDrawerView: View {
         }
         .onAppear {
             vitals.isDrawerVisible = true
-            if PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) {
-                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                    isPulsing = true
-                }
-            }
             state.mount(store: store)
             vitals.startMonitoring()
-            Task {
-                await vitals.refreshMetricsAsync(includeProcesses: true)
-                state.refreshMetrics(includeProcesses: true)
-            }
+            state.refreshMetrics(includeProcesses: false)
         }
         .onDisappear {
             vitals.isDrawerVisible = false
@@ -644,9 +633,6 @@ public struct HardwareVitalsDrawerView: View {
                         Spacer()
                         Button {
                             withAnimation { state.dashboardTab = .processes }
-                            Task {
-                                await vitals.refreshMetricsAsync(includeProcesses: true)
-                            }
                         } label: {
                             Text("vitals.viewAll".localized)
                                 .font(.system(size: 8.5, weight: .medium))
@@ -1052,9 +1038,6 @@ public struct HardwareVitalsDrawerView: View {
         }
         .onAppear {
             vitals.setProcessesTabVisible(true)
-            Task {
-                await vitals.refreshMetricsAsync(includeProcesses: true)
-            }
         }
         .onDisappear {
             vitals.setProcessesTabVisible(false)
@@ -1357,9 +1340,7 @@ public struct VitalsFocusedDrawerView: View {
         }
         .onAppear {
             vitals.startMonitoring()
-            Task {
-                await vitals.refreshMetricsAsync(includeProcesses: true)
-            }
+            vitals.refreshMetrics(includeProcesses: false)
         }
     }
 

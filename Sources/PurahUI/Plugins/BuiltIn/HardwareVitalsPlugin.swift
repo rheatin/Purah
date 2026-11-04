@@ -822,7 +822,7 @@ public struct VitalsPluginSettingsView: View {
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                         Spacer()
                         Button {
-                            state.refreshMetrics(includeProcesses: true)
+                            state.refreshMetrics(includeProcesses: false)
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.clockwise")

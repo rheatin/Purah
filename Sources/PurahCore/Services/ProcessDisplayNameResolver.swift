@@ -45,15 +45,17 @@ enum ProcessDisplayNameResolver {
     /// still part of the person-facing app, and naming it after the helper
     /// bundle hides which app it belongs to.
     static func appBundlePath(in executablePath: String) -> String? {
-        var current = URL(fileURLWithPath: executablePath).standardizedFileURL
-        var bundle: URL?
-        while current.path != "/" {
-            if current.pathExtension.lowercased() == "app" {
+        var current = (executablePath as NSString).standardizingPath
+        var bundle: String?
+        while current != "/" && !current.isEmpty {
+            if (current as NSString).pathExtension.lowercased() == "app" {
                 bundle = current
             }
-            current.deleteLastPathComponent()
+            let parent = (current as NSString).deletingLastPathComponent
+            guard parent != current else { break }
+            current = parent
         }
-        return bundle?.path
+        return bundle
     }
 
     static func isBareVersion(_ name: String) -> Bool {
@@ -69,7 +71,7 @@ enum ProcessDisplayNameResolver {
 
     static func helperShortName(for executablePath: String) -> String? {
         let components = executablePath.split(separator: "/").map(String.init)
-        let executableName = normalized(URL(fileURLWithPath: executablePath).lastPathComponent)
+        let executableName = lastPathComponent(of: executablePath)
 
         if let xpcComponent = components.first(where: { $0.lowercased().hasSuffix(".xpc") }) {
             let serviceName = String(xpcComponent.dropLast(".xpc".count))
@@ -85,18 +87,25 @@ enum ProcessDisplayNameResolver {
     }
 
     static func versionedName(for executablePath: String, executableName: String) -> String {
-        let executableURL = URL(fileURLWithPath: executablePath)
-        let parentURL = executableURL.deletingLastPathComponent()
-        let parentName = normalized(parentURL.lastPathComponent)
+        let parentPath = (executablePath as NSString).deletingLastPathComponent
+        let parentName = lastPathComponent(of: parentPath)
         if let parentName, !isGenericDirectory(parentName) {
             return "\(parentName) \(executableName)"
         }
 
-        let grandparentName = normalized(parentURL.deletingLastPathComponent().lastPathComponent)
+        let grandparentPath = (parentPath as NSString).deletingLastPathComponent
+        let grandparentName = lastPathComponent(of: grandparentPath)
         if let grandparentName, !isGenericDirectory(grandparentName) {
             return "\(grandparentName) \(executableName)"
         }
         return executableName
+    }
+
+    /// Foundation `URL` path component access parses RFC 3986. Process naming
+    /// walks hundreds of paths every sample, where that parser is the hotspot.
+    /// `NSString` performs the same path-component operation without it.
+    static func lastPathComponent(of path: String) -> String? {
+        normalized((path as NSString).lastPathComponent)
     }
 
     static func owningAppBundlePath(
@@ -127,14 +136,14 @@ enum ProcessDisplayNameResolver {
         processTable: [Int32: ProcessExecutableRecord],
         appBundles: [String: ProcessAppBundleInfo]
     ) -> String? {
-        let executableName = normalized(URL(fileURLWithPath: path).lastPathComponent)
+        let executableName = lastPathComponent(of: path)
         guard let executableName else { return nil }
 
         if let bundlePath = appBundlePath(in: path) {
             let app = appInfo(at: bundlePath, appBundles: appBundles)
             let isXPC = path.lowercased().contains(".xpc/")
             let mainExecutableName = normalized(app.executableName)
-                ?? normalized(URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent)
+                ?? lastPathComponent(of: (bundlePath as NSString).deletingPathExtension)
             let isMainExecutable = !isXPC && executableName == mainExecutableName
 
             if isMainExecutable {
@@ -163,7 +172,7 @@ enum ProcessDisplayNameResolver {
         at bundlePath: String,
         appBundles: [String: ProcessAppBundleInfo]
     ) -> ProcessAppBundleInfo {
-        let fallbackName = URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent
+        let fallbackName = lastPathComponent(of: (bundlePath as NSString).deletingPathExtension) ?? bundlePath
         if let info = appBundles[bundlePath] {
             return ProcessAppBundleInfo(
                 displayName: normalized(info.displayName) ?? fallbackName,

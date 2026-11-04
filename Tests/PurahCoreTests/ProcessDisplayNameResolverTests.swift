@@ -170,4 +170,24 @@ struct ProcessDisplayNameResolverTests {
 
         #expect(name == "WebContent")
     }
+
+    @Test("Path-component helpers preserve Foundation's naming results")
+    func pathComponentHelpersMatchResolverNames() {
+        #expect(
+            ProcessDisplayNameResolver.lastPathComponent(
+                of: "/Users/char/Library/Application Support/Tern/omp/versions/18.12.6"
+            ) == "18.12.6"
+        )
+        #expect(
+            ProcessDisplayNameResolver.versionedName(
+                for: "/Users/char/Library/Application Support/Tern/omp/versions/18.12.6",
+                executableName: "18.12.6"
+            ) == "omp 18.12.6"
+        )
+        #expect(
+            ProcessDisplayNameResolver.appBundlePath(
+                in: "/Applications/网易叭哥说.app/Contents/MacOS/网易叭哥说"
+            ) == "/Applications/网易叭哥说.app"
+        )
+    }
 }
