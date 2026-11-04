@@ -38,6 +38,10 @@ public final class SystemMusicSyncService {
     @ObservationIgnored public private(set) var lyricFetchAttempts: Int = 0
     @ObservationIgnored private var playbackTimer: Timer?
     @ObservationIgnored private var statusHeartbeatTimer: Timer?
+    /// The startup AppleScript query is only a fallback. MediaRemote's first
+    /// callback decides whether the AppleScript runtime has to be loaded at
+    /// all; a non-empty title means it does not.
+    @ObservationIgnored private var pendingStartupAppleScriptFallback = false
 
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
@@ -55,6 +59,7 @@ public final class SystemMusicSyncService {
     }
 
     public func stopListening() {
+        pendingStartupAppleScriptFallback = false
         SystemAudioLiveMonitor.shared.stop()
         playbackTimer?.invalidate()
         playbackTimer = nil
@@ -158,12 +163,13 @@ public final class SystemMusicSyncService {
                 }
             }
 
-            // Initial query
+            // Initial query. Its callback decides whether the startup
+            // AppleScript fallback below is needed.
+            pendingStartupAppleScriptFallback = true
             handleMediaRemoteInfoUpdate(store: store)
-        }
-
-        // 4. Query initial playback state if Apple Music player is already running
-        if !Self.isTestingEnvironment {
+        } else if !Self.isTestingEnvironment {
+            // 4. MediaRemote cannot answer here, so preserve the old direct
+            // AppleScript startup query.
             Task { [weak self, weak store] in
                 await self?.pollCurrentPlayingState(store: store)
             }
@@ -415,7 +421,12 @@ public final class SystemMusicSyncService {
         guard bridge.isAvailable else { return }
 
         bridge.getNowPlayingInfo(queue: .main) { [weak self, weak store] dict in
-            guard let dict else { return }
+            guard let dict else {
+                MainActor.assumeIsolated {
+                    self?.runStartupAppleScriptFallbackIfNeeded(store: store)
+                }
+                return
+            }
             bridge.getNowPlayingPID(queue: .main) { [weak self, weak store] pid in
                 MainActor.assumeIsolated {
                     self?.processMediaRemoteData(dict: dict, pid: pid, store: store)
@@ -426,6 +437,7 @@ public final class SystemMusicSyncService {
 
     public func processMediaRemoteData(dict: [String: Any], pid: pid_t, store: PurahWorkspaceStore?) {
         guard let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String, !title.isEmpty else {
+            runStartupAppleScriptFallbackIfNeeded(store: store)
             // An empty Now-Playing payload means the source app ended its media
             // session (e.g. Dynamic.music clears the dict on pause). Swallowing
             // this update froze the rail on "playing" forever — honor it as a
@@ -439,6 +451,8 @@ public final class SystemMusicSyncService {
             }
             return
         }
+
+        pendingStartupAppleScriptFallback = false
 
         let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
         let album = dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
@@ -641,6 +655,15 @@ public final class SystemMusicSyncService {
                     onTrackChanged?(store._musicTrack)
                 }
             }
+        }
+    }
+
+    private func runStartupAppleScriptFallbackIfNeeded(store: PurahWorkspaceStore?) {
+        guard pendingStartupAppleScriptFallback else { return }
+        pendingStartupAppleScriptFallback = false
+        guard !Self.isTestingEnvironment, isMusicAppRunning else { return }
+        Task { [weak self, weak store] in
+            await self?.pollCurrentPlayingState(store: store)
         }
     }
 

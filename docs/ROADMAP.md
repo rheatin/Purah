@@ -17,7 +17,7 @@ Last reviewed: 2026-11-04 (v0.7.15)
 | Distribution | Self-signed, on a self-hosted Homebrew tap. Grants survive updates and `brew` installs cleanly; **a DMG download from the website still hits Gatekeeper** |
 | Ecosystem | Complete plugin ABI and a developer guide, but the marketplace ships only the built-ins and the only install path is Developer Mode |
 | Trust | Permission matrix, risk classification, checksums, signature verification — but **nothing is said at install time** |
-| Resources | ~156 MB resident, ~1.1–1.2% idle CPU measured. The Vitals drawer used to add ~6.3% while it was open; it now adds ~1.7–1.9% (v0.7.15) |
+| Resources | ~33–46 MB physical footprint idle (Music.app running adds ~8–13 MB), ~53 MB worst case after touring every pod with the process tab open. The old "~156 MB" figure was `ps` RSS, which counts shared read-only framework pages — `__TEXT` alone is 564 MB resident inside the 2.9 GB dyld shared cache. ~1.1–1.2% idle CPU; the Vitals drawer used to add ~6.3% while it was open, it now adds ~1.7–1.9% (v0.7.15) |
 | Diagnostics | No crash reporter and no telemetry. When it breaks, the only report is the user's description |
 
 ---
@@ -72,10 +72,12 @@ Last reviewed: 2026-11-04 (v0.7.15)
 
 - [ ] **2.1 Energy and memory budget** — measure an idle baseline, fail CI when
       it regresses, then hunt the resident timers and always-mounted views.
-      The tagline is "ultra-lightweight"; ~156 MB has to be earned or the
-      tagline has to change. A drawer that adds 6% while it is open is the
-      same problem in miniature — v0.7.15 fixed the one case that was
-      measured, not the class.
+      The tagline is "ultra-lightweight"; the footprint has to be earned or the
+      tagline has to change. **Measure `phys_footprint`, never `ps` RSS** —
+      RSS counts shared framework pages and made the old figure 3× too high
+      (156 MB vs 46 MB for the same process). A drawer that adds 6% while it
+      is open is the same problem in miniature — v0.7.15 fixed the one case
+      that was measured, not the class.
 - [ ] **2.2 Localization** — zh-Hant is complete; ja/ko/fr/de/es carry 70–90
       keys and fall back to English partway. Either finish them or drop them
       from the language picker. Shipping a half-translated language is worse
