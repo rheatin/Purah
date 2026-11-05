@@ -385,7 +385,7 @@ public final class SystemClipboardSyncService {
         let warn: (Int64, Int64) -> Void = onWarning ?? { [weak self] current, max in
             let curMB = Double(current) / (1024.0 * 1024.0)
             let maxMB = Double(max) / (1024.0 * 1024.0)
-            self?.onQuotaWarning?("⚠️ Clipboard storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
+            self?.onQuotaWarning?("Clipboard storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
         }
 
         var prunedCount = 0

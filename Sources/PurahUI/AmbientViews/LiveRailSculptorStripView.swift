@@ -1476,7 +1476,7 @@ public struct LiveSculptPodCapsuleView: View {
                         store.triggerControlHaptic(.alignment)
                     }
                 } label: {
-                    Text("🧲")
+                    Image(systemName: "arrow.down.to.line")
                         .font(.system(size: 8.5))
                         .frame(width: 19, height: 17)
                         .background(palette.primaryAccent.opacity(0.22))
@@ -1729,20 +1729,20 @@ public struct LiveSculptPodCapsuleView: View {
             if pod.id == "vitals" {
                 return [("CPU", "24%"), ("RAM", "62%"), ("NET", "1.2 MB/s"), ("PWR", "98%")]
             } else if pod.id == "scripts" {
-                return [("⚡️", "Flush DNS"), ("🗑️", "Empty Trash"), ("🌙", "Dark Mode"), ("🔄", "Restart Dock")]
+                return [("bolt.fill", "Flush DNS"), ("trash", "Empty Trash"), ("moon", "Dark Mode"), ("arrow.clockwise", "Restart Dock")]
             } else if pod.id == "clipboard" {
-                return [("📋", "Snippet 1"), ("📋", "Snippet 2"), ("📋", "Snippet 3"), ("📋", "Snippet 4")]
+                return [("doc.on.doc", "Snippet 1"), ("doc.on.doc", "Snippet 2"), ("doc.on.doc", "Snippet 3"), ("doc.on.doc", "Snippet 4")]
             } else if pod.id == "calendar" {
-                return [("📅", "10:00 Sync"), ("📅", "14:30 Review"), ("📅", "16:00 1-on-1"), ("📅", "17:30 Standup")]
+                return [("calendar", "10:00 Sync"), ("calendar", "14:30 Review"), ("calendar", "16:00 1-on-1"), ("calendar", "17:30 Standup")]
             } else {
-                return [("💬", "Prompt 1"), ("🤖", "Agent"), ("⚡️", "Quick Chat"), ("📁", "Context")]
+                return [("bubble.left", "Prompt 1"), ("cpu", "Agent"), ("bolt.fill", "Quick Chat"), ("folder", "Context")]
             }
         }()
 
         return VStack(spacing: 3) {
             ForEach(subChips, id: \.1) { chip in
                 HStack(spacing: 4) {
-                    Text(chip.0)
+                    Image(systemName: chip.0)
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundColor(podColor)
                     Text("·")

@@ -1341,7 +1341,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             if let reasoning = lastAssistantMsg?.reasoningContent, !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text("💭")
+                        Image(systemName: "ellipsis.bubble")
                             .font(.system(size: 9.5))
                         Text("ai.thought.process".localized)
                             .font(.system(size: 9.5, weight: .bold, design: .rounded))

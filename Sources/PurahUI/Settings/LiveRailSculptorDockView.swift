@@ -184,7 +184,7 @@ public struct LiveRailSculptorDockView: View {
                         .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         .foregroundColor(.orange)
                 } else if let targetEdge = store.externalDragTargetEdge {
-                    Text("🧲 Release to Mount \(draggedPod.name) on \(targetEdge == .left ? "Left" : "Right") Rail")
+                    Text("Release to mount \(draggedPod.name) on \(targetEdge == .left ? "Left" : "Right") rail")
                         .font(.system(size: 9.5, weight: .bold, design: .rounded))
                         .foregroundColor(palette.primaryAccent)
                 } else {

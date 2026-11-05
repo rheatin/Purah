@@ -1100,7 +1100,7 @@ public struct AISessionHistoryManagerView: View {
             fallbackName: "ChatSession"
         ) else { return }
 
-        store.onCapacityWarningToast?("📤 Exported to \(url.lastPathComponent)")
+        store.onCapacityWarningToast?("Exported to \(url.lastPathComponent)")
         SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
     }
 

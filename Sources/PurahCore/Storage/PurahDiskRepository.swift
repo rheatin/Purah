@@ -234,7 +234,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
             let minimumSize = max(0, currentSize - reclaimable)
             guard minimumSize <= maxBytes else {
                 onQuotaWarning?(
-                    "⚠️ Storage exceeds its quota, but deleting shelf items cannot bring it back under."
+                    "Storage exceeds its quota, but deleting shelf items cannot bring it back under."
                 )
                 return 0
             }
@@ -269,7 +269,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         if currentSize > maxBytes {
             let curMB = Double(currentSize) / (1024.0 * 1024.0)
             let maxMB = Double(maxBytes) / (1024.0 * 1024.0)
-            onQuotaWarning?("⚠️ Storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
+            onQuotaWarning?("Storage exceeds \(Int(maxMB))MB (\(String(format: "%.1f", curMB))MB used)")
         }
 
         return prunedCount

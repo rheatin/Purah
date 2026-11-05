@@ -660,7 +660,7 @@ public final class AIAssistantService {
         for msg in messages {
             let expansion = AIAttachmentEncoder.expand(msg, modelAcceptsImages: acceptsImages)
             let trimmedContent = expansion.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedContent.isEmpty || (msg.role == .assistant && msg.content.hasPrefix("⚠️")) {
+            if trimmedContent.isEmpty || (msg.role == .assistant && msg.isError) {
                 continue
             }
             if provider == .httpOllama {
@@ -836,7 +836,7 @@ public final class AIAssistantService {
         for msg in messages where msg.role != .system {
             let expansion = AIAttachmentEncoder.expand(msg, modelAcceptsImages: acceptsImages)
             let trimmedContent = expansion.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedContent.isEmpty || (msg.role == .assistant && msg.content.hasPrefix("⚠️")) {
+            if trimmedContent.isEmpty || (msg.role == .assistant && msg.isError) {
                 continue
             }
             let role = msg.role == .assistant ? "assistant" : "user"

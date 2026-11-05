@@ -1815,10 +1815,11 @@ public final class AIAssistantPluginState: Sendable {
         if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }),
            let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == assistantMsgId }) {
             let diagnosis = AINetworkDiagnosis.message(for: error)
+            sessions[sIdx].messages[aIdx].isError = true
             if sessions[sIdx].messages[aIdx].content.isEmpty {
-                sessions[sIdx].messages[aIdx].content = "⚠️ \(diagnosis)"
+                sessions[sIdx].messages[aIdx].content = diagnosis
             } else {
-                sessions[sIdx].messages[aIdx].content += "\n\n⚠️ \(diagnosis)"
+                sessions[sIdx].messages[aIdx].content += "\n\n\(diagnosis)"
             }
         }
     }
@@ -2105,12 +2106,12 @@ public final class AIAssistantPluginState: Sendable {
             switch message.role {
             case .user:
                 let roleName = message.roleTitle ?? message.quickAction?.title ?? "User"
-                roleHeader = "### 👤 \(roleName)"
+                roleHeader = "### \(roleName)"
             case .assistant:
                 let roleName = message.roleTitle ?? message.quickAction?.title ?? "AI Assistant"
-                roleHeader = "### 🤖 \(roleName)"
+                roleHeader = "### \(roleName)"
             case .system:
-                roleHeader = "### ⚙️ System"
+                roleHeader = "### System"
             }
 
             var attribution = ""

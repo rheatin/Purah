@@ -305,7 +305,7 @@ public enum ZshSuggestionIntegration {
         # A local model that reasons first can take 20-30 seconds, which is a
         # long time to stare at a prompt that looks stuck. The banner is
         # replaced by the answer once it arrives.
-        print -P "%F{213}%B⚡ Purah 正在思考…%b%f"
+        print -P "%F{213}%BPurah 正在思考…%b%f"
 
         __purah_collect
 
@@ -364,7 +364,7 @@ public enum ZshSuggestionIntegration {
         fi
 
         if [[ "$risk" == "dangerous" ]]; then
-          print -P "%F{red}⚠ this one can destroy data — read it before pressing Return%f"
+          print -P "%F{red}this one can destroy data — read it before pressing Return%f"
           [[ -n "$explanation" ]] && print -P "%F{red}$explanation%f"
         elif [[ "$risk" == "caution" ]]; then
           print -P "%F{yellow}• $explanation%f"

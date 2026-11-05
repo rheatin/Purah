@@ -532,6 +532,10 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
     /// model because "Claude CLI" and `claude-3-7-sonnet-latest` are different
     /// answers to the same question.
     public var providerKind: AIProviderKind?
+    /// True only for transport/network failures rendered in the transcript.
+    /// Those are UI diagnostics, not assistant content, so they must not be
+    /// sent back to the provider as conversation context.
+    public var isError: Bool
 
     public init(
         id: UUID = UUID(),
@@ -548,7 +552,8 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         roleId: String? = nil,
         skillInvocation: String? = nil,
         resolvedModel: String? = nil,
-        providerKind: AIProviderKind? = nil
+        providerKind: AIProviderKind? = nil,
+        isError: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -565,12 +570,13 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         self.skillInvocation = skillInvocation
         self.resolvedModel = resolvedModel
         self.providerKind = providerKind
+        self.isError = isError
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, role, content, reasoningContent, choices, attachments
         case timestamp, quickAction, originalSelection, systemPromptOverride
-        case roleTitle, roleId, skillInvocation, resolvedModel, providerKind
+        case roleTitle, roleId, skillInvocation, resolvedModel, providerKind, isError
     }
 
     /// Tolerant decode so sessions written before skills existed still load.
@@ -594,6 +600,7 @@ public struct AIChatMessage: Identifiable, Codable, Equatable, Sendable {
         // attribution, which is the truth about it.
         self.resolvedModel = try container.decodeIfPresent(String.self, forKey: .resolvedModel)
         self.providerKind = try container.decodeIfPresent(AIProviderKind.self, forKey: .providerKind)
+        self.isError = try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false
     }
 }
 

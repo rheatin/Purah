@@ -287,14 +287,14 @@ public final class CalendarPluginState: Sendable {
                     notifiedToastEventIds.insert(event.id)
                     let msg: String
                     if isOngoing {
-                        msg = "📅 \(event.title) is starting now"
+                        msg = "\(event.title) is starting now"
                     } else {
                         let mins = max(Int(ceil(event.startTime.timeIntervalSince(now) / 60.0)), 1)
                         if mins >= 60 {
                             let hours = max(Int(ceil(Double(mins) / 60.0)), 1)
-                            msg = "📅 \(event.title) starts in \(hours)h"
+                            msg = "\(event.title) starts in \(hours)h"
                         } else {
-                            msg = "📅 \(event.title) starts in \(mins)m"
+                            msg = "\(event.title) starts in \(mins)m"
                         }
                     }
                     targetStore?.postToastNotification(id: event.id, message: msg)

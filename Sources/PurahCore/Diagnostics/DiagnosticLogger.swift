@@ -147,7 +147,7 @@ public final class DiagnosticLogger: Sendable {
         report += "-- [MAIN THREAD HEALTH] --\n"
         report += "Total MainActor Stalls: \(stalls)\n"
         report += "Max Stall Duration: \(String(format: "%.1f", maxStall))ms\n"
-        report += "Watchdog Status: \(stalls > 0 ? "⚠️ Stalls Encountered" : "✅ Healthy (No Stalls)")\n\n"
+        report += "Watchdog Status: \(stalls > 0 ? "Stalls Encountered" : "Healthy (No Stalls)")\n\n"
 
         // 3. Telemetry Snapshot
         let vitals = HardwareVitalsService.shared.metrics

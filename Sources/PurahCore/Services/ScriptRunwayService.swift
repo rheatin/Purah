@@ -147,8 +147,8 @@ public final class ScriptRunwayService {
         }
         activeProcess = nil
         isRunning = false
-        lastOutput = "⏹ Stopped by user"
-        liveStreamingOutput = "⏹ Stopped by user"
+        lastOutput = "Stopped by user"
+        liveStreamingOutput = "Stopped by user"
         SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
     }
 
@@ -227,7 +227,7 @@ public final class ScriptRunwayService {
             result = await runShortcut(name: action.scriptContent, runID: runID, onStreamUpdate: onStreamUpdate)
         }
 
-        let stopMessage = "⏹ Stopped by user"
+        let stopMessage = "Stopped by user"
         if runID == stoppedRunID {
             // The stopped run still reports why it ended, but it must not write
             // over a newer run's panel while its process tree is dying.

@@ -118,8 +118,8 @@ public final class ScriptsPluginState: Sendable {
     public func stopRunningScript() {
         ScriptRunwayService.shared.stopRunningScript()
         isRunning = false
-        lastOutput = "⏹ Stopped by user"
-        liveStreamingOutput = "⏹ Stopped by user"
+        lastOutput = "Stopped by user"
+        liveStreamingOutput = "Stopped by user"
         SensoryFeedbackService.shared.performControlHapticIfEnabled(.levelChange)
     }
 

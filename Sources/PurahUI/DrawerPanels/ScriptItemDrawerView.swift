@@ -119,7 +119,7 @@ public struct ScriptItemDrawerView: View {
                     Task {
                         let res = await runway.executeAction(action)
                         if action.showNotification {
-                            let text = res.success ? "✨ Ran \(action.name)" : "⚠️ Failed: \(res.message)"
+                            let text = res.success ? "Ran \(action.name)" : "Failed: \(res.message)"
                             store.onCapacityWarningToast?(text)
                         }
                     }

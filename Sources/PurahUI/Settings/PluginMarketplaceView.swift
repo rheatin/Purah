@@ -278,7 +278,7 @@ public struct PluginMarketplaceView: View {
             SecurityConfirmationSheet(manifest: manifest, palette: palette) {
                 withAnimation(PurahMotionPolicy.hoverSoft) {
                     marketManager.install(id: manifest.id)
-                    feedbackBanner = "🎉 \(manifest.displayName) installed and added to rail."
+                    feedbackBanner = "\(manifest.displayName) installed and added to rail."
                 }
                 securityReviewManifest = nil
             } onCancel: {
@@ -524,9 +524,9 @@ public struct PluginMarketplaceView: View {
                                 marketManager.uninstall(id: manifest.id)
                                 confirmingUninstallId = nil
                                 if manifest.category == .heavyGPU {
-                                    feedbackBanner = "✅ \(manifest.displayName) uninstalled — Child processes and GPU memory completely released."
+                                    feedbackBanner = "\(manifest.displayName) uninstalled — Child processes and GPU memory completely released."
                                 } else {
-                                    feedbackBanner = "✅ \(manifest.displayName) uninstalled — resources and background tasks released."
+                                    feedbackBanner = "\(manifest.displayName) uninstalled — resources and background tasks released."
                                 }
                             }
                         } label: {
@@ -590,7 +590,7 @@ public struct PluginMarketplaceView: View {
                         } else {
                             withAnimation(PurahMotionPolicy.hoverSoft) {
                                 marketManager.install(id: manifest.id)
-                                feedbackBanner = "✨ \(manifest.displayName) installed successfully."
+                                feedbackBanner = "\(manifest.displayName) installed successfully."
                             }
                         }
                     } label: {
@@ -672,7 +672,7 @@ public struct PluginMarketplaceView: View {
                     store.autoLayoutAll()
                 }
                 isCompiling = false
-                feedbackBanner = "✨ Loaded '\(plugin.manifest.displayName)' dynamically!"
+                feedbackBanner = "Loaded \(plugin.manifest.displayName)"
                 store.triggerControlHaptic(.alignment)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                     feedbackBanner = nil

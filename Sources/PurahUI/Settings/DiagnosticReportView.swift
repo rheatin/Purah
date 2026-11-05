@@ -79,7 +79,7 @@ public struct DiagnosticReportView: View {
                         icon: "sidebar.left",
                         status: "\(Int(store.capacityRatio(for: .left) * 100))% Used",
                         color: store.capacityRatio(for: .left) > 1.0 ? Color.red : Color.green,
-                        detail: store.capacityRatio(for: .left) > 1.0 ? "⚠️ Over capacity! Bottom chips may clip." : "Safe vertical bounds."
+                        detail: store.capacityRatio(for: .left) > 1.0 ? "Over capacity — bottom chips may clip" : "Safe vertical bounds."
                     )
 
                     healthCard(
@@ -87,7 +87,7 @@ public struct DiagnosticReportView: View {
                         icon: "sidebar.right",
                         status: "\(Int(store.capacityRatio(for: .right) * 100))% Used",
                         color: store.capacityRatio(for: .right) > 1.0 ? Color.red : Color.green,
-                        detail: store.capacityRatio(for: .right) > 1.0 ? "⚠️ Over capacity! Bottom chips may clip." : "Safe vertical bounds."
+                        detail: store.capacityRatio(for: .right) > 1.0 ? "Over capacity — bottom chips may clip" : "Safe vertical bounds."
                     )
                 }
 

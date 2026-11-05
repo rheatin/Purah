@@ -414,8 +414,8 @@ struct TerminalPluginTests {
 
         state.stopRunningScript()
         #expect(state.isRunning == false)
-        #expect(state.lastOutput == "⏹ Stopped by user")
-        #expect(state.liveStreamingOutput == "⏹ Stopped by user")
+        #expect(state.lastOutput == "Stopped by user")
+        #expect(state.liveStreamingOutput == "Stopped by user")
     }
 
     @Test("Stop kills the command itself, not just the shell that started it")
