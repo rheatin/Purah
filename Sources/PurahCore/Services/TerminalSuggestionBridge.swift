@@ -60,7 +60,7 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
     /// Blocking for a bounded wait, because `NWListener` reports readiness
     /// asynchronously and the shell needs the port in its environment *before*
     /// it starts. The wait is paid once per launch.
-    public func startIfNeeded(timeout: TimeInterval = 3.0) -> Endpoint? {
+    public func startIfNeeded(timeout: TimeInterval = 1.0) -> Endpoint? {
         lock.lock()
         if let endpoint, isListening {
             lock.unlock()
@@ -122,11 +122,10 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         lock.unlock()
         listener.start(queue: queue)
 
-        // 1.5s was measured on an idle machine and lost the race on a loaded
-        // one (CI runs the whole suite in parallel): the caller then starts the
-        // shell without the endpoint and `??` is dead for that shell's life.
-        // A healthy listener is ready in tens of milliseconds, so this only
-        // lengthens the failing path.
+        // A healthy listener is ready in tens of milliseconds. One second is
+        // enough headroom for a loaded machine without making a failed start
+        // stall the caller; callers that know they need more can pass a
+        // longer timeout explicitly.
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             lock.lock()

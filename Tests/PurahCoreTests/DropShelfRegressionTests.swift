@@ -139,4 +139,133 @@ struct DropShelfRegressionTests {
         #expect(FileManager.default.fileExists(atPath: archiveURL.path))
         #expect(try Data(contentsOf: archiveURL) == payload)
     }
+
+    @Test("Shelf retention removes expired files but preserves favorites")
+    @MainActor
+    func retentionPolicyPreservesFavorites() throws {
+        let suiteName = "ShelfPolicyRetention-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shelf-policy-retention-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "shelf-policy", defaults: defaults)
+        let fileStorage = PurahPluginFileStorage(pluginId: "shelf-policy", customBaseDirectory: tempDir)
+        let oldDate = Date(timeIntervalSinceNow: -8 * 86_400)
+        let expiredURL = fileStorage.assetsDirectory.appendingPathComponent("expired.txt")
+        let favoriteURL = fileStorage.assetsDirectory.appendingPathComponent("favorite.txt")
+        try Data("expired".utf8).write(to: expiredURL)
+        try Data("favorite".utf8).write(to: favoriteURL)
+        fileStorage.saveIndex([
+            ShelfFileItem(
+                id: "expired",
+                name: expiredURL.lastPathComponent,
+                sizeDescription: "7 bytes",
+                fileExtension: "txt",
+                filePath: expiredURL.path,
+                timestamp: oldDate
+            ),
+            ShelfFileItem(
+                id: "favorite",
+                name: favoriteURL.lastPathComponent,
+                sizeDescription: "8 bytes",
+                fileExtension: "txt",
+                filePath: favoriteURL.path,
+                timestamp: oldDate,
+                isFavorite: true
+            )
+        ])
+
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+
+        #expect(state.files.map(\.id) == ["favorite"])
+        #expect(!FileManager.default.fileExists(atPath: expiredURL.path))
+        #expect(FileManager.default.fileExists(atPath: favoriteURL.path))
+    }
+
+    @Test("Shelf quota pruning removes oldest non-favorites first")
+    @MainActor
+    func quotaPolicyPrunesOldestFirst() throws {
+        let suiteName = "ShelfPolicyQuota-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shelf-policy-quota-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "shelf-policy", defaults: defaults)
+        storage.setCodable(PurahRetentionPeriod.never, forKey: "retentionPeriod")
+        storage.setCodable(PurahDiskQuota.mb100, forKey: "diskQuota")
+        let fileStorage = PurahPluginFileStorage(pluginId: "shelf-policy", customBaseDirectory: tempDir)
+        let items = try (0..<3).map { index in
+            let url = fileStorage.assetsDirectory.appendingPathComponent("quota-\(index).bin")
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.truncate(atOffset: 40 * 1024 * 1024)
+            try handle.close()
+            return ShelfFileItem(
+                id: "item-\(index)",
+                name: url.lastPathComponent,
+                sizeDescription: "40 MB",
+                fileExtension: "bin",
+                filePath: url.path,
+                timestamp: Date(timeIntervalSinceNow: TimeInterval(index))
+            )
+        }
+        fileStorage.saveIndex(items)
+
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+
+        #expect(state.files.map(\.id) == ["item-1", "item-2"])
+        #expect(!FileManager.default.fileExists(atPath: items[0].filePath!))
+        #expect(FileManager.default.fileExists(atPath: items[1].filePath!))
+        #expect(FileManager.default.fileExists(atPath: items[2].filePath!))
+    }
+
+    @Test("Shelf quota pruning does nothing when automatic pruning is disabled")
+    @MainActor
+    func quotaPolicyRespectsAutoPruneOff() throws {
+        let suiteName = "ShelfPolicyDisabled-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shelf-policy-disabled-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "shelf-policy", defaults: defaults)
+        storage.setCodable(PurahRetentionPeriod.never, forKey: "retentionPeriod")
+        storage.setCodable(PurahDiskQuota.mb100, forKey: "diskQuota")
+        storage.set(false, forKey: "autoPrune")
+        let fileStorage = PurahPluginFileStorage(pluginId: "shelf-policy", customBaseDirectory: tempDir)
+        let items = try (0..<3).map { index in
+            let url = fileStorage.assetsDirectory.appendingPathComponent("keep-\(index).bin")
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.truncate(atOffset: 40 * 1024 * 1024)
+            try handle.close()
+            return ShelfFileItem(
+                id: "keep-\(index)",
+                name: url.lastPathComponent,
+                sizeDescription: "40 MB",
+                fileExtension: "bin",
+                filePath: url.path,
+                timestamp: Date(timeIntervalSinceNow: TimeInterval(index))
+            )
+        }
+        fileStorage.saveIndex(items)
+
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+
+        #expect(Set(state.files.map(\.id)) == Set(["keep-0", "keep-1", "keep-2"]))
+        for item in items {
+            #expect(FileManager.default.fileExists(atPath: item.filePath!))
+        }
+    }
 }

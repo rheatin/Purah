@@ -35,6 +35,53 @@ struct VitalsAndScriptTests {
         #expect(!metrics.powerSource.isEmpty)
     }
 
+    @Test("Vitals skips drawer-only disk and battery probes while docked")
+    func drawerOnlyTelemetryFollowsVisibility() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitals-visibility-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var diskReads = 0
+        var batteryReads = 0
+        let service = HardwareVitalsService(
+            storageDirectory: tempDir,
+            diskIOProbe: {
+                diskReads += 1
+                return (readBytesPerSec: 1_234, writeBytesPerSec: 5_678)
+            },
+            batteryProbe: {
+                batteryReads += 1
+                return (
+                    level: 42,
+                    isCharging: false,
+                    source: "Battery",
+                    healthPercent: 90,
+                    cycleCount: 123,
+                    temperatureCelsius: 32
+                )
+            }
+        )
+
+        let initialMetrics = service.metrics
+        service.refreshMetrics(includeProcesses: false)
+        #expect(diskReads == 0)
+        #expect(batteryReads == 0)
+        #expect(service.metrics.diskReadBytesPerSec == initialMetrics.diskReadBytesPerSec)
+        #expect(service.metrics.batteryLevel == initialMetrics.batteryLevel)
+
+        service.isDrawerVisible = true
+        #expect(diskReads == 1)
+        #expect(batteryReads == 1)
+        #expect(service.metrics.diskReadBytesPerSec == 1_234)
+        #expect(service.metrics.batteryLevel == 42)
+
+        service.isDrawerVisible = false
+        service.isPowerMetricVisibleOnRail = true
+        service.refreshMetrics(includeProcesses: false)
+        #expect(diskReads == 1)
+        #expect(batteryReads == 2)
+    }
+
     @Test("VitalsMetricType includes GPU and Network cases")
     func testExtendedMetricTypes() {
         let all = VitalsMetricType.allCases

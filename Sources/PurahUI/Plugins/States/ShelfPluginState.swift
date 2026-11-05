@@ -121,6 +121,9 @@ public final class ShelfPluginState: Sendable {
         }
         if hasAuthoritativeIndex {
             cleanupOrphanedAssets()
+            if enforceStoragePolicies() {
+                persistFiles()
+            }
         }
     }
 
@@ -149,17 +152,75 @@ public final class ShelfPluginState: Sendable {
         }
         if hasAuthoritativeIndex {
             cleanupOrphanedAssets()
+            if enforceStoragePolicies() {
+                persistFiles()
+            }
         }
     }
 
     public func save() {
-        storage.setCodable(files, forKey: "stashedFiles")
         storage.setCodable(retentionPeriod, forKey: "retentionPeriod")
         storage.setCodable(diskQuota, forKey: "diskQuota")
         storage.set(autoPrune, forKey: "autoPrune")
         storage.set(autoRemoveOnDrag, forKey: "autoRemoveOnDrag")
 
+        enforceStoragePolicies()
+        persistFiles()
+    }
+
+    private func persistFiles() {
+        storage.setCodable(files, forKey: "stashedFiles")
         fileStorage.saveIndex(files)
+    }
+
+    /// Applies the retention and quota controls shown in Settings.
+    ///
+    /// The removal pass deliberately does not call `save()`: `save()` invokes
+    /// this method after writing the settings, and a recursive save would keep
+    /// walking the same directory on every deleted item.
+    @discardableResult
+    public func enforceStoragePolicies(now: Date = Date()) -> Bool {
+        var sizes: [String: Int64] = [:]
+        for item in files {
+            sizes[item.id] = Int64(max(item.fileSize, 0))
+        }
+        var totalBytes = sizes.values.reduce(Int64(0), +)
+        var idsToRemove = Set(
+            files
+                .filter { !$0.isFavorite && retentionPeriod.isExpired(timestamp: $0.timestamp, now: now) }
+                .map(\.id)
+        )
+        for id in idsToRemove {
+            totalBytes -= sizes[id] ?? 0
+        }
+
+        if autoPrune, let maxBytes = diskQuota.maxBytes, totalBytes > maxBytes {
+            let oldestFirst = files
+                .filter { !$0.isFavorite && !idsToRemove.contains($0.id) }
+                .sorted {
+                    $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp
+                }
+            for item in oldestFirst {
+                guard totalBytes > maxBytes else { break }
+                idsToRemove.insert(item.id)
+                totalBytes -= sizes[item.id] ?? 0
+            }
+        }
+
+        guard !idsToRemove.isEmpty else { return false }
+
+        for item in files where idsToRemove.contains(item.id) {
+            if let path = item.filePath, Self.isPath(path, inside: fileStorage.baseDirectory) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+            selectedFileIds.remove(item.id)
+            if lastSelectedFileId == item.id {
+                lastSelectedFileId = nil
+            }
+        }
+        files.removeAll { idsToRemove.contains($0.id) }
+        boundStore?._shelfFiles.removeAll { idsToRemove.contains($0.id) }
+        return true
     }
 
     public func addFile(url: URL) {

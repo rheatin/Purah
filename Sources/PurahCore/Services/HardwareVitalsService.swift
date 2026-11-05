@@ -537,7 +537,17 @@ public final class HardwareVitalsService {
     public private(set) var diskHistory: [VitalsHistoryPoint] = []
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
-    public var isDrawerVisible: Bool = false
+    public var isDrawerVisible: Bool = false {
+        didSet {
+            guard isDrawerVisible, !oldValue else { return }
+            refreshMetrics(includeProcesses: false)
+        }
+    }
+
+    /// The rail's power gauge still needs the battery level while the drawer
+    /// is closed. Other rail metrics do not, so the expensive IOKit battery
+    /// probe follows the drawer or this explicit rail use.
+    @ObservationIgnored public var isPowerMetricVisibleOnRail = false
 
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
@@ -558,6 +568,15 @@ public final class HardwareVitalsService {
     }()
 
     @ObservationIgnored public let storageDirectory: URL
+    @ObservationIgnored private let diskIOProbe: (() -> (readBytesPerSec: Double, writeBytesPerSec: Double))?
+    @ObservationIgnored private let batteryProbe: (() -> (
+        level: Int,
+        isCharging: Bool,
+        source: String,
+        healthPercent: Int,
+        cycleCount: Int,
+        temperatureCelsius: Double
+    ))?
     @ObservationIgnored private var historyFileURL: URL {
         storageDirectory.appendingPathComponent("vitals_history.json")
     }
@@ -619,8 +638,31 @@ public final class HardwareVitalsService {
     ) {
         self.storageDirectory = storageDirectory
         self.processNetworkSampler = processNetworkSampler
+        self.diskIOProbe = nil
+        self.batteryProbe = nil
         loadHistoryFromDisk()
         // Collect initial baseline snapshot on startup without kicking off continuous kernel polling
+        refreshMetrics(includeProcesses: false)
+    }
+
+    init(
+        storageDirectory: URL,
+        processNetworkSampler: ProcessNetworkSampler = ProcessNetworkSampler(),
+        diskIOProbe: @escaping () -> (readBytesPerSec: Double, writeBytesPerSec: Double),
+        batteryProbe: @escaping () -> (
+            level: Int,
+            isCharging: Bool,
+            source: String,
+            healthPercent: Int,
+            cycleCount: Int,
+            temperatureCelsius: Double
+        )
+    ) {
+        self.storageDirectory = storageDirectory
+        self.processNetworkSampler = processNetworkSampler
+        self.diskIOProbe = diskIOProbe
+        self.batteryProbe = batteryProbe
+        loadHistoryFromDisk()
         refreshMetrics(includeProcesses: false)
     }
 
@@ -750,8 +792,26 @@ public final class HardwareVitalsService {
         let gpu = includeGPU ? readGPUUsage() : metrics.gpuUsage
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
-        let diskIO = readDiskIOThroughput()
-        let battery = readBatteryInfo()
+        let diskIO: (readBytesPerSec: Double, writeBytesPerSec: Double) = isDrawerVisible
+            ? (diskIOProbe?() ?? readDiskIOThroughput())
+            : (metrics.diskReadBytesPerSec, metrics.diskWriteBytesPerSec)
+        let battery: (
+            level: Int,
+            isCharging: Bool,
+            source: String,
+            healthPercent: Int,
+            cycleCount: Int,
+            temperatureCelsius: Double
+        ) = (isDrawerVisible || isPowerMetricVisibleOnRail)
+            ? (batteryProbe?() ?? readBatteryInfo())
+            : (
+                metrics.batteryLevel,
+                metrics.isCharging,
+                metrics.powerSource,
+                metrics.batteryHealthPercent,
+                metrics.batteryCycleCount,
+                metrics.batteryTemperatureCelsius
+            )
         let net = readNetworkThroughputDetailed()
         let thermal = readThermalStateLabel()
 

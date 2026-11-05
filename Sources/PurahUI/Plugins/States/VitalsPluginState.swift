@@ -60,6 +60,7 @@ public final class VitalsPluginState: Sendable {
     public func setHeaderMetric(_ metric: VitalsMetricType) {
         headerMetric = metric
         storage.set(metric.rawValue, forKey: "headerMetric")
+        HardwareVitalsService.shared.isPowerMetricVisibleOnRail = metric == .power
     }
 
     public func setProcessSortMetric(_ metric: ProcessSortMetric) {
@@ -215,6 +216,7 @@ public final class VitalsPluginState: Sendable {
         )
         headerMetric = resolved
         storage.set(resolved.rawValue, forKey: "headerMetric")
+        HardwareVitalsService.shared.isPowerMetricVisibleOnRail = resolved == .power
     }
 
     private func reconcileProcessSortMetric() {
