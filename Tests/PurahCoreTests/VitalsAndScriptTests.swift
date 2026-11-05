@@ -76,7 +76,7 @@ struct VitalsAndScriptTests {
         #expect(service.metrics.batteryLevel == 42)
 
         service.isDrawerVisible = false
-        service.isPowerMetricVisibleOnRail = true
+        HardwareVitalsService.isPowerMetricVisibleOnRail = true
         service.refreshMetrics(includeProcesses: false)
         #expect(diskReads == 1)
         #expect(batteryReads == 2)
@@ -98,23 +98,23 @@ struct VitalsAndScriptTests {
         state.mount(store: store)
         state.setHeaderMetric(.cpu)
         state.refreshRailPowerVisibility()
-        #expect(HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+        #expect(HardwareVitalsService.isPowerMetricVisibleOnRail)
 
         store._vitalsEnabledMetrics = [.cpu, .ram]
         state.refreshRailPowerVisibility()
-        #expect(!HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+        #expect(!HardwareVitalsService.isPowerMetricVisibleOnRail)
 
         state.setHeaderMetric(.power)
-        #expect(HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+        #expect(HardwareVitalsService.isPowerMetricVisibleOnRail)
 
         state.setHeaderMetric(.cpu)
         state.isDecomposed = false
         store._isVitalsDecomposed = false
         state.refreshRailPowerVisibility()
-        #expect(!HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+        #expect(!HardwareVitalsService.isPowerMetricVisibleOnRail)
 
         state.unmount(store: store)
-        HardwareVitalsService.shared.isPowerMetricVisibleOnRail = false
+        HardwareVitalsService.isPowerMetricVisibleOnRail = false
     }
 
     @Test("VitalsMetricType includes GPU and Network cases")

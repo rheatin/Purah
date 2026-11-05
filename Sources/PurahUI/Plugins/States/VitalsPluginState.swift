@@ -238,7 +238,7 @@ public final class VitalsPluginState: Sendable {
             railMetrics = enabledMetrics
             railIsDecomposed = isDecomposed
         }
-        HardwareVitalsService.shared.isPowerMetricVisibleOnRail =
+        HardwareVitalsService.isPowerMetricVisibleOnRail =
             headerMetric == .power || (railIsDecomposed && railMetrics.contains(.power))
     }
 

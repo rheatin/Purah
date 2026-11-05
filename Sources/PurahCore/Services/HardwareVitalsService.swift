@@ -547,7 +547,7 @@ public final class HardwareVitalsService {
     /// The rail's power gauge still needs the battery level while the drawer
     /// is closed. Other rail metrics do not, so the expensive IOKit battery
     /// probe follows the drawer or this explicit rail use.
-    @ObservationIgnored public var isPowerMetricVisibleOnRail = false
+    @ObservationIgnored public static var isPowerMetricVisibleOnRail = false
 
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
@@ -802,7 +802,7 @@ public final class HardwareVitalsService {
             healthPercent: Int,
             cycleCount: Int,
             temperatureCelsius: Double
-        ) = (isDrawerVisible || isPowerMetricVisibleOnRail)
+        ) = (isDrawerVisible || Self.isPowerMetricVisibleOnRail)
             ? (batteryProbe?() ?? readBatteryInfo())
             : (
                 metrics.batteryLevel,
