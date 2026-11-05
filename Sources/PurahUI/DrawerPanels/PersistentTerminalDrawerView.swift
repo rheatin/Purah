@@ -103,9 +103,6 @@ public struct PersistentTerminalDrawerView: View {
             }
             .padding(.horizontal, 2)
         }
-        .onAppear {
-            manager.focusTerminal()
-        }
         .task {
             aiAvailability = .current()
         }

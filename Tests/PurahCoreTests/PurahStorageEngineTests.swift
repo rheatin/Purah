@@ -168,6 +168,31 @@ struct PurahStorageEngineTests {
                 "the Star Protection Immunity Rule must survive quota pruning")
     }
 
+    @Test("Quota pruning deletes nothing when deleting items cannot free the excess")
+    func testQuotaPruningDoesNotDestroyItemsForUnreclaimableBytes() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_quota_floor_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = PurahPluginFileStorage(pluginId: "quota-floor-plugin", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<MockStorableItem>(
+            pluginId: "quota-floor-plugin",
+            customStorage: storage,
+            retentionPeriod: .never
+        )
+        repo.append(MockStorableItem(id: "keep", title: "keep", timestamp: Date(), isFavorite: false))
+
+        // Bytes outside the index cannot be reclaimed by removing a row. The
+        // old loop still deleted every unstarred item and then warned anyway.
+        let unrelated = storage.rootDirectory.appendingPathComponent("unrelated.bin")
+        try Data(repeating: 0x41, count: 40_000).write(to: unrelated)
+        let budget: Int64 = 1_000
+
+        let pruned = repo.enforceQuota(maxBytes: budget, autoPrune: true)
+        #expect(pruned == 0)
+        #expect(repo.items.count == 1, "unreclaimable bytes must not cost the person their items")
+    }
+
     @Test("An unreadable index is kept aside instead of being overwritten")
     func testUnreadableIndexIsQuarantined() throws {
         let tempDir = FileManager.default.temporaryDirectory

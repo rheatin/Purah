@@ -32,7 +32,6 @@ public final class StableTerminalContainerView: NSView {
         for child in subviews {
             child.needsDisplay = true
         }
-        TerminalManager.shared.focusTerminal()
     }
 }
 
@@ -91,7 +90,14 @@ open class PurahTerminalView: LocalProcessTerminalView {
         switch event.type {
         case .leftMouseDown:
             let localPoint = convert(event.locationInWindow, from: nil)
-            isDragging = bounds.contains(localPoint)
+            let isInside = bounds.contains(localPoint)
+            // SwiftTerm does not make itself first responder on click. The
+            // drawer can be mounted without taking focus, so an explicit click
+            // inside the terminal restores it without activating the app.
+            if isInside, win.firstResponder !== self {
+                win.makeFirstResponder(self)
+            }
+            isDragging = isInside
             stopAutoScroll()
         case .leftMouseDragged:
             guard isDragging else { return }
@@ -269,7 +275,7 @@ public final class TerminalManager: ObservableObject {
     }
 
     @discardableResult
-    public func createNewTab() -> String {
+    public func createNewTab(focus: Bool = true) -> String {
         guard tabs.count < Self.maxTabsCount else {
             return activeTabId
         }
@@ -314,7 +320,7 @@ public final class TerminalManager: ObservableObject {
         )
 
         tabs.append(newTab)
-        selectTab(id: newTab.id)
+        selectTab(id: newTab.id, focus: focus)
 
         if !PurahWorkspaceStore.isTestingEnvironment {
             startShellProcess(for: newTab.id)
@@ -345,7 +351,7 @@ public final class TerminalManager: ObservableObject {
         }
     }
 
-    public func selectTab(id: String) {
+    public func selectTab(id: String, focus: Bool = true) {
         guard let targetTab = tabs.first(where: { $0.id == id }) else { return }
         activeTabId = id
         isProcessRunning = targetTab.isRunning
@@ -362,7 +368,9 @@ public final class TerminalManager: ObservableObject {
             containerView.addSubview(targetTab.terminalView)
         }
         targetTab.terminalView.needsDisplay = true
-        focusTerminal()
+        if focus {
+            focusTerminal()
+        }
     }
 
     public static func shellEscapedPath(_ path: String) -> String {
@@ -406,7 +414,7 @@ public final class TerminalManager: ObservableObject {
         self.lastAppliedPalette = palette
 
         if tabs.isEmpty {
-            createNewTab()
+            createNewTab(focus: false)
         }
 
         if let active = terminalView {
@@ -674,8 +682,5 @@ public struct SwiftTermRepresentable: NSViewRepresentable {
             fontSize: CGFloat(fontSize),
             palette: palette
         )
-        if !manager.isProcessRunning {
-            manager.startShellProcess()
-        }
     }
 }

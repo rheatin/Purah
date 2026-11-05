@@ -66,6 +66,7 @@ public final class ScriptRunwayService {
 
     @ObservationIgnored private var activeProcess: Process? = nil
     @ObservationIgnored private var wasStoppedByUser: Bool = false
+    @ObservationIgnored private var stoppedRunID: Int?
 
     /// Identifies the run that is allowed to write to `liveStreamingOutput`.
     ///
@@ -133,6 +134,10 @@ public final class ScriptRunwayService {
     }
 
     public func stopRunningScript() {
+        // Invalidate the active run before the process goes away. Its completion
+        // and stream callbacks may still arrive while the command tree dies.
+        stoppedRunID = currentRunID
+        currentRunID += 1
         wasStoppedByUser = true
         // The shell is not the command. `zsh -c 'a; b'` forks, and a SIGTERM
         // to zsh leaves the running command behind — so "Stop" used to report
@@ -189,6 +194,9 @@ public final class ScriptRunwayService {
         _ action: ScriptActionItem,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
+        guard !isRunning else {
+            return (false, "Stop the running script first.")
+        }
         wasStoppedByUser = false
         isRunning = true
         lastExecutedActionId = action.id
@@ -210,13 +218,25 @@ public final class ScriptRunwayService {
         case .shell:
             result = await runShell(command: action.scriptContent, runID: runID, onStreamUpdate: onStreamUpdate)
         case .appleScript:
-            result = await runAppleScript(script: action.scriptContent, onStreamUpdate: onStreamUpdate)
+            result = await runAppleScript(
+                script: action.scriptContent,
+                runID: runID,
+                onStreamUpdate: onStreamUpdate
+            )
         case .shortcut:
             result = await runShortcut(name: action.scriptContent, runID: runID, onStreamUpdate: onStreamUpdate)
         }
 
+        let stopMessage = "⏹ Stopped by user"
+        if runID == stoppedRunID {
+            // The stopped run still reports why it ended, but it must not write
+            // over a newer run's panel while its process tree is dying.
+            return (false, stopMessage)
+        }
+        // A superseded run must not replace the panel of the run that is
+        // current now.
+        guard runID == currentRunID else { return result }
         if wasStoppedByUser {
-            let stopMessage = "⏹ Stopped by user"
             lastOutput = stopMessage
             liveStreamingOutput = stopMessage
             return (false, stopMessage)
@@ -405,6 +425,7 @@ public final class ScriptRunwayService {
 
     private func runAppleScript(
         script: String,
+        runID: Int,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
         DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript (\(script.count) chars)")
@@ -423,6 +444,7 @@ public final class ScriptRunwayService {
             let resultText = descriptor.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let msg = resultText.isEmpty ? "AppleScript executed successfully" : ScriptRunwayService.tailNonEmptyLines(from: resultText, maxLines: 4)
             Task { @MainActor in
+                guard runID == self.currentRunID, !self.wasStoppedByUser else { return }
                 onStreamUpdate?(msg)
             }
             DiagnosticLogger.shared.info("ScriptRunway", "AppleScript completed successfully")

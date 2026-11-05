@@ -215,6 +215,51 @@ struct SecretHandlingTests {
         #expect(described.contains("<200 chars>"))
     }
 
+    @Test("A failed secret write leaves the only plaintext copy in defaults")
+    func testFailedSecretWriteDoesNotDeleteLegacyPlaintext() throws {
+        let defaults = makeDefaults()
+        defaults.set("sk-legacy", forKey: "purah.plugin.ai.openAIAPIKey")
+        let url = makeSecretFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        // A regular file where the containing directory must be makes the
+        // write fail without touching any real user store.
+        try Data("not a directory".utf8).write(to: url.deletingLastPathComponent())
+        let store = FileSecretStore(fileURL: url, environmentKey: nil)
+
+        FileSecretStore.migrateLegacyDefaultsKey(
+            "purah.plugin.ai.openAIAPIKey",
+            to: "ai.openAIAPIKey",
+            store: store,
+            defaults: defaults
+        )
+
+        #expect(defaults.string(forKey: "purah.plugin.ai.openAIAPIKey") == "sk-legacy")
+    }
+
+    @Test("A legacy plaintext copy stays when the environment supplies the secret")
+    func testEnvironmentSecretLeavesLegacyPlaintextInDefaults() {
+        let defaults = makeDefaults()
+        defaults.set("sk-legacy", forKey: "purah.plugin.ai.anthropicAPIKey")
+        let name = FileSecretStore.environmentName(forKey: "ai.anthropicAPIKey")
+        setenv(name, "sk-from-env", 1)
+        defer { unsetenv(name) }
+
+        let url = makeSecretFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = FileSecretStore(fileURL: url, environmentKey: nil)
+
+        FileSecretStore.migrateLegacyDefaultsKey(
+            "purah.plugin.ai.anthropicAPIKey",
+            to: "ai.anthropicAPIKey",
+            store: store,
+            defaults: defaults
+        )
+
+        #expect(defaults.string(forKey: "purah.plugin.ai.anthropicAPIKey") == "sk-legacy")
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     @Test("An unreadable secrets file is moved aside, not treated as empty")
     func testUnreadableSecretFileIsQuarantined() throws {
         let url = makeSecretFile()

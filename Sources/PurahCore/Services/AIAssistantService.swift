@@ -22,6 +22,7 @@ public enum AppleIntelligenceStatus: Equatable, Sendable {
 public enum AIAssistantError: LocalizedError, Sendable {
     case invalidEndpoint
     case missingApiKey(provider: String)
+    case modelUnavailable(String)
     case cliNotFound(executable: String)
     case invalidExecutablePath(String)
     case processExecutionFailed(exitCode: Int32, errorOutput: String)
@@ -33,9 +34,11 @@ public enum AIAssistantError: LocalizedError, Sendable {
         case .invalidEndpoint:
             return "Invalid AI API endpoint URL."
         case .missingApiKey(let provider):
-            return "Missing API key for \(provider)."
+            return "Missing API key for \(provider). Add it in AI Assistant settings."
+        case .modelUnavailable(let reason):
+            return "\(reason) Choose another AI provider in AI Assistant settings."
         case .cliNotFound(let executable):
-            return "CLI executable '\(executable)' not found in standard search paths."
+            return "CLI executable '\(executable)' not found. Choose an installed CLI in AI Assistant settings."
         case .invalidExecutablePath(let path):
             return "CLI executable path '\(path)' is invalid."
         case .processExecutionFailed(let exitCode, let errorOutput):
@@ -496,37 +499,49 @@ public final class AIAssistantService {
                         systemPromptOverride: systemPromptOverride,
                         onChunk: onChunk
                     )
-                } else {
+                    // The on-device model has no request-time identifier; the
+                    // platform names it once.
+                    onServedModel?(Self.appleOnDeviceModelName)
+                } else if PurahWorkspaceStore.isTestingEnvironment {
                     result = try await streamSimulatedAppleIntelligence(
                         messages: messages,
                         targetLanguage: targetLanguage,
                         systemPromptOverride: systemPromptOverride,
                         onChunk: onChunk
                     )
+                } else {
+                    throw AIAssistantError.modelUnavailable(
+                        "Apple Intelligence is unavailable on this Mac."
+                    )
                 }
                 #else
-                result = try await streamSimulatedAppleIntelligence(
-                    messages: messages,
-                    targetLanguage: targetLanguage,
-                    systemPromptOverride: systemPromptOverride,
-                    onChunk: onChunk
-                )
+                if PurahWorkspaceStore.isTestingEnvironment {
+                    result = try await streamSimulatedAppleIntelligence(
+                        messages: messages,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        onChunk: onChunk
+                    )
+                } else {
+                    throw AIAssistantError.modelUnavailable(
+                        "Apple Intelligence requires macOS 26 or later with Apple Intelligence enabled."
+                    )
+                }
                 #endif
-                // The on-device model has no request-time identifier; the
-                // platform names it once.
-                onServedModel?(Self.appleOnDeviceModelName)
 
             case .httpOpenAI, .httpOllama:
                 let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
                 if provider == .httpOpenAI && (key == nil || key?.isEmpty == true) {
-                    // Graceful fallback to smart local on-device synthesis if API key is not configured
-                    result = try await streamSimulatedAppleIntelligence(
-                        messages: messages,
-                        targetLanguage: targetLanguage,
-                        systemPromptOverride: systemPromptOverride,
-                        onChunk: onChunk
-                    )
-                    onServedModel?(Self.appleOnDeviceModelName)
+                    if PurahWorkspaceStore.isTestingEnvironment {
+                        result = try await streamSimulatedAppleIntelligence(
+                            messages: messages,
+                            targetLanguage: targetLanguage,
+                            systemPromptOverride: systemPromptOverride,
+                            onChunk: onChunk
+                        )
+                    } else {
+                        throw AIAssistantError.missingApiKey(provider: provider.displayName)
+                    }
                 } else {
                     result = try await streamOpenAICompatible(
                         messages: messages,
@@ -544,14 +559,16 @@ public final class AIAssistantService {
             case .httpAnthropic:
                 let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
                 if key == nil || key?.isEmpty == true {
-                    // Graceful fallback to smart local on-device synthesis if API key is not configured
-                    result = try await streamSimulatedAppleIntelligence(
-                        messages: messages,
-                        targetLanguage: targetLanguage,
-                        systemPromptOverride: systemPromptOverride,
-                        onChunk: onChunk
-                    )
-                    onServedModel?(Self.appleOnDeviceModelName)
+                    if PurahWorkspaceStore.isTestingEnvironment {
+                        result = try await streamSimulatedAppleIntelligence(
+                            messages: messages,
+                            targetLanguage: targetLanguage,
+                            systemPromptOverride: systemPromptOverride,
+                            onChunk: onChunk
+                        )
+                    } else {
+                        throw AIAssistantError.missingApiKey(provider: provider.displayName)
+                    }
                 } else {
                     result = try await streamAnthropic(
                         messages: messages,
@@ -566,34 +583,34 @@ public final class AIAssistantService {
                 }
 
             case .localCLI:
-                guard let cliPath = resolveCLIPath(for: cliExecutable, customPath: customCLIPath) else {
-                    // Graceful fallback to smart local on-device synthesis if CLI executable is not installed
+                if let cliPath = resolveCLIPath(for: cliExecutable, customPath: customCLIPath) {
+                    result = try await streamLocalCLI(
+                        cliPath: cliPath,
+                        executable: cliExecutable,
+                        customCLIArguments: customCLIArguments,
+                        messages: messages,
+                        model: model,
+                        targetLanguage: targetLanguage,
+                        systemPromptOverride: systemPromptOverride,
+                        skillDirectories: skillDirectories,
+                        mcpConfigPath: mcpConfigPath,
+                        resumeSessionId: resumeCLISessionId,
+                        onSessionID: onCLISessionId,
+                        onChunk: onChunk
+                    )
+                    // A CLI agent spawns whatever model its own configuration
+                    // names; the host never learns which, so it does not invent one.
+                    onServedModel?(cliExecutable.displayName)
+                } else if PurahWorkspaceStore.isTestingEnvironment {
                     result = try await streamSimulatedAppleIntelligence(
                         messages: messages,
                         targetLanguage: targetLanguage,
                         systemPromptOverride: systemPromptOverride,
                         onChunk: onChunk
                     )
-                    onServedModel?(Self.appleOnDeviceModelName)
-                    break
+                } else {
+                    throw AIAssistantError.cliNotFound(executable: cliExecutable.displayName)
                 }
-                result = try await streamLocalCLI(
-                    cliPath: cliPath,
-                    executable: cliExecutable,
-                    customCLIArguments: customCLIArguments,
-                    messages: messages,
-                    model: model,
-                    targetLanguage: targetLanguage,
-                    systemPromptOverride: systemPromptOverride,
-                    skillDirectories: skillDirectories,
-                    mcpConfigPath: mcpConfigPath,
-                    resumeSessionId: resumeCLISessionId,
-                    onSessionID: onCLISessionId,
-                    onChunk: onChunk
-                )
-                // A CLI agent spawns whatever model its own configuration
-                // names; the host never learns which, so it does not invent one.
-                onServedModel?(cliExecutable.displayName)
             }
             DiagnosticLogger.shared.info("AI", "Request completed: provider=\(provider.displayName), chars=\(result.count)")
             return result

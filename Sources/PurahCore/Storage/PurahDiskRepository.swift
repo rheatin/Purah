@@ -76,8 +76,23 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
     public func saveToDisk() {
         // No `.prettyPrinted`: this is machine state, and indentation roughly
         // doubles every write and every later parse.
-        if let data = try? JSONEncoder().encode(items) {
-            try? data.write(to: indexURL, options: .atomic)
+        _ = persistIndex()
+    }
+
+    /// The index that `loadFromDisk` actually reads lives beside the plugin
+    /// sandbox root. `PurahPluginFileStorage.saveIndex` writes `data/index.json`
+    /// instead, so quota pruning must not ask that writer to measure its effect.
+    private func persistIndex() -> Bool {
+        guard let data = try? JSONEncoder().encode(items) else { return false }
+        do {
+            try data.write(to: indexURL, options: .atomic)
+            return true
+        } catch {
+            DiagnosticLogger.shared.warn(
+                "Storage",
+                "Could not write \(indexURL.lastPathComponent): \(error.localizedDescription)"
+            )
+            return false
         }
     }
 
@@ -203,14 +218,27 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         var prunedCount = 0
 
         if shouldPrune {
-            // Size is updated by subtraction, not by re-walking the folder.
-            // `computeDiskUsageBytes` stats every file, so measuring once per
-            // removed item made pruning quadratic in the collection size — a
-            // collection 500 items over budget did 500 full walks.
-            //
-            // What a removal actually frees is the item's own files plus
-            // whatever the index lost. Both are measured directly here, so the
-            // loop still stops the moment the folder fits.
+            // Only delete what this repository can actually reclaim. Bytes
+            // belonging to caches or an unrelated file cannot be freed by
+            // removing a row, so pruning all rows would still leave the folder
+            // over budget — and destroy every item for nothing.
+            let remainingFavorites = items.filter(\.isFavorite)
+            let finalIndexBytes = (try? JSONEncoder().encode(remainingFavorites)).map { Int64($0.count) } ?? 0
+            let reclaimableIndex = max(0, Self.fileSize(at: indexURL) - finalIndexBytes)
+            let reclaimableFiles = onRemoveAssociatedFiles == nil
+                ? 0
+                : items.reduce(Int64(0)) { total, item in
+                    total + Self.bytesOnDisk(atPaths: item.assetPaths)
+                }
+            let reclaimable = reclaimableIndex + reclaimableFiles
+            let minimumSize = max(0, currentSize - reclaimable)
+            guard minimumSize <= maxBytes else {
+                onQuotaWarning?(
+                    "⚠️ Storage exceeds its quota, but deleting shelf items cannot bring it back under."
+                )
+                return 0
+            }
+
             while currentSize > maxBytes {
                 guard let oldestIdx = items.indices
                     .filter({ !items[$0].isFavorite })
@@ -219,14 +247,22 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
                 }
 
                 let removed = items.remove(at: oldestIdx)
-                prunedCount += 1
-                let indexBytesBefore = Self.fileSize(at: indexURL)
-                let freedFiles = Self.bytesOnDisk(atPaths: removed.assetPaths)
+                guard persistIndex() else {
+                    items.insert(removed, at: oldestIdx)
+                    break
+                }
                 onRemoveAssociatedFiles?(removed)
-                saveToDisk()
-                let freedIndex = indexBytesBefore - Self.fileSize(at: indexURL)
-                let freedAssociatedFiles = onRemoveAssociatedFiles == nil ? 0 : freedFiles
-                currentSize = max(0, currentSize - freedAssociatedFiles - freedIndex)
+                let afterSize = storage.computeDiskUsageBytes()
+                if afterSize >= currentSize {
+                    // The handler may not have deleted the files, or the index
+                    // is not where this repository writes. Restore the row and
+                    // stop instead of emptying the collection.
+                    items.insert(removed, at: oldestIdx)
+                    _ = persistIndex()
+                    break
+                }
+                prunedCount += 1
+                currentSize = afterSize
             }
         }
 

@@ -7,6 +7,13 @@ import Foundation
 public protocol SecretStore: Sendable {
     func secret(forKey key: String) -> String?
     func setSecret(_ value: String?, forKey key: String)
+    /// True when `secret(forKey:)` is currently answered by the environment.
+    /// Migration must not remove the only stored copy in that case.
+    func isEnvironmentProvided(forKey key: String) -> Bool
+}
+
+public extension SecretStore {
+    func isEnvironmentProvided(forKey key: String) -> Bool { false }
 }
 
 /// File-backed secret storage: one JSON blob, `0600`, in Purah's own sandbox.
@@ -78,7 +85,8 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
         } else {
             guard values.removeValue(forKey: key) != nil else { return }
         }
-        persistLocked(values)
+        guard persistLocked(values) else { return }
+        cached = values
     }
 
     // MARK: - Environment override
@@ -92,6 +100,11 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
             .joined(separator: "_")
             .uppercased()
         return "PURAH_\(suffix.isEmpty ? "SECRET" : suffix)"
+    }
+
+    public func isEnvironmentProvided(forKey key: String) -> Bool {
+        guard let key = Self.normalized(key) else { return false }
+        return lookupInEnvironment(for: key) != nil
     }
 
     private func lookupInEnvironment(for key: String) -> String? {
@@ -164,25 +177,36 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
         }
     }
 
-    private func persistLocked(_ values: [String: String]) {
-        cached = values
+    @discardableResult
+    private func persistLocked(_ values: [String: String]) -> Bool {
         let directory = fileURL.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directory.path) {
-            try? FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
+            do {
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o700]
+                )
+            } catch {
+                DiagnosticLogger.shared.warn("Secrets", "Could not create the secrets directory: \(error.localizedDescription)")
+                return false
+            }
         }
 
         if values.isEmpty {
-            try? FileManager.default.removeItem(at: fileURL)
-            return
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return true }
+            do {
+                try FileManager.default.removeItem(at: fileURL)
+                return true
+            } catch {
+                DiagnosticLogger.shared.warn("Secrets", "Could not remove the secrets file: \(error.localizedDescription)")
+                return false
+            }
         }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(values) else { return }
+        guard let data = try? encoder.encode(values) else { return false }
 
         // Create the temporary file with restrictive permissions so the
         // secrets are never briefly world-readable before the atomic replace.
@@ -191,7 +215,7 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
             atPath: temporaryURL.path,
             contents: data,
             attributes: [.posixPermissions: 0o600]
-        ) else { return }
+        ) else { return false }
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
         if FileManager.default.fileExists(atPath: fileURL.path) {
@@ -203,13 +227,21 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
                     withItemAt: temporaryURL,
                     options: .usingNewMetadataOnly
                 )
+                return true
             } catch {
                 // A silent failure here leaves the previous secrets in place
                 // while the caller believes the write landed.
                 DiagnosticLogger.shared.warn("Secrets", "Could not replace the secrets file: \(error.localizedDescription)")
+                return false
             }
         } else {
-            try? FileManager.default.moveItem(at: temporaryURL, to: fileURL)
+            do {
+                try FileManager.default.moveItem(at: temporaryURL, to: fileURL)
+                return true
+            } catch {
+                DiagnosticLogger.shared.warn("Secrets", "Could not write the secrets file: \(error.localizedDescription)")
+                return false
+            }
         }
     }
 
@@ -229,6 +261,10 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
         defaults: UserDefaults = .standard
     ) {
         guard let legacy = defaults.string(forKey: fullKey), !legacy.isEmpty else { return }
+        // An environment value is a deliberate choice not to persist this
+        // secret. Removing the plaintext copy would make the next launch without
+        // that environment lose the key entirely.
+        if store.isEnvironmentProvided(forKey: key) { return }
         if store.secret(forKey: key) == nil {
             store.setSecret(legacy, forKey: key)
             // Only drop the plaintext copy once it reads back from the new

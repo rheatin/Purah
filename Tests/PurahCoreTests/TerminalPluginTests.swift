@@ -449,6 +449,31 @@ struct TerminalPluginTests {
         #expect(elapsed < 4.0, "Stop took \(elapsed)s: the child process survived the shell")
     }
 
+    @Test("A second run is refused while the first one is still active")
+    func testConcurrentRunIsRefusedInsteadOfReplacingTheProcess() async {
+        let runway = ScriptRunwayService()
+        let action = ScriptActionItem(
+            id: "refuse-concurrent-\(UUID().uuidString)",
+            name: "Slow",
+            systemIcon: "hourglass",
+            commandType: .shell,
+            scriptContent: "sleep 3",
+            description: "Occupies the single process slot",
+            showNotification: false
+        )
+
+        let first = Task { await runway.executeAction(action) }
+        try? await Task.sleep(for: .milliseconds(500))
+        #expect(runway.isRunning)
+
+        let second = await runway.executeAction(action)
+        #expect(second.success == false)
+        #expect(second.message.contains("Stop the running script first"))
+
+        runway.stopRunningScript()
+        _ = await first.value
+    }
+
     @Test("TodoPlugin assigns overdue (#FF453A) and due-today (#FF9F0A) chromatic tints and setDueDate")
     @MainActor
     func testTodoUrgencyChromaticTintsAndSetDueDate() {
