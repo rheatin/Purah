@@ -529,7 +529,10 @@ public struct InteractiveMarkdownPreviewView: View {
     }
 
     private func parseBlocks(from markdown: String) -> [PreviewBlock] {
-        let lines = markdown.components(separatedBy: "\n")
+        // Math is rewritten before the block pass, so table cells and headings
+        // get the same treatment. The renderer skips fenced and inline code,
+        // which is where a stray `$` means a variable, not an equation.
+        let lines = LaTeXMathRenderer.render(markdown).components(separatedBy: "\n")
         var blocks: [PreviewBlock] = []
         var i = 0
 
