@@ -182,7 +182,7 @@ public final class ShelfPluginState: Sendable {
     public func enforceStoragePolicies(now: Date = Date()) -> Bool {
         var sizes: [String: Int64] = [:]
         for item in files {
-            sizes[item.id] = Int64(max(item.fileSize, 0))
+            sizes[item.id] = ownedBytes(of: item)
         }
         var totalBytes = sizes.values.reduce(Int64(0), +)
         var idsToRemove = Set(
@@ -196,7 +196,11 @@ public final class ShelfPluginState: Sendable {
 
         if autoPrune, let maxBytes = diskQuota.maxBytes, totalBytes > maxBytes {
             let oldestFirst = files
-                .filter { !$0.isFavorite && !idsToRemove.contains($0.id) }
+                .filter {
+                    !$0.isFavorite
+                        && !idsToRemove.contains($0.id)
+                        && (sizes[$0.id] ?? 0) > 0
+                }
                 .sorted {
                     $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp
                 }
@@ -210,7 +214,7 @@ public final class ShelfPluginState: Sendable {
         guard !idsToRemove.isEmpty else { return false }
 
         for item in files where idsToRemove.contains(item.id) {
-            if let path = item.filePath, Self.isPath(path, inside: fileStorage.baseDirectory) {
+            if let path = ownedPath(of: item) {
                 try? FileManager.default.removeItem(atPath: path)
             }
             selectedFileIds.remove(item.id)
@@ -221,6 +225,26 @@ public final class ShelfPluginState: Sendable {
         files.removeAll { idsToRemove.contains($0.id) }
         boundStore?._shelfFiles.removeAll { idsToRemove.contains($0.id) }
         return true
+    }
+
+    /// Only files inside the shelf sandbox can reduce disk usage when their
+    /// row is pruned. Most stashed files still live at their original path.
+    private func ownedPath(of item: ShelfFileItem) -> String? {
+        for path in [item.filePath, item.resolvedURL?.path].compactMap({ $0 }) {
+            if Self.isPath(path, inside: fileStorage.baseDirectory) {
+                return URL(fileURLWithPath: path).standardizedFileURL.path
+            }
+        }
+        return nil
+    }
+
+    private func ownedBytes(of item: ShelfFileItem) -> Int64 {
+        guard let path = ownedPath(of: item),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attributes[.size] as? NSNumber else {
+            return 0
+        }
+        return max(size.int64Value, 0)
     }
 
     public func addFile(url: URL) {

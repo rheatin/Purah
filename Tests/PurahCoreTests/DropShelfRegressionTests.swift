@@ -268,4 +268,166 @@ struct DropShelfRegressionTests {
             #expect(FileManager.default.fileExists(atPath: item.filePath!))
         }
     }
+
+    @Test("Shelf quota never prunes entries outside its sandbox")
+    @MainActor
+    func quotaPolicyIgnoresExternalFiles() throws {
+        let suiteName = "ShelfPolicyExternalQuota-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shelf-policy-external-quota-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "shelf-policy", defaults: defaults)
+        storage.setCodable(PurahRetentionPeriod.never, forKey: "retentionPeriod")
+        storage.setCodable(PurahDiskQuota.mb100, forKey: "diskQuota")
+        let fileStorage = PurahPluginFileStorage(pluginId: "shelf-policy", customBaseDirectory: tempDir)
+
+        let externalURL = tempDir.appendingPathComponent("external-old.bin")
+        FileManager.default.createFile(atPath: externalURL.path, contents: nil)
+        let externalHandle = try FileHandle(forWritingTo: externalURL)
+        try externalHandle.truncate(atOffset: 200 * 1024 * 1024)
+        try externalHandle.close()
+
+        let ownedURLs = try (0..<2).map { index in
+            let url = fileStorage.assetsDirectory.appendingPathComponent("owned-\(index).bin")
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.truncate(atOffset: 80 * 1024 * 1024)
+            try handle.close()
+            return url
+        }
+        fileStorage.saveIndex([
+            ShelfFileItem(
+                id: "external",
+                name: externalURL.lastPathComponent,
+                sizeDescription: "200 MB",
+                fileExtension: "bin",
+                filePath: externalURL.path,
+                timestamp: Date(timeIntervalSinceNow: -300)
+            ),
+            ShelfFileItem(
+                id: "owned-older",
+                name: ownedURLs[0].lastPathComponent,
+                sizeDescription: "80 MB",
+                fileExtension: "bin",
+                filePath: ownedURLs[0].path,
+                timestamp: Date(timeIntervalSinceNow: -200)
+            ),
+            ShelfFileItem(
+                id: "owned-newer",
+                name: ownedURLs[1].lastPathComponent,
+                sizeDescription: "80 MB",
+                fileExtension: "bin",
+                filePath: ownedURLs[1].path,
+                timestamp: Date(timeIntervalSinceNow: -100)
+            )
+        ])
+
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+
+        #expect(state.files.contains(where: { $0.id == "external" }))
+        #expect(FileManager.default.fileExists(atPath: externalURL.path))
+        #expect(!state.files.contains(where: { $0.id == "owned-older" }))
+        #expect(state.files.contains(where: { $0.id == "owned-newer" }))
+    }
+
+    @Test("Shelf quota counts only bytes owned inside its sandbox")
+    @MainActor
+    func quotaPolicyDoesNotCountExternalFiles() throws {
+        let suiteName = "ShelfPolicyExternalSize-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shelf-policy-external-size-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "shelf-policy", defaults: defaults)
+        storage.setCodable(PurahRetentionPeriod.never, forKey: "retentionPeriod")
+        storage.setCodable(PurahDiskQuota.mb100, forKey: "diskQuota")
+        let fileStorage = PurahPluginFileStorage(pluginId: "shelf-policy", customBaseDirectory: tempDir)
+
+        let externalURL = tempDir.appendingPathComponent("external-large.bin")
+        FileManager.default.createFile(atPath: externalURL.path, contents: nil)
+        let externalHandle = try FileHandle(forWritingTo: externalURL)
+        try externalHandle.truncate(atOffset: 200 * 1024 * 1024)
+        try externalHandle.close()
+
+        let ownedURL = fileStorage.assetsDirectory.appendingPathComponent("owned-small.bin")
+        try Data("small".utf8).write(to: ownedURL)
+        fileStorage.saveIndex([
+            ShelfFileItem(
+                id: "external",
+                name: externalURL.lastPathComponent,
+                sizeDescription: "200 MB",
+                fileExtension: "bin",
+                filePath: externalURL.path,
+                timestamp: Date(timeIntervalSinceNow: -100)
+            ),
+            ShelfFileItem(
+                id: "owned",
+                name: ownedURL.lastPathComponent,
+                sizeDescription: "5 bytes",
+                fileExtension: "bin",
+                filePath: ownedURL.path,
+                timestamp: Date()
+            )
+        ])
+
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+
+        #expect(Set(state.files.map(\.id)) == Set(["external", "owned"]))
+        #expect(FileManager.default.fileExists(atPath: externalURL.path))
+        #expect(FileManager.default.fileExists(atPath: ownedURL.path))
+    }
+
+    @Test("Shelf retention removes external rows without deleting their originals")
+    @MainActor
+    func retentionPolicyLeavesExternalFilesOnDisk() throws {
+        let suiteName = "ShelfPolicyExternalRetention-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shelf-policy-external-retention-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let storage = ScopedPluginStorage(pluginId: "shelf-policy", defaults: defaults)
+        let fileStorage = PurahPluginFileStorage(pluginId: "shelf-policy", customBaseDirectory: tempDir)
+        let oldDate = Date(timeIntervalSinceNow: -8 * 86_400)
+        let externalURL = tempDir.appendingPathComponent("external-keep.txt")
+        let ownedURL = fileStorage.assetsDirectory.appendingPathComponent("owned-expired.txt")
+        try Data("external".utf8).write(to: externalURL)
+        try Data("owned".utf8).write(to: ownedURL)
+        fileStorage.saveIndex([
+            ShelfFileItem(
+                id: "external",
+                name: externalURL.lastPathComponent,
+                sizeDescription: "8 bytes",
+                fileExtension: "txt",
+                filePath: externalURL.path,
+                timestamp: oldDate
+            ),
+            ShelfFileItem(
+                id: "owned",
+                name: ownedURL.lastPathComponent,
+                sizeDescription: "5 bytes",
+                fileExtension: "txt",
+                filePath: ownedURL.path,
+                timestamp: oldDate
+            )
+        ])
+
+        let state = ShelfPluginState(storage: storage, fileStorage: fileStorage)
+
+        #expect(state.files.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: externalURL.path))
+        #expect(!FileManager.default.fileExists(atPath: ownedURL.path))
+    }
 }
