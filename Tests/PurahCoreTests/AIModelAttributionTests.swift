@@ -157,7 +157,7 @@ struct AIModelAttributionTests {
         // conversation was one model.
         #expect(md.contains("**Models**: model-b, model-a"))
         // And each answer is attributed where it appears.
-        #expect(md.contains("🤖 AI Assistant") && md.contains("model-a · OpenAI Compatible"))
+        #expect(md.contains("### AI Assistant") && md.contains("model-a · OpenAI Compatible"))
         #expect(md.contains("model-b · Anthropic Claude"))
     }
 

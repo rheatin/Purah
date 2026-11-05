@@ -68,7 +68,7 @@ struct FreezeModeTests {
         let hud = TransientHUDController.shared
         hud.show(isFrozen: true)
         #expect(hud.isFrozen == true)
-        #expect(hud.currentText == "❄️ Rails Frozen (⌥⇥ to restore)")
+        #expect(hud.currentText == "Rails Frozen (⌥⇥ to restore)")
         #expect(hud.panel != nil)
         #expect(hud.panel?.ignoresMouseEvents == true)
         #expect(hud.panel?.level == .floating)
@@ -77,7 +77,7 @@ struct FreezeModeTests {
         
         hud.show(isFrozen: false)
         #expect(hud.isFrozen == false)
-        #expect(hud.currentText == "✨ Rails Active")
+        #expect(hud.currentText == "Rails Active")
         hud.dismissImmediate()
     }
 
@@ -106,7 +106,7 @@ struct FreezeModeTests {
         #expect(coord.isFrozen == true)
         #expect(monitor.isFrozen == true)
         #expect(TransientHUDController.shared.isFrozen == true)
-        #expect(TransientHUDController.shared.currentText == "❄️ Rails Frozen (⌥⇥ to restore)")
+        #expect(TransientHUDController.shared.currentText == "Rails Frozen (⌥⇥ to restore)")
         
         let frozenMenuItem = appDelegate.statusMenu?.items.first { $0.action == #selector(AppDelegate.toggleFreezeMode) }
         #expect(frozenMenuItem != nil)
@@ -118,7 +118,7 @@ struct FreezeModeTests {
         #expect(coord.isFrozen == false)
         #expect(monitor.isFrozen == false)
         #expect(TransientHUDController.shared.isFrozen == false)
-        #expect(TransientHUDController.shared.currentText == "✨ Rails Active")
+        #expect(TransientHUDController.shared.currentText == "Rails Active")
         
         let restoredMenuItem = appDelegate.statusMenu?.items.first { $0.action == #selector(AppDelegate.toggleFreezeMode) }
         #expect(restoredMenuItem != nil)
