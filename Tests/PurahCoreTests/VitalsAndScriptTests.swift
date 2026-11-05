@@ -8,6 +8,17 @@ import SwiftUI
 @Suite("Hardware Vitals and Script Runway Tests")
 @MainActor
 struct VitalsAndScriptTests {
+    @Test("A 32-bit network counter wrap contributes its post-wrap bytes")
+    func networkCounterWrapIsNotDropped() {
+        let delta = NetworkCounterDelta.bytes(
+            previous: 0xFFFF_FFF0,
+            current: 0x0000_0020
+        )
+
+        #expect(delta == 0x30)
+        #expect(NetworkCounterDelta.bytes(previous: 1_000, current: 1_500) == 500)
+    }
+
     @Test("Hardware Vitals reads CPU, Memory, Disk, Power and Thermal accurately")
     func testHardwareVitals() {
         let service = HardwareVitalsService.shared

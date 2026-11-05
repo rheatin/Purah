@@ -6,6 +6,14 @@ import Foundation
 
 @Suite("Drop Shelf Regressions", .serialized)
 struct DropShelfRegressionTests {
+    @Test("Shelf ownership compares path components instead of a string prefix")
+    func shelfPathOwnershipRejectsSiblingDirectories() {
+        let base = URL(fileURLWithPath: "/tmp/shelf-images", isDirectory: true)
+
+        #expect(ShelfPluginState.isPath("/tmp/shelf-images/archive.zip", inside: base))
+        #expect(!ShelfPluginState.isPath("/tmp/shelf-images-backup/archive.zip", inside: base))
+    }
+
     @Test("A persisted empty shelf stays empty after mount")
     @MainActor
     func persistedEmptyShelfStaysEmpty() throws {

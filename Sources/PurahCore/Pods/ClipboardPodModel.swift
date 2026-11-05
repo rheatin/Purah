@@ -98,6 +98,22 @@ public struct ClipboardItem: Identifiable, Codable, Sendable, Equatable, PurahSt
         }
     }
 
+    /// Identity used only for history deduplication.
+    ///
+    /// `plainTextToCopy` is what the person sees and what search indexes, but a
+    /// color whose hex happens to read like text is a different clip. The type
+    /// prefix keeps those apart while preserving same-type deduplication.
+    var deduplicationKey: String {
+        switch type {
+        case .text(let value):
+            return "text:\(value)"
+        case .color(let hex, let red, let green, let blue, let alpha):
+            return "color:\(hex.uppercased()):\(red):\(green):\(blue):\(alpha)"
+        case .image(let path, _, _, _, _):
+            return "image:\(path)"
+        }
+    }
+
     /// Full searchable text representation for fuzzy query indexing
     public var searchableContent: String {
         switch type {

@@ -80,6 +80,92 @@ struct AIAssistantPluginTests {
         #expect(args == ["run", "llama3.2", "list files"])
     }
 
+    @Test("Ollama migration leaves an existing custom CLI path and template alone")
+    func testOllamaMigrationDoesNotOverwriteCustomCLI() {
+        let suiteName = "test_ollama_existing_custom_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+        let storage = ScopedPluginStorage(pluginId: "ai_migration_existing", defaults: isolated)
+        storage.set("ollama", forKey: "selectedCLI")
+        storage.set("/tmp/my-agent", forKey: "customCLIPath")
+        storage.set("--custom {prompt}", forKey: "customCLIArguments")
+
+        let state = AIAssistantPluginState(storage: storage)
+
+        #expect(state.selectedCLI == .custom)
+        #expect(state.customCLIPath == "/tmp/my-agent")
+        #expect(state.customCLIArguments == "--custom {prompt}")
+        #expect(storage.string(forKey: "selectedCLI") == "ollama")
+    }
+
+    @Test("An inferred Codex template keeps the Codex session source and JSON invocation")
+    func testInferredCodexTemplateIsNotCustom() {
+        let path = "/opt/homebrew/bin/codex"
+
+        #expect(AIAssistantService.cliSessionIDSource(
+            executable: .codex,
+            cliPath: path,
+            customCLIArguments: "exec {prompt}",
+            customCLIArgumentsAreInferred: true
+        ) == .codexJSONLines)
+
+        let args = AIAssistantService.resolveCLIArguments(
+            executable: .codex,
+            cliPath: path,
+            customCLIArguments: "exec {prompt}",
+            customCLIArgumentsAreInferred: true,
+            promptText: "list files"
+        )
+        #expect(args == ["exec", "--json", "--skip-git-repo-check", "list files"])
+
+        #expect(AIAssistantService.cliSessionIDSource(
+            executable: .codex,
+            cliPath: path,
+            customCLIArguments: "exec --profile mine {prompt}",
+            customCLIArgumentsAreInferred: false
+        ) == .none)
+
+        // A hand-written template keeps its existing custom semantics, even
+        // when its text happens to resemble a known default.
+        #expect(AIAssistantService.cliSessionIDSource(
+            executable: .custom,
+            cliPath: "/usr/local/bin/pi",
+            customCLIArguments: "-p {prompt}",
+            customCLIArgumentsAreInferred: false
+        ) == .none)
+    }
+
+    @Test("Inferred-template provenance persists, and a manual edit becomes custom again")
+    func testInferredTemplateProvenancePersists() {
+        let suiteName = "test_cli_template_provenance_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let storage = ScopedPluginStorage(pluginId: "ai_provenance", defaults: defaults)
+        storage.set(AICLIExecutable.codex.rawValue, forKey: "selectedCLI")
+        storage.set("/opt/homebrew/bin/codex", forKey: "customCLIPath")
+        storage.set("exec {prompt}", forKey: "customCLIArguments")
+        storage.set("inferred", forKey: "customCLIArgumentsSource")
+
+        let state = AIAssistantPluginState(storage: storage)
+        #expect(state.customCLIArgumentsAreInferred)
+        #expect(AIAssistantService.cliSessionIDSource(
+            executable: state.selectedCLI,
+            cliPath: state.customCLIPath,
+            customCLIArguments: state.customCLIArguments,
+            customCLIArgumentsAreInferred: state.customCLIArgumentsAreInferred
+        ) == .codexJSONLines)
+
+        state.setCustomCLIArguments("exec {prompt}", inferred: false)
+        let reopened = AIAssistantPluginState(storage: storage)
+        #expect(!reopened.customCLIArgumentsAreInferred)
+        #expect(AIAssistantService.cliSessionIDSource(
+            executable: reopened.selectedCLI,
+            cliPath: reopened.customCLIPath,
+            customCLIArguments: reopened.customCLIArguments,
+            customCLIArgumentsAreInferred: reopened.customCLIArgumentsAreInferred
+        ) == .none)
+    }
+
     @Test("AIQuickActionType system prompts and transformation flags")
     func testQuickActions() {
         #expect(AIQuickActionType.ask.isTransform == false)

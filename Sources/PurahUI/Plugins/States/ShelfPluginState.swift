@@ -23,6 +23,15 @@ public final class ShelfPluginState: Sendable {
         files.filter { selectedFileIds.contains($0.id) }
     }
 
+    /// Ownership is a path-component relation, not a string prefix:
+    /// `/tmp/shelf-images-backup` is not inside `/tmp/shelf-images`.
+    nonisolated static func isPath(_ path: String, inside baseDirectory: URL) -> Bool {
+        let pathComponents = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+        let baseComponents = baseDirectory.standardizedFileURL.pathComponents
+        guard pathComponents.count > baseComponents.count else { return false }
+        return pathComponents.prefix(baseComponents.count).elementsEqual(baseComponents)
+    }
+
     public func isSelected(id: String) -> Bool {
         selectedFileIds.contains(id)
     }
@@ -232,6 +241,9 @@ public final class ShelfPluginState: Sendable {
         let targets = filesToZip ?? filesForBatchExport()
         guard !targets.isEmpty else { return nil }
 
+        guard let zipPath = ProcessLaunchSanitizer.executablePath("/usr/bin/zip") else {
+            return nil
+        }
         try? FileManager.default.createDirectory(at: fileStorage.assetsDirectory, withIntermediateDirectories: true)
 
         let zipName = targets.count == 1
@@ -258,9 +270,6 @@ public final class ShelfPluginState: Sendable {
         }
         guard !sourcePaths.isEmpty else { return nil }
 
-        guard let zipPath = ProcessLaunchSanitizer.executablePath("/usr/bin/zip") else {
-            return nil
-        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: zipPath)
         process.arguments = ProcessLaunchSanitizer.argumentList(
@@ -426,7 +435,7 @@ public final class ShelfPluginState: Sendable {
         if deletingOwnedFile,
            let item = files.first(where: { $0.id == id }),
            let path = item.filePath,
-           path.hasPrefix(fileStorage.baseDirectory.path) {
+           Self.isPath(path, inside: fileStorage.baseDirectory) {
             try? FileManager.default.removeItem(atPath: path)
         }
         files.removeAll { $0.id == id }
@@ -443,7 +452,7 @@ public final class ShelfPluginState: Sendable {
     public func clear() {
         let itemsToRemove = files.filter { !$0.isFavorite }
         for item in itemsToRemove {
-            if let path = item.filePath, path.hasPrefix(fileStorage.baseDirectory.path) {
+            if let path = item.filePath, Self.isPath(path, inside: fileStorage.baseDirectory) {
                 try? FileManager.default.removeItem(atPath: path)
             }
             selectedFileIds.remove(item.id)
@@ -459,7 +468,7 @@ public final class ShelfPluginState: Sendable {
     /// Hard reset clearing all stashed files including favorites.
     public func clearAllIncludingFavorites() {
         for item in files {
-            if let path = item.filePath, path.hasPrefix(fileStorage.baseDirectory.path) {
+            if let path = item.filePath, Self.isPath(path, inside: fileStorage.baseDirectory) {
                 try? FileManager.default.removeItem(atPath: path)
             }
         }

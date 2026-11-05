@@ -346,6 +346,18 @@ struct TerminalSuggestionBridgeTests {
         let (_, response) = try await URLSession.shared.data(for: request)
         #expect((response as? HTTPURLResponse)?.statusCode == 403)
     }
+
+    @Test("A timed-out listener cannot overwrite the endpoint of a later start")
+    func restartedListenerKeepsOnlyTheCurrentEndpoint() async throws {
+        let bridge = TerminalSuggestionBridge()
+        defer { bridge.stop() }
+
+        #expect(bridge.startIfNeeded(timeout: 0) == nil)
+        let current = try #require(bridge.startIfNeeded())
+
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(bridge.startIfNeeded() == current)
+    }
 }
 
 @Suite("zsh Integration Files Tests")

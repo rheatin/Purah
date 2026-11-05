@@ -428,7 +428,6 @@ public struct AIAssistantPluginSettingsView: View {
     @State private var inferTemplateNotice: String? = nil
     /// The last template this view filled in by itself, so a hand-typed one is
     /// never overwritten by picking a different binary.
-    @State private var autoFilledTemplate: String? = nil
     @State private var autoInferTask: Task<Void, Never>? = nil
 
     private var palette: ThemePalette {
@@ -817,7 +816,13 @@ public struct AIAssistantPluginSettingsView: View {
                         .frame(width: 110, alignment: .leading)
 
                     customInputCapsule {
-                        TextField("e.g. {prompt} or run {prompt}", text: $state.customCLIArguments)
+                        TextField(
+                            "e.g. {prompt} or run {prompt}",
+                            text: Binding(
+                                get: { state.customCLIArguments },
+                                set: { state.setCustomCLIArguments($0, inferred: false) }
+                            )
+                        )
                             .textFieldStyle(.plain)
                             .font(.system(size: 11))
                     }
@@ -1063,7 +1068,7 @@ public struct AIAssistantPluginSettingsView: View {
     private func cliPresetPill(_ template: String, label: String) -> some View {
         let isSelected = state.customCLIArguments == template
         Button {
-            state.customCLIArguments = template
+            state.setCustomCLIArguments(template, inferred: false)
             if state.selectedCLI != .custom {
                 state.selectedCLI = .custom
             }
@@ -1103,7 +1108,7 @@ public struct AIAssistantPluginSettingsView: View {
     private func inferredTemplatePill(_ candidate: CLITemplateCandidate) -> some View {
         let isSelected = state.customCLIArguments == candidate.template
         Button {
-            state.customCLIArguments = candidate.template
+            state.setCustomCLIArguments(candidate.template, inferred: false)
             inferTemplateNotice = nil
         } label: {
             Text(candidate.template)
@@ -1181,9 +1186,8 @@ public struct AIAssistantPluginSettingsView: View {
             inferredTemplates = inference.candidates
             inferTemplateNotice = nil
             let current = state.customCLIArguments.trimmingCharacters(in: .whitespacesAndNewlines)
-            if current.isEmpty || current == "{prompt}" || current == autoFilledTemplate {
-                state.customCLIArguments = best.template
-                autoFilledTemplate = best.template
+            if current.isEmpty || current == "{prompt}" || state.customCLIArgumentsAreInferred {
+                state.setCustomCLIArguments(best.template, inferred: true)
                 inferTemplateNotice = String(format: "ai.inferTemplate.detected".localized, best.template)
             }
         }

@@ -49,6 +49,7 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
     private var listener: NWListener?
     private var endpoint: Endpoint?
     private var isListening = false
+    private var generation: UInt64 = 0
 
     public init() {}
 
@@ -56,16 +57,23 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
 
     /// Starts the listener once and returns where to reach it.
     ///
-    /// Blocking for up to a second, because `NWListener` reports readiness
+    /// Blocking for a bounded wait, because `NWListener` reports readiness
     /// asynchronously and the shell needs the port in its environment *before*
     /// it starts. The wait is paid once per launch.
-    public func startIfNeeded() -> Endpoint? {
+    public func startIfNeeded(timeout: TimeInterval = 3.0) -> Endpoint? {
         lock.lock()
         if let endpoint, isListening {
             lock.unlock()
             return endpoint
         }
+        generation &+= 1
+        let generation = generation
+        let previousListener = listener
+        listener = nil
+        endpoint = nil
+        isListening = false
         lock.unlock()
+        previousListener?.cancel()
 
         let token = LoopbackBridgeToken.make()
         let parameters = NWParameters.tcp
@@ -81,6 +89,10 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
             switch state {
             case .ready:
                 self.lock.lock()
+                guard self.generation == generation else {
+                    self.lock.unlock()
+                    return
+                }
                 self.isListening = true
                 if let port = self.listener?.port?.rawValue, self.endpoint == nil {
                     self.endpoint = Endpoint(port: port, token: token)
@@ -88,7 +100,9 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                 self.lock.unlock()
             case .failed, .cancelled:
                 self.lock.lock()
-                self.isListening = false
+                if self.generation == generation {
+                    self.isListening = false
+                }
                 self.lock.unlock()
             default:
                 break
@@ -99,6 +113,11 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         }
 
         lock.lock()
+        guard self.generation == generation else {
+            lock.unlock()
+            listener.cancel()
+            return nil
+        }
         self.listener = listener
         lock.unlock()
         listener.start(queue: queue)
@@ -108,7 +127,7 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         // shell without the endpoint and `??` is dead for that shell's life.
         // A healthy listener is ready in tens of milliseconds, so this only
         // lengthens the failing path.
-        let deadline = Date().addingTimeInterval(3.0)
+        let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             lock.lock()
             let ready = isListening ? endpoint : nil
@@ -121,6 +140,7 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
 
     public func stop() {
         lock.lock()
+        generation &+= 1
         listener?.cancel()
         listener = nil
         endpoint = nil

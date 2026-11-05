@@ -81,6 +81,30 @@ struct ClipboardUpgradeTests {
         #expect(service.history.first?.isFavorite == true, "Re-copied image item must retain star/favorite status")
     }
 
+    @Test("Text and color clips never deduplicate across content types")
+    func textAndColorDoNotDeduplicateAcrossTypes() {
+        let (service, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
+
+        service.addItem(ClipboardItem(type: .text("red")))
+        service.addItem(ClipboardItem(type: .color(
+            hex: "#FF0000",
+            red: 1,
+            green: 0,
+            blue: 0,
+            alpha: 1
+        )))
+        #expect(service.history.count == 2)
+
+        // Also pin the collision the old plain-text key actually missed: the
+        // color's displayed hex is identical to this text clip.
+        service.addItem(ClipboardItem(type: .text("#FF0000")))
+        #expect(service.history.count == 3)
+        #expect(service.history[0].type == .text("#FF0000"))
+        #expect(service.history[1].type.isColor)
+        #expect(service.history[2].type == .text("red"))
+    }
+
     @Test("computeImageFingerprint produces deterministic output for identical images")
     func testDeterministicImageFingerprint() {
         let size = NSSize(width: 60, height: 60)

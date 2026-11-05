@@ -127,6 +127,23 @@ public final class AIAssistantPluginState: Sendable {
         }
     }
 
+    /// Whether the current template came from CLI inference rather than the
+    /// person. The text alone cannot answer that: an inferred Codex template
+    /// and a hand-typed one can be identical.
+    public var customCLIArgumentsAreInferred: Bool {
+        didSet {
+            storage.set(
+                customCLIArgumentsAreInferred ? "inferred" : "user",
+                forKey: "customCLIArgumentsSource"
+            )
+        }
+    }
+
+    public func setCustomCLIArguments(_ value: String, inferred: Bool) {
+        customCLIArguments = value
+        customCLIArgumentsAreInferred = inferred
+    }
+
     public var retentionPeriod: PurahRetentionPeriod {
         didSet {
             storage.set(retentionPeriod.rawValue, forKey: "retentionPeriod")
@@ -693,26 +710,46 @@ public final class AIAssistantPluginState: Sendable {
             self.selectedProvider = .appleIntelligence
         }
 
-        // Preserve the invocation produced by the removed Ollama preset.
-        if storage.string(forKey: "selectedCLI") == "ollama" {
+        // Preserve the invocation produced by the removed Ollama preset only
+        // when no custom CLI is already configured. A stored custom path is a
+        // later, deliberate choice and must not be rewritten by this migration.
+        let storedCLIPath = storage.string(forKey: "customCLIPath")?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if storage.string(forKey: "selectedCLI") == "ollama", storedCLIPath.isEmpty {
             storage.set(AICLIExecutable.custom.rawValue, forKey: "selectedCLI")
 
-            let storedPath = storage.string(forKey: "customCLIPath") ?? ""
             // An absolute path, because a custom CLI is launched from one and
             // a bare "ollama" would resolve to nothing at launch time.
-            if storedPath.isEmpty, let ollama = AIAssistantService.locateExecutable(named: "ollama") {
+            if let ollama = AIAssistantService.locateExecutable(named: "ollama") {
                 storage.set(ollama, forKey: "customCLIPath")
             }
 
             let storedArguments = storage.string(forKey: "customCLIArguments") ?? ""
             if storedArguments.isEmpty || storedArguments == "{prompt}" {
                 storage.set("run llama3.2 {prompt}", forKey: "customCLIArguments")
+                storage.set("inferred", forKey: "customCLIArgumentsSource")
             }
         }
-        self.selectedCLI = AICLIExecutable.resolved(fromStored: storage.string(forKey: "selectedCLI"))
+        let resolvedCLI = AICLIExecutable.resolved(fromStored: storage.string(forKey: "selectedCLI"))
+        self.selectedCLI = resolvedCLI
 
         self.customCLIPath = storage.string(forKey: "customCLIPath") ?? ""
-        self.customCLIArguments = storage.string(forKey: "customCLIArguments") ?? "{prompt}"
+        let storedArguments = storage.string(forKey: "customCLIArguments") ?? "{prompt}"
+        let inferred: Bool
+        if let source = storage.string(forKey: "customCLIArgumentsSource") {
+            inferred = source == "inferred"
+        } else {
+            // Upgrade path for templates inference already wrote before this
+            // provenance flag existed. Matching a known family default is the
+            // only evidence available; hand edits still become explicit on the
+            // first new edit.
+            let familyPath = storedCLIPath.isEmpty ? resolvedCLI.executableName : storedCLIPath
+            let knownTemplate = CLITemplateProbe.knownFamily(for: familyPath)?.template
+            inferred = knownTemplate != nil && storedArguments == knownTemplate
+            storage.set(inferred ? "inferred" : "user", forKey: "customCLIArgumentsSource")
+        }
+        self.customCLIArguments = storedArguments
+        self.customCLIArgumentsAreInferred = inferred
 
         let resolvedRetention: PurahRetentionPeriod
         if let retStr = storage.string(forKey: "retentionPeriod"),
@@ -956,6 +993,10 @@ public final class AIAssistantPluginState: Sendable {
         storage.set(selectedCLI.rawValue, forKey: "selectedCLI")
         storage.set(customCLIPath, forKey: "customCLIPath")
         storage.set(customCLIArguments, forKey: "customCLIArguments")
+        storage.set(
+            customCLIArgumentsAreInferred ? "inferred" : "user",
+            forKey: "customCLIArgumentsSource"
+        )
         storage.set(retentionPeriod.rawValue, forKey: "retentionPeriod")
         storage.set(openAIBaseURL, forKey: "openAIBaseURL")
         secretStore.setSecret(openAIAPIKey, forKey: "ai.openAIAPIKey")
@@ -1650,6 +1691,7 @@ public final class AIAssistantPluginState: Sendable {
         let cli = selectedCLI
         let customPath = customCLIPath
         let customArgs = customCLIArguments
+        let customArgsAreInferred = customCLIArgumentsAreInferred
         let apiKey: String? = {
             switch provider {
             case .httpOpenAI: return openAIAPIKey
@@ -1688,6 +1730,7 @@ public final class AIAssistantPluginState: Sendable {
                     cliExecutable: cli,
                     customCLIPath: customPath,
                     customCLIArguments: customArgs,
+                    customCLIArgumentsAreInferred: customArgsAreInferred,
                     apiKey: apiKey,
                     endpoint: endpoint,
                     model: model,

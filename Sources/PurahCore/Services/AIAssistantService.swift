@@ -469,6 +469,7 @@ public final class AIAssistantService {
         cliExecutable: AICLIExecutable = .claude,
         customCLIPath: String? = nil,
         customCLIArguments: String? = nil,
+        customCLIArgumentsAreInferred: Bool = false,
         apiKey: String? = nil,
         endpoint: String? = nil,
         model: String? = nil,
@@ -588,6 +589,7 @@ public final class AIAssistantService {
                         cliPath: cliPath,
                         executable: cliExecutable,
                         customCLIArguments: customCLIArguments,
+                        customCLIArgumentsAreInferred: customCLIArgumentsAreInferred,
                         messages: messages,
                         model: model,
                         targetLanguage: targetLanguage,
@@ -909,6 +911,7 @@ public final class AIAssistantService {
         cliPath: String,
         executable: AICLIExecutable,
         customCLIArguments: String?,
+        customCLIArgumentsAreInferred: Bool,
         messages: [AIChatMessage],
         model: String?,
         targetLanguage: String,
@@ -934,11 +937,23 @@ public final class AIAssistantService {
             ? inputText
             : "Conversation so far:\n\(transcript)\n\nUser Input:\n\(inputText)"
         let resumeID = resumeSessionId.flatMap { $0.isEmpty ? nil : $0 }
-        let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasCustomTemplate = trimmedCustomArgs != nil
-            && !trimmedCustomArgs!.isEmpty
-            && trimmedCustomArgs != "{prompt}"
-        let sessionIDSource = hasCustomTemplate ? SessionIDSource.none : executable.convention.sessionIDSource
+        let hasCustomTemplate = Self.hasCustomCLITemplate(
+            customCLIArguments,
+            executable: executable,
+            cliPath: cliPath,
+            customCLIArgumentsAreInferred: customCLIArgumentsAreInferred
+        )
+        let sessionIDSource = Self.cliSessionIDSource(
+            executable: executable,
+            cliPath: cliPath,
+            customCLIArguments: customCLIArguments,
+            customCLIArgumentsAreInferred: customCLIArgumentsAreInferred
+        )
+        let resolvedExecutable = Self.resolvedCLIExecutable(
+            executable: executable,
+            cliPath: cliPath,
+            templateIsInferred: customCLIArgumentsAreInferred
+        )
 
         let effectiveSystemPrompt = systemPromptOverride ?? lastMsg?.systemPromptOverride ?? lastMsg?.quickAction?.buildSystemPrompt(targetLanguage: targetLanguage)
 
@@ -951,10 +966,11 @@ public final class AIAssistantService {
                 executable: executable,
                 cliPath: cliPath,
                 customCLIArguments: customCLIArguments,
+                customCLIArgumentsAreInferred: customCLIArgumentsAreInferred,
                 promptText: text,
                 model: model,
                 additionalDirectories: skillDirectories,
-                permissionSettingsPath: Self.permissionSettingsPath(for: executable),
+                permissionSettingsPath: Self.permissionSettingsPath(for: resolvedExecutable),
                 mcpConfigPath: mcpConfigPath,
                 resumeSessionId: resuming
             )
@@ -1065,10 +1081,61 @@ public final class AIAssistantService {
         return normalized.hasPrefix("opencode") || normalized.hasPrefix("optimus")
     }
 
+    /// A custom binary whose name identifies a built-in family still uses that
+    /// family's real convention (including JSON output and resume support).
+    nonisolated static func resolvedCLIExecutable(
+        executable: AICLIExecutable,
+        cliPath: String,
+        templateIsInferred: Bool
+    ) -> AICLIExecutable {
+        guard templateIsInferred, executable == .custom else { return executable }
+        return CLITemplateProbe.knownFamily(for: cliPath)?.executable ?? .custom
+    }
+
+    /// Template inference writes its result into the same preference a person
+    /// edits by hand. Provenance is the only way to tell an inferred template
+    /// from an identical hand-typed one and preserve Codex/Pi/Claude sessions.
+    nonisolated static func hasCustomCLITemplate(
+        _ customCLIArguments: String?,
+        executable: AICLIExecutable,
+        cliPath: String,
+        customCLIArgumentsAreInferred: Bool
+    ) -> Bool {
+        guard let template = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !template.isEmpty,
+              template != "{prompt}" else {
+            return false
+        }
+        return !customCLIArgumentsAreInferred
+    }
+
+    nonisolated static func cliSessionIDSource(
+        executable: AICLIExecutable,
+        cliPath: String,
+        customCLIArguments: String?,
+        customCLIArgumentsAreInferred: Bool
+    ) -> SessionIDSource {
+        guard !hasCustomCLITemplate(
+            customCLIArguments,
+            executable: executable,
+            cliPath: cliPath,
+            customCLIArgumentsAreInferred: customCLIArgumentsAreInferred
+        ) else {
+            return .none
+        }
+        return resolvedCLIExecutable(
+            executable: executable,
+            cliPath: cliPath,
+            templateIsInferred: customCLIArgumentsAreInferred
+        )
+            .convention.sessionIDSource
+    }
+
     public nonisolated static func resolveCLIArguments(
         executable: AICLIExecutable,
         cliPath: String,
         customCLIArguments: String? = nil,
+        customCLIArgumentsAreInferred: Bool = false,
         promptText: String,
         model: String? = nil,
         additionalDirectories: [String] = [],
@@ -1078,17 +1145,27 @@ public final class AIAssistantService {
     ) -> [String] {
         var args: [String] = []
         let trimmedCustomArgs = customCLIArguments?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasCustomTemplate = trimmedCustomArgs != nil && !trimmedCustomArgs!.isEmpty && trimmedCustomArgs != "{prompt}"
+        let hasCustomTemplate = hasCustomCLITemplate(
+            customCLIArguments,
+            executable: executable,
+            cliPath: cliPath,
+            customCLIArgumentsAreInferred: customCLIArgumentsAreInferred
+        )
+        let resolvedExecutable = resolvedCLIExecutable(
+            executable: executable,
+            cliPath: cliPath,
+            templateIsInferred: customCLIArgumentsAreInferred
+        )
         // A hand-written template means the user already decided how the CLI
         // should be invoked; adding settings they did not ask for would be us
         // overriding that.
         let canRoutePermissions = !hasCustomTemplate
 
-        if executable == .custom || hasCustomTemplate {
+        if resolvedExecutable == .custom || hasCustomTemplate {
             let template = hasCustomTemplate ? trimmedCustomArgs! : "{prompt}"
             args = parseArgumentsTemplate(template: template, prompt: promptText)
         } else {
-            args = executable.convention.arguments(prompt: promptText, session: resumeSessionId)
+            args = resolvedExecutable.convention.arguments(prompt: promptText, session: resumeSessionId)
         }
 
         let filename = (cliPath as NSString).lastPathComponent.lowercased()
@@ -1097,7 +1174,7 @@ public final class AIAssistantService {
         // invoking when the agent can act, so supplying a skill directory
         // means the run is expected to have tools.
         let wantsTools = !additionalDirectories.isEmpty
-        let isPi = executable == .pi || filename == "pi" || cliPath.contains("/pi/") || cliPath.hasSuffix("/pi")
+        let isPi = resolvedExecutable == .pi || filename == "pi" || cliPath.contains("/pi/") || cliPath.hasSuffix("/pi")
         if isPi {
             if !wantsTools, !args.contains("-nt"), !args.contains("--no-tools"), !args.contains("--tools") {
                 args.insert("-nt", at: 0)
@@ -1130,18 +1207,18 @@ public final class AIAssistantService {
         // exactly the access a skill's companion files need. Codex is
         // deliberately not given the same flag: there `--add-dir` means
         // *writable*, and reading is already allowed by its sandbox.
-        if executable == .claude, !additionalDirectories.isEmpty, !hasCustomTemplate {
+        if resolvedExecutable == .claude, !additionalDirectories.isEmpty, !hasCustomTemplate {
             args.insert(contentsOf: additionalDirectories.flatMap { ["--add-dir", $0] }, at: 0)
         }
 
         // Route the agent's own permission prompts to Purah. The CLI is put in
         // `manual` so nothing is auto-approved on the user's behalf, and the
         // hook in the settings file is what turns each gate into a banner.
-        if executable == .claude, canRoutePermissions, let permissionSettingsPath {
+        if resolvedExecutable == .claude, canRoutePermissions, let permissionSettingsPath {
             args.insert(contentsOf: ["--settings", permissionSettingsPath, "--permission-mode", "manual"], at: 0)
         }
 
-        if executable == .claude, canRoutePermissions, let mcpConfigPath {
+        if resolvedExecutable == .claude, canRoutePermissions, let mcpConfigPath {
             args.insert(contentsOf: ["--mcp-config", mcpConfigPath], at: 0)
         }
 

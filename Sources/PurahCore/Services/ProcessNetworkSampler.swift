@@ -1,5 +1,6 @@
 // Sources/PurahCore/Services/ProcessNetworkSampler.swift
 import Foundation
+import Darwin
 
 /// One cumulative byte reading from `nettop`.
 public struct ProcessNetworkByteCounts: Sendable, Equatable {
@@ -140,18 +141,40 @@ public actor ProcessNetworkSampler {
     }
 
     private static func runNettop() async -> String? {
+        guard let result = await runBoundedProcess(
+            executablePath: "/usr/bin/env",
+            arguments: ["nettop", "-P", "-L", "1", "-x", "-J", "bytes_in,bytes_out"],
+            timeout: 5
+        ) else {
+            return nil
+        }
+        guard result.exitCode == 0 else { return nil }
+        return String(data: result.data, encoding: .utf8)
+    }
+
+    struct BoundedProcessResult: Sendable {
+        let data: Data
+        let exitCode: Int32
+    }
+
+    /// Runs a command with a hard upper bound. Closing the read end is as
+    /// important as signalling the process: a descendant can keep a pipe open
+    /// after its parent exits, leaving `readDataToEndOfFile` blocked forever.
+    static func runBoundedProcess(
+        executablePath: String,
+        arguments: [String],
+        timeout: TimeInterval
+    ) async -> BoundedProcessResult? {
         await withCheckedContinuation { continuation in
-            let result = NettopResultBox(continuation: continuation)
+            let result = BoundedProcessResultBox(continuation: continuation)
             DispatchQueue.global(qos: .utility).async {
-                guard let executablePath = ProcessLaunchSanitizer.executablePath("/usr/bin/env") else {
+                guard let executablePath = ProcessLaunchSanitizer.executablePath(executablePath) else {
                     result.resume(nil)
                     return
                 }
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executablePath)
-                process.arguments = ProcessLaunchSanitizer.argumentList([
-                    "nettop", "-P", "-L", "1", "-x", "-J", "bytes_in,bytes_out"
-                ])
+                process.arguments = ProcessLaunchSanitizer.argumentList(arguments)
 
                 let output = Pipe()
                 process.standardOutput = output
@@ -165,55 +188,58 @@ public actor ProcessNetworkSampler {
                     return
                 }
 
-                guard result.attach(process) else {
-                    process.terminate()
+                let readHandle = output.fileHandleForReading
+                guard result.attach(process, readHandle: readHandle) else {
+                    if process.isRunning { process.terminate() }
+                    try? readHandle.close()
                     return
                 }
 
-                let timeout = DispatchWorkItem {
+                let timeoutItem = DispatchWorkItem {
                     result.terminateAndResume()
                 }
                 DispatchQueue.global(qos: .utility).asyncAfter(
-                    deadline: .now() + 5,
-                    execute: timeout
+                    deadline: .now() + timeout,
+                    execute: timeoutItem
                 )
 
-                let data = output.fileHandleForReading.readDataToEndOfFile()
+                let data = readHandle.readDataToEndOfFile()
                 process.waitUntilExit()
-                timeout.cancel()
+                timeoutItem.cancel()
 
                 guard process.terminationStatus == 0 else {
                     result.resume(nil)
                     return
                 }
-                result.resume(String(data: data, encoding: .utf8))
+                result.resume(BoundedProcessResult(data: data, exitCode: process.terminationStatus))
             }
         }
     }
 }
 
-/// Keeps the continuation and process behind one lock so the normal exit and
-/// the timeout race cannot resume twice or terminate a process that has
-/// already been released.
-private final class NettopResultBox: @unchecked Sendable {
+/// Keeps the continuation, process, and pipe behind one lock so the normal exit
+/// and timeout race cannot resume twice or close the read end twice.
+private final class BoundedProcessResultBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<String?, Never>?
+    private var continuation: CheckedContinuation<ProcessNetworkSampler.BoundedProcessResult?, Never>?
     private var process: Process?
+    private var readHandle: FileHandle?
     private var hasResumed = false
 
-    init(continuation: CheckedContinuation<String?, Never>) {
+    init(continuation: CheckedContinuation<ProcessNetworkSampler.BoundedProcessResult?, Never>) {
         self.continuation = continuation
     }
 
-    func attach(_ process: Process) -> Bool {
+    func attach(_ process: Process, readHandle: FileHandle) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         guard !hasResumed else { return false }
         self.process = process
+        self.readHandle = readHandle
         return true
     }
 
-    func resume(_ output: String?) {
+    func resume(_ output: ProcessNetworkSampler.BoundedProcessResult?) {
         lock.lock()
         guard !hasResumed else {
             lock.unlock()
@@ -222,8 +248,11 @@ private final class NettopResultBox: @unchecked Sendable {
         hasResumed = true
         let continuation = self.continuation
         self.continuation = nil
+        let readHandle = self.readHandle
         process = nil
+        self.readHandle = nil
         lock.unlock()
+        try? readHandle?.close()
         continuation?.resume(returning: output)
     }
 
@@ -235,12 +264,25 @@ private final class NettopResultBox: @unchecked Sendable {
         }
         hasResumed = true
         let process = self.process
+        let readHandle = self.readHandle
         self.process = nil
+        self.readHandle = nil
         let continuation = self.continuation
         self.continuation = nil
         lock.unlock()
 
-        process?.terminate()
+        let pid = process?.processIdentifier ?? -1
+        if let process, process.isRunning {
+            process.terminate()
+        }
+        try? readHandle?.close()
+        if let process, pid > 0 {
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
+                if process.isRunning {
+                    kill(pid, SIGKILL)
+                }
+            }
+        }
         continuation?.resume(returning: nil)
     }
 }

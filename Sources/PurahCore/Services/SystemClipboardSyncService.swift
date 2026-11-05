@@ -458,11 +458,11 @@ public final class SystemClipboardSyncService {
         // settle that base synchronously so this item is inserted into the real
         // history rather than into `[]`.
         if !_historyLoaded { loadFromDisk() }
-        if let latest = history.first, latest.plainTextToCopy == item.plainTextToCopy {
+        if let latest = history.first, latest.deduplicationKey == item.deduplicationKey {
             return
         }
 
-        if let existingIdx = history.firstIndex(where: { $0.plainTextToCopy == item.plainTextToCopy }) {
+        if let existingIdx = history.firstIndex(where: { $0.deduplicationKey == item.deduplicationKey }) {
             let wasFavorite = history[existingIdx].isFavorite
             history.remove(at: existingIdx)
             var updated = item

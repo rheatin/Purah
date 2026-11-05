@@ -506,6 +506,21 @@ private final class CpuTelemetryBuffer: @unchecked Sendable {
     }
 }
 
+/// `if_data` exposes 32-bit interface counters, so a busy interface can wrap
+/// between two one-second samples. This assumes at most one wrap per interval.
+enum NetworkCounterDelta {
+    static let counterWidth: UInt64 = 1 << 32
+
+    static func bytes(previous: UInt64, current: UInt64) -> UInt64 {
+        if current >= previous {
+            return current - previous
+        }
+        let previous32 = previous % counterWidth
+        let current32 = current % counterWidth
+        return (counterWidth - previous32 + current32) % counterWidth
+    }
+}
+
 @Observable
 @MainActor
 public final class HardwareVitalsService {
@@ -1364,8 +1379,8 @@ public final class HardwareVitalsService {
            let prevTime = buffer.previousNetworkTimestamp {
             let elapsed = now.timeIntervalSince(prevTime)
             if elapsed > 0.05 {
-                let deltaIn = totalIn >= prevIn ? Double(totalIn - prevIn) : 0.0
-                let deltaOut = totalOut >= prevOut ? Double(totalOut - prevOut) : 0.0
+                let deltaIn = Double(NetworkCounterDelta.bytes(previous: prevIn, current: totalIn))
+                let deltaOut = Double(NetworkCounterDelta.bytes(previous: prevOut, current: totalOut))
                 downSpeed = deltaIn / elapsed
                 upSpeed = deltaOut / elapsed
             }

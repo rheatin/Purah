@@ -89,6 +89,19 @@ struct ProcessNetworkSamplerTests {
         #expect(restarted[42] == .zero)
     }
 
+    @Test("A wedged command is terminated and the sampler returns within the watchdog window")
+    func boundedProcessTimesOut() async {
+        let start = Date()
+        let result = await ProcessNetworkSampler.runBoundedProcess(
+            executablePath: "/bin/sleep",
+            arguments: ["5"],
+            timeout: 0.1
+        )
+
+        #expect(result == nil)
+        #expect(Date().timeIntervalSince(start) < 2)
+    }
+
     @Test("Process inspector resource counters default to zero")
     func processMetricDefaultsAreZero() {
         let process = ProcessInfoItem(

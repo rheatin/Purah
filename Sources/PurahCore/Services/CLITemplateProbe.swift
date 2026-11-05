@@ -190,6 +190,9 @@ public enum CLITemplateProbe {
     public struct KnownFamily: Sendable, Equatable {
         public let family: String
         public let template: String
+        /// The built-in invocation convention when this family is also one of
+        /// Purah's first-class CLI choices.
+        public let executable: AICLIExecutable?
     }
 
     /// Name → convention, so an obvious binary answers without being run.
@@ -199,14 +202,14 @@ public enum CLITemplateProbe {
     /// costs one `--help` run, so this table stays short and only lists names
     /// that are not also ordinary English words.
     static let knownFamilies: [(prefix: String, family: KnownFamily)] = [
-        ("claude", KnownFamily(family: "Claude Code", template: "-p {prompt}")),
-        ("pi", KnownFamily(family: "Pi", template: "-p {prompt}")),
-        ("codex", KnownFamily(family: "Codex", template: "exec {prompt}")),
-        ("opencode", KnownFamily(family: "opencode", template: "run {prompt}")),
-        ("optimus", KnownFamily(family: "Optimus", template: "run --thinking --format json {prompt}")),
-        ("gemini", KnownFamily(family: "Gemini CLI", template: "-p {prompt}")),
-        ("aider", KnownFamily(family: "Aider", template: "--message {prompt}")),
-        ("ollama", KnownFamily(family: "Ollama", template: "run llama3.2 {prompt}")),
+        ("claude", KnownFamily(family: "Claude Code", template: "-p {prompt}", executable: .claude)),
+        ("pi", KnownFamily(family: "Pi", template: "-p {prompt}", executable: .pi)),
+        ("codex", KnownFamily(family: "Codex", template: "exec {prompt}", executable: .codex)),
+        ("opencode", KnownFamily(family: "opencode", template: "run {prompt}", executable: nil)),
+        ("optimus", KnownFamily(family: "Optimus", template: "run --thinking --format json {prompt}", executable: nil)),
+        ("gemini", KnownFamily(family: "Gemini CLI", template: "-p {prompt}", executable: nil)),
+        ("aider", KnownFamily(family: "Aider", template: "--message {prompt}", executable: nil)),
+        ("ollama", KnownFamily(family: "Ollama", template: "run llama3.2 {prompt}", executable: nil)),
     ]
 
     public static func knownFamily(for executablePath: String) -> KnownFamily? {

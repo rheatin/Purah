@@ -495,6 +495,7 @@ public struct AIAssistantSteppedDrawerView: View {
                     cliExecutable: state.selectedCLI,
                     customCLIPath: state.customCLIPath,
                     customCLIArguments: state.customCLIArguments,
+                    customCLIArgumentsAreInferred: state.customCLIArgumentsAreInferred,
                     apiKey: apiKey,
                     endpoint: endpoint,
                     model: model,

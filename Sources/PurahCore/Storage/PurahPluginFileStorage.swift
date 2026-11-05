@@ -180,9 +180,33 @@ public struct PurahPluginFileStorage: Sendable {
         let url = dataDirectory.appendingPathComponent("index.json")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
-        guard let data = try? encoder.encode(items) else { return }
-        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        let data: Data
+        do {
+            data = try encoder.encode(items)
+        } catch {
+            DiagnosticLogger.shared.warn(
+                "Storage",
+                "Could not encode \(url.lastPathComponent): \(error.localizedDescription)"
+            )
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        } catch {
+            DiagnosticLogger.shared.warn(
+                "Storage",
+                "Could not create \(dataDirectory.lastPathComponent): \(error.localizedDescription)"
+            )
+            return
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            DiagnosticLogger.shared.warn(
+                "Storage",
+                "Could not write \(url.lastPathComponent): \(error.localizedDescription)"
+            )
+        }
     }
 
     /// Human-readable formatted string of the current disk usage.
