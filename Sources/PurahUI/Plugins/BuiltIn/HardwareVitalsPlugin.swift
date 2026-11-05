@@ -191,6 +191,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
         if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
+        state.refreshRailPowerVisibility()
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
@@ -437,6 +438,7 @@ public struct VitalsPluginSettingsView: View {
                                 state.isDecomposed = $0
                                 state.save()
                                 store._isVitalsDecomposed = $0
+                                state.refreshRailPowerVisibility()
                                 store.invalidateLayoutCache()
                                 store.savePersistentState()
                                 store.onWindowsRebuildNeeded?()
@@ -540,6 +542,7 @@ public struct VitalsPluginSettingsView: View {
                                             }
                                             state.save()
                                             store._vitalsEnabledMetrics = state.enabledMetrics
+                                            state.refreshRailPowerVisibility()
                                             store.savePersistentState()
                                         }
                                     } label: {

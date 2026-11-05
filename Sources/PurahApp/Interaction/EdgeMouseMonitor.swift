@@ -35,6 +35,7 @@ public final class EdgeMouseMonitor {
     private var candidateHoverStartTime: Date?
     private var wasAtAbsoluteBezel: Bool = false
     private var bezelArrivalTime: Date? = nil
+    private var dragBandDwellStarts: [MountEdge: Date] = [:]
     private var isRunning: Bool = false
     public private(set) var isFrozen: Bool = false
     public static weak var shared: EdgeMouseMonitor?
@@ -59,6 +60,17 @@ public final class EdgeMouseMonitor {
         max(CGFloat(store.railBarWidth), 4.0)
     }
 
+    nonisolated static let dragBandDwellDuration: TimeInterval = 0.250
+
+    nonisolated static func dragBandDwellSatisfied(
+        now: Date,
+        start: Date?,
+        minimum: TimeInterval = dragBandDwellDuration
+    ) -> Bool {
+        guard let start else { return false }
+        return now.timeIntervalSince(start) >= minimum
+    }
+
     public init(store: PurahWorkspaceStore, coordinator: ScreenEdgeCoordinator? = nil) {
         self.store = store
         self.coordinator = coordinator
@@ -71,6 +83,7 @@ public final class EdgeMouseMonitor {
     public func setFrozen(_ isFrozen: Bool) {
         self.isFrozen = isFrozen
         if isFrozen {
+            resetDragBandDwell()
             leftExitGraceTask?.cancel()
             leftExitGraceTask = nil
             rightExitGraceTask?.cancel()
@@ -104,6 +117,7 @@ public final class EdgeMouseMonitor {
     }
 
     public func resetEdgeState() {
+        resetDragBandDwell()
         cancelInitialDwell()
         cancelPortalHover()
         leftExitGraceTask?.cancel()
@@ -191,9 +205,13 @@ public final class EdgeMouseMonitor {
     /// drawer of a pod that actually accepts the dragged payload.
     private func handleDrag(event: NSEvent) {
         autoreleasepool {
-            guard !isFrozen, !store.isRailsFrozen, !store.isLiveRailEditingMode else { return }
+            guard !isFrozen, !store.isRailsFrozen, !store.isLiveRailEditingMode else {
+                resetDragBandDwell()
+                return
+            }
 
             if event.type == .leftMouseUp {
+                resetDragBandDwell()
                 processMouse(point: NSEvent.mouseLocation, now: Date())
                 return
             }
@@ -205,40 +223,49 @@ public final class EdgeMouseMonitor {
             // regardless of where the cursor currently is; `leftMouseUp` restores the pipeline.
             if !store.isDraggingFromDrawer { keepOpenDrawersAliveDuringDrag() }
 
-            processDragLocation(NSEvent.mouseLocation)
+            processDragLocation(NSEvent.mouseLocation, now: Date())
         }
     }
 
     /// Expands the drop-capable pod under the cursor and keeps the rail awake mid-drag.
-    private func processDragLocation(_ point: NSPoint) {
+    func processDragLocation(_ point: NSPoint, now: Date = Date()) {
         coordinator?.updateActiveScreenIfNeeded(for: point)
         let screen = coordinator?.targetScreen(for: point) ?? NSScreen.main ?? NSScreen.screens.first
         let visibleRect = customTargetVisibleRect ?? screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        guard point.y >= visibleRect.minY, point.y <= visibleRect.maxY else { return }
+        let isWithinVerticalBounds = point.y >= visibleRect.minY && point.y <= visibleRect.maxY
         let barW = max(CGFloat(store.railBarWidth), 4.0)
         let bandWidth = max(CGFloat(store.activeCatchCorridor), barW)
 
         let currentWindowY = visibleRect.maxY - point.y
 
         for edge in [MountEdge.left, .right] {
-            let withinBand = (edge == .left)
+            let withinBand = isWithinVerticalBounds && ((edge == .left)
                 ? point.x <= visibleRect.minX + bandWidth
-                : point.x >= visibleRect.maxX - bandWidth
-            let insideCard = isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: edge)
-            guard withinBand || insideCard else { continue }
+                : point.x >= visibleRect.maxX - bandWidth)
+            let insideCard = isWithinVerticalBounds
+                && isPointInsideAnyDrawerCard(point: point, visibleRect: visibleRect, edge: edge)
+            guard withinBand || insideCard else {
+                dragBandDwellStarts[edge] = nil
+                continue
+            }
 
             // While a drag is in flight the rail must accept drops even when nothing is pinned,
             // otherwise the rail band (and its plugin drop targets) is skipped by hit-testing.
             coordinator?.setInteractive(true, for: edge)
 
             if insideCard {
+                dragBandDwellStarts[edge] = nil
                 // A drag carries no mouseMoved events, so without this the exit-grace timer
                 // would retract the drawer mid-drag and the drop would be lost.
                 coordinator?.expandCanvas(for: edge)
             } else if withinBand {
-                // Dock-style affordance: hovering a drop-capable pod while carrying a payload
-                // opens its drawer, so the drop targets inside the card become reachable.
-                // Without this the payload can only land on the narrow rail bar itself.
+                let dwellStart = dragBandDwellStarts[edge] ?? now
+                dragBandDwellStarts[edge] = dwellStart
+                guard Self.dragBandDwellSatisfied(now: now, start: dwellStart) else { continue }
+
+                // Crossing the edge while selecting text is not a drop intent.
+                // Once the payload rests in the band for the threshold, open
+                // the drop-capable pod so the card's drop targets are reachable.
                 expandDropCapablePodIfNeeded(
                     edge: edge,
                     currentWindowY: currentWindowY,
@@ -246,6 +273,10 @@ public final class EdgeMouseMonitor {
                 )
             }
         }
+    }
+
+    private func resetDragBandDwell() {
+        dragBandDwellStarts.removeAll()
     }
 
     /// Opens the drawer of the drop-capable pod under the cursor during a drag session.
@@ -364,13 +395,15 @@ public final class EdgeMouseMonitor {
                     // that never clears the flag would leave this loop (and a stale flag) alive.
                     self.store.isDraggingFromDrawer = false
                     self.drawerDragWatchTask = nil
+                    self.resetDragBandDwell()
                     return
                 }
                 guard !self.isFrozen, !self.store.isRailsFrozen, !self.store.isLiveRailEditingMode else {
+                    self.resetDragBandDwell()
                     try? await Task.sleep(nanoseconds: 40_000_000)
                     continue
                 }
-                self.processDragLocation(NSEvent.mouseLocation)
+                self.processDragLocation(NSEvent.mouseLocation, now: Date())
                 try? await Task.sleep(nanoseconds: 40_000_000)
             }
         }
@@ -392,6 +425,7 @@ public final class EdgeMouseMonitor {
 
     public func stop() {
         isRunning = false
+        resetDragBandDwell()
         drawerDragWatchTask?.cancel()
         drawerDragWatchTask = nil
         leftExitGraceTask?.cancel()

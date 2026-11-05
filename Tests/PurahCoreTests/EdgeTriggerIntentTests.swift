@@ -856,4 +856,57 @@ struct EdgeTriggerIntentTests {
             #expect(store.activeDrawerPodId == nil, "Empty space below chips must strictly NOT open drawer")
         }
     }
+
+    @Test("Drag band dwell gate requires 250ms")
+    func testDragBandDwellGateThreshold() {
+        let start = Date()
+        #expect(!EdgeMouseMonitor.dragBandDwellSatisfied(
+            now: start.addingTimeInterval(0.249),
+            start: start
+        ))
+        #expect(EdgeMouseMonitor.dragBandDwellSatisfied(
+            now: start.addingTimeInterval(0.250),
+            start: start
+        ))
+        #expect(!EdgeMouseMonitor.dragBandDwellSatisfied(now: start, start: nil))
+    }
+
+    @Test("Drag expands only after resting in the edge band and restarts after leaving")
+    @MainActor
+    func testDragExpansionRequiresContinuousBandDwell() throws {
+        let suiteName = "EdgeDragDwell-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store.activeDrawerPodId = nil
+        store.activeDrawerItemId = nil
+
+        let monitor = EdgeMouseMonitor(store: store)
+        let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        monitor.customTargetVisibleRect = visibleRect
+
+        let layoutItems = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
+        let shelfItem = try #require(layoutItems.first(where: { $0.pod.id == "shelf" }))
+        let targetY = visibleRect.maxY - CGFloat(shelfItem.startY + shelfItem.spanH / 2.0)
+        let edgePoint = NSPoint(x: 8.0, y: targetY)
+        let awayPoint = NSPoint(x: 500.0, y: targetY)
+        let start = Date()
+
+        monitor.processDragLocation(edgePoint, now: start)
+        monitor.processDragLocation(edgePoint, now: start.addingTimeInterval(0.249))
+        #expect(store.activeDrawerPodId == nil)
+
+        monitor.processDragLocation(edgePoint, now: start.addingTimeInterval(0.250))
+        #expect(store.activeDrawerPodId == "shelf")
+
+        store.dismissActiveDrawer()
+        let reentry = start.addingTimeInterval(1.0)
+        monitor.processDragLocation(awayPoint, now: reentry)
+        monitor.processDragLocation(edgePoint, now: reentry)
+        monitor.processDragLocation(edgePoint, now: reentry.addingTimeInterval(0.249))
+        #expect(store.activeDrawerPodId == nil, "Leaving the band must start a fresh dwell")
+
+        monitor.processDragLocation(edgePoint, now: reentry.addingTimeInterval(0.250))
+        #expect(store.activeDrawerPodId == "shelf")
+    }
 }

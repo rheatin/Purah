@@ -82,6 +82,41 @@ struct VitalsAndScriptTests {
         #expect(batteryReads == 2)
     }
 
+    @Test("Rail power visibility includes decomposed power chips")
+    func railPowerVisibilityFollowsEveryRailSurface() throws {
+        let suiteName = "VitalsPowerVisibility-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store._isVitalsDecomposed = true
+        store._vitalsEnabledMetrics = [.cpu, .power]
+
+        let state = VitalsPluginState(
+            storage: ScopedPluginStorage(pluginId: "vitals", defaults: defaults)
+        )
+        state.mount(store: store)
+        state.setHeaderMetric(.cpu)
+        state.refreshRailPowerVisibility()
+        #expect(HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+
+        store._vitalsEnabledMetrics = [.cpu, .ram]
+        state.refreshRailPowerVisibility()
+        #expect(!HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+
+        state.setHeaderMetric(.power)
+        #expect(HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+
+        state.setHeaderMetric(.cpu)
+        state.isDecomposed = false
+        store._isVitalsDecomposed = false
+        state.refreshRailPowerVisibility()
+        #expect(!HardwareVitalsService.shared.isPowerMetricVisibleOnRail)
+
+        state.unmount(store: store)
+        HardwareVitalsService.shared.isPowerMetricVisibleOnRail = false
+    }
+
     @Test("VitalsMetricType includes GPU and Network cases")
     func testExtendedMetricTypes() {
         let all = VitalsMetricType.allCases

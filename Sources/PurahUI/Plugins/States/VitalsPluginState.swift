@@ -60,7 +60,7 @@ public final class VitalsPluginState: Sendable {
     public func setHeaderMetric(_ metric: VitalsMetricType) {
         headerMetric = metric
         storage.set(metric.rawValue, forKey: "headerMetric")
-        HardwareVitalsService.shared.isPowerMetricVisibleOnRail = metric == .power
+        refreshRailPowerVisibility()
     }
 
     public func setProcessSortMetric(_ metric: ProcessSortMetric) {
@@ -167,6 +167,7 @@ public final class VitalsPluginState: Sendable {
         if let thresh = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) {
             self.thresholds = thresh
         }
+        refreshRailPowerVisibility()
     }
 
     public func save() {
@@ -175,6 +176,7 @@ public final class VitalsPluginState: Sendable {
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(enabledMetrics, forKey: "enabledMetrics")
         storage.setCodable(thresholds, forKey: "thresholds")
+        refreshRailPowerVisibility()
     }
 
     public func stopPolling() {
@@ -197,6 +199,7 @@ public final class VitalsPluginState: Sendable {
         self.isDecomposed = store._isVitalsDecomposed
         self.enabledMetrics = store._vitalsEnabledMetrics
         reconcileHeaderMetric()
+        refreshRailPowerVisibility()
         HardwareVitalsService.shared.startMonitoring()
     }
 
@@ -216,7 +219,27 @@ public final class VitalsPluginState: Sendable {
         )
         headerMetric = resolved
         storage.set(resolved.rawValue, forKey: "headerMetric")
-        HardwareVitalsService.shared.isPowerMetricVisibleOnRail = resolved == .power
+    }
+
+    /// Battery telemetry is only cheap to skip when no rail affordance is
+    /// currently showing it. Decomposed chips have their own metric list, so
+    /// the header metric alone is not enough.
+    func refreshRailPowerVisibility() {
+        let railMetrics: [VitalsMetricType]
+        let railIsDecomposed: Bool
+        if let boundStore {
+            railMetrics = !boundStore._vitalsEnabledMetrics.isEmpty
+                ? boundStore._vitalsEnabledMetrics
+                : enabledMetrics
+            railIsDecomposed = isDecomposed
+                && !boundStore.isInSharedMajorPod(podId: "vitals")
+                && boundStore._isVitalsDecomposed
+        } else {
+            railMetrics = enabledMetrics
+            railIsDecomposed = isDecomposed
+        }
+        HardwareVitalsService.shared.isPowerMetricVisibleOnRail =
+            headerMetric == .power || (railIsDecomposed && railMetrics.contains(.power))
     }
 
     private func reconcileProcessSortMetric() {
