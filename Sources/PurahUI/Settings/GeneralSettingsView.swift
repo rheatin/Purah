@@ -33,7 +33,7 @@ public struct GeneralSettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Image(systemName: "gearshape.fill")
-                                .foregroundColor(palette.primaryAccent)
+                                .foregroundColor(.secondary)
                                 .font(.title2)
                             Text("general.title".localized)
                                 .font(.title3.weight(.bold))
@@ -50,7 +50,7 @@ public struct GeneralSettingsView: View {
                 .padding(.horizontal, 4)
 
                 // 1. Language & Regional Card
-                PurahSettingsCard(title: "interaction.language.card".localized, icon: "globe") {
+                PurahSettingsCard(title: "interaction.language.card".localized, icon: "globe", usesNeutralIcon: true) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("interaction.language.title".localized)
@@ -73,7 +73,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 2. Display & Multi-Monitor Card
-                PurahSettingsCard(title: "general.display.card".localized, icon: "display.2") {
+                PurahSettingsCard(title: "general.display.card".localized, icon: "display.2", usesNeutralIcon: true) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("general.display.title".localized)
@@ -99,7 +99,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 3. Startup & Interactive Guide Card
-                PurahSettingsCard(title: "general.startup.card".localized, icon: "sparkles") {
+                PurahSettingsCard(title: "general.startup.card".localized, icon: "sparkles", usesNeutralIcon: true) {
                     VStack(alignment: .leading, spacing: 14) {
                         // Launch at Login
                         HStack {
@@ -139,16 +139,13 @@ public struct GeneralSettingsView: View {
                                 // layout is not kept, so this is not a "replay".
                                 showingOnboardingAlert = true
                             } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "sparkles")
-                                    Text("general.startup.onboarding.button".localized)
-                                }
-                                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 6)
-                                .background(palette.primaryAccent)
-                                .foregroundColor(.black)
-                                .cornerRadius(7)
+                                Text("general.startup.onboarding.button".localized)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 6)
+                                    .background(Color.primary)
+                                    .foregroundColor(Color(nsColor: .windowBackgroundColor))
+                                    .cornerRadius(8)
                             }
                             .buttonStyle(.tactile)
                         }
@@ -175,7 +172,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 4. Global Hotkeys & Freeze Mode Card
-                PurahSettingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill") {
+                PurahSettingsCard(title: "interaction.hotkeys.card".localized, icon: "keyboard.fill", usesNeutralIcon: true) {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("interaction.hotkeys.description".localized)
                             .font(.caption)
@@ -190,7 +187,7 @@ public struct GeneralSettingsView: View {
                 }
 
                 // 4. Configuration & Backup Card
-                PurahSettingsCard(title: "general.config.card".localized, icon: "slider.horizontal.2.gobackward") {
+                PurahSettingsCard(title: "general.config.card".localized, icon: "slider.horizontal.2.gobackward", usesNeutralIcon: true) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("general.config.subtitle".localized)
                             .font(.caption)

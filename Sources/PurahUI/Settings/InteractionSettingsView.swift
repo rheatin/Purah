@@ -23,7 +23,7 @@ public struct InteractionSettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Image(systemName: "wand.and.stars")
-                                .foregroundColor(palette.primaryAccent)
+                                .foregroundColor(.secondary)
                                 .font(.title2)
                             Text("motion.title".localized)
                                 .font(.title3.weight(.bold))

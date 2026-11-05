@@ -10,15 +10,22 @@ import PurahCore
 public struct PurahSettingsCard<Content: View>: View {
     public let title: String
     public let icon: String
+    public let usesNeutralIcon: Bool
     @ViewBuilder public let content: () -> Content
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
-    public init(title: String, icon: String, @ViewBuilder content: @escaping () -> Content) {
+    public init(
+        title: String,
+        icon: String,
+        usesNeutralIcon: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
         self.title = title
         self.icon = icon
+        self.usesNeutralIcon = usesNeutralIcon
         self.content = content
     }
 
@@ -27,7 +34,7 @@ public struct PurahSettingsCard<Content: View>: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundColor(palette.primaryAccent)
+                    .foregroundStyle(usesNeutralIcon ? Color.secondary : palette.primaryAccent)
                 Text(title)
                     .font(.headline)
                     .foregroundColor(palette.style == .native ? Color.primary : .white)

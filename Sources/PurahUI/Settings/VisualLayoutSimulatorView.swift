@@ -30,7 +30,7 @@ public struct VisualLayoutSimulatorView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Image(systemName: "slider.horizontal.2.square")
-                                .foregroundColor(palette.primaryAccent)
+                                .foregroundColor(.secondary)
                                 .font(.title2)
                             Text("simulator.title".localized)
                                 .font(.title3.weight(.bold))
