@@ -40,6 +40,16 @@ secret: the default token reads the public release and pushes to its own repo.
 Verified end to end on 2026-10-30 (v0.7.8): a rolled-back cask was restored by
 the bot within a minute.
 
+The step does not trust the dispatch's exit code. It reads `Casks/purah.rb` back
+for up to thirty seconds until its version line names the release, and if that
+never happens it writes the file through the contents API itself (the current
+file's `sha`, the base64 of `dist/purah.rb`). A flaky endpoint or a paused
+workflow therefore leaves the tap correct instead of silently one release
+behind — the failure that motivated the check was `brew` still installing the
+previous version while the release page showed the new one. Only when both
+paths fail does the script print a red warning, and the release is already
+public by then.
+
 Homebrew 5 rejected three stanzas the first time the cask was installed, so the
 template now uses the current forms and should not drift back:
 `depends_on macos: :sonoma` (not `">= :sonoma"`), no `verified:` on `url`, and

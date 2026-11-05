@@ -453,8 +453,10 @@ echo -e "${GREEN}✓ Created updater metadata: ${RELEASE_INFO_PATH}${RESET}\n"
 
 # 5e. Generate the Homebrew cask for the self-hosted tap
 #     The tap lives in its own repo (github.com/rheatin/homebrew-tap); this
-#     file is the only place the version and checksum are written, so copy it
-#     over Casks/purah.rb after every release. See docs/OWNER_ACTIONS.md.
+#     file is the only place the version and checksum are written, and --publish
+#     copies it over Casks/purah.rb automatically once the release is up (see
+#     update_tap below). It is also published as a release asset, so a stale
+#     tap can always be repaired from the release page. See docs/OWNER_ACTIONS.md.
 CASK_PATH="${DIST_DIR}/purah.rb"
 cat <<EOF > "$CASK_PATH"
 cask "purah" do
@@ -582,17 +584,68 @@ if [ "$PUBLISH" = true ]; then
             --clobber
     fi
 
-    # The tap lives in its own repo, so nothing in this repository can update
-    # `Casks/purah.rb` directly. A dispatch makes the tap's workflow do it now
-    # rather than on its next scheduled poll. Not fatal: the release is already
-    # public, and a failed notification only means the cask is a little stale.
+    # The tap lives in its own repo, so the cask is updated through the GitHub
+    # API. A dispatch asks the tap's own workflow to copy the published cask
+    # now rather than on its next poll — but that call can fail for reasons
+    # that have nothing to do with this release (a flaky endpoint, a paused
+    # workflow), and a tap that quietly lags is noticed weeks later as "brew
+    # installed an old Purah". So the result is verified against the cask
+    # itself, and the file is written directly when the dispatch did not land.
     TAP_REPO="rheatin/homebrew-tap"
-    echo "   └── Notifying ${TAP_REPO}..."
-    if gh api -X POST "repos/${TAP_REPO}/dispatches" -f event_type=purah-release >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ Tap workflow dispatched.${RESET}"
-    else
-        echo -e "${YELLOW}⚠️  Could not notify ${TAP_REPO} — copy dist/purah.rb into the tap by hand.${RESET}" >&2
-    fi
+    TAP_CASK="Casks/purah.rb"
+
+    tap_cask_version() {
+        gh api "repos/${TAP_REPO}/contents/${TAP_CASK}" --jq '.content' 2>/dev/null \
+            | tr -d '\n' | base64 -d 2>/dev/null \
+            | sed -n 's/^  version "\([^"]*\)"$/\1/p' | head -1
+    }
+
+    update_tap() {
+        echo -e "   └── Updating ${TAP_REPO}..."
+        local dispatched=false attempt
+        for attempt in 1 2 3; do
+            if gh api -X POST "repos/${TAP_REPO}/dispatches" -f event_type=purah-release >/dev/null 2>&1; then
+                dispatched=true
+                break
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 2; fi
+        done
+
+        # The tap's workflow takes about ten seconds; give it thirty. With no
+        # dispatch nothing was started, so there is nothing to wait for.
+        if [ "$dispatched" = true ]; then
+            local waited
+            for waited in 1 2 3 4 5 6 7 8 9 10; do
+                if [ "$(tap_cask_version)" = "$VERSION" ]; then
+                    echo -e "${GREEN}✓ Tap cask is at ${VERSION}.${RESET}"
+                    return 0
+                fi
+                sleep 3
+            done
+        fi
+
+        if [ "$dispatched" = true ]; then
+            echo -e "${YELLOW}   Dispatch did not land in 30s; writing the cask directly.${RESET}"
+        else
+            echo -e "${YELLOW}   Could not dispatch to ${TAP_REPO}; writing the cask directly.${RESET}"
+        fi
+        local sha encoded
+        sha=$(gh api "repos/${TAP_REPO}/contents/${TAP_CASK}" --jq '.sha' 2>/dev/null || true)
+        encoded=$(base64 < "$CASK_PATH" | tr -d '\n')
+        local put_args=(-X PUT "repos/${TAP_REPO}/contents/${TAP_CASK}"
+            -f message="📦Build:[Release] Update cask to ${TAG_NAME}"
+            -f content="$encoded")
+        if [ -n "$sha" ]; then put_args+=(-f sha="$sha"); fi
+        if gh api "${put_args[@]}" >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Tap cask written directly: ${TAP_CASK} at ${VERSION}.${RESET}"
+            return 0
+        fi
+        echo -e "${RED}⚠️  ${TAP_REPO}/${TAP_CASK} is still stale.${RESET}" >&2
+        echo -e "${RED}   The release is public; copy ${CASK_PATH} into the tap by hand.${RESET}" >&2
+        return 1
+    }
+
+    update_tap || true
 
     echo -e "\n${BOLD}${GREEN}🚀 Release ${TAG_NAME} published successfully on GitHub!${RESET}"
 else
