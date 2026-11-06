@@ -468,6 +468,7 @@ public struct PreferencesView: View {
 
         focus.deliver(podId)
         let expected = focus
+        focusClearTask?.cancel()
         focusClearTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_300_000_000)
             guard !Task.isCancelled, let expectedPodId = expected.podId else { return }
