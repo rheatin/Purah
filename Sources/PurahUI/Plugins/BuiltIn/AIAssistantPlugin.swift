@@ -122,9 +122,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                     maxTextWidth: 112
                 )
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
+            .purahHeaderMenuStyle()
             .fixedSize(horizontal: true, vertical: false)
             .help(answerAuthor.map { "\(attribution.fullName)\n" + String(format: "ai.header.answerBy".localized, $0) } ?? attribution.fullName)
             // A `Menu` lays out its label as three separate accessibility

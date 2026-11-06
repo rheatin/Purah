@@ -153,8 +153,7 @@ public struct PurahHeaderMenuButton<Items: View>: View {
                 isHovered: $isHovered
             ) { label }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .purahHeaderMenuStyle()
         .fixedSize()
         .onHover { isHovered = $0 }
         .help(helpText)
@@ -326,6 +325,28 @@ public struct PurahHeaderMenuLabel: View {
         .foregroundColor(tint)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+    }
+}
+
+/// The one Menu style that lets a header pill's `tint` reach its ink.
+///
+/// `.borderlessButton` repaints the label with the system label colour, so the
+/// pill background changes while its text and icon stay grey. This deliberately
+/// does not set `fixedSize`, because one caller must remain flexible.
+public struct PurahHeaderMenuStyle: ViewModifier {
+    public init() {}
+
+    public func body(content: Content) -> some View {
+        content
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+    }
+}
+
+public extension View {
+    func purahHeaderMenuStyle() -> some View {
+        modifier(PurahHeaderMenuStyle())
     }
 }
 

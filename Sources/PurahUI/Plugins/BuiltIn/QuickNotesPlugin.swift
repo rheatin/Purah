@@ -141,8 +141,7 @@ struct NotesHeaderNoteMenu: View {
                 isEmphasized: true
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .purahHeaderMenuStyle()
         // No `fixedSize`: the note name is the one flexible element in the
         // header, so a long filename ellipsizes here instead of widening the
         // row until "Quick Notes" wraps onto a second line.

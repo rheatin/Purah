@@ -1324,11 +1324,11 @@ public struct AudioOutputDevicePickerView: View {
             PurahHeaderMenuLabel(
                 text: shortDeviceLabel(for: current?.name ?? "Output"),
                 icon: current?.systemIcon ?? "speaker.wave.2.fill",
+                tint: accentColor,
                 maxTextWidth: 96
             )
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .purahHeaderMenuStyle()
         .fixedSize()
         .help("help.switchAudioOutput".localized)
         .accessibilityLabel("help.switchAudioOutput".localized)

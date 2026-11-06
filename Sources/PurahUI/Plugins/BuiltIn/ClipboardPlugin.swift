@@ -1316,8 +1316,7 @@ struct ClipboardFormatPills: View {
                         .background(Capsule().fill(tint.opacity(0.14)))
                         .overlay(Capsule().stroke(tint.opacity(0.35), lineWidth: 0.6))
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
+                .purahHeaderMenuStyle()
                 .fixedSize()
                 .help("More conversions")
                 .accessibilityLabel("More conversions")

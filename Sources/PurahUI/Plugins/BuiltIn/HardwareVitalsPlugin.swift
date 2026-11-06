@@ -64,8 +64,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
                     maxTextWidth: 78
                 )
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            .purahHeaderMenuStyle()
             .fixedSize()
         )
     }

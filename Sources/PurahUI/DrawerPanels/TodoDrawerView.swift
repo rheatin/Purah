@@ -84,8 +84,7 @@ struct TodoOverviewRow: View {
                     .font(.system(size: 9.5))
                     .foregroundColor(todo.dueDate != nil ? effectiveColor : .secondary.opacity(0.65))
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            .purahHeaderMenuStyle()
             .fixedSize()
             .help("help.setQuickDue".localized)
             .accessibilityLabel("help.setQuickDue".localized)
